@@ -969,13 +969,13 @@ describe('ChartEngine one-shot toggle ring', () => {
     expect(start.ringBox[2]).toBeCloseTo(bBoxBefore[2]!, 10)
     expect(start.ringBox[3]).toBeCloseTo(bBoxBefore[3]!, 10)
 
-    engine.render(1175) // partway through the ring's 350ms window
+    engine.render(1400) // partway through the ring's 900ms window
     const mid = renderer.frames.at(-1)!
     expect(mid.ringActive).toBe(true)
     expect(mid.ringProgress).toBeGreaterThan(0)
     expect(mid.ringProgress).toBeLessThan(1)
 
-    engine.render(1350) // past the ring's duration
+    engine.render(1950) // past the ring's duration
     expect(renderer.frames.at(-1)!.ringActive).toBe(false)
   })
 
@@ -1081,14 +1081,14 @@ describe('ChartEngine one-shot toggle ring', () => {
   })
 
   it('keeps `engine.ringActive` true after `transitioning` has already gone false', () => {
-    // RING_DURATION_MS (350ms) deliberately outlives TRANSITION_DURATION_MS
-    // (250ms, see engine.ts) so the ring is still resolving as the layout
-    // transition settles. A caller driving its own frame loop off only
+    // RING_DURATION_MS (900ms) deliberately outlives TRANSITION_DURATION_MS
+    // (250ms, see engine.ts) so the ring is still resolving well after the
+    // layout transition settles. A caller driving its own frame loop off only
     // `transitioning` — as the vanilla layer's `scheduleFrame` briefly did —
     // stops asking for frames the instant the transition ends and freezes
     // the ring wherever its alpha happened to be, which reads as "it doesn't
     // fade" rather than a completed animation. `ringActive` exists precisely
-    // so a caller can keep scheduling for the extra 100ms the ring needs.
+    // so a caller keeps scheduling for the rest of the ring's life.
     const renderer = fakeRenderer()
     const { engine, tree } = seed(renderer)
     engine.setAnimate(true)
@@ -1100,11 +1100,11 @@ describe('ChartEngine one-shot toggle ring', () => {
     expect(engine.transitioning).toBe(true)
     expect(engine.ringActive).toBe(true)
 
-    engine.render(1300) // past the 250ms transition, still inside the 350ms ring
+    engine.render(1300) // past the 250ms transition, still well inside the 900ms ring
     expect(engine.transitioning).toBe(false)
     expect(engine.ringActive).toBe(true)
 
-    engine.render(1400) // past both
+    engine.render(1950) // past both
     expect(engine.ringActive).toBe(false)
   })
 })

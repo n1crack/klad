@@ -299,12 +299,16 @@ function progressOf(t: TimedAnimation, now: number): number {
 }
 
 /**
- * A touch longer than `TRANSITION_DURATION_MS` so the ring is still
- * resolving as the layout transition it accompanies settles, per the brief
- * ("in the same range as the layout transition, or a touch longer"). Not
- * exposed as a knob (yet), same reasoning as `TRANSITION_DURATION_MS`.
+ * Deliberately much longer than `TRANSITION_DURATION_MS`. The first attempt
+ * matched the layout transition at 350ms and was reported as imperceptible —
+ * the ring is a thin, low-contrast outline, and a thin line needs noticeably
+ * longer on screen than a moving block does to register at all. The layout
+ * settles first and the ring resolves after it, which is the intended reading
+ * order anyway: the chart rearranges, then the confirmation fades.
+ *
+ * Not exposed as a knob yet, same reasoning as `TRANSITION_DURATION_MS`.
  */
-const RING_DURATION_MS = 350
+const RING_DURATION_MS = 900
 
 /**
  * A one-shot flash ring drawn around the node a `setOpen` toggle just acted

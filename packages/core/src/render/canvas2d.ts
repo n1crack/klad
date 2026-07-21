@@ -203,7 +203,13 @@ export function createCanvas2DRenderer(
       const w = rb[2]! * k
       const h = rb[3]! * k
       const ringRadius = (frame.tier === 'block' ? 0 : theme.cornerRadius * k) + grow
-      ctx.globalAlpha = 1 - easeInQuad(progress)
+      // Hold at full opacity for the first third, then fade across the rest.
+      // A curve that starts fading from t=0 spends most of the ring's life
+      // nearly transparent, which is why the first version read as a flicker
+      // however long it ran: the duration was there, the visibility was not.
+      const RING_HOLD = 0.35
+      ctx.globalAlpha =
+        progress <= RING_HOLD ? 1 : 1 - easeInQuad((progress - RING_HOLD) / (1 - RING_HOLD))
       ctx.beginPath()
       if (ringRadius > 0) ctx.roundRect(x - grow, y - grow, w + grow * 2, h + grow * 2, ringRadius)
       else ctx.rect(x - grow, y - grow, w + grow * 2, h + grow * 2)
