@@ -4,8 +4,31 @@
 
 Four resolved by the project owner:
 
-- **#10 camera animation** — RESOLVED: add a 200ms ease-in-out tween. `interpolate` and
-  `easeInOutCubic` already exist in core, tested but unwired.
+- **#10 camera animation** — RESOLVED and DONE. 200ms ease-in-out, one shared
+  cancel-on-contact mechanism reused by the tween, the kinetic pan, and auto-pan-on-toggle,
+  so they cannot fight over the camera.
+
+### Verified by hand in a real browser, not just by test
+
+- Dragging that **starts on a node card** now pans: 160px of drag carried to 344px with
+  momentum. Previously it did nothing at all — `pointerdown` was bound to the canvas and
+  the overlay cards swallowed it. This was the "scroll performance is bad" report; nothing
+  was ever slow.
+- **Wheel over a card** zooms: card width 180 -> 328. Same root cause, same fix — input is
+  now hosted on the chart element rather than the canvas.
+- **Toggle approaches the node**: collapsing the root moved it from y=154 to y=497, i.e. the
+  camera travelled to it. No console errors through any of it.
+
+### Still unjudged, needs a human at the controls
+
+- **Momentum constants** (300ms decay time constant, 0.02-3 px/ms velocity bounds) are
+  reasoned, not tuned. The measured carry is in the same range as a native scroll view, but
+  whether it *feels* right is not something a measurement settles.
+- **Auto-pan now moves on every toggle**, per the owner's final instruction, including when
+  the node was already comfortably visible. A rapid burst of sibling expands may feel busy;
+  nobody has tried that yet.
+- The "centre on the toggled node when its children are too wide to fit" fallback is
+  implemented and reasoned through, but no test exercises it and no one has seen it fire.
 - **#23 accessibility mirror rebuild** — RESOLVED and DONE. Pooled and diffed. A single
   toggle at 10k nodes went from ~15.9ms to ~1.0ms, roughly 15-17x. Cold population is
   unchanged at ~16-21ms, which is fine — it happens once. The diff is still O(count) per
