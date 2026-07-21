@@ -14,8 +14,18 @@ export interface InputCallbacks {
    * turns out to be a tap.
    */
   cancelAnimation(): void
-  /** Screen-space point, relative to the chart host element. */
-  onTap(screenX: number, screenY: number): void
+  /**
+   * Screen-space point, relative to the chart host element, plus the
+   * `pointerdown` event's own `target` — the deepest DOM element actually
+   * under the pointer when the gesture started, canvas or an overlay card's
+   * own content alike. Passed through (rather than re-derived later, e.g.
+   * via `elementFromPoint`) so a caller can tell a tap on a card's own
+   * interactive content (a button, a link) apart from a tap on the card's
+   * inert body, without this module needing to know anything about what a
+   * "toggle button" or an "interactive element" is — that judgement belongs
+   * to the caller (see `toggleOnNodeClick` in index.ts).
+   */
+  onTap(screenX: number, screenY: number, target: EventTarget | null): void
   /**
    * Screen-space point, relative to the chart host element. Fired for plain
    * hover motion — not while dragging or pinching, since those already
@@ -78,6 +88,10 @@ export function attachInput(
   let lastY = 0
   let downX = 0
   let downY = 0
+  // The `pointerdown` event's own `target`, carried through to `onTap` if
+  // this gesture turns out to be a tap rather than a drag — see `onTap`'s
+  // docblock above for why the caller needs this.
+  let downTarget: EventTarget | null = null
   const activePointers = new Map<number, { x: number; y: number }>()
   let pinchDistance = 0
 
@@ -121,6 +135,7 @@ export function attachInput(
     lastY = event.clientY
     downX = event.clientX
     downY = event.clientY
+    downTarget = event.target
     moveSamples = [{ t: performance.now(), x: event.clientX, y: event.clientY }]
   }
 
@@ -167,7 +182,7 @@ export function attachInput(
     dragging = false
     if (travelled <= DRAG_THRESHOLD_PX) {
       const point = localPoint({ clientX: downX, clientY: downY })
-      callbacks.onTap(point.x, point.y)
+      callbacks.onTap(point.x, point.y, downTarget)
       return
     }
     const first = moveSamples[0]

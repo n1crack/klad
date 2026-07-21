@@ -73,6 +73,38 @@ export interface Options {
    * broken, not attentive. Defaults to `true`.
    */
   autoPanOnToggle?: boolean
+  /**
+   * When `true`, tapping a node with children expands or collapses it —
+   * without this, a `renderNode` layout that has no room for its own toggle
+   * button (a compact chip, a dense status card) has no way to be expanded
+   * or collapsed at all. Defaults to `false`: existing consumers who render
+   * their own toggle button (or rely on the a11y tree's Enter/Space
+   * activation) get no behaviour change merely by upgrading.
+   *
+   * Contract, spelled out because this touches two other things a consumer
+   * might already depend on:
+   *  - **`nodeClick` still fires, unconditionally, before the toggle.** This
+   *    option adds a side effect; it does not replace or gate the existing
+   *    event. There is deliberately no way for a `nodeClick` listener to
+   *    suppress the toggle (no `preventDefault`-style hook) — that keeps the
+   *    contract simple: either enable this option and accept that a tap on a
+   *    parent node toggles it, or leave it off and drive toggling yourself
+   *    (from your own `nodeClick` handler, or a rendered button) exactly as
+   *    before.
+   *  - **A tap on genuinely interactive content inside a card — a `<button>`,
+   *    `<a>`, `<input>`, `<select>`, `<textarea>`, or `[contenteditable]` —
+   *    never toggles**, so a card's own toggle button (or any other control)
+   *    keeps working exactly as it does today even with this turned on;
+   *    only a tap that lands on the card's inert body (or bare canvas) does.
+   *  - **A double click toggles once, not twice.** The toggle is wired into
+   *    the same single-tap branch that emits `nodeClick` (see the
+   *    `DOUBLE_CLICK_MS` handling below) — the second tap of a recognised
+   *    pair already skips `nodeClick` in favour of `nodeDblClick`, so it
+   *    skips the toggle for the same reason, with no separate bookkeeping.
+   *  - **A leaf (no children) does nothing.** No `setOpen` call, no `toggle`
+   *    event — there is nothing to toggle, so nothing is emitted.
+   */
+  toggleOnNodeClick?: boolean
 }
 
 export interface SearchResult {
@@ -449,10 +481,17 @@ export function createOrgChart(host: HTMLElement, options: Options): OrgChartIns
       }
       publish()
 
-      // A layout transition advances only when a frame is drawn, so keep asking
-      // for frames until it finishes. Nothing else would drive it: the camera may
-      // be perfectly still while the nodes are still moving.
-      if (chartHost.transitioning) scheduleFrame()
+      // A layout transition (or the toggle ring) advances only when a frame is
+      // drawn, so keep asking for frames until BOTH finish. Nothing else would
+      // drive either: the camera may be perfectly still while the nodes are
+      // still moving, or while the ring is still fading. Checking only
+      // `transitioning` here was the bug behind "the ring doesn't fade" — the
+      // ring's `RING_DURATION_MS` (350ms) deliberately outlives the layout
+      // transition's `TRANSITION_DURATION_MS` (250ms, see engine.ts), so a
+      // toggle with no other camera/hover activity stopped scheduling frames
+      // the instant the transition ended and froze the ring wherever its alpha
+      // happened to be at that moment, rather than letting it finish fading.
+      if (chartHost.transitioning || chartHost.ringActive) scheduleFrame()
     })
   }
 
@@ -692,7 +731,11 @@ export function createOrgChart(host: HTMLElement, options: Options): OrgChartIns
 
   const setOpenFlag = (index: number, value: boolean): void => {
     open[index] = value ? 1 : 0
-    chartHost.setOpen(index, value)
+    // A single-node toggle — the exact case the ring exists for — so `ring`
+    // is explicitly `true` here (matching the engine's default, but spelled
+    // out since every OTHER `chartHost.setOpen` call site in this file has
+    // to say `false` explicitly; see engine.ts's `setOpen` for the contract).
+    chartHost.setOpen(index, value, true)
     emit('toggle', { id: tree.indexToId[index]!, open: value })
     a11yDirty = true
     if (currentOptions.autoPanOnToggle !== false) pendingAutoPanIndex = index
@@ -718,6 +761,21 @@ export function createOrgChart(host: HTMLElement, options: Options): OrgChartIns
   let lastTapId: string | null = null
   let lastTapAt = 0
 
+  /**
+   * True when `target` is (or is contained in) a genuinely interactive
+   * element — a `<button>`, a link, a form control, or an editable region —
+   * bounded to inside `host` so a match somewhere ABOVE the chart in the
+   * page (an accident of DOM nesting this chart didn't create) never counts.
+   * Used only by `toggleOnNodeClick`, to keep a card's own toggle button (or
+   * any other control) from also toggling the node underneath it — see that
+   * option's docblock for the full contract.
+   */
+  const isInteractiveTarget = (target: EventTarget | null): boolean => {
+    if (!(target instanceof Element)) return false
+    const interactive = target.closest('button, a, input, select, textarea, [contenteditable]')
+    return interactive !== null && host.contains(interactive)
+  }
+
   let hoveredId: string | null = null
   const setHover = (id: string | null, item: NodeData | null): void => {
     if (id === hoveredId) return
@@ -729,7 +787,7 @@ export function createOrgChart(host: HTMLElement, options: Options): OrgChartIns
     getCamera: () => camera,
     setCamera: setCameraInstant,
     cancelAnimation: cancelCameraAnimation,
-    onTap(screenX, screenY) {
+    onTap(screenX, screenY, target) {
       const world = screenToWorld(camera, screenX, screenY)
       void chartHost.hitTest(world.x, world.y).then((index) => {
         if (destroyed) return
@@ -750,11 +808,25 @@ export function createOrgChart(host: HTMLElement, options: Options): OrgChartIns
           // below, so a listener that only wants single clicks still sees
           // exactly one, and a listener that wants both isn't forced to
           // de-duplicate a same-node, same-instant click it didn't ask for.
+          // For the same reason, this is also NOT where `toggleOnNodeClick`
+          // toggles: the first tap of the pair already did that below, so a
+          // double click toggles once overall, not twice — see that option's
+          // docblock.
           emit('nodeDblClick', { id, item })
         } else {
           lastTapId = id
           lastTapAt = now
+          // `nodeClick` always fires first, unconditionally — see
+          // `toggleOnNodeClick`'s docblock for why the toggle is an
+          // unsuppressable side effect of this event rather than a
+          // competing one.
           emit('nodeClick', { id, item })
+          if (currentOptions.toggleOnNodeClick === true && !isInteractiveTarget(target)) {
+            const hasChildren = tree.childStart[index + 1]! > tree.childStart[index]!
+            // A leaf has nothing to toggle — do nothing rather than emit a
+            // pointless `toggle` event for it.
+            if (hasChildren) setOpenFlag(index, open[index] !== 1)
+          }
         }
       })
     },
@@ -815,10 +887,21 @@ export function createOrgChart(host: HTMLElement, options: Options): OrgChartIns
       if (index === undefined) return
       if (!deep) return setOpenFlag(index, true)
       const stack = [index]
+      // This is still ONE user action on ONE node — a deep expand of `index`
+      // — even though it opens every descendant too. Only the very first
+      // `setOpen` call here (always `index` itself: `stack` starts as
+      // `[index]` alone, so the first pop is always it) asks for a ring;
+      // every descendant this loop also opens passes `ring: false` so the
+      // flash lands on the node the user actually acted on, not on whichever
+      // descendant happens to resolve last. See engine.ts's `setOpen` for why
+      // this explicit per-call signal replaced a distinct-index heuristic
+      // that could not tell "one deep toggle" apart from a real bulk burst.
+      let ring = true
       while (stack.length > 0) {
         const node = stack.pop()!
         open[node] = 1
-        chartHost.setOpen(node, true)
+        chartHost.setOpen(node, true, ring)
+        ring = false
         for (let c = tree.childStart[node]!; c < tree.childStart[node + 1]!; c++) {
           stack.push(tree.childIndex[c]!)
         }
@@ -831,10 +914,13 @@ export function createOrgChart(host: HTMLElement, options: Options): OrgChartIns
       if (index === undefined) return
       if (!deep) return setOpenFlag(index, false)
       const stack = [index]
+      // Same reasoning as `expand`'s deep branch above.
+      let ring = true
       while (stack.length > 0) {
         const node = stack.pop()!
         open[node] = 0
-        chartHost.setOpen(node, false)
+        chartHost.setOpen(node, false, ring)
+        ring = false
         for (let c = tree.childStart[node]!; c < tree.childStart[node + 1]!; c++) {
           stack.push(tree.childIndex[c]!)
         }
@@ -845,7 +931,11 @@ export function createOrgChart(host: HTMLElement, options: Options): OrgChartIns
     expandAll() {
       for (let i = 0; i < tree.count; i++) {
         open[i] = 1
-        chartHost.setOpen(i, true)
+        // A real bulk operation: every call explicitly opts out of the ring
+        // (flashing every node at once is the strobing effect the ring must
+        // never produce), rather than relying on the engine to infer "bulk"
+        // from how many distinct indices got touched.
+        chartHost.setOpen(i, true, false)
       }
       a11yDirty = true
       // The whole chart just changed shape — a full fit is the sensible
@@ -856,7 +946,7 @@ export function createOrgChart(host: HTMLElement, options: Options): OrgChartIns
     collapseAll() {
       for (let i = 0; i < tree.count; i++) {
         open[i] = 0
-        chartHost.setOpen(i, false)
+        chartHost.setOpen(i, false, false) // see expandAll's comment
       }
       a11yDirty = true
       if (currentOptions.autoPanOnToggle !== false) pendingFullFit = true
@@ -868,7 +958,11 @@ export function createOrgChart(host: HTMLElement, options: Options): OrgChartIns
       let node = tree.parent[index]!
       while (node !== -1) {
         open[node] = 1
-        chartHost.setOpen(node, true)
+        // Opens every ancestor in one synchronous burst on the way to
+        // revealing `id` — not the single-node toggle case the ring exists
+        // for, so this opts out explicitly rather than flashing whichever
+        // ancestor happens to resolve last.
+        chartHost.setOpen(node, true, false)
         node = tree.parent[node]!
       }
       a11yDirty = true

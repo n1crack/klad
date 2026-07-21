@@ -23,7 +23,22 @@ declare const performance: { now(): number }
 export interface ChartEngine {
   setData(tree: WireTree, sizes: Float64Array, labels: string[], open: Uint8Array): void
   setOptions(partial: Partial<EngineOptions>): void
-  setOpen(index: number, open: boolean): void
+  /**
+   * `ring` says whether THIS toggle should arm the one-shot confirmation
+   * ring for `index` — see `RingFlash` and `relayout`'s ring-resolution
+   * block. Defaults to `true`: a lone `setOpen` call is, by far, the common
+   * case (a single-node expand/collapse), and that is exactly what should
+   * flash. A caller doing anything else — a deep toggle's descendant calls,
+   * or an `expandAll`/`collapseAll` burst — must say so explicitly by
+   * passing `false`; the engine no longer tries to infer bulk-vs-single from
+   * how many distinct indices get toggled before the next relayout (see the
+   * removed heuristic this replaced, in `decisions-to-revisit.md`), because
+   * that heuristic couldn't tell a bulk operation apart from a single DEEP
+   * toggle — both touch many distinct indices before a relayout consumes
+   * them. The caller always knows which case it's in; the engine no longer
+   * has to guess.
+   */
+  setOpen(index: number, open: boolean, ring?: boolean): void
   setCamera(camera: Camera): void
   setViewport(width: number, height: number, dpr: number): void
   setHighlight(sourceIds: Uint32Array | null): void
@@ -45,6 +60,20 @@ export interface ChartEngine {
   render(now?: number): Uint32Array
   /** True while an expand/collapse transition is still in progress. */
   readonly transitioning: boolean
+  /**
+   * True while the one-shot toggle ring is still fading. Deliberately a
+   * SEPARATE flag from `transitioning`: `RING_DURATION_MS` (350ms) outlives
+   * `TRANSITION_DURATION_MS` (250ms) on purpose (see `RING_DURATION_MS`'s
+   * docblock), so the layout transition can finish while the ring still has
+   * fading left to do. A caller that only keeps requesting frames while
+   * `transitioning` is true — as the vanilla layer's `scheduleFrame` used to
+   * — stops asking for frames the moment the transition ends and freezes the
+   * ring wherever its alpha happened to be at that instant, which reads as
+   * "it doesn't fade" rather than a completed animation. A caller driving its
+   * own frame loop off `ChartEngine`/`ChartHost` must keep scheduling while
+   * EITHER this or `transitioning` is true.
+   */
+  readonly ringActive: boolean
   /** Boxes in the pruned index space. Always the FINAL layout, never an
    * in-progress transition's interpolated positions — hit-testing and any
    * other consumer of this getter must not chase a moving target. */
@@ -540,16 +569,17 @@ export function createChartEngine(renderer: Renderer): ChartEngine {
   let revealAlphaBuffer = new Float32Array(0)
 
   // --- one-shot toggle ring state ---
-  // `setOpen` arms a CANDIDATE here; `relayout()` resolves it into `ring` (or
+  // `setOpen` arms a CANDIDATE here — but only when its caller-supplied
+  // `ring` argument says to — and `relayout()` resolves it into `ring` (or
   // drops it) the next time it runs, exactly like `pendingTransition` above.
-  // SOURCE index of the candidate, or -1 when none is armed.
+  // SOURCE index of the candidate, or -1 when none is armed. There is no
+  // bulk-vs-single inference here any more: a `setOpen(i, v, false)` call
+  // (a deep toggle's descendant, or any call inside an `expandAll`/
+  // `collapseAll` loop) simply never touches this, so a burst of such calls
+  // leaves it exactly as it found it — untouched at -1 for a real bulk
+  // operation, or already pointing at the one node a deep toggle's FIRST
+  // call armed it for.
   let pendingRingSource = -1
-  // Set once a SECOND distinct source is toggled before the first candidate
-  // is resolved — the engine's only signal that this is a bulk operation
-  // (`expandAll`/`collapseAll`) rather than a single user toggle, since a
-  // bulk operation looks identical to many single `setOpen` calls otherwise.
-  // See `setOpen` for the full reasoning.
-  let pendingRingBulk = false
   let ring: RingFlash | null = null
   // Reused each frame instead of allocating — at most one ring is ever live.
   let ringBoxBuffer = new Float64Array(4)
@@ -624,19 +654,16 @@ export function createChartEngine(renderer: Renderer): ChartEngine {
     // Resolve the ring candidate `setOpen` armed, exactly like
     // `pendingTransition` above: only when THIS relayout was actually
     // toggle-triggered (`pendingRingSource` is only ever set inside
-    // `setOpen`) does this touch `ring` at all — a `setData`/`setOptions`
-    // relayout leaves an in-progress ring from an earlier toggle alone,
-    // since it isn't the concern this bookkeeping exists for. Gated on
-    // `animate` (a reduced-motion host gets no flash) and on
-    // `pendingRingBulk` (a bulk expandAll/collapseAll — many distinct
-    // sources toggled before this relayout ran — never gets one either).
+    // `setOpen`, and only when its caller asked for a ring) does this touch
+    // `ring` at all — a `setData`/`setOptions` relayout leaves an in-progress
+    // ring from an earlier toggle alone, since it isn't the concern this
+    // bookkeeping exists for. Gated on `animate` too: a reduced-motion host
+    // gets no flash.
     if (pendingRingSource !== -1) {
-      ring =
-        animate && !pendingRingBulk
-          ? { source: pendingRingSource, startedAt: now, duration: RING_DURATION_MS }
-          : null
+      ring = animate
+        ? { source: pendingRingSource, startedAt: now, duration: RING_DURATION_MS }
+        : null
       pendingRingSource = -1
-      pendingRingBulk = false
     }
 
     layoutDirty = false
@@ -894,7 +921,6 @@ export function createChartEngine(renderer: Renderer): ChartEngine {
       // Same reasoning for the ring: its SOURCE index means nothing against
       // a new dataset, so drop any candidate and any in-flight flash.
       pendingRingSource = -1
-      pendingRingBulk = false
       ring = null
       layoutDirty = true
     },
@@ -913,34 +939,30 @@ export function createChartEngine(renderer: Renderer): ChartEngine {
       }
       options = next
     },
-    setOpen(index, value) {
+    // Third parameter named `wantsRing`, not `ring`, purely to avoid shadowing
+    // the module-scoped `ring: RingFlash | null` above — the public
+    // `ChartEngine.setOpen` signature (see its docblock) still calls it
+    // `ring`; TS's structural typing doesn't require the names to match.
+    setOpen(index, value, wantsRing = true) {
       if (index < 0 || index >= open.length) return
       const v = value ? 1 : 0
       if (open[index] === v) return
       open[index] = v
       pendingTransition = true
       layoutDirty = true
-      // Arm (or update) the ring candidate. The engine has no way to tell a
-      // single user toggle apart from one call in a host's `expandAll`/
-      // `collapseAll` loop — both are just a `setOpen` call — so it infers
-      // "bulk" from HOW MANY DISTINCT nodes get toggled before the next
-      // relayout consumes this candidate (see `relayout`): a real bulk
-      // operation flips many different indices in one synchronous burst,
-      // while a single toggle (even a rapid double-toggle of the SAME node)
-      // only ever touches one. This also means a second, genuinely separate
-      // single toggle that lands before the first one's relayout naturally
-      // REPLACES the candidate rather than queuing a second ring — which is
-      // exactly the cap the brief asks for ("only a single ring can be live
-      // at a time"), as a side effect of this same bookkeeping rather than a
-      // second mechanism.
-      if (!pendingRingBulk) {
-        if (pendingRingSource === -1) {
-          pendingRingSource = index
-        } else if (pendingRingSource !== index) {
-          pendingRingBulk = true
-          pendingRingSource = -1
-        }
-      }
+      // Arm (or replace) the ring candidate, but only when THIS call asked
+      // for one. A caller making several `setOpen` calls before the next
+      // relayout consumes the candidate — a deep toggle's descendants, or an
+      // `expandAll`/`collapseAll` loop — passes `ring: false` for every call
+      // that isn't "the one node the user actually acted on", so this simply
+      // never runs for those and `pendingRingSource` is left exactly as it
+      // was. A second, genuinely separate single toggle (both calls passing
+      // the default `ring: true`) that lands before the first one's relayout
+      // still naturally REPLACES the candidate rather than queuing a second
+      // ring — which is the cap the brief asks for ("only a single ring can
+      // be live at a time"), as a side effect of this same assignment rather
+      // than a second mechanism.
+      if (wantsRing) pendingRingSource = index
     },
     setCamera(next) {
       // Called every frame; keep this a plain spread of three numbers so it
@@ -974,6 +996,9 @@ export function createChartEngine(renderer: Renderer): ChartEngine {
     render,
     get transitioning() {
       return transition !== null
+    },
+    get ringActive() {
+      return ring !== null
     },
     get boxes() {
       return boxes

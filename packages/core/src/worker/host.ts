@@ -11,7 +11,8 @@ import type { EngineOptions, MainToWorker, WireTree, WorkerToMain } from './prot
 export interface ChartHost {
   setData(tree: WireTree, sizes: Float64Array, labels: string[], open: Uint8Array): void
   setOptions(partial: Partial<EngineOptions>): void
-  setOpen(index: number, open: boolean): void
+  /** See `ChartEngine.setOpen`'s docblock — `ring` defaults to `true` here too. */
+  setOpen(index: number, open: boolean, ring?: boolean): void
   setCamera(camera: Camera): void
   setViewport(width: number, height: number, dpr: number): void
   setHighlight(ids: Uint32Array | null): void
@@ -30,6 +31,11 @@ export interface ChartHost {
    * either path — a caller drives its own frame loop off this rather than
    * guessing how long to keep animating. */
   readonly transitioning: boolean
+  /** True while the one-shot toggle ring is still fading, on either path —
+   * see `ChartEngine.ringActive`'s docblock. A caller must keep scheduling
+   * frames while EITHER this or `transitioning` is true, since the ring
+   * outlives the layout transition by design. */
+  readonly ringActive: boolean
 }
 
 /**
@@ -74,6 +80,10 @@ export function createChartHost(
   // Mirrors the in-process `engine.transitioning` for worker mode, updated
   // from each `frame` message's `transitioning` flag.
   let workerTransitioning = false
+  // Same mirroring, for `engine.ringActive` — see its docblock for why this
+  // has to be tracked separately from `workerTransitioning` rather than
+  // folded into it.
+  let workerRingActive = false
 
   const post = (message: MainToWorker, transfer: Transferable[] = []): void => {
     if (worker === null) return
@@ -90,6 +100,7 @@ export function createChartHost(
         if (message.t === 'frame') {
           framesReceived++
           workerTransitioning = message.transitioning
+          workerRingActive = message.ringActive
           if (pendingFrame !== null && framesReceived >= pendingFrame.target) {
             pendingFrame.resolve(message.visible)
             pendingFrame = null
@@ -143,9 +154,9 @@ export function createChartHost(
       engine?.setOptions(partial)
       post({ t: 'options', options: partial })
     },
-    setOpen(index, open) {
-      engine?.setOpen(index, open)
-      post({ t: 'open', index, open })
+    setOpen(index, open, ring = true) {
+      engine?.setOpen(index, open, ring)
+      post({ t: 'open', index, open, ring })
     },
     setCamera(camera) {
       lastCamera = camera
@@ -210,6 +221,9 @@ export function createChartHost(
     },
     get transitioning() {
       return engine !== null ? engine.transitioning : workerTransitioning
+    },
+    get ringActive() {
+      return engine !== null ? engine.ringActive : workerRingActive
     },
   }
 }
