@@ -28,3 +28,6 @@ export {
 
 export type { VisibleTree } from './visible.js'
 export { pruneToVisible } from './visible.js'
+
+export type { TextMeasurer, TextMetricsSource } from './text/measure.js'
+export { createTextMeasurer } from './text/measure.js'
