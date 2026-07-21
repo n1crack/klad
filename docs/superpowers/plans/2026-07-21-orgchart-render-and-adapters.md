@@ -967,8 +967,15 @@ import type { LodTier } from './lod.js'
  * and an `OffscreenCanvas` both satisfy these shapes.
  */
 export interface RenderContext2D {
-  fillStyle: string
-  strokeStyle: string
+  /**
+   * Widened to `unknown` deliberately. The real DOM type is
+   * `string | CanvasGradient | CanvasPattern`; declaring `string` here would make
+   * an actual `CanvasRenderingContext2D` fail to satisfy this interface, which
+   * defeats the point of describing it structurally. These are only ever written
+   * to, never read, so `unknown` costs nothing.
+   */
+  fillStyle: unknown
+  strokeStyle: unknown
   lineWidth: number
   font: string
   globalAlpha: number
