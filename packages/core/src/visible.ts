@@ -1,7 +1,13 @@
 import type { Tree } from './tree.js'
 
 export interface VisibleTree {
-  /** A fully valid Tree containing only visible nodes. */
+  /**
+   * A fully valid Tree containing only visible nodes. It is derived, not
+   * parsed, so its `warnings` is always `[]` — every `duplicate-id`,
+   * `orphan-parent`, and `cycle` diagnostic lives on the source `Tree` passed
+   * into `pruneToVisible`, not on `visibleTree.tree`. Read diagnostics from
+   * the source tree.
+   */
   tree: Tree
   /** Visible index -> original index. */
   toSource: Int32Array

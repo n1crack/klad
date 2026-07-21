@@ -22,15 +22,11 @@ export function createCanvas2DRenderer(
   if (ctx === null) throw new Error('OrgChart: 2D canvas context unavailable')
 
   const measurer = measurerFor(theme.labelFont)
-  let cssWidth = 0
-  let cssHeight = 0
   let devicePixelRatio = 1
 
   const stats = { lastDrawCalls: { edgeStrokes: 0, nodes: 0, labels: 0 } as DrawCallStats }
 
   const resize = (width: number, height: number, dpr: number): void => {
-    cssWidth = width
-    cssHeight = height
     devicePixelRatio = dpr
     surface.width = Math.round(width * dpr)
     surface.height = Math.round(height * dpr)
