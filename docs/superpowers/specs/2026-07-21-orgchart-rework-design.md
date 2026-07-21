@@ -426,6 +426,19 @@ by the camera.
 Clicking or dragging inside the minimap moves the camera. Enabled via
 `minimap?: boolean | { width, height, position }`, default off.
 
+**Silhouette, not a shrunken chart.** At minimap scale an org chart of any real size
+reduces to noise — individual boxes land on a fraction of a pixel and connectors
+disappear entirely. What is actually useful at that size is the *shape* of the tree:
+where the mass is, how deep it goes, and where the viewport sits within it. So the
+minimap draws a filled silhouette of the occupied area — the union of the node boxes,
+softened — rather than an accurate miniature. Reading it should answer "where am I and
+what is over there", which is the only question a minimap is ever asked.
+
+**It must not cost per frame.** The silhouette changes only when the layout changes,
+so it is rasterized once per relayout and then blitted; only the viewport rectangle
+tracks the camera, and that is a transform on an already-drawn image. A minimap that
+re-renders 50,000 nodes every frame would cost more than the chart it summarises.
+
 ## 16. Deferred to later versions
 
 - React adapter — spec 2, immediately after the API is frozen by the Vue adapter.
