@@ -11,7 +11,7 @@ export interface Tree {
   parent: Int32Array
   /** CSR offsets, length count + 1. Children of i are childIndex[childStart[i] .. childStart[i+1]). */
   childStart: Int32Array
-  /** CSR payload, length count. */
+  /** CSR payload, length count - roots.length (every non-root appears exactly once). */
   childIndex: Int32Array
   /** Root indices, in input order. */
   roots: Int32Array
@@ -112,7 +112,11 @@ export function normalize(data: readonly NodeData[]): Tree {
   }
   for (let i = 0; i < count; i++) childStart[i + 1]! += childStart[i]!
   const cursor = Int32Array.from(childStart.subarray(0, count))
-  const childIndex = new Int32Array(count)
+  let rootCount = 0
+  for (let i = 0; i < count; i++) if (parent[i] === -1) rootCount++
+  // Length count - rootCount, matching pruneToVisible's Tree producer and the
+  // Tree doc comment: every non-root appears exactly once, roots never do.
+  const childIndex = new Int32Array(count - rootCount)
   const rootList: number[] = []
   for (let i = 0; i < count; i++) {
     const p = parent[i]!

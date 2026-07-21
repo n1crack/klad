@@ -17,7 +17,11 @@ export interface Theme {
   dragGhostAlpha: number
 }
 
-export const DEFAULT_THEME: Theme = {
+// Frozen so no consumer can poison it module-globally (e.g.
+// `DEFAULT_THEME.nodeFill = 'hotpink'`, which would silently change every
+// later `resolveTheme()` call's result). `resolveTheme` only ever spreads
+// from this object into a fresh one, so freezing it changes nothing else.
+export const DEFAULT_THEME: Readonly<Theme> = Object.freeze({
   nodeFill: '#ffffff',
   nodeStroke: '#d4d4d8',
   nodeStrokeWidth: 1,
@@ -30,8 +34,26 @@ export const DEFAULT_THEME: Theme = {
   highlightFill: '#fef3c7',
   highlightStroke: '#f59e0b',
   dragGhostAlpha: 0.6,
+})
+
+/** Assigns `value` into `target[key]` only when it is not `undefined`. */
+function assignDefined<T, K extends keyof T>(target: T, key: K, value: T[K] | undefined): void {
+  if (value !== undefined) target[key] = value
 }
 
+/**
+ * Merges `partial` over the defaults. Keys explicitly set to `undefined` are
+ * skipped rather than overwriting a default with `undefined` — `exactOptionalPropertyTypes`
+ * blocks that at the TS boundary, but a JS consumer or an `as` cast can still
+ * produce `{ nodeStroke: undefined }`, and that should leave the default in
+ * place rather than erasing it.
+ */
 export function resolveTheme(partial?: Partial<Theme>): Theme {
-  return { ...DEFAULT_THEME, ...partial }
+  const theme: Theme = { ...DEFAULT_THEME }
+  if (partial !== undefined) {
+    for (const key of Object.keys(partial) as (keyof Theme)[]) {
+      assignDefined(theme, key, partial[key])
+    }
+  }
+  return theme
 }
