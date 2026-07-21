@@ -80,6 +80,33 @@ silently fall back to a default face until `FontFace` + `self.fonts.add` is wire
 **Wrong if:** anything worker-side ever needs to report a user-facing id — it would get
 `"7"` instead of `"alice"`. Watch for this when worker-side errors start mentioning nodes.
 
+### 17. `truncate` returns the ellipsis alone when nothing else fits
+**Chosen:** when the budget covers the ellipsis but not a single character, return `'…'`
+rather than an empty string.
+**Why:** it tells the reader something was cut. An empty cell reads as missing data.
+**Wrong if:** a bare ellipsis at tiny node widths looks like noise — at that zoom the LOD
+tier probably should not be drawing text at all, so this may be moot.
+
+### 18. Text width cache keeps FIFO eviction, not LRU
+**Chosen:** FIFO, now that binary-search probes no longer enter the shared cache.
+**Why:** the probe fix removes the pressure that made FIFO hurt; LRU is a bigger change.
+**Wrong if:** profiling on a real chart shows the width cache still thrashing.
+
+### 19. `RenderContext2D.fillStyle` / `strokeStyle` are typed `unknown`
+**Chosen:** widened from `string` so a real `CanvasRenderingContext2D` satisfies the
+structural interface — the DOM type is `string | CanvasGradient | CanvasPattern`.
+**Why:** these are only ever written, never read, so nothing is lost.
+**Wrong if:** the renderer ever needs to read a style back, at which point it needs a
+proper union rather than `unknown`.
+
+### 20. Browser tests get their own tsconfig with `lib.dom`
+**Chosen:** `packages/core/tsconfig.browser-test.json`, run as a second `tsc` pass.
+**Why:** the runtime sources must stay DOM-free or the Web Worker guard is meaningless,
+but untyped tests rot. Source files pulled in transitively do see DOM types under this
+config, yet they are still checked without them by the main config, so the guard holds.
+**Wrong if:** the two programs drift far enough that something typechecks in one and not
+the other in a confusing way.
+
 ---
 
 ## Carried over from the core foundation work
