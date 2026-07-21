@@ -25,3 +25,8 @@ export {
   worldToScreen,
   zoomAt,
 } from './viewport.js'
+
+export type { Theme } from './render/theme.js'
+export { DEFAULT_THEME, resolveTheme } from './render/theme.js'
+export type { LodThresholds, LodTier } from './render/lod.js'
+export { DEFAULT_LOD, lodFor, overlayEnabled } from './render/lod.js'
