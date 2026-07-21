@@ -257,6 +257,21 @@ export function createOrgChart(host: HTMLElement, options: Options): OrgChartIns
     for (const listener of stateListeners) listener(state)
   }
 
+  /**
+   * Set by anything that mutates `open`. The accessibility mirror is rebuilt from
+   * scratch, which measures ~16ms at 10k nodes, so it must not run on a camera move —
+   * but it also must not be left to each call site to remember. One flag refreshed in
+   * one place is what stops a new bulk operation from silently shipping a mirror that
+   * lies about which nodes are expanded.
+   */
+  let a11yDirty = false
+
+  const refreshA11y = (): void => {
+    if (!a11yDirty) return
+    a11yDirty = false
+    a11y?.update(tree, open, (i) => labelOf(itemFor(i)))
+  }
+
   const scheduleFrame = (): void => {
     if (frameRequested || destroyed) return
     frameRequested = true
@@ -274,6 +289,7 @@ export function createOrgChart(host: HTMLElement, options: Options): OrgChartIns
         visibleToSource = chartHost.visibleToSource
         rebuildPrunedIndex()
       }
+      refreshA11y()
       if (overlay !== null) {
         if (overlayEnabled(camera.k, lod) && currentOptions.renderNode !== undefined) {
           overlay.update(
@@ -300,7 +316,7 @@ export function createOrgChart(host: HTMLElement, options: Options): OrgChartIns
     open[index] = value ? 1 : 0
     chartHost.setOpen(index, value)
     emit('toggle', { id: tree.indexToId[index]!, open: value })
-    a11y?.update(tree, open, (i) => labelOf(itemFor(i)))
+    a11yDirty = true
     scheduleFrame()
   }
 
@@ -369,6 +385,7 @@ export function createOrgChart(host: HTMLElement, options: Options): OrgChartIns
           stack.push(tree.childIndex[c]!)
         }
       }
+      a11yDirty = true
       scheduleFrame()
     },
     collapse(id, deep = false) {
@@ -384,6 +401,7 @@ export function createOrgChart(host: HTMLElement, options: Options): OrgChartIns
           stack.push(tree.childIndex[c]!)
         }
       }
+      a11yDirty = true
       scheduleFrame()
     },
     expandAll() {
@@ -391,6 +409,7 @@ export function createOrgChart(host: HTMLElement, options: Options): OrgChartIns
         open[i] = 1
         chartHost.setOpen(i, true)
       }
+      a11yDirty = true
       scheduleFrame()
     },
     collapseAll() {
@@ -398,6 +417,7 @@ export function createOrgChart(host: HTMLElement, options: Options): OrgChartIns
         open[i] = 0
         chartHost.setOpen(i, false)
       }
+      a11yDirty = true
       scheduleFrame()
     },
     expandTo(id) {
@@ -409,6 +429,7 @@ export function createOrgChart(host: HTMLElement, options: Options): OrgChartIns
         chartHost.setOpen(node, true)
         node = tree.parent[node]!
       }
+      a11yDirty = true
       scheduleFrame()
     },
     search(query) {
@@ -439,6 +460,9 @@ export function createOrgChart(host: HTMLElement, options: Options): OrgChartIns
           .filter((i): i is number => i !== undefined)
         chartHost.setHighlight(Uint32Array.from(indices))
       }
+      // No a11y refresh: highlighting does not change which nodes are expanded,
+      // and the mirror rebuild is expensive enough that doing it per search would
+      // be felt.
       scheduleFrame()
     },
     getState,

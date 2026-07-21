@@ -128,9 +128,14 @@ constructor returns. An alternative is to expose them on the returned state as w
 ### 23. The accessibility mirror is rebuilt wholesale on every update
 **Chosen:** clear and re-append every row when the tree or open state changes.
 **Why:** correctness first; `content-visibility: auto` keeps the layout cost down.
-**Wrong if:** the measured rebuild time at 10k+ nodes is material — this is a full DOM
-teardown on every expand or collapse, which is precisely the cost the canvas renderer
-exists to avoid. A pooled or diffed mirror is the fix if so.
+**Measured: 15.86 ms at 10,000 nodes** (range 14.0–18.8 over five runs), extrapolating to
+roughly 70–95 ms at the 50,000-node target — a visible stall on every expand or collapse.
+That is precisely the cost the canvas renderer exists to avoid.
+**Verdict: this needs fixing before 50k is a supported claim.** A pooled or diffed mirror,
+reusing `overlay.ts`'s slot-pooling pattern, is the shape of the fix. Refreshes are now
+routed through a single dirty flag, so the rebuild happens once per frame at most and
+never on a camera move or a highlight change — which bounds the damage but does not
+remove it.
 
 ---
 

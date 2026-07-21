@@ -114,6 +114,52 @@ describe('accessibility tree', () => {
     chart.destroy()
   })
 
+  // Regression: expandAll, collapseAll, and deep expand/collapse all mutate `open`
+  // without going through setOpenFlag. They used to leave aria-expanded stale, so the
+  // mirror told a screen-reader user the opposite of what the chart showed.
+  it('refreshes aria-expanded after collapseAll and expandAll', async () => {
+    const chart = make()
+    await nextFrame()
+    const expandedOf = (name: string) =>
+      Array.from(document.querySelectorAll('[role="treeitem"]'))
+        .find((el) => el.textContent?.includes(name))
+        ?.getAttribute('aria-expanded')
+
+    expect(expandedOf('Root')).toBe('true')
+
+    chart.api.collapseAll()
+    await nextFrame()
+    expect(expandedOf('Root')).toBe('false')
+
+    chart.api.expandAll()
+    await nextFrame()
+    expect(expandedOf('Root')).toBe('true')
+    chart.destroy()
+  })
+
+  it('refreshes aria-expanded after a deep collapse', async () => {
+    const chart = make()
+    await nextFrame()
+    chart.api.collapse('a', true)
+    await nextFrame()
+    const root = Array.from(document.querySelectorAll('[role="treeitem"]')).find((el) =>
+      el.textContent?.includes('Root'),
+    )!
+    expect(root.getAttribute('aria-expanded')).toBe('false')
+    chart.destroy()
+  })
+
+  it('does not rebuild the mirror when only the highlight changes', async () => {
+    const chart = make()
+    await nextFrame()
+    const before = document.querySelector('[role="treeitem"]')
+    chart.api.highlight(['b'])
+    await nextFrame()
+    // Same element object means the mirror was not torn down and rebuilt.
+    expect(document.querySelector('[role="treeitem"]')).toBe(before)
+    chart.destroy()
+  })
+
   it('is removed on destroy', async () => {
     const chart = make()
     await nextFrame()
