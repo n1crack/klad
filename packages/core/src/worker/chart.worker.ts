@@ -52,13 +52,21 @@ self.onmessage = (event: MessageEvent<MainToWorker>): void => {
       case 'drag':
         engine?.setDrag(message.index)
         break
+      case 'animate':
+        engine?.setAnimate(message.enabled)
+        break
     }
 
     if (engine === null) return
 
     // Every message can change what is on screen, so redraw and report.
+    // No `now` passed to `render()`: a dedicated Worker's `performance.now()`
+    // shares the same time origin as the main thread that spawned it, so the
+    // engine's own default (its own `performance.now()`) already lines up
+    // with the main thread's `requestAnimationFrame` clock — nothing needs
+    // threading across the postMessage boundary for this to stay correct.
     const drawn = engine.render()
-    post({ t: 'frame', visible: drawn }, [drawn.buffer])
+    post({ t: 'frame', visible: drawn, transitioning: engine.transitioning }, [drawn.buffer])
 
     if (message.t === 'data' || message.t === 'options' || message.t === 'open') {
       const boxes = engine.boxes.slice()

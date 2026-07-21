@@ -17,6 +17,7 @@ export type { Camera, ViewportSize, ZoomLimits } from './viewport.js'
 export {
   centreOn,
   easeInOutCubic,
+  easeOutCubic,
   fit,
   interpolate,
   pan,

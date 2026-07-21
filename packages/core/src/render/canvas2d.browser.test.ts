@@ -18,13 +18,23 @@ function measurerFor(font: string) {
   return createTextMeasurer({ measureWidth: (t) => probe.measureText(t).width })
 }
 
-/** Two boxes, child below parent. */
+/**
+ * Two boxes, child below parent.
+ *
+ * `edgeCount` defaults to whatever `visibleCount` resolves to (explicit
+ * override or the `2` default) rather than a fixed `2`: most of these tests
+ * only ever touch `visibleCount`, and if `edgeCount` stayed pinned at `2`
+ * while a test set `visibleCount: 0`, the edge-stroking loop would walk two
+ * "visible" slots the caller just emptied out from under it.
+ */
 function frame(overrides: Partial<Frame> = {}): Frame {
+  const visibleCount = overrides.visibleCount ?? 2
   return {
     boxes: Float64Array.from([0, 0, 100, 50, 0, 100, 100, 50]),
     parent: Int32Array.from([-1, 0]),
     visible: Uint32Array.from([0, 1]),
-    visibleCount: 2,
+    visibleCount,
+    edgeCount: visibleCount,
     labels: ['Root', 'Child'],
     camera: { x: 10, y: 10, k: 1 },
     dpr: 1,
@@ -32,6 +42,10 @@ function frame(overrides: Partial<Frame> = {}): Frame {
     horizontal: false,
     highlight: null,
     dragIndex: -1,
+    revealAlpha: null,
+    ghostBoxes: new Float64Array(0),
+    ghostAlpha: new Float32Array(0),
+    ghostCount: 0,
     ...overrides,
   }
 }

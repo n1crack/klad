@@ -16,7 +16,8 @@ export interface ChartHost {
   setViewport(width: number, height: number, dpr: number): void
   setHighlight(ids: Uint32Array | null): void
   setDrag(index: number): void
-  render(): Promise<Uint32Array>
+  setAnimate(enabled: boolean): void
+  render(now?: number): Promise<Uint32Array>
   hitTest(worldX: number, worldY: number): Promise<number>
   destroy(): void
   readonly usingWorker: boolean
@@ -25,6 +26,10 @@ export interface ChartHost {
   readonly bounds: Bounds
   /** Pruned index -> source index. */
   readonly visibleToSource: Int32Array
+  /** True while an expand/collapse transition is still in progress, on
+   * either path — a caller drives its own frame loop off this rather than
+   * guessing how long to keep animating. */
+  readonly transitioning: boolean
 }
 
 /**
@@ -66,6 +71,9 @@ export function createChartHost(
   let framesReceived = 0
   let pendingFrame: { target: number; resolve: (drawn: Uint32Array) => void } | null = null
   let lastCamera: Camera = { x: 0, y: 0, k: 1 }
+  // Mirrors the in-process `engine.transitioning` for worker mode, updated
+  // from each `frame` message's `transitioning` flag.
+  let workerTransitioning = false
 
   const post = (message: MainToWorker, transfer: Transferable[] = []): void => {
     if (worker === null) return
@@ -81,6 +89,7 @@ export function createChartHost(
         const message = event.data
         if (message.t === 'frame') {
           framesReceived++
+          workerTransitioning = message.transitioning
           if (pendingFrame !== null && framesReceived >= pendingFrame.target) {
             pendingFrame.resolve(message.visible)
             pendingFrame = null
@@ -155,9 +164,20 @@ export function createChartHost(
       engine?.setDrag(index)
       post({ t: 'drag', index })
     },
+    setAnimate(enabled) {
+      engine?.setAnimate(enabled)
+      post({ t: 'animate', enabled })
+    },
 
-    render() {
-      if (engine !== null) return Promise.resolve(engine.render())
+    render(now) {
+      // In-process: thread `now` straight through, same caller-drives-time
+      // contract as `ChartEngine.render`. Worker mode does NOT thread `now`
+      // across the postMessage boundary — a dedicated Worker's
+      // `performance.now()` shares the main thread's time origin (see
+      // chart.worker.ts), so the small postMessage-latency skew between the
+      // two is negligible against a ~250ms transition, and not worth a
+      // protocol field.
+      if (engine !== null) return Promise.resolve(engine.render(now))
       return new Promise<Uint32Array>((resolve) => {
         pendingFrame = { target: sentCount + 1, resolve }
         post({ t: 'camera', camera: lastCamera })
@@ -187,6 +207,9 @@ export function createChartHost(
     },
     get visibleToSource() {
       return engine !== null ? engine.visibleToSource : visibleToSource
+    },
+    get transitioning() {
+      return engine !== null ? engine.transitioning : workerTransitioning
     },
   }
 }

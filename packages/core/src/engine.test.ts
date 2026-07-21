@@ -15,14 +15,24 @@ function fakeRenderer(): Renderer & { frames: Frame[] } {
       // `highlight` (the engine's own `highlightBuffer`, mutated in place),
       // `boxes`, or `parent` — the first test comparing one of those across
       // renders would silently compare a buffer against itself.
+      //
+      // Sliced to `edgeCount`, not `visibleCount`: `edgeCount` is the wider
+      // bound (see renderer.ts's `Frame.visible` docblock), and a capture
+      // truncated to `visibleCount` would silently discard the margin-only
+      // entries a defect-1 regression test needs to inspect.
       frames.push({
         ...f,
         boxes: f.boxes.slice(),
         parent: f.parent.slice(),
-        visible: f.visible.slice(0, f.visibleCount),
+        visible: f.visible.slice(0, f.edgeCount),
         labels: f.labels.slice(),
         camera: { ...f.camera },
         highlight: f.highlight === null ? null : f.highlight.slice(),
+        // Same reasoning: `revealAlpha`/`ghostBoxes`/`ghostAlpha` are also
+        // engine-owned buffers reused (and grown) across frames.
+        revealAlpha: f.revealAlpha === null ? null : f.revealAlpha.slice(0, f.visibleCount),
+        ghostBoxes: f.ghostBoxes.slice(0, f.ghostCount * 4),
+        ghostAlpha: f.ghostAlpha.slice(0, f.ghostCount),
       })
     },
     stats: { lastDrawCalls: { edgeStrokes: 0, nodes: 0, labels: 0 } },
@@ -428,6 +438,313 @@ describe('ChartEngine bounds isolation (F4)', () => {
     expect(a.bounds).not.toBe(b.bounds)
     a.bounds.maxX = 12_345
     expect(b.bounds.maxX).toBe(0)
+  })
+})
+
+// Defect 1: connectors must not vanish just because one endpoint (or, at
+// extreme zoom, both) is off screen. `render()` culls to the viewport before
+// the renderer ever sees a node, so these three cases have to be checked at
+// the culling boundary, not by inspecting pixels.
+describe('ChartEngine connector culling (defect 1)', () => {
+  it('already draws correctly when the PARENT is off screen and the child is visible (verifies, does not fix)', () => {
+    const renderer = fakeRenderer()
+    const engine = createChartEngine(renderer)
+    const data = [{ id: 'a' }, { id: 'b', parentId: 'a' }]
+    const tree = normalize(data)
+    engine.setViewport(400, 400, 1)
+    engine.setData(toWireTree(tree), sizesFor(tree.count), ['a', 'b'], new Uint8Array(tree.count).fill(1))
+    // 'a' sits at world y in [0, 50]; 'b' at world y in [98, 148] (height 50 +
+    // spacingY 48, from tidy.ts's y[i] formula). camera.y = -90 puts 'a'
+    // entirely above screen y 0, while 'b' lands at screen y [8, 58].
+    engine.setCamera({ x: 0, y: -90, k: 1 })
+    engine.render()
+
+    const frame = renderer.frames.at(-1)!
+    const aIndex = tree.idToIndex.get('a')!
+    const bIndex = tree.idToIndex.get('b')!
+    const aPruned = Array.from(engine.visibleToSource).indexOf(aIndex)
+    const bPruned = Array.from(engine.visibleToSource).indexOf(bIndex)
+
+    // 'b' is genuinely visible...
+    expect(Array.from(frame.visible.slice(0, frame.visibleCount))).toContain(bPruned)
+    // ...and its parent pointer resolves to 'a' regardless of whether 'a'
+    // itself made it into any culled set — canvas2d.ts reads `parent[i]`
+    // directly out of the full array, never gated on the parent's own
+    // presence in `visible`. That's the whole reason this case needs no fix.
+    expect(frame.parent[bPruned]).toBe(aPruned)
+  })
+
+  it('includes an off-screen CHILD in the edge set so its connector to a visible parent still draws', () => {
+    const renderer = fakeRenderer()
+    const engine = createChartEngine(renderer)
+    const data = [{ id: 'a' }, { id: 'b', parentId: 'a' }]
+    const tree = normalize(data)
+    // A viewport just 10 world-units tall: 'a' (world y [0, 50]) only grazes
+    // it at the very top, while 'b' (world y [98, 148]) is entirely below —
+    // exactly the "node visible, its child is off screen" hole in the spec.
+    engine.setViewport(1000, 10, 1)
+    engine.setData(toWireTree(tree), sizesFor(tree.count), ['a', 'b'], new Uint8Array(tree.count).fill(1))
+    engine.setCamera({ x: 0, y: 0, k: 1 })
+    engine.render()
+
+    const frame = renderer.frames.at(-1)!
+    const bIndex = tree.idToIndex.get('b')!
+    const bPruned = Array.from(engine.visibleToSource).indexOf(bIndex)
+    expect(bPruned).toBeGreaterThanOrEqual(0)
+
+    // 'b' must not be drawn as a node (it is not genuinely on screen)...
+    expect(Array.from(frame.visible.slice(0, frame.visibleCount))).not.toContain(bPruned)
+    // ...but it must still be present in the wider edge set, or its
+    // connector to the visible 'a' never gets a chance to render at all.
+    expect(Array.from(frame.visible.slice(0, frame.edgeCount))).toContain(bPruned)
+  })
+
+  it('includes a child whose connector crosses the viewport even though BOTH endpoints are off screen', () => {
+    const renderer = fakeRenderer()
+    const engine = createChartEngine(renderer)
+    const data = [{ id: 'a' }, { id: 'b', parentId: 'a' }]
+    const tree = normalize(data)
+    // 'a' bottoms out at world y 50; 'b' starts at world y 98 — a 48-unit gap
+    // (exactly spacingY). A 20-unit-tall viewport at world y [60, 80] sits
+    // entirely inside that gap: neither box overlaps it, yet the connector's
+    // horizontal crossbar (at the midpoint between 50 and 98) passes right
+    // through screen space. This is only reachable at extreme zoom / a tiny
+    // gap-sized viewport, which is exactly the scenario the bug report describes.
+    engine.setViewport(1000, 20, 1)
+    engine.setData(toWireTree(tree), sizesFor(tree.count), ['a', 'b'], new Uint8Array(tree.count).fill(1))
+    engine.setCamera({ x: 0, y: -60, k: 1 })
+    engine.render()
+
+    const frame = renderer.frames.at(-1)!
+    const bIndex = tree.idToIndex.get('b')!
+    const bPruned = Array.from(engine.visibleToSource).indexOf(bIndex)
+    expect(bPruned).toBeGreaterThanOrEqual(0)
+
+    // Neither node is genuinely visible...
+    expect(frame.visibleCount).toBe(0)
+    // ...but 'b' is still in the edge set, so its connector — which is what
+    // actually crosses the viewport here — still gets drawn.
+    expect(Array.from(frame.visible.slice(0, frame.edgeCount))).toContain(bPruned)
+  })
+
+  it('does not widen the edge set for a node whose connector is nowhere near the viewport', () => {
+    const renderer = fakeRenderer()
+    const { engine } = seed(renderer)
+    // Push the whole chart far off screen, same as the existing "culls to
+    // the viewport instead of drawing everything" test — but here asserting
+    // on edgeCount too, since that's the number a margin bug would inflate.
+    engine.setCamera({ x: -100_000, y: -100_000, k: 1 })
+    engine.render()
+    const frame = renderer.frames.at(-1)!
+    expect(frame.visibleCount).toBe(0)
+    expect(frame.edgeCount).toBe(0)
+  })
+})
+
+// Expand/collapse layout transition. `DATA` is a -> b -> c, a -> d, so
+// toggling 'b' closed hides exactly one node ('c') and toggling it back open
+// reveals exactly one. `render(now)` is always called with an explicit `now`
+// here so progress is fully deterministic — no reliance on wall-clock time.
+describe('ChartEngine expand/collapse transition', () => {
+  it('does not start a transition when animation is disabled (default)', () => {
+    const renderer = fakeRenderer()
+    const { engine, tree } = seed(renderer)
+    engine.setCamera({ x: 0, y: 0, k: 1 })
+    engine.render(1000)
+    engine.setOpen(tree.idToIndex.get('b')!, false)
+    engine.render(1000)
+    expect(engine.transitioning).toBe(false)
+    expect(renderer.frames.at(-1)!.ghostCount).toBe(0)
+  })
+
+  it('progress 0 reproduces the pre-toggle layout exactly for every surviving node', () => {
+    const renderer = fakeRenderer()
+    const { engine, tree } = seed(renderer)
+    engine.setAnimate(true)
+    engine.setViewport(800, 600, 1)
+    engine.setCamera({ x: 0, y: 0, k: 1 })
+    engine.setOpen(tree.idToIndex.get('b')!, false) // start closed: 'c' hidden
+    engine.render(1000)
+
+    const beforeBySource = new Map<number, [number, number, number, number]>()
+    for (let i = 0; i < engine.visibleToSource.length; i++) {
+      const src = engine.visibleToSource[i]!
+      beforeBySource.set(src, [
+        engine.boxes[i * 4]!,
+        engine.boxes[i * 4 + 1]!,
+        engine.boxes[i * 4 + 2]!,
+        engine.boxes[i * 4 + 3]!,
+      ])
+    }
+
+    engine.setOpen(tree.idToIndex.get('b')!, true) // reveal 'c'
+    engine.render(1000) // same instant: progress must be exactly 0
+    expect(engine.transitioning).toBe(true)
+    const frame = renderer.frames.at(-1)!
+
+    let checked = 0
+    for (let i = 0; i < engine.visibleToSource.length; i++) {
+      const src = engine.visibleToSource[i]!
+      const before = beforeBySource.get(src)
+      if (before === undefined) continue // 'c': newly revealed, nothing to compare
+      expect(frame.boxes[i * 4]).toBeCloseTo(before[0], 10)
+      expect(frame.boxes[i * 4 + 1]).toBeCloseTo(before[1], 10)
+      expect(frame.boxes[i * 4 + 2]).toBeCloseTo(before[2], 10)
+      expect(frame.boxes[i * 4 + 3]).toBeCloseTo(before[3], 10)
+      checked++
+    }
+    expect(checked).toBe(3) // a, b, d — everything except the newly-revealed 'c'
+  })
+
+  it('progress 1 reproduces the new layout exactly (same array, not just equal values)', () => {
+    const renderer = fakeRenderer()
+    const { engine, tree } = seed(renderer)
+    engine.setAnimate(true)
+    engine.setViewport(800, 600, 1)
+    engine.setCamera({ x: 0, y: 0, k: 1 })
+    engine.render(1000)
+    engine.setOpen(tree.idToIndex.get('b')!, false)
+    engine.render(1000)
+    expect(engine.transitioning).toBe(true)
+
+    engine.render(1250) // exactly the 250ms duration: progress 1
+    expect(engine.transitioning).toBe(false)
+    const frame = renderer.frames.at(-1)!
+    expect(Array.from(frame.boxes)).toEqual(Array.from(engine.boxes))
+    expect(frame.ghostCount).toBe(0)
+  })
+
+  it('keeps a removed node drawn as a fading ghost during the transition, and drops it once done', () => {
+    const renderer = fakeRenderer()
+    const { engine, tree } = seed(renderer)
+    engine.setAnimate(true)
+    engine.setViewport(800, 600, 1)
+    engine.setCamera({ x: 0, y: 0, k: 1 })
+    engine.render(1000) // all open
+
+    engine.setOpen(tree.idToIndex.get('b')!, false) // removes 'c'
+    engine.render(1000) // t=0
+    const mid = renderer.frames.at(-1)!
+    expect(mid.ghostCount).toBe(1)
+    expect(mid.ghostAlpha[0]).toBeCloseTo(1, 5) // just started fading: still ~opaque
+    // 'c' truly is gone from the authoritative pruned set, even though it's
+    // still being drawn as a ghost.
+    expect(Array.from(engine.visibleToSource)).not.toContain(tree.idToIndex.get('c')!)
+
+    engine.render(1250) // past the duration
+    const done = renderer.frames.at(-1)!
+    expect(done.ghostCount).toBe(0)
+  })
+
+  it('a second toggle mid-transition retargets from the current position instead of snapping', () => {
+    const renderer = fakeRenderer()
+    const { engine, tree } = seed(renderer)
+    engine.setAnimate(true)
+    engine.setViewport(800, 600, 1)
+    engine.setCamera({ x: 0, y: 0, k: 1 })
+    engine.render(1000)
+
+    const bIndex = tree.idToIndex.get('b')!
+    engine.setOpen(bIndex, false) // transition 1 starts at t=1000
+    engine.render(1000)
+
+    engine.render(1125) // halfway through transition 1 (progress 0.5)
+    const halfway = renderer.frames.at(-1)!
+    const bPrunedHalfway = Array.from(engine.visibleToSource).indexOf(bIndex)
+    expect(bPrunedHalfway).toBeGreaterThanOrEqual(0)
+    const midX = halfway.boxes[bPrunedHalfway * 4]!
+    const midY = halfway.boxes[bPrunedHalfway * 4 + 1]!
+
+    // Interrupt with a second toggle at the SAME instant.
+    engine.setOpen(bIndex, true)
+    engine.render(1125)
+    const retargeted = renderer.frames.at(-1)!
+    const bPrunedNow = Array.from(engine.visibleToSource).indexOf(bIndex)
+    expect(bPrunedNow).toBeGreaterThanOrEqual(0)
+    // Must continue from wherever it visually was a moment ago, not jump to
+    // either endpoint of the transition it just interrupted.
+    expect(retargeted.boxes[bPrunedNow * 4]).toBeCloseTo(midX, 6)
+    expect(retargeted.boxes[bPrunedNow * 4 + 1]).toBeCloseTo(midY, 6)
+  })
+
+  it('hit-tests against the final layout throughout a transition, never the interpolated one', () => {
+    const renderer = fakeRenderer()
+    const { engine, tree } = seed(renderer)
+    engine.setAnimate(true)
+    engine.setViewport(800, 600, 1)
+    engine.setCamera({ x: 0, y: 0, k: 1 })
+    engine.render(1000)
+
+    engine.setOpen(tree.idToIndex.get('b')!, false)
+    engine.render(1000)
+    expect(engine.transitioning).toBe(true)
+
+    const dIndex = tree.idToIndex.get('d')!
+    const dPruned = Array.from(engine.visibleToSource).indexOf(dIndex)
+    const cx = engine.boxes[dPruned * 4]! + engine.boxes[dPruned * 4 + 2]! / 2
+    const cy = engine.boxes[dPruned * 4 + 1]! + engine.boxes[dPruned * 4 + 3]! / 2
+    expect(engine.hitTest(cx, cy)).toBe(dIndex)
+  })
+
+  it('disabling animation mid-transition snaps immediately to the final layout', () => {
+    const renderer = fakeRenderer()
+    const { engine, tree } = seed(renderer)
+    engine.setAnimate(true)
+    engine.setViewport(800, 600, 1)
+    engine.setCamera({ x: 0, y: 0, k: 1 })
+    engine.render(1000)
+    engine.setOpen(tree.idToIndex.get('b')!, false)
+    engine.render(1000)
+    expect(engine.transitioning).toBe(true)
+
+    engine.setAnimate(false)
+    expect(engine.transitioning).toBe(false)
+    engine.render(1010)
+    const frame = renderer.frames.at(-1)!
+    expect(frame.ghostCount).toBe(0)
+    expect(Array.from(frame.boxes)).toEqual(Array.from(engine.boxes))
+  })
+
+  it('drops an in-flight transition immediately when the dataset is replaced', () => {
+    const renderer = fakeRenderer()
+    const { engine, tree } = seed(renderer)
+    engine.setAnimate(true)
+    engine.setViewport(800, 600, 1)
+    engine.setCamera({ x: 0, y: 0, k: 1 })
+    engine.render(1000)
+    engine.setOpen(tree.idToIndex.get('b')!, false)
+    engine.render(1000)
+    expect(engine.transitioning).toBe(true)
+
+    const newTree = normalize([{ id: 'x' }, { id: 'y', parentId: 'x' }])
+    engine.setData(toWireTree(newTree), sizesFor(newTree.count), ['x', 'y'], new Uint8Array(newTree.count).fill(1))
+    expect(engine.transitioning).toBe(false)
+    engine.setCamera({ x: 0, y: 0, k: 1 })
+    engine.render(1010)
+    expect(renderer.frames.at(-1)!.ghostCount).toBe(0)
+  })
+
+  it('fades in a newly revealed node and clears the reveal-alpha override once settled', () => {
+    const renderer = fakeRenderer()
+    const { engine, tree } = seed(renderer)
+    engine.setAnimate(true)
+    engine.setViewport(800, 600, 1)
+    engine.setCamera({ x: 0, y: 0, k: 1 })
+    engine.setOpen(tree.idToIndex.get('b')!, false) // start closed
+    engine.render(1000)
+
+    engine.setOpen(tree.idToIndex.get('b')!, true) // reveal 'c'
+    engine.render(1000) // t=0
+    const cIndex = tree.idToIndex.get('c')!
+    const frame0 = renderer.frames.at(-1)!
+    const cPruned = Array.from(engine.visibleToSource).indexOf(cIndex)
+    const slot = Array.from(frame0.visible.slice(0, frame0.visibleCount)).indexOf(cPruned)
+    expect(slot).toBeGreaterThanOrEqual(0)
+    expect(frame0.revealAlpha).not.toBeNull()
+    expect(frame0.revealAlpha![slot]).toBeCloseTo(0, 5)
+
+    engine.render(1250) // done
+    expect(renderer.frames.at(-1)!.revealAlpha).toBeNull()
   })
 })
 

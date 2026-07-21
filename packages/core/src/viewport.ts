@@ -152,3 +152,14 @@ export function interpolate(from: Camera, to: Camera, t: number): Camera {
 export function easeInOutCubic(t: number): number {
   return t < 0.5 ? 4 * t * t * t : 1 - Math.pow(-2 * t + 2, 3) / 2
 }
+
+/**
+ * Fast start, slow finish. Used for the expand/collapse layout transition
+ * (see engine.ts): a reveal or collapse reads as a settling motion rather
+ * than a linear slide, without the "wind-up" an ease-*in* would add at the
+ * start of what is already a reaction to a click.
+ */
+export function easeOutCubic(t: number): number {
+  const u = 1 - t
+  return 1 - u * u * u
+}
