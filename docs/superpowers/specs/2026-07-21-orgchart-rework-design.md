@@ -239,7 +239,7 @@ Per frame: camera -> quadtree query -> visible boxes -> LOD selection -> draw.
 |---|---|---|
 | `< 0.25` | 1px rectangles + connector lines, no text | none |
 | `0.25–0.6` | box + truncated single-line name | none |
-| `>= 0.6` | full card (avatar, name, title, badge) | **on** — framework slots for viewport nodes |
+| `>= 0.6` | box and label as above; the DOM overlay draws the card | **on** — framework slots for viewport nodes |
 
 Thresholds are configurable via `lodThresholds`.
 
@@ -350,8 +350,30 @@ alongside it: `role="tree"` / `role="treeitem"` with `aria-expanded` and `aria-l
 It carries node names only, not full cards, and uses `content-visibility: auto`, so it
 stays cheap at 50k nodes.
 
-Keyboard: arrow keys navigate the tree, `Enter`/`Space` toggles, `Home` returns to root,
-`/` opens search. Moving focus tweens the camera to the focused node.
+Keyboard: `ArrowUp`/`ArrowDown` move between rows, `Enter`/`Space` toggles, `Home` and
+`End` jump to the ends. Moving focus tweens the camera to the focused node.
+
+**Known gap.** `ArrowLeft`/`ArrowRight` are not bound. In the ARIA tree pattern they
+collapse and expand the focused node, and their absence is a real accessibility
+shortfall rather than a missing convenience. A `/` search shortcut was described here
+before anything implemented it; it is not bound either, and belongs with the search UI
+rather than with navigation.
+
+## 11.6 Where this section is ahead of the code
+
+Written before implementation, section 10's API listing and section 12's error table
+describe a few things that were never built, and omit some that were. Rather than
+quietly editing history, the differences are recorded here, because a design that
+silently drifts into fiction stops being useful as a reference.
+
+- `reparent()`, `toSVG()` / `toBlob()` / `print()`, and the `minimap` option are listed
+  in section 10 but not yet in the public API. Export and the minimap now exist as pure
+  computation in core; neither is wired to a public method yet. Reparenting is unbuilt.
+- `animate` and `autoPanOnToggle` ship in the vanilla layer and are absent from
+  section 10.
+- Section 12 promises a distinct "no data" and single-node state. There is none: empty
+  data produces an empty frame through the ordinary path, which is the simpler behaviour
+  and appears to be the right one.
 
 ## 12. Error handling
 
