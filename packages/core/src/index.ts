@@ -56,6 +56,8 @@ export type {
   RenderSurface,
 } from './render/renderer.js'
 export { createCanvas2DRenderer } from './render/canvas2d.js'
+export type { ExportData, SvgExportOptions } from './render/svg.js'
+export { escapeXml, toSVG } from './render/svg.js'
 
 export type { ChartEngine } from './engine.js'
 export { createChartEngine } from './engine.js'
