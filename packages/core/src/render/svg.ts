@@ -270,10 +270,18 @@ export function toSVG(data: ExportData, opts: SvgExportOptions = {}): string {
     labelParts.push(`<text class="l" x="${x}" y="${y}">${escapeXml(label)}</text>`)
   }
 
+  // Theme strings land inside a <style> element, where XML escaping does not
+  // apply — a value containing `</style>` would close the element and escape into
+  // markup. Treating the theme as trusted developer config is tempting, but a
+  // theme is exactly the kind of thing that gets built from a colour picker or a
+  // per-tenant row in a database. No valid colour or font shorthand contains an
+  // angle bracket, so dropping them costs nothing and removes the hole.
+  const css = (value: string | number): string => String(value).replace(/[<>]/g, '')
+
   const style =
-    `.n{fill:${theme.nodeFill};stroke:${theme.nodeStroke};stroke-width:${theme.nodeStrokeWidth}}` +
-    `.e{fill:none;stroke:${theme.edgeStroke};stroke-width:${theme.edgeWidth}}` +
-    `.l{fill:${theme.labelColour};font:${theme.labelFont};dominant-baseline:middle}`
+    `.n{fill:${css(theme.nodeFill)};stroke:${css(theme.nodeStroke)};stroke-width:${css(theme.nodeStrokeWidth)}}` +
+    `.e{fill:none;stroke:${css(theme.edgeStroke)};stroke-width:${css(theme.edgeWidth)}}` +
+    `.l{fill:${css(theme.labelColour)};font:${css(theme.labelFont)};dominant-baseline:middle}`
 
   return (
     `<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 ${fmt(width)} ${fmt(height)}"` +

@@ -431,4 +431,26 @@ describe('toSVG document shape', () => {
     }
     expect(() => toSVG(data)).not.toThrow()
   })
+
+  it('does not let a theme value break out of the style element', () => {
+    // A theme can legitimately come from user-controlled data — a colour picker,
+    // a per-tenant row — so a value closing the <style> element must not reach
+    // the output as markup.
+    const svg = toSVG(
+      {
+        boxes: Float64Array.from([0, 0, 100, 50]),
+        parent: Int32Array.from([-1]),
+        labels: ['Root'],
+        bounds: { minX: 0, minY: 0, maxX: 100, maxY: 50 },
+        horizontal: false,
+      },
+      { theme: { ...DEFAULT_THEME, nodeFill: '</style><script>alert(1)</script>' } },
+    )
+    expect(svg).not.toContain('<script>')
+    // The style element must contain no markup at all — a legitimate document
+    // naturally has `</style><rect`, so asserting on that would be meaningless.
+    const style = /<style>([\s\S]*?)<\/style>/.exec(svg)?.[1] ?? ''
+    expect(style).not.toContain('<')
+    expect(style).not.toContain('>')
+  })
 })
