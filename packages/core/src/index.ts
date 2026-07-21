@@ -25,3 +25,6 @@ export {
   worldToScreen,
   zoomAt,
 } from './viewport.js'
+
+export type { TextMeasurer, TextMetricsSource } from './text/measure.js'
+export { createTextMeasurer } from './text/measure.js'
