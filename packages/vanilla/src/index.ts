@@ -1,9 +1,13 @@
 import { createChartHost, type ChartHost } from '@n1crack/orgchart-core/host'
 import {
+  centreOn,
   DEFAULT_LOD,
+  easeInOutCubic,
   fit as fitCamera,
+  interpolate,
   normalize,
   overlayEnabled,
+  pan,
   resolveTheme,
   screenToWorld,
   toWireTree,
@@ -44,6 +48,31 @@ export interface Options {
   zoomLimits?: ZoomLimits
   worker?: boolean
   renderNode?: (element: HTMLElement, context: NodeContext) => void
+  /**
+   * Governs every camera *animation* this layer produces on its own initiative:
+   * the 200ms ease tween behind `focus`/`fit`/`reset`/`zoomTo`/`zoomIn`/`zoomOut`
+   * and the accessibility layer's focus-follows-camera, the auto-pan-into-view
+   * after a single-node expand/collapse, and kinetic panning's momentum coast
+   * after a drag release. `false` makes all of these instantaneous — the camera
+   * still moves, just without the animation. Defaults to `true`, but is
+   * overridden to `false` whenever the OS reports `prefers-reduced-motion:
+   * reduce`: an unrequested slide or coast is exactly what that setting exists
+   * to suppress, so it is not treated as optional polish.
+   */
+  animate?: boolean
+  /**
+   * After a single-node `expand`/`collapse` (not `expandAll`/`collapseAll`,
+   * which always `fit()` — the whole chart changed, so a full fit is the
+   * sensible response), tween the camera to approach the toggled node: on
+   * expand, framed together with its immediate children; on collapse, the
+   * node alone. This runs every time, on- or off-screen alike — the point is
+   * to take the user's eye to what they just acted on, not merely to nudge it
+   * into view when it happens to be out of frame. Never re-fits the whole
+   * chart (that would throw away a zoom level the user chose) and never zooms
+   * in past 1:1 — a two-child node blowing up to an enormous card would look
+   * broken, not attentive. Defaults to `true`.
+   */
+  autoPanOnToggle?: boolean
 }
 
 export interface SearchResult {
@@ -63,6 +92,20 @@ export interface ChartState {
 
 export interface OrgChartEvents {
   nodeClick: (event: { id: string; item: NodeData }) => void
+  /**
+   * Fires with `{ id, item }` the instant the pointer enters a node, and with
+   * `{ id: null, item: null }` when it leaves all nodes (including plain
+   * canvas background). Never fires twice in a row for the same id — moving
+   * within a single node's box is not a re-entry.
+   */
+  nodeHover: (event: { id: string; item: NodeData } | { id: null; item: null }) => void
+  /**
+   * Fires with `{ id, item }` when two taps land on the same node within the
+   * platform double-click window. See the `DOUBLE_CLICK_MS` comment in
+   * `index.ts` for why the second tap of the pair does not also emit a second
+   * `nodeClick`.
+   */
+  nodeDblClick: (event: { id: string; item: NodeData }) => void
   toggle: (event: { id: string; open: boolean }) => void
   viewportChange: (event: { camera: Camera }) => void
   warning: (warning: Warning) => void
@@ -329,6 +372,22 @@ export function createOrgChart(host: HTMLElement, options: Options): OrgChartIns
    */
   let needsInitialFit = true
 
+  /**
+   * Set by a single-node `expand`/`collapse` (see `setOpenFlag`). Consumed on
+   * the next frame that reports fresh boxes, because the region to pan to
+   * cannot be known until the toggle's relayout has actually run. Cleared by
+   * `update()` since a data reload invalidates the index it names.
+   */
+  let pendingAutoPanIndex: number | null = null
+
+  /**
+   * Set by `expandAll`/`collapseAll`: the whole chart changed shape, so the
+   * sensible response is a full `fit()` rather than trying to frame a region —
+   * there is no single "affected region" for a bulk operation. Takes priority
+   * over `pendingAutoPanIndex` if somehow both end up set before the next frame.
+   */
+  let pendingFullFit = false
+
   const refreshA11y = (): void => {
     if (!a11yDirty) return
     a11yDirty = false
@@ -355,10 +414,24 @@ export function createOrgChart(host: HTMLElement, options: Options): OrgChartIns
       }
       if (needsInitialFit && bounds.maxX > bounds.minX && bounds.maxY > bounds.minY) {
         needsInitialFit = false
+        // Deliberately NOT `animateTo`: the opening camera must appear already
+        // positioned. Tweening in from an arbitrary starting camera on load
+        // would read as a glitch, not a courtesy.
         camera = openingCamera()
         chartHost.setCamera(camera)
         drawn = await chartHost.render()
         boxes = chartHost.boxes
+      }
+      // Runs after the relayout above, so it sees the boxes the toggle actually
+      // produced rather than stale ones from before it.
+      if (pendingFullFit) {
+        pendingFullFit = false
+        pendingAutoPanIndex = null
+        api.fit()
+      } else if (pendingAutoPanIndex !== null) {
+        const index = pendingAutoPanIndex
+        pendingAutoPanIndex = null
+        autoPanToRegion(index)
       }
       refreshA11y()
       if (overlay !== null) {
@@ -376,11 +449,224 @@ export function createOrgChart(host: HTMLElement, options: Options): OrgChartIns
     })
   }
 
-  const setCamera = (next: Camera): void => {
+  /** Applies a camera value immediately: no easing, no animation bookkeeping. */
+  const applyCamera = (next: Camera): void => {
     camera = next
     chartHost.setCamera(camera)
     emit('viewportChange', { camera })
     scheduleFrame()
+  }
+
+  const prefersReducedMotion = (): boolean =>
+    typeof window.matchMedia === 'function' &&
+    window.matchMedia('(prefers-reduced-motion: reduce)').matches
+
+  /**
+   * Whether this layer is allowed to animate a camera move on its own
+   * initiative right now. `false` covers both the explicit `animate: false`
+   * option and the OS `prefers-reduced-motion: reduce` setting — the latter is
+   * not optional polish, an unrequested 200ms slide (or a coasting pan) is
+   * exactly what that setting exists to suppress.
+   */
+  const animationsEnabled = (): boolean => currentOptions.animate !== false && !prefersReducedMotion()
+
+  const TWEEN_MS = 200
+
+  /**
+   * Shared by the ease-tween (`animateTo`) and the momentum coast
+   * (`startMomentum`) — only one of the two is ever running, and cancelling
+   * one is indistinguishable from cancelling the other from the caller's side.
+   * Camera-changing pointer/wheel/pinch input always goes through
+   * `setCameraInstant`, which clears this before applying its own change —
+   * that is the whole cancellation rule in one place: **the user's hand on the
+   * canvas always wins immediately**, whether what it's interrupting is a
+   * `focus()` tween or a kinetic-pan coast.
+   */
+  let cameraAnimHandle: number | null = null
+  let tweenFrom: Camera | null = null
+  let tweenTo: Camera | null = null
+  let tweenStart = 0
+  let momentumVX = 0
+  let momentumVY = 0
+  let momentumLastT = 0
+
+  const cancelCameraAnimation = (): void => {
+    if (cameraAnimHandle !== null) {
+      cancelAnimationFrame(cameraAnimHandle)
+      cameraAnimHandle = null
+    }
+    tweenFrom = null
+    tweenTo = null
+    momentumVX = 0
+    momentumVY = 0
+  }
+
+  /** Used by pointer, wheel, and pinch input — see `cancelCameraAnimation`. */
+  const setCameraInstant = (next: Camera): void => {
+    cancelCameraAnimation()
+    applyCamera(next)
+  }
+
+  const stepTween = (now: number): void => {
+    if (destroyed || tweenFrom === null || tweenTo === null) {
+      cameraAnimHandle = null
+      return
+    }
+    const t = Math.min(1, (now - tweenStart) / TWEEN_MS)
+    applyCamera(interpolate(tweenFrom, tweenTo, easeInOutCubic(t)))
+    if (t >= 1) {
+      cameraAnimHandle = null
+      tweenFrom = null
+      tweenTo = null
+      return
+    }
+    cameraAnimHandle = requestAnimationFrame(stepTween)
+  }
+
+  /**
+   * Entry point for every API-triggered camera move: `focus`, `fit`, `reset`,
+   * `zoomTo`/`zoomIn`/`zoomOut`, and the accessibility layer's
+   * focus-follows-camera (via `focus`).
+   *
+   * A second call while a tween (or a momentum coast) is already under way
+   * does not snap back to restart from the original starting point — it
+   * retargets from `camera`, i.e. wherever the animation has actually gotten
+   * to *right now*. Since cancelling and re-issuing from that same live value
+   * changes nothing visible, this reads as "now heading somewhere else"
+   * rather than a stutter.
+   */
+  const animateTo = (target: Camera): void => {
+    cancelCameraAnimation()
+    if (!animationsEnabled()) {
+      applyCamera(target)
+      return
+    }
+    tweenFrom = { ...camera }
+    tweenTo = target
+    tweenStart = performance.now()
+    cameraAnimHandle = requestAnimationFrame(stepTween)
+  }
+
+  // Kinetic panning: released with a velocity estimated from a short rolling
+  // window of recent pointer samples (see input.ts), not the single last
+  // delta — a momentary jitter right at release must not fling the chart.
+  // Decays exponentially and stops once it drops below a small threshold.
+  const MOMENTUM_TAU_MS = 300
+  const MOMENTUM_MIN_VELOCITY = 0.02 // px/ms (~20px/s) — below this, stop rather than crawl forever.
+  const MOMENTUM_MAX_VELOCITY = 3 // px/ms (~3000px/s) — clamps an unrealistic sample-noise spike.
+
+  const stepMomentum = (now: number): void => {
+    if (destroyed) {
+      cameraAnimHandle = null
+      return
+    }
+    const dt = now - momentumLastT
+    momentumLastT = now
+    applyCamera(pan(camera, momentumVX * dt, momentumVY * dt))
+    const decay = Math.exp(-dt / MOMENTUM_TAU_MS)
+    momentumVX *= decay
+    momentumVY *= decay
+    if (Math.hypot(momentumVX, momentumVY) < MOMENTUM_MIN_VELOCITY) {
+      cameraAnimHandle = null
+      momentumVX = 0
+      momentumVY = 0
+      return
+    }
+    cameraAnimHandle = requestAnimationFrame(stepMomentum)
+  }
+
+  /** `vx`/`vy` are screen px/ms, as measured by input.ts at pointer release. */
+  const startMomentum = (vx: number, vy: number): void => {
+    cancelCameraAnimation()
+    if (!animationsEnabled()) return
+    const speed = Math.hypot(vx, vy)
+    if (speed < MOMENTUM_MIN_VELOCITY) return
+    const scale = speed > MOMENTUM_MAX_VELOCITY ? MOMENTUM_MAX_VELOCITY / speed : 1
+    momentumVX = vx * scale
+    momentumVY = vy * scale
+    momentumLastT = performance.now()
+    cameraAnimHandle = requestAnimationFrame(stepMomentum)
+  }
+
+  /**
+   * World-space bounding box of `index` together with its immediate children
+   * — but only if `index` is open, i.e. an expand just revealed them.
+   * Otherwise just `index`'s own box, which is exactly the collapse case:
+   * its children just left the visible set, so there is nothing else to
+   * frame.
+   */
+  const affectedRegion = (index: number): Bounds | null => {
+    let minX = Infinity
+    let minY = Infinity
+    let maxX = -Infinity
+    let maxY = -Infinity
+    let any = false
+    const include = (node: number): void => {
+      const box = boxOfSource(node)
+      if (box === null) return
+      any = true
+      if (box.x < minX) minX = box.x
+      if (box.y < minY) minY = box.y
+      if (box.x + box.w > maxX) maxX = box.x + box.w
+      if (box.y + box.h > maxY) maxY = box.y + box.h
+    }
+    include(index)
+    if (open[index] === 1) {
+      for (let c = tree.childStart[index]!; c < tree.childStart[index + 1]!; c++) {
+        include(tree.childIndex[c]!)
+      }
+    }
+    return any ? { minX, minY, maxX, maxY } : null
+  }
+
+  /**
+   * Tweens the camera to approach the node just toggled by a single-node
+   * expand/collapse. Runs every time — on screen or off — because the point
+   * of the interaction is to take the user's eye to what they acted on, not
+   * merely to nudge the camera when the node happens to already be out of
+   * frame.
+   *
+   * On expand this frames the node together with its immediate children (see
+   * `affectedRegion`); on collapse, the node alone, since there is nothing
+   * else left to include. Zoom is chosen to fit that group with the same
+   * padding `fit()` uses elsewhere — comfortable, not edge-to-edge — but is
+   * capped at 1:1: a node with only two children blowing up to an enormous
+   * card would look broken, not attentive. If the group is too wide to fit
+   * even at that capped zoom, the toggled node itself stays centred rather
+   * than compromising to include every child — the node is what the user
+   * acted on, not its children.
+   */
+  const autoPanToRegion = (index: number): void => {
+    const region = affectedRegion(index)
+    if (region === null) return
+    const rect = host.getBoundingClientRect()
+    if (rect.width <= 0 || rect.height <= 0) return
+    const size = { width: rect.width, height: rect.height }
+
+    const fitted = fitCamera(region, size, FIT_PADDING, limits)
+    const k = Math.min(1, fitted.k)
+    const available = {
+      width: size.width - FIT_PADDING * 2,
+      height: size.height - FIT_PADDING * 2,
+    }
+    const regionFits =
+      (region.maxX - region.minX) * k <= available.width &&
+      (region.maxY - region.minY) * k <= available.height
+
+    if (regionFits) {
+      animateTo(centreOn({ ...camera, k }, region, size))
+      return
+    }
+
+    const nodeBox = boxOfSource(index)
+    if (nodeBox === null) return
+    const nodeBounds: Bounds = {
+      minX: nodeBox.x,
+      minY: nodeBox.y,
+      maxX: nodeBox.x + nodeBox.w,
+      maxY: nodeBox.y + nodeBox.h,
+    }
+    animateTo(centreOn({ ...camera, k }, nodeBounds, size))
   }
 
   const setOpenFlag = (index: number, value: boolean): void => {
@@ -388,6 +674,7 @@ export function createOrgChart(host: HTMLElement, options: Options): OrgChartIns
     chartHost.setOpen(index, value)
     emit('toggle', { id: tree.indexToId[index]!, open: value })
     a11yDirty = true
+    if (currentOptions.autoPanOnToggle !== false) pendingAutoPanIndex = index
     scheduleFrame()
   }
 
@@ -400,22 +687,81 @@ export function createOrgChart(host: HTMLElement, options: Options): OrgChartIns
   const observer = new ResizeObserver(resize)
   observer.observe(host)
 
-  const detachInput = attachInput(canvas, () => limits, {
+  /**
+   * Two taps on the same node within this window count as a double click —
+   * 300ms is the conventional platform figure (there is no portable API to
+   * read the OS value, so it is hard-coded, same as elsewhere in the web
+   * platform's own implementations).
+   */
+  const DOUBLE_CLICK_MS = 300
+  let lastTapId: string | null = null
+  let lastTapAt = 0
+
+  let hoveredId: string | null = null
+  const setHover = (id: string | null, item: NodeData | null): void => {
+    if (id === hoveredId) return
+    hoveredId = id
+    emit('nodeHover', id === null ? { id: null, item: null } : { id, item: item! })
+  }
+
+  const detachInput = attachInput(host, () => limits, {
     getCamera: () => camera,
-    setCamera,
+    setCamera: setCameraInstant,
+    cancelAnimation: cancelCameraAnimation,
     onTap(screenX, screenY) {
       const world = screenToWorld(camera, screenX, screenY)
       void chartHost.hitTest(world.x, world.y).then((index) => {
-        if (index === -1) return
-        emit('nodeClick', { id: tree.indexToId[index]!, item: itemFor(index) })
+        if (destroyed) return
+        if (index === -1) {
+          lastTapId = null
+          return
+        }
+        const id = tree.indexToId[index]!
+        const item = itemFor(index)
+        const now = performance.now()
+        const isDoubleClick = id === lastTapId && now - lastTapAt <= DOUBLE_CLICK_MS
+        if (isDoubleClick) {
+          // Consumed: a third tap starts a fresh pair rather than chaining
+          // into another double click.
+          lastTapId = null
+          // Deliberately does NOT also emit a second `nodeClick` for this tap:
+          // the first tap of the pair already emitted its own `nodeClick`
+          // below, so a listener that only wants single clicks still sees
+          // exactly one, and a listener that wants both isn't forced to
+          // de-duplicate a same-node, same-instant click it didn't ask for.
+          emit('nodeDblClick', { id, item })
+        } else {
+          lastTapId = id
+          lastTapAt = now
+          emit('nodeClick', { id, item })
+        }
       })
+    },
+    onMove(screenX, screenY) {
+      if (destroyed) return
+      const world = screenToWorld(camera, screenX, screenY)
+      void chartHost.hitTest(world.x, world.y).then((index) => {
+        if (destroyed) return
+        if (index === -1) {
+          setHover(null, null)
+          return
+        }
+        setHover(tree.indexToId[index]!, itemFor(index))
+      })
+    },
+    onLeave() {
+      if (destroyed) return
+      setHover(null, null)
+    },
+    onRelease(vx, vy) {
+      startMomentum(vx, vy)
     },
   })
 
   const api: OrgChartApi = {
     zoomTo(k) {
       const rect = host.getBoundingClientRect()
-      setCamera(zoomAt(camera, rect.width / 2, rect.height / 2, k / camera.k, limits))
+      animateTo(zoomAt(camera, rect.width / 2, rect.height / 2, k / camera.k, limits))
     },
     zoomIn() {
       api.zoomTo(camera.k * 1.25)
@@ -425,7 +771,7 @@ export function createOrgChart(host: HTMLElement, options: Options): OrgChartIns
     },
     fit() {
       const rect = host.getBoundingClientRect()
-      setCamera(fitCamera(bounds, { width: rect.width, height: rect.height }, FIT_PADDING, limits))
+      animateTo(fitCamera(bounds, { width: rect.width, height: rect.height }, FIT_PADDING, limits))
     },
     reset() {
       api.fit()
@@ -437,7 +783,7 @@ export function createOrgChart(host: HTMLElement, options: Options): OrgChartIns
       const box = boxOfSource(index)
       if (box === null) return
       const rect = host.getBoundingClientRect()
-      setCamera({
+      animateTo({
         x: rect.width / 2 - (box.x + box.w / 2) * camera.k,
         y: rect.height / 2 - (box.y + box.h / 2) * camera.k,
         k: camera.k,
@@ -481,6 +827,9 @@ export function createOrgChart(host: HTMLElement, options: Options): OrgChartIns
         chartHost.setOpen(i, true)
       }
       a11yDirty = true
+      // The whole chart just changed shape — a full fit is the sensible
+      // response here, unlike the single-node case (see `pendingFullFit`).
+      if (currentOptions.autoPanOnToggle !== false) pendingFullFit = true
       scheduleFrame()
     },
     collapseAll() {
@@ -489,6 +838,7 @@ export function createOrgChart(host: HTMLElement, options: Options): OrgChartIns
         chartHost.setOpen(i, false)
       }
       a11yDirty = true
+      if (currentOptions.autoPanOnToggle !== false) pendingFullFit = true
       scheduleFrame()
     },
     expandTo(id) {
@@ -576,6 +926,7 @@ export function createOrgChart(host: HTMLElement, options: Options): OrgChartIns
     api,
     destroy() {
       destroyed = true
+      cancelCameraAnimation()
       observer.disconnect()
       detachInput()
       overlay?.destroy()
@@ -591,6 +942,10 @@ export function createOrgChart(host: HTMLElement, options: Options): OrgChartIns
       tree = normalize(data)
       rebuildItemIndex()
       initOpen()
+      // A pending auto-pan/full-fit names indices or relies on state from the
+      // tree that just got replaced; a reload invalidates both.
+      pendingAutoPanIndex = null
+      pendingFullFit = false
       applyData()
       scheduleFrame()
     },

@@ -13,6 +13,8 @@ import { ORG_CHART_KEY } from './useOrgChart.js'
 const props = defineProps<{ options: Options }>()
 const emit = defineEmits<{
   nodeClick: Parameters<OrgChartEvents['nodeClick']>
+  nodeHover: Parameters<OrgChartEvents['nodeHover']>
+  nodeDblClick: Parameters<OrgChartEvents['nodeDblClick']>
   toggle: Parameters<OrgChartEvents['toggle']>
   warning: Parameters<OrgChartEvents['warning']>
   ready: Parameters<OrgChartEvents['ready']>
@@ -51,6 +53,8 @@ onMounted(() => {
   api.value = chart.api
   chart.subscribe((next) => (state.value = next))
   chart.on('nodeClick', (event) => emit('nodeClick', event))
+  chart.on('nodeHover', (event) => emit('nodeHover', event))
+  chart.on('nodeDblClick', (event) => emit('nodeDblClick', event))
   chart.on('toggle', (event) => emit('toggle', event))
   chart.on('warning', (warning) => emit('warning', warning))
   chart.on('ready', () => emit('ready'))
