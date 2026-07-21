@@ -1,10 +1,10 @@
 {
-  "//": "Browser-mode tests need real DOM types (document, HTMLCanvasElement). The main tsconfig deliberately compiles with lib ES2023 and types [] so that a stray window/document reference in runtime code fails to compile — that guard is what keeps packages/core usable inside a Web Worker. Giving the whole package lib.dom to satisfy the tests would defeat it. So the tests get their own program instead. Source files pulled in transitively here do see DOM types, but they are still checked without them by tsconfig.json, so the guard still fires.",
+  "//": "Browser-mode tests need real DOM types (document, HTMLCanvasElement). The main tsconfig deliberately compiles with lib ES2023 and types [] so that a stray window/document reference in runtime code fails to compile — that guard is what keeps packages/core usable inside a Web Worker. Giving the whole package lib.dom to satisfy the tests would defeat it. So the tests get their own program instead. Source files pulled in transitively here do see DOM types, but they are still checked without them by tsconfig.json, so the guard still fires. index.ts and host.ts are included explicitly (not just transitively) because index.ts re-exports host.ts's genuinely DOM-bound ChartHost/createChartHost — this is their home program. version.test.ts is included too solely because it imports index.ts for VERSION; it has no DOM needs of its own.",
   "extends": "../../tsconfig.base.json",
   "compilerOptions": {
     "noEmit": true,
     "lib": ["ES2023", "DOM", "DOM.Iterable"],
     "types": []
   },
-  "include": ["src/**/*.browser.test.ts"]
+  "include": ["src/**/*.browser.test.ts", "src/index.ts", "src/worker/host.ts", "src/version.test.ts"]
 }
