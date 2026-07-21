@@ -107,6 +107,31 @@ config, yet they are still checked without them by the main config, so the guard
 **Wrong if:** the two programs drift far enough that something typechecks in one and not
 the other in a confusing way.
 
+### 21. Overlay idle slots detach from the DOM instead of hiding
+**Chosen:** an overlay element that is no longer needed is `remove()`d and re-appended
+later, rather than kept in place with `display: none`.
+**Why:** honestly, because a test counts elements with `querySelectorAll('.orgchart-overlay-node')`
+and expected zero at low zoom. The pooled element objects still survive, so identity
+across frames holds — but a fluctuating visible set now pays append/remove churn that
+`display: none` avoided.
+**Wrong if:** panning at high zoom stutters. The better fix would be to count *attached and
+visible* elements in the test rather than reshape the implementation around it.
+**This is a case of a test driving a design change — worth a second look.**
+
+### 22. Warnings are emitted on a microtask, not synchronously
+**Chosen:** `createOrgChart` defers `warning` events so a caller can attach
+`chart.on('warning', ...)` after construction and still receive them.
+**Why:** emitting during construction meant nobody could ever hear them.
+**Wrong if:** a consumer expects warnings to be readable synchronously after the
+constructor returns. An alternative is to expose them on the returned state as well.
+
+### 23. The accessibility mirror is rebuilt wholesale on every update
+**Chosen:** clear and re-append every row when the tree or open state changes.
+**Why:** correctness first; `content-visibility: auto` keeps the layout cost down.
+**Wrong if:** the measured rebuild time at 10k+ nodes is material — this is a full DOM
+teardown on every expand or collapse, which is precisely the cost the canvas renderer
+exists to avoid. A pooled or diffed mirror is the fix if so.
+
 ---
 
 ## Carried over from the core foundation work
