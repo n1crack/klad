@@ -25,3 +25,6 @@ export {
   worldToScreen,
   zoomAt,
 } from './viewport.js'
+
+export type { VisibleTree } from './visible.js'
+export { pruneToVisible } from './visible.js'
