@@ -41,15 +41,26 @@ let chart: ReturnType<typeof createOrgChart> | null = null
  */
 const overlayElements = new Set<HTMLElement>()
 
+/** Options with `renderNode` attached only when there is slot content to render. */
+function withRenderNode(options: Options): Options {
+  return slots.node === undefined ? { ...options } : { ...options, renderNode }
+}
+
 function renderNode(element: HTMLElement, context: NodeContext): void {
-  if (slots.node === undefined) return
-  render(h('div', { class: 'orgchart-node' }, slots.node(context)), element)
+  const node = slots.node
+  if (node === undefined) return
+  render(h('div', { class: 'orgchart-node' }, node(context)), element)
   overlayElements.add(element)
 }
 
 onMounted(() => {
   if (hostRef.value === null) return
-  chart = createOrgChart(hostRef.value, { ...props.options, renderNode })
+  // Only claim the overlay when a #node slot actually exists. Passing
+  // `renderNode` unconditionally makes the vanilla layer allocate and position
+  // an element per visible node to hand to a callback that returns immediately —
+  // so a Vue consumer who wants the plain canvas chart would still pay for DOM
+  // that a frameworkless consumer does not. Same tier, either way.
+  chart = createOrgChart(hostRef.value, withRenderNode(props.options))
   api.value = chart.api
   chart.subscribe((next) => (state.value = next))
   chart.on('nodeClick', (event) => emit('nodeClick', event))
@@ -62,7 +73,7 @@ onMounted(() => {
 
 watch(
   () => props.options,
-  (next) => chart?.update(next.data, { ...next, renderNode }),
+  (next) => chart?.update(next.data, withRenderNode(next)),
   { deep: true },
 )
 
