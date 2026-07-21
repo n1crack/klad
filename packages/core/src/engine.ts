@@ -70,38 +70,96 @@ const EMPTY_BOUNDS: Bounds = { minX: 0, minY: 0, maxX: 0, maxY: 0 }
 const NO_LABELS: readonly string[] = []
 
 /**
- * Partitions `buf[0, count)` in place so entries whose own box overlaps
- * `rect` come first. Returns the count of those genuinely-visible entries;
- * `[return value, count)` holds the rest — captured only by a wider margin
- * query, still needed so their connector to a visible ancestor draws, but not
- * eligible for their own fill/stroke/label.
+ * Builds a spatial index over CONNECTORS, not nodes.
  *
- * Swap-based (Lomuto-style) partition, O(count), no allocation, and no
- * ordering guarantee within either half — nothing downstream (edge batching,
- * node fill/stroke, label draw) depends on draw order.
+ * The old approach inferred "which connectors might be on screen" from a
+ * margin-widened NODE query: widen the viewport rect by `cullMargin` along
+ * the tree's growth axis, then treat every node the widened query returns as
+ * "draw its connector too". That margin is provably sufficient on the growth
+ * axis — a direct parent/child pair's near edges are exactly one level (node
+ * extent + spacing) apart, by construction of `tidy.ts`'s `y[i]` formula.
+ *
+ * It is NOT sufficient on the CROSS axis, and no constant margin ever could
+ * be: siblings can be separated by an entire subtree's width, so a
+ * connector's cross-axis run is unbounded. A parent centred far to one side
+ * of a wide subtree and a lone narrow child on the other can have their
+ * elbow's crossbar sweep clear across the screen while neither node's own
+ * box comes anywhere near the viewport — see engine.test.ts's "defect 2".
+ *
+ * The fix: index the connectors' own bounding boxes directly, and query that
+ * index with the exact (unwidened) viewport rect. A connector's box is the
+ * rectangle spanned by its parent's exit point and its child's entry point —
+ * exactly the elbow's extent, since the elbow's horizontal and vertical legs
+ * never travel outside that rectangle (the mid-line the elbow bends at is
+ * always between the two anchor points). Querying this index therefore gives
+ * the exactly-correct set of on-screen connectors, at the same asymptotic
+ * cost as the node query — bounded by what's near the viewport, never by
+ * total node count.
+ *
+ * Anchor points here MUST mirror canvas2d.ts's elbow-drawing formulas
+ * exactly: this index has to describe the same rectangle the renderer
+ * actually paints, or it either misses connectors that are drawn or invents
+ * ones that aren't.
+ *
+ * One box per non-root pruned node (its edge to its own parent); roots
+ * contribute nothing; `child[k]` maps a result from `quad.query` (which
+ * returns positions in the compacted `edgeBoxes` array, not pruned indices)
+ * back to the pruned CHILD index that edge belongs to.
+ *
+ * Cost is O(pruned count), folded into the same relayout pass that already
+ * builds the node quadtree — never touched by `render()`'s per-frame,
+ * camera-only path.
  */
-function partitionVisible(buf: Uint32Array, count: number, boxes: Float64Array, rect: Bounds): number {
-  let lo = 0
-  for (let i = 0; i < count; i++) {
-    const idx = buf[i]!
-    const o = idx * 4
-    const x0 = boxes[o]!
-    const y0 = boxes[o + 1]!
-    // Same half-open overlap test as quadtree.ts's `overlaps` — must agree
-    // with it, since this re-tests entries that query already selected
-    // against the (wider) margin rect, now against the true viewport rect.
-    const overlaps =
-      x0 < rect.maxX && x0 + boxes[o + 2]! > rect.minX && y0 < rect.maxY && y0 + boxes[o + 3]! > rect.minY
-    if (overlaps) {
-      if (i !== lo) {
-        const tmp = buf[lo]!
-        buf[lo] = buf[i]!
-        buf[i] = tmp
-      }
-      lo++
+function buildEdgeIndex(
+  boxes: Float64Array,
+  parent: Int32Array,
+  bounds: Bounds,
+  horizontal: boolean,
+): { quad: QuadTree | null; child: Int32Array } {
+  const n = parent.length
+  let count = 0
+  for (let i = 0; i < n; i++) if (parent[i]! !== -1) count++
+  if (count === 0) return { quad: null, child: new Int32Array(0) }
+
+  const edgeBoxes = new Float64Array(count * 4)
+  const child = new Int32Array(count)
+  let e = 0
+  for (let i = 0; i < n; i++) {
+    const p = parent[i]!
+    if (p === -1) continue
+    const io = i * 4
+    const po = p * 4
+    let px: number
+    let py: number
+    let cx: number
+    let cy: number
+    if (horizontal) {
+      // Growth axis is x: leave the parent's right edge, enter the child's
+      // left edge. Matches canvas2d.ts's `horizontal` branch exactly.
+      px = boxes[po]! + boxes[po + 2]!
+      py = boxes[po + 1]! + boxes[po + 3]! / 2
+      cx = boxes[io]!
+      cy = boxes[io + 1]! + boxes[io + 3]! / 2
+    } else {
+      // Matches canvas2d.ts's non-`horizontal` branch exactly.
+      px = boxes[po]! + boxes[po + 2]! / 2
+      py = boxes[po + 1]! + boxes[po + 3]!
+      cx = boxes[io]! + boxes[io + 2]! / 2
+      cy = boxes[io + 1]!
     }
+    const x0 = px < cx ? px : cx
+    const x1 = px > cx ? px : cx
+    const y0 = py < cy ? py : cy
+    const y1 = py > cy ? py : cy
+    const o = e * 4
+    edgeBoxes[o] = x0
+    edgeBoxes[o + 1] = y0
+    edgeBoxes[o + 2] = x1 - x0
+    edgeBoxes[o + 3] = y1 - y0
+    child[e] = i
+    e++
   }
-  return lo
+  return { quad: buildQuadTree(edgeBoxes, bounds), child }
 }
 
 // ---------------------------------------------------------------------------
@@ -389,6 +447,16 @@ export function createChartEngine(renderer: Renderer): ChartEngine {
   let prunedFromSource: Int32Array = new Int32Array(0)
   let prunedLabels: string[] = []
   let quad: QuadTree | null = null
+  /** Spatial index over connector boxes, keyed to `edgeChild`. See
+   * `buildEdgeIndex`'s docblock for why this replaced the old
+   * growth-axis-only `cullMargin` widening: this index is exact on BOTH
+   * axes, where a constant margin only ever could be on one of them. */
+  let edgeQuad: QuadTree | null = null
+  /** `edgeQuad` result position -> pruned CHILD index whose connector that
+   * box belongs to. `quad.query` returns positions in the compacted edge-box
+   * array (one entry per non-root node), not pruned indices directly, so
+   * this translates. */
+  let edgeChild: Int32Array = new Int32Array(0)
 
   let camera: Camera = { x: 0, y: 0, k: 1 }
   let viewport = { width: 0, height: 0, dpr: 1 }
@@ -403,34 +471,16 @@ export function createChartEngine(renderer: Renderer): ChartEngine {
   // and no more." Do not read past `visibleCount`, and do not add a fill here:
   // it would cost real time every frame for a tail nothing is allowed to see.
   let cullBuffer = new Uint32Array(0)
+  // Same reused-and-grown discipline as `cullBuffer`, for the edge query:
+  // `edgeQueryBuffer` holds raw `edgeQuad.query` results (edge-array-space
+  // positions); `edgeDrawBuffer` holds those translated through `edgeChild`
+  // into pruned CHILD indices, which is what `Frame.edges` hands the
+  // renderer. Two arrays, not one translated in place, so a partially
+  // translated buffer is never read as if it were edge-array-space or vice
+  // versa.
+  let edgeQueryBuffer = new Uint32Array(0)
+  let edgeDrawBuffer = new Uint32Array(0)
   let highlightBuffer: Uint8Array | null = null
-
-  /**
-   * How far past the viewport, along the tree's growth axis (vertical for
-   * tb/bt, horizontal for lr/rl), a node can be while a connector it's part
-   * of might still cross the viewport. Recomputed on every relayout;
-   * defended below.
-   *
-   * From tidy.ts's own y[i] formula, `y[child] = y[parent] + height(parent)
-   * + spacingY`, so a direct parent/child pair's near edges (parent's
-   * bottom, child's top) are *exactly* `spacingY` apart in layout space —
-   * independent of either node's size. `applyOrientation` only transposes
-   * and mirrors (see its docblock), never scales, so that distance survives
-   * unchanged into world units for every orientation.
-   *
-   * That alone would be enough if "visible" meant "fully inside the
-   * viewport" — but it means "overlaps it at all". A node can overlap the
-   * viewport by a single pixel while the rest of its own box (and, chained
-   * from that, its child's near edge) extends far beyond the viewport edge,
-   * up to that node's own extent along the growth axis. `maxGrowthExtent`
-   * bounds that per-node worst case; adding it to `spacingY` bounds the
-   * combined case. Both terms are per-node/per-level geometry the engine
-   * already has on hand during relayout, not a guessed constant, and neither
-   * scales with total node count — so the margin (and the widened query it
-   * drives in `render()`) stays bounded by "what's near the viewport",
-   * exactly like the unwidened query already was.
-   */
-  let cullMargin = 0
 
   // --- expand/collapse transition state ---
   let animate = false
@@ -470,34 +520,29 @@ export function createChartEngine(renderer: Renderer): ChartEngine {
     // back, leaving a card the shape the caller asked for rather than a rotated one.
     const horizontal = options.orientation === 'lr' || options.orientation === 'rl'
 
-    // Largest single node's extent along the growth axis (post-swap `height`,
-    // i.e. what becomes vertical for tb/bt or horizontal-after-transpose for
-    // lr/rl) — folded into the same O(n) pass that already visits every
-    // pruned node, so this costs nothing extra. Feeds `cullMargin` below.
-    let maxGrowthExtent = 0
-
     for (let i = 0; i < n; i++) {
       const src = visibleToSource[i]!
       const w = sourceSizes[src * 2] ?? 0
       const h = sourceSizes[src * 2 + 1] ?? 0
-      const growthExtent = horizontal ? w : h
       sizes[i * 2] = horizontal ? h : w
-      sizes[i * 2 + 1] = growthExtent
-      if (growthExtent > maxGrowthExtent) maxGrowthExtent = growthExtent
+      sizes[i * 2 + 1] = horizontal ? w : h
       prunedLabels[i] = sourceLabels[src] ?? ''
     }
 
-    const growthSpacing = horizontal ? options.spacingX : options.spacingY
     const result = layout(pruned.tree, sizes, {
       spacingX: horizontal ? options.spacingY : options.spacingX,
-      spacingY: growthSpacing,
+      spacingY: horizontal ? options.spacingX : options.spacingY,
     })
     boxes = result.boxes
     bounds = applyOrientation(boxes, result.bounds, options.orientation, options.rtl)
     quad = buildQuadTree(boxes, bounds)
-    cullMargin = maxGrowthExtent + growthSpacing
+    const edgeIndex = buildEdgeIndex(boxes, prunedParent, bounds, horizontal)
+    edgeQuad = edgeIndex.quad
+    edgeChild = edgeIndex.child
 
     if (cullBuffer.length < n) cullBuffer = new Uint32Array(n)
+    if (edgeQueryBuffer.length < edgeChild.length) edgeQueryBuffer = new Uint32Array(edgeChild.length)
+    if (edgeDrawBuffer.length < edgeChild.length) edgeDrawBuffer = new Uint32Array(edgeChild.length)
 
     // Start (or continue) a transition only for a toggle-triggered relayout,
     // only when animation is enabled, and only when there was a previous
@@ -528,11 +573,14 @@ export function createChartEngine(renderer: Renderer): ChartEngine {
     if (layoutDirty) relayout(now)
 
     const n = visibleToSource.length
-    // `edgeCount` (the query result, using the margin-widened rect) drives
-    // connector drawing; `nodeCount` (the true-visible subset, using the
-    // exact viewport rect) drives node fill/stroke/label drawing and is what
-    // `render()` reports as "on screen". See `cullMargin`'s docblock for why
-    // widening only the growth axis is both necessary and sufficient.
+    // `nodeCount`: the exact-viewport node query, drives fill/stroke/label
+    // drawing and is what `render()` reports as "on screen".
+    // `edgeDrawCount`: the exact-viewport EDGE query (via `edgeQuad`, indexed
+    // over connector boxes, not node boxes — see `buildEdgeIndex`), drives
+    // connector drawing. Independent of `nodeCount`: a connector can cross
+    // the viewport while neither of its endpoints does, and a node's own box
+    // can graze the viewport somewhere its connector never reaches. Neither
+    // set is a subset of the other; the renderer is handed both.
     //
     // Both are computed against the FINAL layout (`boxes`), never an
     // in-progress transition's interpolated positions — deliberately: a node
@@ -541,22 +589,23 @@ export function createChartEngine(renderer: Renderer): ChartEngine {
     // known, accepted gap, not something this cull is trying to solve. See
     // the transition block below for what IS covered (the near-viewport
     // case, which is what a real toggle produces almost all the time).
-    let edgeCount = 0
     let nodeCount = 0
-    if (n > 0 && quad !== null && viewport.width > 0 && viewport.height > 0) {
+    let edgeDrawCount = 0
+    if (n > 0 && viewport.width > 0 && viewport.height > 0) {
       const rect = visibleRect(camera, { width: viewport.width, height: viewport.height })
-      const horizontal = options.orientation === 'lr' || options.orientation === 'rl'
-      const queryRect: Bounds = horizontal
-        ? { minX: rect.minX - cullMargin, minY: rect.minY, maxX: rect.maxX + cullMargin, maxY: rect.maxY }
-        : { minX: rect.minX, minY: rect.minY - cullMargin, maxX: rect.maxX, maxY: rect.maxY + cullMargin }
-      edgeCount = quad.query(queryRect, cullBuffer)
-      nodeCount = partitionVisible(cullBuffer, edgeCount, boxes, rect)
+      if (quad !== null) nodeCount = quad.query(rect, cullBuffer)
+      if (edgeQuad !== null) {
+        const written = edgeQuad.query(rect, edgeQueryBuffer)
+        for (let i = 0; i < written; i++) edgeDrawBuffer[i] = edgeChild[edgeQueryBuffer[i]!]!
+        edgeDrawCount = written
+      }
     }
 
     // --- expand/collapse transition ---
-    // Cost here is bounded by `edgeCount` (near-viewport nodes) and by
-    // however many ghosts the ghost-quadtree query returns (near-viewport
-    // ghosts) — never by total node count, matching the 50k budget.
+    // Cost here is bounded by `nodeCount` + `edgeDrawCount` (near-viewport
+    // nodes and connectors) and by however many ghosts the ghost-quadtree
+    // query returns (near-viewport ghosts) — never by total node count,
+    // matching the 50k budget.
     let ghostCount = 0
     let revealAlpha: Float32Array | null = null
     if (transition !== null) {
@@ -573,8 +622,22 @@ export function createChartEngine(renderer: Renderer): ChartEngine {
           if (entry === undefined) return
           writeBox(renderBoxes, idx, lerpBox(entry.box, boxAt(boxes, idx), eased))
         }
-        for (let s = 0; s < edgeCount; s++) {
+        // Every drawn NODE needs its own box tweened, plus its parent's (so
+        // a connector reaching up to that parent, drawn from the same
+        // `renderBoxes`, doesn't snap one end to the final layout).
+        for (let s = 0; s < nodeCount; s++) {
           const idx = cullBuffer[s]!
+          applyTween(idx)
+          const par = prunedParent[idx]!
+          if (par !== -1) applyTween(par)
+        }
+        // Every drawn CONNECTOR needs both its endpoints tweened too — this
+        // is what makes a connector crossing the viewport (independently of
+        // either endpoint's own visibility) follow the interpolated
+        // positions during a transition instead of snapping to the final
+        // layout while its nodes glide.
+        for (let s = 0; s < edgeDrawCount; s++) {
+          const idx = edgeDrawBuffer[s]!
           applyTween(idx)
           const par = prunedParent[idx]!
           if (par !== -1) applyTween(par)
@@ -596,14 +659,15 @@ export function createChartEngine(renderer: Renderer): ChartEngine {
         }
 
         if (transition.ghostQuad !== null && viewport.width > 0 && viewport.height > 0) {
+          // Unwidened, same as the node/edge queries above: a ghost's own
+          // query box (built once in `buildTransition`) is already the union
+          // of its `from` and `to` positions, so it fully bounds every
+          // position the ghost could occupy for the rest of the
+          // transition — no additional margin is needed to catch it here.
           const rect = visibleRect(camera, { width: viewport.width, height: viewport.height })
-          const horizontal = options.orientation === 'lr' || options.orientation === 'rl'
-          const ghostQueryRect: Bounds = horizontal
-            ? { minX: rect.minX - cullMargin, minY: rect.minY, maxX: rect.maxX + cullMargin, maxY: rect.maxY }
-            : { minX: rect.minX, minY: rect.minY - cullMargin, maxX: rect.maxX, maxY: rect.maxY + cullMargin }
           const total = transition.ghosts.length
           if (ghostCullBuffer.length < total) ghostCullBuffer = new Uint32Array(total)
-          const gcount = transition.ghostQuad.query(ghostQueryRect, ghostCullBuffer)
+          const gcount = transition.ghostQuad.query(rect, ghostCullBuffer)
           if (ghostDrawBoxes.length < gcount * 4) ghostDrawBoxes = new Float64Array(gcount * 4)
           if (ghostDrawAlpha.length < gcount) ghostDrawAlpha = new Float32Array(gcount)
           for (let g = 0; g < gcount; g++) {
@@ -649,7 +713,8 @@ export function createChartEngine(renderer: Renderer): ChartEngine {
       parent: prunedParent,
       visible: cullBuffer,
       visibleCount: nodeCount,
-      edgeCount,
+      edges: edgeDrawBuffer,
+      edgeCount: edgeDrawCount,
       labels: tier === 'block' ? NO_LABELS : prunedLabels,
       camera,
       dpr: viewport.dpr,
@@ -664,8 +729,8 @@ export function createChartEngine(renderer: Renderer): ChartEngine {
     })
 
     // Reports only the genuinely on-screen set (see the `ChartEngine.render`
-    // docblock) — `edgeCount`'s margin-only tail is an implementation detail
-    // of connector drawing, not something a host should see as "visible".
+    // docblock) — the wider edge set is an implementation detail of
+    // connector drawing, not something a host should see as "visible".
     const drawn = new Uint32Array(nodeCount)
     for (let i = 0; i < nodeCount; i++) drawn[i] = visibleToSource[cullBuffer[i]!]!
     return drawn

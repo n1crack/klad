@@ -45,6 +45,7 @@ function gridFrame(count: number, tier: Frame['tier']): Frame {
     parent,
     visible,
     visibleCount: count,
+    edges: visible,
     edgeCount: count,
     labels,
     camera: { x: 0, y: 0, k: 1 },

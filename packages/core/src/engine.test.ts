@@ -3,6 +3,7 @@ import { createChartEngine } from './engine.js'
 import { toWireTree, wireTreeToTree } from './worker/protocol.js'
 import { normalize } from './tree.js'
 import type { Frame, Renderer } from './render/renderer.js'
+import type { NodeData } from './types.js'
 
 function fakeRenderer(): Renderer & { frames: Frame[] } {
   const frames: Frame[] = []
@@ -16,15 +17,16 @@ function fakeRenderer(): Renderer & { frames: Frame[] } {
       // `boxes`, or `parent` — the first test comparing one of those across
       // renders would silently compare a buffer against itself.
       //
-      // Sliced to `edgeCount`, not `visibleCount`: `edgeCount` is the wider
-      // bound (see renderer.ts's `Frame.visible` docblock), and a capture
-      // truncated to `visibleCount` would silently discard the margin-only
-      // entries a defect-1 regression test needs to inspect.
+      // `visible` and `edges` are independent engine-owned buffers (see
+      // renderer.ts's `Frame.edges` docblock) — each sliced to its OWN count,
+      // not each other's, or a defect-1/defect-2 regression test would
+      // silently read the wrong array's stale tail.
       frames.push({
         ...f,
         boxes: f.boxes.slice(),
         parent: f.parent.slice(),
-        visible: f.visible.slice(0, f.edgeCount),
+        visible: f.visible.slice(0, f.visibleCount),
+        edges: f.edges.slice(0, f.edgeCount),
         labels: f.labels.slice(),
         camera: { ...f.camera },
         highlight: f.highlight === null ? null : f.highlight.slice(),
@@ -479,10 +481,16 @@ describe('ChartEngine connector culling (defect 1)', () => {
     const engine = createChartEngine(renderer)
     const data = [{ id: 'a' }, { id: 'b', parentId: 'a' }]
     const tree = normalize(data)
-    // A viewport just 10 world-units tall: 'a' (world y [0, 50]) only grazes
-    // it at the very top, while 'b' (world y [98, 148]) is entirely below —
-    // exactly the "node visible, its child is off screen" hole in the spec.
-    engine.setViewport(1000, 10, 1)
+    // 'a' sits at world y [0, 50]; 'b' at world y [98, 148] (height 50 +
+    // spacingY 48). The connector's own bounding box (this test's whole
+    // point) is the rectangle spanned by 'a's exit point (its bottom-centre,
+    // y=50) and 'b's entry point (its top-centre, y=98) — i.e. y in
+    // [50, 98]. A viewport of height 60 (world y [0, 60]) makes 'a' fully
+    // visible while 'b' stays entirely below it, AND genuinely overlaps that
+    // connector box (50 < 60): unlike a shorter viewport that stops short of
+    // y=50, this one actually clips the connector's near end, so drawing it
+    // is a real requirement, not just a defensive over-inclusion.
+    engine.setViewport(1000, 60, 1)
     engine.setData(toWireTree(tree), sizesFor(tree.count), ['a', 'b'], new Uint8Array(tree.count).fill(1))
     engine.setCamera({ x: 0, y: 0, k: 1 })
     engine.render()
@@ -494,9 +502,9 @@ describe('ChartEngine connector culling (defect 1)', () => {
 
     // 'b' must not be drawn as a node (it is not genuinely on screen)...
     expect(Array.from(frame.visible.slice(0, frame.visibleCount))).not.toContain(bPruned)
-    // ...but it must still be present in the wider edge set, or its
-    // connector to the visible 'a' never gets a chance to render at all.
-    expect(Array.from(frame.visible.slice(0, frame.edgeCount))).toContain(bPruned)
+    // ...but it must still be present in the edge set, or its connector to
+    // the visible 'a' never gets a chance to render at all.
+    expect(Array.from(frame.edges.slice(0, frame.edgeCount))).toContain(bPruned)
   })
 
   it('includes a child whose connector crosses the viewport even though BOTH endpoints are off screen', () => {
@@ -524,7 +532,7 @@ describe('ChartEngine connector culling (defect 1)', () => {
     expect(frame.visibleCount).toBe(0)
     // ...but 'b' is still in the edge set, so its connector — which is what
     // actually crosses the viewport here — still gets drawn.
-    expect(Array.from(frame.visible.slice(0, frame.edgeCount))).toContain(bPruned)
+    expect(Array.from(frame.edges.slice(0, frame.edgeCount))).toContain(bPruned)
   })
 
   it('does not widen the edge set for a node whose connector is nowhere near the viewport', () => {
@@ -538,6 +546,175 @@ describe('ChartEngine connector culling (defect 1)', () => {
     const frame = renderer.frames.at(-1)!
     expect(frame.visibleCount).toBe(0)
     expect(frame.edgeCount).toBe(0)
+  })
+})
+
+// Defect 2: the growth-axis-only `cullMargin` widening leaves a hole on the
+// CROSS axis. A direct parent/child pair can be separated on the cross axis
+// by an entire sibling subtree's width — unbounded, unlike the growth-axis
+// gap (which is bounded by one level of node-extent + spacing). Constructing
+// this requires a genuinely asymmetric tree: a root with one narrow leaf
+// child and one very wide leaf child. `tidy.ts`'s `prelim[parent]` formula
+// centres the parent over the MIDPOINT of its first and last child, so a
+// huge width imbalance between the two children pushes the parent's centre
+// far from the narrow child while leaving it close to the wide one — exactly
+// reproducing "parent centred at x = -3000, child at x = +3000" from a real
+// layout, not a hand-picked coordinate.
+describe('ChartEngine connector culling — cross-axis gap (defect 2)', () => {
+  function buildAsymmetricTree(orientation: 'tb' | 'lr'): {
+    tree: ReturnType<typeof normalize>
+    sizes: Float64Array
+  } {
+    const data = [{ id: 'a' }, { id: 'thin', parentId: 'a' }, { id: 'wide', parentId: 'a' }]
+    const tree = normalize(data)
+    const sizes = new Float64Array(tree.count * 2)
+    const set = (id: string, w: number, h: number) => {
+      const idx = tree.idToIndex.get(id)!
+      sizes[idx * 2] = w
+      sizes[idx * 2 + 1] = h
+    }
+    // tb: cross axis is x (canonical width) — vary w.
+    // lr: cross axis is y (canonical width, pre-transpose, is the real h) — vary h.
+    if (orientation === 'tb') {
+      set('a', 100, 50)
+      set('thin', 100, 50)
+      set('wide', 6000, 50)
+    } else {
+      set('a', 50, 100)
+      set('thin', 50, 100)
+      set('wide', 50, 6000)
+    }
+    return { tree, sizes }
+  }
+
+  /**
+   * Lays out the asymmetric tree, then positions a tiny viewport squarely in
+   * the cross-axis gap between 'a' and 'thin' — overlapping neither node's
+   * box, but inside the rectangle the elbow between them actually occupies —
+   * and renders. Returns the resulting frame and 'thin's pruned index so each
+   * `it` block only has to state its own assertion.
+   */
+  function renderInTheGap(orientation: 'tb' | 'lr') {
+    const renderer = fakeRenderer()
+    const engine = createChartEngine(renderer)
+    const { tree, sizes } = buildAsymmetricTree(orientation)
+    engine.setOptions({ orientation })
+    engine.setViewport(1, 1, 1) // any positive size — just enough to force a relayout
+    engine.setData(toWireTree(tree), sizes, ['a', 'thin', 'wide'], new Uint8Array(tree.count).fill(1))
+    engine.render()
+
+    const aPruned = Array.from(engine.visibleToSource).indexOf(tree.idToIndex.get('a')!)
+    const thinPruned = Array.from(engine.visibleToSource).indexOf(tree.idToIndex.get('thin')!)
+    expect(aPruned).toBeGreaterThanOrEqual(0)
+    expect(thinPruned).toBeGreaterThanOrEqual(0)
+
+    const boxOf = (p: number) => ({
+      x: engine.boxes[p * 4]!,
+      y: engine.boxes[p * 4 + 1]!,
+      w: engine.boxes[p * 4 + 2]!,
+      h: engine.boxes[p * 4 + 3]!,
+    })
+    const aBox = boxOf(aPruned)
+    const thinBox = boxOf(thinPruned)
+
+    let rect: { minX: number; maxX: number; minY: number; maxY: number }
+    if (orientation === 'tb') {
+      // Cross axis: x. Growth axis: y (elbow crossbar sits between a's bottom
+      // and thin's top).
+      expect(Math.abs(aBox.x - thinBox.x)).toBeGreaterThan(1000)
+      const thinRight = thinBox.x + thinBox.w
+      const lo = Math.min(thinRight, aBox.x)
+      const hi = Math.max(thinRight, aBox.x)
+      expect(hi - lo).toBeGreaterThan(10) // real room to plant a viewport in
+      const gapMin = lo + (hi - lo) / 2 - 5
+      const bandLo = Math.min(aBox.y + aBox.h, thinBox.y)
+      const bandHi = Math.max(aBox.y + aBox.h, thinBox.y)
+      expect(bandHi - bandLo).toBeGreaterThan(4)
+      rect = { minX: gapMin, maxX: gapMin + 10, minY: bandLo + 1, maxY: bandHi - 1 }
+    } else {
+      // Cross axis: y. Growth axis: x.
+      expect(Math.abs(aBox.y - thinBox.y)).toBeGreaterThan(1000)
+      const thinBottom = thinBox.y + thinBox.h
+      const lo = Math.min(thinBottom, aBox.y)
+      const hi = Math.max(thinBottom, aBox.y)
+      expect(hi - lo).toBeGreaterThan(10)
+      const gapMin = lo + (hi - lo) / 2 - 5
+      const bandLo = Math.min(aBox.x + aBox.w, thinBox.x)
+      const bandHi = Math.max(aBox.x + aBox.w, thinBox.x)
+      expect(bandHi - bandLo).toBeGreaterThan(4)
+      rect = { minX: bandLo + 1, maxX: bandHi - 1, minY: gapMin, maxY: gapMin + 10 }
+    }
+
+    engine.setViewport(rect.maxX - rect.minX, rect.maxY - rect.minY, 1)
+    engine.setCamera({ x: -rect.minX, y: -rect.minY, k: 1 })
+    engine.render()
+
+    const frame = renderer.frames.at(-1)!
+    // Neither endpoint is genuinely on screen: this is the "both off screen"
+    // case, not the already-fixed one-endpoint case.
+    expect(frame.visibleCount).toBe(0)
+    return { frame, thinPruned }
+  }
+
+  it('draws the connector when it crosses the viewport but both endpoints are off screen (tb)', () => {
+    const { frame, thinPruned } = renderInTheGap('tb')
+    expect(Array.from(frame.edges.slice(0, frame.edgeCount))).toContain(thinPruned)
+  })
+
+  it('draws the connector when it crosses the viewport but both endpoints are off screen (lr)', () => {
+    const { frame, thinPruned } = renderInTheGap('lr')
+    expect(Array.from(frame.edges.slice(0, frame.edgeCount))).toContain(thinPruned)
+  })
+})
+
+// The 50k budget: connector culling must cost what's near the viewport, not
+// what's in the whole tree. A margin-widened node query already satisfied
+// this for the growth axis; the edge-index fix must not regress it.
+describe('ChartEngine 50k budget — drawn edge count stays bounded (defect 2 follow-up)', () => {
+  /** Branching-factor-8 tree of exactly `count` nodes (root included). Mirrors
+   * engine.bench.test.ts's `buildTree`. */
+  function buildBranchingTree(count: number): NodeData[] {
+    const data: NodeData[] = [{ id: 'root' }]
+    let frontier = ['root']
+    while (data.length < count) {
+      const next: string[] = []
+      for (const parentId of frontier) {
+        for (let i = 0; i < 8 && data.length < count; i++) {
+          const id = `${parentId}.${i}`
+          data.push({ id, parentId })
+          next.push(id)
+        }
+      }
+      frontier = next
+    }
+    return data
+  }
+
+  function edgeCountFor(count: number): number {
+    const renderer = fakeRenderer()
+    const engine = createChartEngine(renderer)
+    const tree = normalize(buildBranchingTree(count))
+    const sizes = new Float64Array(tree.count * 2)
+    for (let i = 0; i < tree.count; i++) {
+      sizes[i * 2] = 160
+      sizes[i * 2 + 1] = 48
+    }
+    const labels: string[] = Array.from({ length: tree.count }, () => '')
+    engine.setViewport(1600, 900, 1)
+    engine.setData(toWireTree(tree), sizes, labels, new Uint8Array(tree.count).fill(1))
+    engine.setCamera({ x: 0, y: 0, k: 1 })
+    engine.render()
+    return renderer.frames.at(-1)!.edgeCount
+  }
+
+  it('keeps the drawn edge count bounded as total node count grows from 5,000 to 50,000', () => {
+    const small = edgeCountFor(5_000)
+    const large = edgeCountFor(50_000)
+    // A 1600x900 viewport at k=1 can never have anywhere near this many
+    // connectors genuinely crossing it, regardless of how many more nodes
+    // exist off screen — that's the whole point of the index.
+    expect(small).toBeLessThan(2_000)
+    expect(large).toBeLessThan(2_000)
   })
 })
 
