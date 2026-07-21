@@ -29,3 +29,12 @@ package-lock.json
 *.sw?
 
 *.tsbuildinfo
+
+node_modules/
+dist/
+.turbo/
+*.tsbuildinfo
+
+# SDD process scratch (briefs, reports, review packages)
+.superpowers/
+.claude/worktrees/

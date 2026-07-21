@@ -1,53 +1,23 @@
 {
-  "name": "vue3-org-chart",
-  "version": "0.2.5",
-  "description": "Vue3 Org Chart is a tree diagram that visualizes the structure of an organization and the relationships and relatives. It is a Vue 3 component.",
+  "name": "orgchart-monorepo",
+  "private": true,
   "type": "module",
-  "files": [
-    "dist"
-  ],
-  "main": "./dist/vue3-org-chart.cjs",
-  "module": "./dist/vue3-org-chart.js",
-  "types": "./dist/vue3-org-chart.d.ts",
+  "packageManager": "pnpm@10.13.1",
+  "engines": {
+    "node": ">=22.12.0"
+  },
   "scripts": {
-    "dev": "vite",
-    "build": "run-p type-check \"build-only {@}\" --",
-    "preview": "vite preview",
-    "build-only": "vite build",
-    "type-check": "vue-tsc --build --force"
+    "test": "turbo run test",
+    "typecheck": "turbo run typecheck",
+    "lint": "oxlint packages",
+    "format": "prettier --write \"packages/**/*.{ts,vue,json,md}\""
   },
-  "homepage": "https://github.com/n1crack/vue3-org-chart#readme",
-  "keywords": [
-    "vue",
-    "org chart",
-    "tree",
-    "hierarchy"
-  ],
-  "repository": {
-    "type": "git",
-    "url": "git+https://github.com/n1crack/vue3-org-chart.git"
-  },
-  "author": {
-    "name": "Yusuf Özdemir",
-    "mail": "yusuf@ozdemir.be"
-  },
-  "license": "MIT",
   "devDependencies": {
-    "@tsconfig/node20": "^20.1.4",
-    "@types/node": "^18.7.1",
-    "@vitejs/plugin-vue": "^4.0.0",
-    "@vue/tsconfig": "^0.5.1",
-    "autoprefixer": "^10.4.8",
-    "npm-run-all2": "^6.2.0",
-    "postcss": "^8.4.16",
-    "sass": "^1.75.0",
-    "typescript": "~5.4.0",
-    "vite": "^5.0.12",
-    "vite-plugin-dts": "^4.5.3",
-    "vue-tsc": "^2.0.21"
-  },
-  "dependencies": {
-    "panzoom": "^9.4.3",
-    "vue": "^3.2.0"
+    "@types/node": "^22.10.0",
+    "oxlint": "^1.0.0",
+    "prettier": "^3.4.0",
+    "turbo": "^2.3.0",
+    "typescript": "5.9.2",
+    "vitest": "^4.1.0"
   }
 }
