@@ -1,7 +1,7 @@
 import type { TextMeasurer } from '../text/measure.js'
 import type { DrawCallStats, Frame, Renderer, RenderSurface } from './renderer.js'
 import type { Theme } from './theme.js'
-import { easeOutCubic } from '../viewport.js'
+import { easeInQuad, easeOutCubic } from '../viewport.js'
 
 /**
  * Canvas2D backend.
@@ -171,21 +171,39 @@ export function createCanvas2DRenderer(
     // path regardless of tree size — at most one ring is ever live (see
     // engine.ts's `setOpen`), so this never threatens the frame budget.
     //
+    // Growth and fade are deliberately driven by TWO DIFFERENT curves, not
+    // one shared between them:
+    //  - `easeOutCubic` (fast-start, slow-finish) for the outward `grow`:
+    //    the ring reaches most of its final size almost immediately, which
+    //    reads as a snappy "pop" reacting to the click.
+    //  - `easeInQuad` (slow-start, fast-finish), INVERTED, for `alpha`: the
+    //    ring stays clearly visible through roughly the first half of its
+    //    life and only falls away in the back half.
+    // Using `easeOutCubic` for BOTH (i.e. `alpha = 1 - easeOutCubic(progress)`)
+    // was tried and rejected: that curve reaches ~0.87 by `progress = 0.5`, so
+    // `1 -` that is already down to ~0.13 alpha at the HALFWAY point — the
+    // ring would be all but gone before `grow` had even finished expanding
+    // it, which reads as a flicker, not a soft fade. With the curves as
+    // written here, the ring is still near-fully grown AND still clearly
+    // visible together through the middle of the flash, and only fades away
+    // once it has already settled at its final size — see `easeInQuad`'s
+    // docblock in viewport.ts for the exact numbers.
+    //
     // `theme.ringMaxOffset`/`ringStrokeWidth` are screen pixels applied
     // directly here, in already-screen-space coordinates (`* k + camera.xy`
     // has already happened) — see their docblocks in theme.ts for why this
     // renderer needs no further division by `k` the way a world-space,
     // ctx-transform-scaled pipeline would.
     if (frame.ringActive) {
-      const eased = easeOutCubic(frame.ringProgress)
+      const progress = frame.ringProgress
+      const grow = theme.ringMaxOffset * easeOutCubic(progress)
       const rb = frame.ringBox
       const x = rb[0]! * k + camera.x
       const y = rb[1]! * k + camera.y
       const w = rb[2]! * k
       const h = rb[3]! * k
-      const grow = theme.ringMaxOffset * eased
       const ringRadius = (frame.tier === 'block' ? 0 : theme.cornerRadius * k) + grow
-      ctx.globalAlpha = 1 - frame.ringProgress
+      ctx.globalAlpha = 1 - easeInQuad(progress)
       ctx.beginPath()
       if (ringRadius > 0) ctx.roundRect(x - grow, y - grow, w + grow * 2, h + grow * 2, ringRadius)
       else ctx.rect(x - grow, y - grow, w + grow * 2, h + grow * 2)

@@ -928,9 +928,15 @@ describe('ChartEngine expand/collapse transition', () => {
 })
 
 // One-shot expand/collapse confirmation ring: fires once on the toggled
-// node, never for a bulk expandAll/collapseAll-style burst, and never while
-// animation is disabled. `render(now)` is always called with an explicit
-// `now` here, same discipline as the transition tests above.
+// node, and never while animation is disabled. Whether it fires for a
+// SPECIFIC `setOpen` call is an explicit signal from the caller (the third
+// argument, default `true`) rather than something the engine infers from how
+// many distinct indices got touched — see `setOpen`'s docblock in engine.ts
+// for why a distinct-index heuristic couldn't tell a bulk expandAll/
+// collapseAll burst apart from a single deep toggle (both touch many indices
+// before the next relayout consumes the candidate). `render(now)` is always
+// called with an explicit `now` here, same discipline as the transition
+// tests above.
 describe('ChartEngine one-shot toggle ring', () => {
   it('flashes a ring on the toggled node, then clears it once the flash completes', () => {
     const renderer = fakeRenderer()
@@ -973,22 +979,50 @@ describe('ChartEngine one-shot toggle ring', () => {
     expect(renderer.frames.at(-1)!.ringActive).toBe(false)
   })
 
-  it('does not fire for a bulk expandAll/collapseAll-style burst of distinct toggles', () => {
+  it('does not fire for a bulk expandAll/collapseAll-style burst when every call opts out', () => {
     const renderer = fakeRenderer()
     const { engine, tree } = seed(renderer)
     engine.setAnimate(true)
     engine.setCamera({ x: 0, y: 0, k: 1 })
     engine.render(1000)
 
-    // A bulk operation looks, from the engine's side, like several `setOpen`
-    // calls with no `render()` in between — indistinguishable from
-    // individual toggles unless the engine notices multiple DISTINCT source
-    // indices were touched before the next relayout consumes the candidate.
-    engine.setOpen(tree.idToIndex.get('b')!, false)
-    engine.setOpen(tree.idToIndex.get('d')!, false)
+    // Simulates what the vanilla layer's expandAll/collapseAll actually do:
+    // every `setOpen` call in the burst explicitly passes `ring: false`,
+    // regardless of how many distinct indices get touched before the next
+    // relayout consumes the (untouched, still -1) candidate.
+    engine.setOpen(tree.idToIndex.get('b')!, false, false)
+    engine.setOpen(tree.idToIndex.get('d')!, false, false)
     engine.render(1000)
 
     expect(renderer.frames.at(-1)!.ringActive).toBe(false)
+  })
+
+  it('flashes the ring on the top node of a deep toggle, even though every descendant is also toggled', () => {
+    const renderer = fakeRenderer()
+    const { engine, tree } = seed(renderer)
+    engine.setAnimate(true)
+    engine.setCamera({ x: 0, y: 0, k: 1 })
+    engine.render(1000) // all open — establishes the pre-toggle layout
+
+    const bIndex = tree.idToIndex.get('b')!
+    const bPrunedBefore = Array.from(engine.visibleToSource).indexOf(bIndex)
+    const bBoxBefore = [engine.boxes[bPrunedBefore * 4]!, engine.boxes[bPrunedBefore * 4 + 1]!]
+
+    // Simulates the vanilla layer's deep-collapse loop: 'b' is the node the
+    // user actually acted on ('c' is its only child, per DATA), so only
+    // 'b's `setOpen` call asks for a ring — 'c's does not, exactly as
+    // `OrgChartApi.collapse(id, true)`'s stack loop does (see index.ts).
+    // Without an explicit per-call signal, the old distinct-index heuristic
+    // would have seen two distinct indices touched before the next relayout
+    // and wrongly suppressed the ring for this single user action.
+    engine.setOpen(bIndex, false, true)
+    engine.setOpen(tree.idToIndex.get('c')!, false, false)
+    engine.render(1000)
+
+    const frame = renderer.frames.at(-1)!
+    expect(frame.ringActive).toBe(true)
+    expect(frame.ringBox[0]).toBeCloseTo(bBoxBefore[0]!, 10)
+    expect(frame.ringBox[1]).toBeCloseTo(bBoxBefore[1]!, 10)
   })
 
   it('does not fire when animation is disabled', () => {
@@ -1044,6 +1078,34 @@ describe('ChartEngine one-shot toggle ring', () => {
     expect(frame.ringProgress).toBeCloseTo(0, 5)
     expect(frame.ringBox[0]).toBeCloseTo(dBoxBefore[0]!, 10)
     expect(frame.ringBox[1]).toBeCloseTo(dBoxBefore[1]!, 10)
+  })
+
+  it('keeps `engine.ringActive` true after `transitioning` has already gone false', () => {
+    // RING_DURATION_MS (350ms) deliberately outlives TRANSITION_DURATION_MS
+    // (250ms, see engine.ts) so the ring is still resolving as the layout
+    // transition settles. A caller driving its own frame loop off only
+    // `transitioning` — as the vanilla layer's `scheduleFrame` briefly did —
+    // stops asking for frames the instant the transition ends and freezes
+    // the ring wherever its alpha happened to be, which reads as "it doesn't
+    // fade" rather than a completed animation. `ringActive` exists precisely
+    // so a caller can keep scheduling for the extra 100ms the ring needs.
+    const renderer = fakeRenderer()
+    const { engine, tree } = seed(renderer)
+    engine.setAnimate(true)
+    engine.setCamera({ x: 0, y: 0, k: 1 })
+    engine.render(1000)
+
+    engine.setOpen(tree.idToIndex.get('b')!, false)
+    engine.render(1000) // t=0 of both the transition and the ring
+    expect(engine.transitioning).toBe(true)
+    expect(engine.ringActive).toBe(true)
+
+    engine.render(1300) // past the 250ms transition, still inside the 350ms ring
+    expect(engine.transitioning).toBe(false)
+    expect(engine.ringActive).toBe(true)
+
+    engine.render(1400) // past both
+    expect(engine.ringActive).toBe(false)
   })
 })
 

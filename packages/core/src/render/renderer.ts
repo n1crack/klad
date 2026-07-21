@@ -110,9 +110,10 @@ export interface Frame {
    * True while a one-shot expand/collapse confirmation ring is being drawn
    * this frame — a brief outline flash around the node a `setOpen` toggle
    * just acted on. When false, `ringBox`/`ringProgress` are meaningless.
-   * Never true for a bulk `expandAll`/`collapseAll`-style operation (many
-   * distinct toggles in one burst) or while animation is disabled — see
-   * engine.ts's `setOpen`/`relayout` for how that's decided.
+   * Never true while animation is disabled, or for a `setOpen` call whose
+   * caller explicitly opted it out of the ring (a deep toggle's descendants,
+   * or an `expandAll`/`collapseAll` burst) — see engine.ts's
+   * `setOpen`/`relayout` for how that's decided.
    */
   ringActive: boolean
   /**

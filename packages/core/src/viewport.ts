@@ -163,3 +163,21 @@ export function easeOutCubic(t: number): number {
   const u = 1 - t
   return 1 - u * u * u
 }
+
+/**
+ * Slow start, fast finish — the mirror image of `easeOutCubic`. Used to
+ * drive the toggle ring's alpha fade (see canvas2d.ts): a fade-OUT built on
+ * `1 - easeOutCubic(t)` would spend most of `t`'s early range already near
+ * zero alpha (`easeOutCubic` reaches ~0.87 by `t = 0.5`, so `1 -` that is
+ * already down to ~0.13), i.e. exactly the "front-loaded, tail is gone
+ * almost immediately" complaint the ring fade is written to avoid. Reusing
+ * one curve for both "grows outward" (fast-start reads as a snappy pop) and
+ * "fades away" (which wants the OPPOSITE shape — held, then a quick fade at
+ * the end) was the mistake; this is the dedicated inverse for the second
+ * job. `1 - easeInQuad(t)` stays above 0.75 alpha through the first half of
+ * `t` and only drops away in the back half, which is what reads as "genuinely
+ * visible for most of the ring's life" rather than a flicker.
+ */
+export function easeInQuad(t: number): number {
+  return t * t
+}

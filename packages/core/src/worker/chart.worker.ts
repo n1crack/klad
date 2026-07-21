@@ -41,7 +41,7 @@ self.onmessage = (event: MessageEvent<MainToWorker>): void => {
         engine?.setCamera(message.camera)
         break
       case 'open':
-        engine?.setOpen(message.index, message.open)
+        engine?.setOpen(message.index, message.open, message.ring)
         break
       case 'resize':
         engine?.setViewport(message.width, message.height, message.dpr)
@@ -66,7 +66,10 @@ self.onmessage = (event: MessageEvent<MainToWorker>): void => {
     // with the main thread's `requestAnimationFrame` clock — nothing needs
     // threading across the postMessage boundary for this to stay correct.
     const drawn = engine.render()
-    post({ t: 'frame', visible: drawn, transitioning: engine.transitioning }, [drawn.buffer])
+    post(
+      { t: 'frame', visible: drawn, transitioning: engine.transitioning, ringActive: engine.ringActive },
+      [drawn.buffer],
+    )
 
     if (message.t === 'data' || message.t === 'options' || message.t === 'open') {
       const boxes = engine.boxes.slice()

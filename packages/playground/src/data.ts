@@ -195,18 +195,18 @@ export const EXAMPLES: Example[] = [
     id: 'compact-chip',
     name: 'Compact chip',
     description:
-      'A small pill with just a name, at nodeSize: 112×32 — a fraction of the default card. Shows how many more nodes fit on screen at density.',
+      "A small pill with just a name, at nodeSize: 112×32 — a fraction of the default card, with no room for its own toggle button. toggleOnNodeClick: true instead: tap a chip with reports to expand or collapse it.",
     data: SHARED_DATA,
-    options: { nodeSize: { w: 112, h: 32 } },
+    options: { nodeSize: { w: 112, h: 32 }, toggleOnNodeClick: true },
     content: 'chip',
   },
   {
     id: 'status-card',
     name: 'Status card',
     description:
-      'Department-coloured accent plus a headcount badge — a second dimension of meaning riding along with the hierarchy. nodeSize: 208×88.',
+      'Department-coloured accent plus a headcount badge — a second dimension of meaning riding along with the hierarchy. No room left for a toggle button at this density, so toggleOnNodeClick: true is on instead: tap the card to expand or collapse it. nodeSize: 208×88.',
     data: SHARED_DATA,
-    options: { nodeSize: { w: 208, h: 88 } },
+    options: { nodeSize: { w: 208, h: 88 }, toggleOnNodeClick: true },
     content: 'status',
   },
   {

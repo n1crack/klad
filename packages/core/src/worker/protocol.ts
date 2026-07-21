@@ -70,7 +70,12 @@ export type MainToWorker =
   | { t: 'data'; tree: WireTree; sizes: Float64Array; labels: string[]; open: Uint8Array }
   | { t: 'options'; options: Partial<EngineOptions> }
   | { t: 'camera'; camera: Camera }
-  | { t: 'open'; index: number; open: boolean }
+  /** `ring` mirrors `ChartEngine.setOpen`'s third argument — see its
+   * docblock in engine.ts. Sent as a definite `boolean` (never omitted)
+   * because `ChartHost.setOpen` resolves the caller's optional argument to a
+   * concrete value before this message is ever built, so the wire type
+   * doesn't need to repeat the "defaults to true" nuance. */
+  | { t: 'open'; index: number; open: boolean; ring: boolean }
   | { t: 'resize'; width: number; height: number; dpr: number }
   | { t: 'highlight'; ids: Uint32Array | null }
   | { t: 'drag'; index: number }
@@ -78,8 +83,11 @@ export type MainToWorker =
 
 export type WorkerToMain =
   | { t: 'layout'; boxes: Float64Array; bounds: Bounds; visibleToSource: Int32Array }
-  /** `transitioning` mirrors `ChartEngine.transitioning` at the moment this
-   * frame was drawn, so the main-thread host can tell a caller whether to
-   * keep scheduling frames without a worker round trip of its own. */
-  | { t: 'frame'; visible: Uint32Array; transitioning: boolean }
+  /** `transitioning`/`ringActive` mirror `ChartEngine.transitioning` /
+   * `ChartEngine.ringActive` at the moment this frame was drawn, so the
+   * main-thread host can tell a caller whether to keep scheduling frames
+   * without a worker round trip of its own. Both are threaded through
+   * separately — see `ChartEngine.ringActive`'s docblock for why the ring
+   * can still need frames after the layout transition has already ended. */
+  | { t: 'frame'; visible: Uint32Array; transitioning: boolean; ringActive: boolean }
   | { t: 'error'; message: string }

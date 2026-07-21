@@ -730,4 +730,181 @@ describe('createOrgChart', () => {
     expect(chart.api.getState().camera.k).toBeGreaterThan(before)
     chart.destroy()
   })
+
+  // --- toggleOnNodeClick ---------------------------------------------------
+  // DATA: 'a' (root, children b/c) -> 'b' (child d) -> 'd' (leaf); 'c' is
+  // also a leaf.
+
+  it('is off by default: a tap on a node with children does not toggle it', async () => {
+    const chart = make()
+    chart.api.fit()
+    await nextFrame()
+
+    const toggles: unknown[] = []
+    chart.on('toggle', (e) => toggles.push(e))
+
+    const state = chart.api.getState()
+    const canvas = document.querySelector('canvas')!
+    const rect = canvas.getBoundingClientRect()
+    const sx = rect.left + state.rootScreenCentre.x
+    const sy = rect.top + state.rootScreenCentre.y
+    canvas.dispatchEvent(new PointerEvent('pointerdown', { clientX: sx, clientY: sy, bubbles: true }))
+    window.dispatchEvent(new PointerEvent('pointerup', { clientX: sx, clientY: sy, bubbles: true }))
+    await nextFrame()
+
+    expect(toggles).toEqual([])
+    chart.destroy()
+  })
+
+  it('toggles a node with children on tap when toggleOnNodeClick is enabled, after emitting nodeClick', async () => {
+    const chart = make({ toggleOnNodeClick: true })
+    chart.api.fit()
+    await nextFrame()
+
+    const events: string[] = []
+    chart.on('nodeClick', () => events.push('nodeClick'))
+    chart.on('toggle', () => events.push('toggle'))
+
+    const before = chart.api.getState().visibleCount
+    const state = chart.api.getState()
+    const canvas = document.querySelector('canvas')!
+    const rect = canvas.getBoundingClientRect()
+    const sx = rect.left + state.rootScreenCentre.x
+    const sy = rect.top + state.rootScreenCentre.y
+    canvas.dispatchEvent(new PointerEvent('pointerdown', { clientX: sx, clientY: sy, bubbles: true }))
+    window.dispatchEvent(new PointerEvent('pointerup', { clientX: sx, clientY: sy, bubbles: true }))
+    await nextFrame()
+
+    // Root starts open (every node does, by default), so this tap collapses
+    // it — nodeClick unconditionally first, the toggle as its side effect.
+    expect(events).toEqual(['nodeClick', 'toggle'])
+    expect(chart.api.getState().visibleCount).toBeLessThan(before)
+    chart.destroy()
+  })
+
+  it('does nothing on tap for a leaf node — no toggle event, nothing to toggle', async () => {
+    const chart = make({
+      toggleOnNodeClick: true,
+      renderNode: (el: HTMLElement, ctx: { id: string }) => (el.textContent = ctx.id),
+    })
+    chart.api.fit()
+    await settle()
+    await nextFrame()
+    chart.api.zoomTo(1)
+    await settle()
+    await nextFrame()
+
+    const cards = Array.from(document.querySelectorAll<HTMLElement>('.orgchart-overlay-node'))
+    const leafCard = cards.find((el) => el.textContent === 'c') // 'c' has no children
+    expect(leafCard).not.toBeUndefined()
+
+    const toggles: unknown[] = []
+    chart.on('toggle', (e) => toggles.push(e))
+    const before = chart.api.getState().visibleCount
+
+    const rect = leafCard!.getBoundingClientRect()
+    const cx = rect.left + rect.width / 2
+    const cy = rect.top + rect.height / 2
+    leafCard!.dispatchEvent(new PointerEvent('pointerdown', { clientX: cx, clientY: cy, bubbles: true }))
+    window.dispatchEvent(new PointerEvent('pointerup', { clientX: cx, clientY: cy, bubbles: true }))
+    await nextFrame()
+
+    expect(toggles).toEqual([])
+    expect(chart.api.getState().visibleCount).toBe(before)
+    chart.destroy()
+  })
+
+  it("does not toggle when the tap lands on a card's own interactive content", async () => {
+    let buttonClicked = false
+    const chart = make({
+      toggleOnNodeClick: true,
+      renderNode: (el: HTMLElement, ctx: { id: string; hasChildren: boolean }) => {
+        el.textContent = ''
+        const label = document.createElement('span')
+        label.textContent = ctx.id
+        el.append(label)
+        if (ctx.hasChildren) {
+          const button = document.createElement('button')
+          button.textContent = 'toggle'
+          button.onclick = () => {
+            buttonClicked = true
+          }
+          el.append(button)
+        }
+      },
+    })
+    chart.api.fit()
+    await settle()
+    await nextFrame()
+    chart.api.zoomTo(1)
+    await settle()
+    await nextFrame()
+
+    // Root ('a') has children, so its card grew a button in the renderNode
+    // above — found by its label, since 'b' also has children (and so also
+    // has a button) and document order among pooled overlay nodes isn't
+    // guaranteed to put 'a' first.
+    const cards = Array.from(document.querySelectorAll<HTMLElement>('.orgchart-overlay-node'))
+    const rootCard = cards.find((el) => el.querySelector('span')?.textContent === 'a')
+    expect(rootCard).not.toBeUndefined()
+    const button = rootCard!.querySelector('button') as HTMLButtonElement
+    expect(button).not.toBeNull()
+
+    const toggles: unknown[] = []
+    chart.on('toggle', (e) => toggles.push(e))
+    const before = chart.api.getState().visibleCount
+
+    const rect = button.getBoundingClientRect()
+    const cx = rect.left + rect.width / 2
+    const cy = rect.top + rect.height / 2
+    button.dispatchEvent(new PointerEvent('pointerdown', { clientX: cx, clientY: cy, bubbles: true }))
+    window.dispatchEvent(new PointerEvent('pointerup', { clientX: cx, clientY: cy, bubbles: true }))
+    button.dispatchEvent(new MouseEvent('click', { bubbles: true }))
+    await nextFrame()
+
+    // The button's own click still fires (it's never preventDefault()-ed —
+    // see input.ts), but the click-to-toggle side effect is suppressed for
+    // interactive content, so the node itself is untouched.
+    expect(buttonClicked).toBe(true)
+    expect(toggles).toEqual([])
+    expect(chart.api.getState().visibleCount).toBe(before)
+    chart.destroy()
+  })
+
+  it('toggles once, not twice, on a double click', async () => {
+    // autoPanOnToggle disabled, and the tap coordinate recomputed after the
+    // first tap, so a real effect of THIS test's own toggle — the root's
+    // own box can shift once it has no visible children to centre over,
+    // independently of any camera move — doesn't make the second tap of the
+    // pair miss the node and turn this into a false negative.
+    const chart = make({ toggleOnNodeClick: true, autoPanOnToggle: false })
+    chart.api.fit()
+    await nextFrame()
+
+    const toggles: unknown[] = []
+    const dblclicks: string[] = []
+    chart.on('toggle', (e) => toggles.push(e))
+    chart.on('nodeDblClick', (e) => dblclicks.push(e.id))
+
+    const canvas = document.querySelector('canvas')!
+    const rect = canvas.getBoundingClientRect()
+    const tapRoot = () => {
+      const state = chart.api.getState()
+      const sx = rect.left + state.rootScreenCentre.x
+      const sy = rect.top + state.rootScreenCentre.y
+      canvas.dispatchEvent(new PointerEvent('pointerdown', { clientX: sx, clientY: sy, bubbles: true }))
+      window.dispatchEvent(new PointerEvent('pointerup', { clientX: sx, clientY: sy, bubbles: true }))
+    }
+
+    tapRoot()
+    await nextFrame()
+    tapRoot()
+    await nextFrame()
+
+    // The first tap of the pair toggles (closing the root); the second is
+    // recognised as a double click and does not toggle again.
+    expect(toggles.length).toBe(1)
+    expect(dblclicks).toEqual(['a'])
+    chart.destroy()
+  })
 })
