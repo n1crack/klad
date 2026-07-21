@@ -231,6 +231,142 @@ describe('accessibility tree', () => {
   })
 })
 
+describe('ArrowLeft/ArrowRight structural navigation', () => {
+  const rowFor = (name: string): HTMLElement =>
+    Array.from(document.querySelectorAll('[role="treeitem"]')).find((el) =>
+      el.textContent?.includes(name),
+    )! as HTMLElement
+
+  it('expands a collapsed node on ArrowRight, and focus survives the rebuild', async () => {
+    const chart = make()
+    await nextFrame()
+    chart.api.collapse('b')
+    await nextFrame()
+    const left = rowFor('Left')
+    left.focus()
+    expect(left.getAttribute('aria-expanded')).toBe('false')
+
+    left.dispatchEvent(new KeyboardEvent('keydown', { key: 'ArrowRight', bubbles: true }))
+    await nextFrame()
+
+    expect(rowFor('Left').getAttribute('aria-expanded')).toBe('true')
+    expect(document.activeElement).toBe(rowFor('Left'))
+    chart.destroy()
+  })
+
+  it('moves focus to the first child on ArrowRight when already expanded', async () => {
+    const chart = make()
+    await nextFrame()
+    const left = rowFor('Left')
+    left.focus()
+    expect(left.getAttribute('aria-expanded')).toBe('true')
+
+    left.dispatchEvent(new KeyboardEvent('keydown', { key: 'ArrowRight', bubbles: true }))
+    await nextFrame()
+
+    expect(document.activeElement).toBe(rowFor('Leaf'))
+    chart.destroy()
+  })
+
+  it('collapses an expanded node on ArrowLeft, and focus survives the rebuild', async () => {
+    const chart = make()
+    await nextFrame()
+    const left = rowFor('Left')
+    left.focus()
+    expect(left.getAttribute('aria-expanded')).toBe('true')
+
+    left.dispatchEvent(new KeyboardEvent('keydown', { key: 'ArrowLeft', bubbles: true }))
+    await nextFrame()
+
+    expect(rowFor('Left').getAttribute('aria-expanded')).toBe('false')
+    expect(document.activeElement).toBe(rowFor('Left'))
+    chart.destroy()
+  })
+
+  it('moves focus to the parent on ArrowLeft when already collapsed', async () => {
+    const chart = make()
+    await nextFrame()
+    chart.api.collapse('b')
+    await nextFrame()
+    const left = rowFor('Left')
+    left.focus()
+
+    left.dispatchEvent(new KeyboardEvent('keydown', { key: 'ArrowLeft', bubbles: true }))
+    await nextFrame()
+
+    expect(document.activeElement).toBe(rowFor('Root'))
+    chart.destroy()
+  })
+
+  it('does nothing on ArrowLeft at a collapsed root', async () => {
+    const chart = make()
+    await nextFrame()
+    chart.api.collapse('a')
+    await nextFrame()
+    const root = rowFor('Root')
+    root.focus()
+    expect(root.getAttribute('aria-expanded')).toBe('false')
+
+    root.dispatchEvent(new KeyboardEvent('keydown', { key: 'ArrowLeft', bubbles: true }))
+    await nextFrame()
+
+    expect(document.activeElement).toBe(rowFor('Root'))
+    expect(rowFor('Root').getAttribute('aria-expanded')).toBe('false')
+    chart.destroy()
+  })
+
+  it('does nothing on ArrowRight at a leaf', async () => {
+    const chart = make()
+    await nextFrame()
+    const leaf = rowFor('Leaf')
+    leaf.focus()
+    expect(leaf.hasAttribute('aria-expanded')).toBe(false)
+
+    leaf.dispatchEvent(new KeyboardEvent('keydown', { key: 'ArrowRight', bubbles: true }))
+    await nextFrame()
+
+    expect(document.activeElement).toBe(rowFor('Leaf'))
+    expect(rowFor('Leaf').hasAttribute('aria-expanded')).toBe(false)
+    chart.destroy()
+  })
+})
+
+describe('roving tabindex', () => {
+  it('keeps exactly one row tab-reachable at a time', async () => {
+    const chart = make()
+    await nextFrame()
+    const rows = () => Array.from(document.querySelectorAll('[role="treeitem"]')) as HTMLElement[]
+
+    const zeroCount = () => rows().filter((row) => row.tabIndex === 0).length
+    expect(zeroCount()).toBe(1)
+
+    const leaf = rows().find((row) => row.textContent?.includes('Leaf'))!
+    leaf.focus()
+    expect(zeroCount()).toBe(1)
+    expect(leaf.tabIndex).toBe(0)
+    for (const row of rows()) {
+      if (row !== leaf) expect(row.tabIndex).toBe(-1)
+    }
+    chart.destroy()
+  })
+
+  it('moves the tab stop when focus moves via arrow keys', async () => {
+    const chart = make()
+    await nextFrame()
+    const rows = () => Array.from(document.querySelectorAll('[role="treeitem"]')) as HTMLElement[]
+    const root = rows().find((row) => row.textContent?.includes('Root'))!
+    root.focus()
+    expect(root.tabIndex).toBe(0)
+
+    root.dispatchEvent(new KeyboardEvent('keydown', { key: 'ArrowDown', bubbles: true }))
+    const active = document.activeElement as HTMLElement
+    expect(active).not.toBe(root)
+    expect(active.tabIndex).toBe(0)
+    expect(root.tabIndex).toBe(-1)
+    chart.destroy()
+  })
+})
+
 describe('pooled row reuse', () => {
   function makeTree(ids: string[]) {
     const root = ids[0]!

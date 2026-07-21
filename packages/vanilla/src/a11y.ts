@@ -62,8 +62,32 @@ export function createA11yTree(container: HTMLElement, callbacks: A11yCallbacks)
     level: string
     expanded: string | undefined
     label: string
+    tabIndex: 0 | -1
   }
   const slotState: (SlotState | undefined)[] = []
+
+  /**
+   * The single node currently in the tab sequence — the ARIA "roving
+   * tabindex" pattern: exactly one row is ever reachable by sequential Tab,
+   * everything else is `tabIndex = -1` (still programmatically focusable via
+   * `.focus()`, just skipped by Tab). Without this every row would sit in
+   * the page's tab order, which at 50,000 nodes is its own accessibility bug.
+   *
+   * Tracked by node id, not by row/slot, for the same reason DOM focus is
+   * tracked by id elsewhere in this file: pooling can reassign a slot to a
+   * different node between updates. `undefined` means "no row has ever been
+   * focused" — `update()` then defaults the tab stop to the first row so a
+   * keyboard user tabbing into the mirror for the first time has *something*
+   * to land on.
+   */
+  let tabbableId: string | undefined
+
+  /** Tree structure retained from the last `update()`, so key handling can
+   * resolve "first child" and "parent" — the mirror is a flat list of rows,
+   * so those are not adjacency in that list, they require walking the tree
+   * itself. */
+  let currentTree: Tree | undefined
+  let currentOpen: Uint8Array | undefined
 
   /**
    * `isNew` tells the caller whether the row was just created. A brand new
@@ -85,7 +109,9 @@ export function createA11yTree(container: HTMLElement, callbacks: A11yCallbacks)
     }
     const row = document.createElement('div')
     row.setAttribute('role', 'treeitem')
-    row.tabIndex = 0
+    // Roving tabindex default: -1 until the main loop in `update()` decides
+    // which row (if any) is the current tab stop.
+    row.tabIndex = -1
     row.style.contentVisibility = 'auto'
     root.appendChild(row)
     pool.push(row)
@@ -120,12 +146,94 @@ export function createA11yTree(container: HTMLElement, callbacks: A11yCallbacks)
         event.preventDefault()
         ordered[ordered.length - 1]?.focus()
         break
+      case 'ArrowRight':
+        event.preventDefault()
+        expandOrMoveToFirstChild(id)
+        break
+      case 'ArrowLeft':
+        event.preventDefault()
+        collapseOrMoveToParent(id)
+        break
     }
   }
 
+  /**
+   * ArrowRight, ARIA tree pattern: a collapsed node expands (focus stays put
+   * — expanding is the whole action); an already-expanded node instead moves
+   * focus to its first child; a leaf does nothing.
+   *
+   * `currentTree`/`currentOpen` are read fresh from the last `update()`
+   * rather than anything captured earlier, and `rowsById` likewise reflects
+   * that same last update — so a child row looked up here is one that
+   * exists *right now*, never a stale reference from before some earlier
+   * rebuild.
+   */
+  const expandOrMoveToFirstChild = (id: string): void => {
+    if (currentTree === undefined || currentOpen === undefined) return
+    const index = currentTree.idToIndex.get(id)
+    if (index === undefined) return
+    const hasChildren = currentTree.childStart[index + 1]! > currentTree.childStart[index]!
+    if (!hasChildren) return
+    if (currentOpen[index] !== 1) {
+      // Collapsed: expand it. `onActivate` is the same toggle Enter/Space
+      // already uses; calling it here is safe precisely because this branch
+      // only runs when the node is known to be collapsed, so the toggle can
+      // only move it one way — open.
+      callbacks.onActivate(id)
+      return
+    }
+    // Already expanded: move to the first child. The row for it already
+    // exists (the mirror lists every node regardless of expand state — only
+    // `aria-expanded` reflects collapse, never row presence, so a single
+    // toggle never costs a rebuild), so this is a plain synchronous focus
+    // move, no rebuild to wait for.
+    const firstChild = currentTree.childIndex[currentTree.childStart[index]!]
+    if (firstChild === undefined) return
+    const childId = currentTree.indexToId[firstChild]!
+    rowsById.get(childId)?.focus()
+  }
+
+  /**
+   * ArrowLeft, ARIA tree pattern: an expanded node collapses (focus stays
+   * put); a collapsed node or a leaf instead moves focus to its parent; a
+   * root has no parent, so that case is a no-op rather than throwing or
+   * moving focus somewhere arbitrary.
+   */
+  const collapseOrMoveToParent = (id: string): void => {
+    if (currentTree === undefined || currentOpen === undefined) return
+    const index = currentTree.idToIndex.get(id)
+    if (index === undefined) return
+    const hasChildren = currentTree.childStart[index + 1]! > currentTree.childStart[index]!
+    const expanded = hasChildren && currentOpen[index] === 1
+    if (expanded) {
+      // Same reasoning as the mirror-image branch above: only reached when
+      // the node is known to be expanded, so the toggle can only collapse it.
+      callbacks.onActivate(id)
+      return
+    }
+    const parentIndex = currentTree.parent[index]!
+    if (parentIndex === -1) return // a root has no parent
+    const parentId = currentTree.indexToId[parentIndex]!
+    rowsById.get(parentId)?.focus()
+  }
+
   const onFocusIn = (event: FocusEvent): void => {
-    const id = (event.target as HTMLElement).dataset.orgchartId
-    if (id !== undefined) callbacks.onFocus(id)
+    const row = event.target as HTMLElement
+    const id = row.dataset.orgchartId
+    if (id === undefined) return
+    // Roving tabindex: whichever row focus just landed on becomes the one
+    // tab stop, and the row that held that title before (if any, and if it
+    // still exists) steps out of the tab order. Every focus move in this
+    // file — arrow keys, Home/End, `focusNode`, and a plain Tab from outside
+    // — funnels through this one handler, so this is the single place that
+    // needs to enforce it.
+    if (tabbableId !== id) {
+      const previous = tabbableId === undefined ? undefined : rowsById.get(tabbableId)
+      if (previous !== undefined) previous.tabIndex = -1
+      row.tabIndex = 0
+      tabbableId = id
+    }
+    callbacks.onFocus(id)
   }
 
   root.addEventListener('keydown', onKeyDown)
@@ -148,6 +256,21 @@ export function createA11yTree(container: HTMLElement, callbacks: A11yCallbacks)
           ? activeElement.dataset.orgchartId
           : undefined
 
+      currentTree = tree
+      currentOpen = open
+
+      // Roving tabindex target for this render: keep whatever node last held
+      // the tab stop, provided it still exists in this tree — otherwise fall
+      // back to the first row, the same default the ARIA tree pattern uses
+      // for a tree nobody has focused yet.
+      const effectiveTabbableId =
+        tabbableId !== undefined && tree.idToIndex.has(tabbableId)
+          ? tabbableId
+          : tree.count > 0
+            ? tree.indexToId[tree.order[0]!]!
+            : undefined
+      tabbableId = effectiveTabbableId
+
       activeCount = 0
       ordered = []
       rowsById.clear()
@@ -159,6 +282,7 @@ export function createA11yTree(container: HTMLElement, callbacks: A11yCallbacks)
         const level = String(tree.depth[index]! + 1)
         const label = labelOf(index) || id
         const expanded = hasChildren ? (open[index] === 1 ? 'true' : 'false') : undefined
+        const tabIndexValue: 0 | -1 = id === effectiveTabbableId ? 0 : -1
 
         const slotIndex = activeCount
         const { row, isNew } = acquire()
@@ -173,6 +297,7 @@ export function createA11yTree(container: HTMLElement, callbacks: A11yCallbacks)
           row.setAttribute('aria-level', level)
           if (expanded !== undefined) row.setAttribute('aria-expanded', expanded)
           row.textContent = label
+          row.tabIndex = tabIndexValue
         } else {
           if (prev.id !== id) row.dataset.orgchartId = id
           if (prev.level !== level) row.setAttribute('aria-level', level)
@@ -186,9 +311,10 @@ export function createA11yTree(container: HTMLElement, callbacks: A11yCallbacks)
             }
           }
           if (prev.label !== label) row.textContent = label
+          if (prev.tabIndex !== tabIndexValue) row.tabIndex = tabIndexValue
         }
 
-        slotState[slotIndex] = { id, level, expanded, label }
+        slotState[slotIndex] = { id, level, expanded, label, tabIndex: tabIndexValue }
         rowsById.set(id, row)
         ordered.push(row)
         activeCount++
@@ -231,6 +357,9 @@ export function createA11yTree(container: HTMLElement, callbacks: A11yCallbacks)
       pool.length = 0
       slotState.length = 0
       activeCount = 0
+      tabbableId = undefined
+      currentTree = undefined
+      currentOpen = undefined
     },
   }
 }
