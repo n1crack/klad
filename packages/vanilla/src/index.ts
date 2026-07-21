@@ -19,6 +19,7 @@ import {
   type Warning,
   type ZoomLimits,
 } from '@n1crack/orgchart-core'
+import { createA11yTree, type A11yTree } from './a11y.js'
 import { attachInput } from './input.js'
 import { createOverlay } from './overlay.js'
 
@@ -183,6 +184,7 @@ export function createOrgChart(host: HTMLElement, options: Options): OrgChartIns
         for (const warning of warnings) emit('warning', warning)
       })
     }
+    a11y?.update(tree, open, (index) => labelOf(itemFor(index)))
   }
 
   const initOpen = (): void => {
@@ -230,6 +232,7 @@ export function createOrgChart(host: HTMLElement, options: Options): OrgChartIns
   // `overlay` and `a11y` both call into `api`, so they are created after it —
   // see below the `api` declaration.
   let overlay: ReturnType<typeof createOverlay> | null = null
+  let a11y: A11yTree | null = null
 
   const getState = (): ChartState => {
     const rootBox = tree.roots.length > 0 ? boxOfSource(tree.roots[0]!) : null
@@ -297,6 +300,7 @@ export function createOrgChart(host: HTMLElement, options: Options): OrgChartIns
     open[index] = value ? 1 : 0
     chartHost.setOpen(index, value)
     emit('toggle', { id: tree.indexToId[index]!, open: value })
+    a11y?.update(tree, open, (i) => labelOf(itemFor(i)))
     scheduleFrame()
   }
 
@@ -454,6 +458,19 @@ export function createOrgChart(host: HTMLElement, options: Options): OrgChartIns
     },
   })
 
+  // Created here, after `api`, for the same reason as `overlay`: its `onFocus`
+  // callback calls `api.focus`.
+  a11y = createA11yTree(host, {
+    onActivate(id) {
+      const index = tree.idToIndex.get(id)
+      if (index === undefined) return
+      setOpenFlag(index, open[index] !== 1)
+    },
+    onFocus(id) {
+      api.focus(id)
+    },
+  })
+
   rebuildItemIndex()
   initOpen()
   applyData()
@@ -468,6 +485,7 @@ export function createOrgChart(host: HTMLElement, options: Options): OrgChartIns
       observer.disconnect()
       detachInput()
       overlay?.destroy()
+      a11y?.destroy()
       chartHost.destroy()
       canvas.remove()
       overlayRoot.remove()
