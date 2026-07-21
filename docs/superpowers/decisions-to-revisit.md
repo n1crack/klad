@@ -6,8 +6,11 @@ Four resolved by the project owner:
 
 - **#10 camera animation** — RESOLVED: add a 200ms ease-in-out tween. `interpolate` and
   `easeInOutCubic` already exist in core, tested but unwired.
-- **#23 accessibility mirror rebuild** — RESOLVED: convert to a pooled/diffed mirror,
-  reusing `overlay.ts`'s slot-pooling pattern. Measured 15.9ms at 10k, ~70-95ms at 50k.
+- **#23 accessibility mirror rebuild** — RESOLVED and DONE. Pooled and diffed. A single
+  toggle at 10k nodes went from ~15.9ms to ~1.0ms, roughly 15-17x. Cold population is
+  unchanged at ~16-21ms, which is fine — it happens once. The diff is still O(count) per
+  update because the interface passes the whole tree rather than a change list, so 50k
+  extrapolates to ~4-5ms; still inside a frame, and worth revisiting only if that changes.
 - **#9 missing events** — RESOLVED: ship both `nodeHover` and `nodeDblClick`.
 - **Next major work** — the React adapter. The vanilla API is now frozen by real Vue use.
 
