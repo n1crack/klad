@@ -1,5 +1,21 @@
 # Decisions taken unilaterally, to review once the UI is on screen
 
+## Reviewed 2026-07-21, after the playground was running
+
+Four resolved by the project owner:
+
+- **#10 camera animation** — RESOLVED: add a 200ms ease-in-out tween. `interpolate` and
+  `easeInOutCubic` already exist in core, tested but unwired.
+- **#23 accessibility mirror rebuild** — RESOLVED: convert to a pooled/diffed mirror,
+  reusing `overlay.ts`'s slot-pooling pattern. Measured 15.9ms at 10k, ~70-95ms at 50k.
+- **#9 missing events** — RESOLVED: ship both `nodeHover` and `nodeDblClick`.
+- **Next major work** — the React adapter. The vanilla API is now frozen by real Vue use.
+
+Three more were resolved by looking at the running chart, and are already fixed:
+`lr`/`rl` rotated the node boxes; the fixed zoom floor stopped `fit()` from fitting;
+and opening fitted made every card an unreadable sliver.
+
+
 Standing instruction from the project owner: keep moving without asking; where a
 choice is genuinely uncertain, pick the recommended option, record it here, and
 review the whole list together after there is a working UI.
