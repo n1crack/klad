@@ -38,7 +38,7 @@ export function pruneToVisible(tree: Tree, open: Uint8Array): VisibleTree {
   const count = kept.length
   const toSource = Int32Array.from(kept)
   const parent = new Int32Array(count)
-  const indexToId: string[] = new Array(count)
+  const indexToId: string[] = Array.from({ length: count })
   const idToIndex = new Map<string, number>()
   const depth = new Int32Array(count)
   const order = new Int32Array(count)

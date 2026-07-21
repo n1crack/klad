@@ -240,7 +240,7 @@ export function pruneToVisible(tree: Tree, open: Uint8Array): VisibleTree {
   const count = kept.length
   const toSource = Int32Array.from(kept)
   const parent = new Int32Array(count)
-  const indexToId: string[] = new Array(count)
+  const indexToId: string[] = Array.from({ length: count })
   const idToIndex = new Map<string, number>()
   const depth = new Int32Array(count)
   const order = new Int32Array(count)
@@ -1464,7 +1464,7 @@ export function toWireTree(tree: Tree): WireTree {
  * `layout` both require a full `Tree`, and neither reads the ids.
  */
 export function wireTreeToTree(wire: WireTree): Tree {
-  const indexToId: string[] = new Array(wire.count)
+  const indexToId: string[] = Array.from({ length: wire.count })
   const idToIndex = new Map<string, number>()
   for (let i = 0; i < wire.count; i++) {
     const id = String(i)
@@ -1605,7 +1605,7 @@ export function createChartEngine(renderer: Renderer): ChartEngine {
 
     const n = pruned.tree.count
     const sizes = new Float64Array(n * 2)
-    prunedLabels = new Array(n)
+    prunedLabels = Array.from({ length: n })
     for (let i = 0; i < n; i++) {
       const src = visibleToSource[i]!
       sizes[i * 2] = sourceSizes[src * 2] ?? 0
@@ -2837,7 +2837,7 @@ export function createOrgChart(host: HTMLElement, options: Options): OrgChartIns
 
   const applyData = (): void => {
     const sizes = new Float64Array(tree.count * 2)
-    const labels: string[] = new Array(tree.count)
+    const labels: string[] = Array.from({ length: tree.count })
     for (let i = 0; i < tree.count; i++) {
       const item = itemFor(i)
       const size = sizeOf(item)
