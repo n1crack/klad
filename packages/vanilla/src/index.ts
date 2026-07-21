@@ -397,10 +397,12 @@ export function createOrgChart(host: HTMLElement, options: Options): OrgChartIns
   const scheduleFrame = (): void => {
     if (frameRequested || destroyed) return
     frameRequested = true
-    requestAnimationFrame(async () => {
+    requestAnimationFrame(async (now) => {
       frameRequested = false
       if (destroyed) return
-      drawn = await chartHost.render()
+      // The engine's expand/collapse transition is a pure function of time and
+      // takes its clock from here, the same discipline `viewport.ts` follows.
+      drawn = await chartHost.render(now)
       // Layout output only changes on relayout, but reading it every frame is a
       // property access, and it keeps the overlay from ever using stale boxes.
       boxes = chartHost.boxes
@@ -419,7 +421,7 @@ export function createOrgChart(host: HTMLElement, options: Options): OrgChartIns
         // would read as a glitch, not a courtesy.
         camera = openingCamera()
         chartHost.setCamera(camera)
-        drawn = await chartHost.render()
+        drawn = await chartHost.render(now)
         boxes = chartHost.boxes
       }
       // Runs after the relayout above, so it sees the boxes the toggle actually
@@ -446,6 +448,11 @@ export function createOrgChart(host: HTMLElement, options: Options): OrgChartIns
         }
       }
       publish()
+
+      // A layout transition advances only when a frame is drawn, so keep asking
+      // for frames until it finishes. Nothing else would drive it: the camera may
+      // be perfectly still while the nodes are still moving.
+      if (chartHost.transitioning) scheduleFrame()
     })
   }
 
@@ -455,6 +462,15 @@ export function createOrgChart(host: HTMLElement, options: Options): OrgChartIns
     chartHost.setCamera(camera)
     emit('viewportChange', { camera })
     scheduleFrame()
+  }
+
+  /**
+   * Keeps the engine's transition setting in step with ours. The engine cannot
+   * read `prefers-reduced-motion` — it has no DOM — so this layer owns the
+   * decision and pushes it down.
+   */
+  const syncAnimate = (): void => {
+    chartHost.setAnimate(animationsEnabled())
   }
 
   const prefersReducedMotion = (): boolean =>
@@ -917,6 +933,7 @@ export function createOrgChart(host: HTMLElement, options: Options): OrgChartIns
   })
 
   rebuildItemIndex()
+  syncAnimate()
   initOpen()
   applyData()
   resize()
@@ -941,6 +958,7 @@ export function createOrgChart(host: HTMLElement, options: Options): OrgChartIns
       currentOptions = { ...currentOptions, ...partial, data }
       tree = normalize(data)
       rebuildItemIndex()
+      syncAnimate()
       initOpen()
       // A pending auto-pan/full-fit names indices or relies on state from the
       // tree that just got replaced; a reload invalidates both.
