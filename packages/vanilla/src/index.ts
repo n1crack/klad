@@ -96,6 +96,9 @@ export interface OrgChartInstance {
 
 const DEFAULT_LIMITS: ZoomLimits = { minK: 0.05, maxK: 4 }
 
+/** Screen-space breathing room left around the chart by `fit()`. */
+const FIT_PADDING = 32
+
 export function createOrgChart(host: HTMLElement, options: Options): OrgChartInstance {
   const theme = resolveTheme(options.theme)
   const limits = options.zoomLimits ?? DEFAULT_LIMITS
@@ -266,6 +269,14 @@ export function createOrgChart(host: HTMLElement, options: Options): OrgChartIns
    */
   let a11yDirty = false
 
+  /**
+   * The chart cannot be fitted at construction time: `bounds` is empty until the
+   * first render triggers a layout, so fitting eagerly produces an arbitrary camera
+   * and the first paint shows the chart adrift. Defer it to the first frame that
+   * reports real bounds, then re-render once so the user never sees the wrong view.
+   */
+  let needsInitialFit = true
+
   const refreshA11y = (): void => {
     if (!a11yDirty) return
     a11yDirty = false
@@ -288,6 +299,14 @@ export function createOrgChart(host: HTMLElement, options: Options): OrgChartIns
       if (chartHost.visibleToSource !== visibleToSource) {
         visibleToSource = chartHost.visibleToSource
         rebuildPrunedIndex()
+      }
+      if (needsInitialFit && bounds.maxX > bounds.minX && bounds.maxY > bounds.minY) {
+        needsInitialFit = false
+        const rect = host.getBoundingClientRect()
+        camera = fitCamera(bounds, { width: rect.width, height: rect.height }, FIT_PADDING, limits)
+        chartHost.setCamera(camera)
+        drawn = await chartHost.render()
+        boxes = chartHost.boxes
       }
       refreshA11y()
       if (overlay !== null) {
@@ -354,7 +373,7 @@ export function createOrgChart(host: HTMLElement, options: Options): OrgChartIns
     },
     fit() {
       const rect = host.getBoundingClientRect()
-      setCamera(fitCamera(bounds, { width: rect.width, height: rect.height }, 32, limits))
+      setCamera(fitCamera(bounds, { width: rect.width, height: rect.height }, FIT_PADDING, limits))
     },
     reset() {
       api.fit()
@@ -499,7 +518,6 @@ export function createOrgChart(host: HTMLElement, options: Options): OrgChartIns
   initOpen()
   applyData()
   resize()
-  api.fit()
   queueMicrotask(() => emit('ready'))
 
   return {
@@ -539,3 +557,17 @@ export function createOrgChart(host: HTMLElement, options: Options): OrgChartIns
 
 export { createOverlay } from './overlay.js'
 export type { OverlayItem } from './overlay.js'
+
+// Re-exported so a consumer never has to reach past this package into the core to
+// name the shapes it already receives.
+export type {
+  Bounds,
+  Camera,
+  LodThresholds,
+  NodeData,
+  Orientation,
+  Size,
+  Theme,
+  Warning,
+  ZoomLimits,
+} from '@n1crack/orgchart-core'

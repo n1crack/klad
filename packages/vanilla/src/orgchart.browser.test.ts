@@ -163,6 +163,28 @@ describe('createOrgChart', () => {
     chart.destroy()
   })
 
+  // Regression: fit() used to run at construction, before the first render had
+  // produced any layout, so bounds were empty and every chart opened on an
+  // arbitrary camera. The first thing a user saw was the chart adrift.
+  it('opens already fitted, not on an arbitrary camera', async () => {
+    const chart = make()
+    await nextFrame()
+    await nextFrame()
+
+    const state = chart.api.getState()
+    expect(state.bounds.maxX).toBeGreaterThan(0)
+    // A real fit of this fixture into 800x600 lands well above 1x; an unfitted
+    // chart would still be sitting at the default k = 1.
+    expect(state.camera.k).not.toBe(1)
+
+    // And the content is actually on screen: the root's centre falls inside the host.
+    expect(state.rootScreenCentre.x).toBeGreaterThan(0)
+    expect(state.rootScreenCentre.x).toBeLessThan(800)
+    expect(state.rootScreenCentre.y).toBeGreaterThan(0)
+    expect(state.rootScreenCentre.y).toBeLessThan(600)
+    chart.destroy()
+  })
+
   it('warns instead of throwing on unresolvable parents', async () => {
     const warnings: unknown[] = []
     const chart = createOrgChart(host(), {
