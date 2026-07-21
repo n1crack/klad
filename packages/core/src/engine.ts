@@ -1,6 +1,7 @@
 import type { Bounds } from './types.js'
 import type { Camera } from './viewport.js'
 import type { Renderer } from './render/renderer.js'
+import type { ExportData } from './render/svg.js'
 import type { EngineOptions, WireTree } from './worker/protocol.js'
 import { wireTreeToTree } from './worker/protocol.js'
 import { pruneToVisible } from './visible.js'
@@ -54,6 +55,18 @@ export interface ChartEngine {
   /** World-space hit test; returns a SOURCE index or -1. Always resolves
    * against the final layout, even mid-transition. */
   hitTest(worldX: number, worldY: number): number
+  /**
+   * Snapshot for `render/svg.ts`'s `toSVG`/for a host's `toBlob`/`print`.
+   * Deliberately just the FINAL layout (never an in-progress transition's
+   * interpolated positions, same discipline as `boxes`/`hitTest` above) over
+   * the whole PRUNED tree — i.e. every visible node, not merely whatever the
+   * current camera/viewport happens to cull in, since export's whole point
+   * is to cover the visible tree regardless of viewport (see the design doc,
+   * section 11.3). Forces a relayout first if one is pending, exactly like
+   * `hitTest` does, so a caller who exports immediately after `setData`/
+   * `setOpen` without an intervening `render()` still gets current geometry.
+   */
+  getExportData(): ExportData
 }
 
 const DEFAULT_OPTIONS: EngineOptions = {
@@ -982,6 +995,16 @@ export function createChartEngine(renderer: Renderer): ChartEngine {
       if (quad === null) return -1
       const pruned = quad.hitTest(worldX, worldY)
       return pruned === -1 ? -1 : visibleToSource[pruned]!
+    },
+    getExportData() {
+      if (layoutDirty) relayout(performance.now())
+      return {
+        boxes,
+        parent: prunedParent,
+        labels: prunedLabels,
+        bounds,
+        horizontal: options.orientation === 'lr' || options.orientation === 'rl',
+      }
     },
   }
 }
