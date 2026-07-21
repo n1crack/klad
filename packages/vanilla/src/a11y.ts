@@ -275,8 +275,21 @@ export function createA11yTree(container: HTMLElement, callbacks: A11yCallbacks)
       ordered = []
       rowsById.clear()
 
+      // A collapsed node's descendants must not appear in the mirror at all.
+      // Leaving them in while flipping only `aria-expanded` makes the mirror
+      // contradict itself: a screen reader announces the node as collapsed and
+      // then reads the children it just said were hidden. Costs nothing extra —
+      // this loop already walks every node, and preorder guarantees a parent is
+      // decided before its children, so visibility resolves in the same pass.
+      const visible = new Uint8Array(tree.count)
+
       for (let k = 0; k < tree.count; k++) {
         const index = tree.order[k]!
+        const parent = tree.parent[index]!
+        const isVisible = parent === -1 || (visible[parent] === 1 && open[parent] === 1)
+        visible[index] = isVisible ? 1 : 0
+        if (!isVisible) continue
+
         const id = tree.indexToId[index]!
         const hasChildren = tree.childStart[index + 1]! > tree.childStart[index]!
         const level = String(tree.depth[index]! + 1)

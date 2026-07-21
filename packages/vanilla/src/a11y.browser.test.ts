@@ -541,4 +541,46 @@ describe('pooled update performance', () => {
     // population of the same tree.
     expect(diffAvg).toBeLessThan(fullAvg)
   })
+
+  it('removes the descendants of a collapsed node from the mirror', async () => {
+    // Leaving them in while flipping only aria-expanded makes the mirror
+    // contradict itself — a screen reader announces the node as collapsed and
+    // then reads the children it just said were hidden.
+    const chart = make()
+    await nextFrame()
+    const names = () =>
+      Array.from(document.querySelectorAll('[role="treeitem"]')).map((el) => el.textContent)
+
+    expect(names()).toContain('Leaf')
+
+    chart.api.collapse('b')
+    await nextFrame()
+    expect(names()).not.toContain('Leaf')
+    // The collapsed node itself stays, and says so.
+    const left = Array.from(document.querySelectorAll('[role="treeitem"]')).find((el) =>
+      el.textContent?.includes('Left'),
+    )!
+    expect(left.getAttribute('aria-expanded')).toBe('false')
+
+    chart.api.expand('b')
+    await nextFrame()
+    expect(names()).toContain('Leaf')
+    chart.destroy()
+  })
+
+  it('keeps arrow navigation consistent with the rows actually present', async () => {
+    const chart = make()
+    await nextFrame()
+    chart.api.collapse('b')
+    await nextFrame()
+
+    const rows = Array.from(document.querySelectorAll('[role="treeitem"]')) as HTMLElement[]
+    rows[0]!.focus()
+    rows[0]!.dispatchEvent(new KeyboardEvent('keydown', { key: 'End', bubbles: true }))
+    await nextFrame()
+    // End must land on the last *present* row, never on a hidden descendant.
+    expect(document.activeElement).toBe(rows[rows.length - 1])
+    chart.destroy()
+  })
+
 })
