@@ -86,6 +86,29 @@ export function createCanvas2DRenderer(
     }
 
     const radius = frame.tier === 'block' ? 0 : theme.cornerRadius * k
+
+    // Nodes a collapse is still removing, drawn before the surviving nodes
+    // so a settled ancestor paints crisply over whatever is shrinking into
+    // it. No connector, no label, no highlight/drag handling — a ghost is
+    // gone from the pruned tree and none of those concepts apply to it.
+    if (frame.ghostCount > 0) {
+      for (let g = 0; g < frame.ghostCount; g++) {
+        const o = g * 4
+        const x = frame.ghostBoxes[o]! * k + camera.x
+        const y = frame.ghostBoxes[o + 1]! * k + camera.y
+        const w = frame.ghostBoxes[o + 2]! * k
+        const h = frame.ghostBoxes[o + 3]! * k
+        ctx.globalAlpha = frame.ghostAlpha[g]!
+        ctx.beginPath()
+        if (radius > 0) ctx.roundRect(x, y, w, h, radius)
+        else ctx.rect(x, y, w, h)
+        ctx.fillStyle = theme.nodeFill
+        ctx.fill()
+        calls.nodes++
+      }
+      ctx.globalAlpha = 1
+    }
+
     for (let n = 0; n < visibleCount; n++) {
       const i = visible[n]!
       const o = i * 4
@@ -94,8 +117,13 @@ export function createCanvas2DRenderer(
       const w = boxes[o + 2]! * k
       const h = boxes[o + 3]! * k
       const lit = frame.highlight !== null && frame.highlight[i] === 1
+      // Nodes newly revealed by an in-progress expand fade in; `revealAlpha`
+      // is null whenever no transition is affecting opacity this frame, so
+      // the common case never touches `globalAlpha` for this reason at all.
+      const revealAlpha = frame.revealAlpha !== null ? frame.revealAlpha[n]! : 1
 
       if (i === frame.dragIndex) ctx.globalAlpha = theme.dragGhostAlpha
+      else if (revealAlpha < 1) ctx.globalAlpha = revealAlpha
 
       ctx.beginPath()
       if (radius > 0) ctx.roundRect(x, y, w, h, radius)
@@ -109,7 +137,7 @@ export function createCanvas2DRenderer(
       }
       calls.nodes++
 
-      if (i === frame.dragIndex) ctx.globalAlpha = 1
+      if (i === frame.dragIndex || revealAlpha < 1) ctx.globalAlpha = 1
     }
 
     if (frame.tier !== 'block' && frame.labels.length > 0) {
@@ -125,11 +153,14 @@ export function createCanvas2DRenderer(
         const w = boxes[o + 2]! * k
         const text = measurer.truncate(label, Math.max(0, w - pad * 2))
         if (text === '') continue
+        const revealAlpha = frame.revealAlpha !== null ? frame.revealAlpha[n]! : 1
+        if (revealAlpha < 1) ctx.globalAlpha = revealAlpha
         ctx.fillText(
           text,
           boxes[o]! * k + camera.x + pad,
           (boxes[o + 1]! + boxes[o + 3]! / 2) * k + camera.y,
         )
+        if (revealAlpha < 1) ctx.globalAlpha = 1
         calls.labels++
       }
     }

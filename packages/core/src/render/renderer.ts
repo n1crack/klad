@@ -78,6 +78,24 @@ export interface Frame {
   highlight: Uint8Array | null
   /** Node currently being dragged, or -1. Drawn with reduced alpha. */
   dragIndex: number
+  /**
+   * Per-SLOT opacity override for `visible[0, visibleCount)` — `revealAlpha[n]`
+   * pairs with `visible[n]`, unlike `highlight` which is keyed by pruned
+   * index. `null` in the common case (no expand/collapse transition is
+   * affecting opacity this frame); when present, only nodes newly revealed by
+   * an in-progress expand carry a value below `1`.
+   */
+  revealAlpha: Float32Array | null
+  /**
+   * Nodes removed by an in-progress collapse, still shrinking/fading toward
+   * the ancestor that swallowed them. `[x, y, w, h]` per ghost at
+   * `ghostBoxes[i * 4 .. i * 4 + 3]` (world units, same convention as
+   * `boxes`); `ghostAlpha[i]` is its opacity. Only the first `ghostCount`
+   * entries are meaningful. No connector or label is drawn for a ghost.
+   */
+  ghostBoxes: Float64Array
+  ghostAlpha: Float32Array
+  ghostCount: number
 }
 
 export interface DrawCallStats {

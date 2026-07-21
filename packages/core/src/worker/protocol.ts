@@ -74,8 +74,12 @@ export type MainToWorker =
   | { t: 'resize'; width: number; height: number; dpr: number }
   | { t: 'highlight'; ids: Uint32Array | null }
   | { t: 'drag'; index: number }
+  | { t: 'animate'; enabled: boolean }
 
 export type WorkerToMain =
   | { t: 'layout'; boxes: Float64Array; bounds: Bounds; visibleToSource: Int32Array }
-  | { t: 'frame'; visible: Uint32Array }
+  /** `transitioning` mirrors `ChartEngine.transitioning` at the moment this
+   * frame was drawn, so the main-thread host can tell a caller whether to
+   * keep scheduling frames without a worker round trip of its own. */
+  | { t: 'frame'; visible: Uint32Array; transitioning: boolean }
   | { t: 'error'; message: string }
