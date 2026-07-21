@@ -52,16 +52,26 @@ export interface Frame {
   /** Parent index per node, -1 for roots. Used to draw connectors. */
   parent: Int32Array
   /**
-   * Indices to draw. `visible[0, visibleCount)` are nodes whose own box
-   * overlaps the viewport — draw their fill, stroke, and label.
-   * `visible[0, edgeCount)` is a superset (`edgeCount >= visibleCount`) that
-   * also includes nodes just outside the viewport whose connector to a
-   * parent could still cross it — draw only their connector, not the box
-   * itself. Nothing beyond `edgeCount` is meaningful.
+   * Node indices to draw. `visible[0, visibleCount)` are nodes whose own box
+   * overlaps the viewport — draw their fill, stroke, and label. Nothing
+   * beyond `visibleCount` is meaningful.
    */
   visible: Uint32Array
   visibleCount: number
-  /** See `visible`. Always `>= visibleCount`. Drives the edge-stroking loop only. */
+  /**
+   * CHILD indices whose connector to `parent[i]` is to be drawn —
+   * `edges[0, edgeCount)`. This is an INDEPENDENT set from `visible`, not a
+   * superset or subset of it: a connector's own bounding box (the rectangle
+   * spanned by its parent's exit point and its child's entry point) can
+   * cross the viewport while neither endpoint's own box does — an elbow's
+   * cross-axis leg is not bounded by either node's size, unlike the
+   * growth-axis distance between a direct parent and child. Symmetrically, a
+   * node's own box can graze the viewport somewhere its connector's anchor
+   * points never reach. The engine indexes connector boxes separately from
+   * node boxes for exactly this reason; see `engine.ts`'s `buildEdgeIndex`.
+   * Nothing beyond `edgeCount` is meaningful.
+   */
+  edges: Uint32Array
   edgeCount: number
   /** Label per node index. May be empty when the tier draws no text. */
   labels: readonly string[]
@@ -96,6 +106,29 @@ export interface Frame {
   ghostBoxes: Float64Array
   ghostAlpha: Float32Array
   ghostCount: number
+  /**
+   * True while a one-shot expand/collapse confirmation ring is being drawn
+   * this frame — a brief outline flash around the node a `setOpen` toggle
+   * just acted on. When false, `ringBox`/`ringProgress` are meaningless.
+   * Never true for a bulk `expandAll`/`collapseAll`-style operation (many
+   * distinct toggles in one burst) or while animation is disabled — see
+   * engine.ts's `setOpen`/`relayout` for how that's decided.
+   */
+  ringActive: boolean
+  /**
+   * `[x, y, w, h]` of the ringed node this frame, in world units — the same
+   * convention as `boxes`, and following the same interpolated position as
+   * the node itself during a layout transition (never a stale snapshot of
+   * the final layout while the node glides elsewhere).
+   */
+  ringBox: Float64Array
+  /**
+   * 0 (just fired) to 1 (fully faded) progress through the one-shot flash,
+   * a pure function of the `now` passed to `render()` — never a renderer-
+   * side clock read. The renderer derives both the outward growth and the
+   * fade-out alpha from this single number.
+   */
+  ringProgress: number
 }
 
 export interface DrawCallStats {

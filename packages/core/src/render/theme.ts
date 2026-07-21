@@ -15,6 +15,29 @@ export interface Theme {
   highlightStroke: string
   /** Alpha applied to a node while it is being dragged. */
   dragGhostAlpha: number
+  /** Colour of the one-shot expand/collapse confirmation ring. */
+  ringStroke: string
+  /**
+   * Screen pixels, constant regardless of zoom — NOT divided by `camera.k`
+   * before drawing. Node/edge coordinates in this renderer are already
+   * converted to screen space by the time they reach the canvas context
+   * (`world * k + camera.xy`, computed in JS — see canvas2d.ts), and
+   * `ctx.lineWidth` operates directly in that already-converted space, the
+   * same way `nodeStrokeWidth`/`edgeWidth` already do above. Dividing by
+   * `k` would be correct only in a pipeline that draws in world units under
+   * a `ctx.scale(k, k)` transform, which this one deliberately does not
+   * use; doing so here would invert the intended effect (a fat ring when
+   * zoomed out, a near-invisible one zoomed in).
+   */
+  ringStrokeWidth: number
+  /**
+   * Maximum outward growth of the ring over its lifetime, in screen pixels
+   * — a few pixels reads as "expands slightly", not a bloom. Same
+   * screen-space reasoning as `ringStrokeWidth`: canvas2d.ts adds this
+   * directly to the node's already-screen-space box, so it needs no
+   * division by `k` either.
+   */
+  ringMaxOffset: number
 }
 
 // Frozen so no consumer can poison it module-globally (e.g.
@@ -34,6 +57,12 @@ export const DEFAULT_THEME: Readonly<Theme> = Object.freeze({
   highlightFill: '#fef3c7',
   highlightStroke: '#f59e0b',
   dragGhostAlpha: 0.6,
+  // Reuses the highlight accent rather than introducing a new hue — the
+  // ring and the highlight both mean "this node", so sharing a colour
+  // keeps the palette's visual vocabulary small.
+  ringStroke: '#f59e0b',
+  ringStrokeWidth: 1.5,
+  ringMaxOffset: 4,
 })
 
 /** Assigns `value` into `target[key]` only when it is not `undefined`. */

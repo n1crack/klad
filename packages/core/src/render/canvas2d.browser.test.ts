@@ -21,20 +21,23 @@ function measurerFor(font: string) {
 /**
  * Two boxes, child below parent.
  *
- * `edgeCount` defaults to whatever `visibleCount` resolves to (explicit
- * override or the `2` default) rather than a fixed `2`: most of these tests
- * only ever touch `visibleCount`, and if `edgeCount` stayed pinned at `2`
- * while a test set `visibleCount: 0`, the edge-stroking loop would walk two
- * "visible" slots the caller just emptied out from under it.
+ * `edges`/`edgeCount` default to whatever `visible`/`visibleCount` resolve to
+ * (explicit override or the `2` default) rather than fixed values: most of
+ * these tests only ever touch `visibleCount`, and if `edgeCount` stayed
+ * pinned at `2` while a test set `visibleCount: 0`, the edge-stroking loop
+ * would walk two "edge" slots that no longer correspond to anything the
+ * caller set up.
  */
 function frame(overrides: Partial<Frame> = {}): Frame {
   const visibleCount = overrides.visibleCount ?? 2
+  const edgeCount = overrides.edgeCount ?? visibleCount
   return {
     boxes: Float64Array.from([0, 0, 100, 50, 0, 100, 100, 50]),
     parent: Int32Array.from([-1, 0]),
     visible: Uint32Array.from([0, 1]),
     visibleCount,
-    edgeCount: visibleCount,
+    edges: Uint32Array.from([0, 1]),
+    edgeCount,
     labels: ['Root', 'Child'],
     camera: { x: 10, y: 10, k: 1 },
     dpr: 1,
@@ -46,6 +49,9 @@ function frame(overrides: Partial<Frame> = {}): Frame {
     ghostBoxes: new Float64Array(0),
     ghostAlpha: new Float32Array(0),
     ghostCount: 0,
+    ringActive: false,
+    ringBox: new Float64Array(4),
+    ringProgress: 0,
     ...overrides,
   }
 }
@@ -98,7 +104,9 @@ describe('createCanvas2DRenderer', () => {
       parent[i] = i === 0 ? -1 : i - 1
       visible[i] = i
     }
-    renderer.draw(frame({ boxes, parent, visible, visibleCount: count, labels: [] }))
+    renderer.draw(
+      frame({ boxes, parent, visible, visibleCount: count, edges: visible, edgeCount: count, labels: [] }),
+    )
     expect(renderer.stats.lastDrawCalls.edgeStrokes).toBe(1)
   })
 

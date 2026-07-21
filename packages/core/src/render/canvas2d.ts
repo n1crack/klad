@@ -1,6 +1,7 @@
 import type { TextMeasurer } from '../text/measure.js'
 import type { DrawCallStats, Frame, Renderer, RenderSurface } from './renderer.js'
 import type { Theme } from './theme.js'
+import { easeOutCubic } from '../viewport.js'
 
 /**
  * Canvas2D backend.
@@ -40,18 +41,18 @@ export function createCanvas2DRenderer(
     ctx.save()
     ctx.scale(devicePixelRatio, devicePixelRatio)
 
-    const { boxes, parent, visible, visibleCount, edgeCount, camera } = frame
+    const { boxes, parent, visible, visibleCount, edges, edgeCount, camera } = frame
     const k = camera.k
 
-    // Edges first so nodes paint over the joins. Walks `edgeCount`, not
-    // `visibleCount`: a node just outside the viewport can still have a
-    // connector that crosses into it (see engine.ts's `cullMargin`), and
-    // that wider set is exactly what `edgeCount` covers. The node itself is
-    // never drawn for entries beyond `visibleCount` — only its connector.
+    // Edges first so nodes paint over the joins. Walks `edges`/`edgeCount`,
+    // an INDEPENDENT index from `visible`/`visibleCount` — a connector can
+    // cross the viewport while neither of its endpoints' own boxes does (see
+    // engine.ts's `buildEdgeIndex`), so the set of connectors to draw is not
+    // derivable from the set of visible nodes.
     if (edgeCount > 0) {
       ctx.beginPath()
       for (let n = 0; n < edgeCount; n++) {
-        const i = visible[n]!
+        const i = edges[n]!
         const p = parent[i]!
         if (p === -1) continue
         const io = i * 4
@@ -163,6 +164,35 @@ export function createCanvas2DRenderer(
         if (revealAlpha < 1) ctx.globalAlpha = 1
         calls.labels++
       }
+    }
+
+    // One-shot expand/collapse confirmation ring, drawn last so it isn't
+    // occluded by a neighbouring node or its own label. A single stroked
+    // path regardless of tree size — at most one ring is ever live (see
+    // engine.ts's `setOpen`), so this never threatens the frame budget.
+    //
+    // `theme.ringMaxOffset`/`ringStrokeWidth` are screen pixels applied
+    // directly here, in already-screen-space coordinates (`* k + camera.xy`
+    // has already happened) — see their docblocks in theme.ts for why this
+    // renderer needs no further division by `k` the way a world-space,
+    // ctx-transform-scaled pipeline would.
+    if (frame.ringActive) {
+      const eased = easeOutCubic(frame.ringProgress)
+      const rb = frame.ringBox
+      const x = rb[0]! * k + camera.x
+      const y = rb[1]! * k + camera.y
+      const w = rb[2]! * k
+      const h = rb[3]! * k
+      const grow = theme.ringMaxOffset * eased
+      const ringRadius = (frame.tier === 'block' ? 0 : theme.cornerRadius * k) + grow
+      ctx.globalAlpha = 1 - frame.ringProgress
+      ctx.beginPath()
+      if (ringRadius > 0) ctx.roundRect(x - grow, y - grow, w + grow * 2, h + grow * 2, ringRadius)
+      else ctx.rect(x - grow, y - grow, w + grow * 2, h + grow * 2)
+      ctx.strokeStyle = theme.ringStroke
+      ctx.lineWidth = theme.ringStrokeWidth
+      ctx.stroke()
+      ctx.globalAlpha = 1
     }
 
     ctx.restore()

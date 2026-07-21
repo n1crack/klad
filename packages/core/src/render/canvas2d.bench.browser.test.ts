@@ -45,6 +45,7 @@ function gridFrame(count: number, tier: Frame['tier']): Frame {
     parent,
     visible,
     visibleCount: count,
+    edges: visible,
     edgeCount: count,
     labels,
     camera: { x: 0, y: 0, k: 1 },
@@ -57,6 +58,9 @@ function gridFrame(count: number, tier: Frame['tier']): Frame {
     ghostBoxes: new Float64Array(0),
     ghostAlpha: new Float32Array(0),
     ghostCount: 0,
+    ringActive: false,
+    ringBox: new Float64Array(4),
+    ringProgress: 0,
   }
 }
 
