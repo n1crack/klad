@@ -45,9 +45,5 @@ Reach the imperative API from a descendant component with `useOrgChart()`
 (`const { api, state } = useOrgChart()`), or from a template `ref` on
 `<OrgChart>` itself.
 
-Migrating from `vue3-org-chart` v0.2.5? The component name, prop shape, slot
-context, and API all changed — see
-[MIGRATION.md](https://github.com/n1crack/orgchart/blob/main/MIGRATION.md).
-
 Full options/API reference, events, and accessibility notes live in the
 [repository README](https://github.com/n1crack/orgchart#readme).

@@ -13,8 +13,7 @@ node is both visible and legible.
 > **Status.** This is v1.0.0-alpha.0 of a ground-up rewrite. The vanilla and
 > Vue packages are implemented and tested; a React adapter, drag-and-drop
 > reparenting, export, and a minimap are designed but **not implemented yet**
-> (see [Not yet available](#not-yet-available)). If you need any of those
-> today, stay on `vue3-org-chart` v0.2.5 until they ship.
+> (see [Not yet available](#not-yet-available)).
 
 ## How it works, in one paragraph
 
@@ -331,15 +330,6 @@ on in parallel with this documentation. They are intentionally absent from
 - **Export** (`toSVG()`, `toBlob()`, `print()`).
 - **Minimap** (`minimap` option).
 - **React adapter** (`@n1crack/orgchart-react`).
-
-If your v0.2.5 usage depends on any of these — the old package shipped a
-minimap — see [MIGRATION.md](MIGRATION.md) before upgrading.
-
-## Migrating from `vue3-org-chart` (v0.2.5)
-
-See [MIGRATION.md](MIGRATION.md). Short version: different package name,
-different component name, `nodeSize` is now required, and the rendering
-engine underneath is entirely new — there is no code shared with v0.2.5.
 
 ## Development
 
