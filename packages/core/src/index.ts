@@ -36,3 +36,12 @@ export type { Theme } from './render/theme.js'
 export { DEFAULT_THEME, resolveTheme } from './render/theme.js'
 export type { LodThresholds, LodTier } from './render/lod.js'
 export { DEFAULT_LOD, lodFor, overlayEnabled } from './render/lod.js'
+
+export type {
+  DrawCallStats,
+  Frame,
+  Renderer,
+  RenderContext2D,
+  RenderSurface,
+} from './render/renderer.js'
+export { createCanvas2DRenderer } from './render/canvas2d.js'
