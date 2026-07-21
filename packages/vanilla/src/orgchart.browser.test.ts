@@ -163,25 +163,57 @@ describe('createOrgChart', () => {
     chart.destroy()
   })
 
-  // Regression: fit() used to run at construction, before the first render had
-  // produced any layout, so bounds were empty and every chart opened on an
-  // arbitrary camera. The first thing a user saw was the chart adrift.
-  it('opens already fitted, not on an arbitrary camera', async () => {
+  // Regression: the opening camera used to be computed at construction, before the
+  // first render had produced any layout, so bounds were empty and every chart opened
+  // on an arbitrary camera — zooming from there walked off into empty space.
+  it('opens with the root on screen, not on an arbitrary camera', async () => {
     const chart = make()
     await nextFrame()
     await nextFrame()
 
     const state = chart.api.getState()
     expect(state.bounds.maxX).toBeGreaterThan(0)
-    // A real fit of this fixture into 800x600 lands well above 1x; an unfitted
-    // chart would still be sitting at the default k = 1.
-    expect(state.camera.k).not.toBe(1)
 
-    // And the content is actually on screen: the root's centre falls inside the host.
+    // The root is visible and sits near the top, since the tree hangs below it.
     expect(state.rootScreenCentre.x).toBeGreaterThan(0)
     expect(state.rootScreenCentre.x).toBeLessThan(800)
     expect(state.rootScreenCentre.y).toBeGreaterThan(0)
-    expect(state.rootScreenCentre.y).toBeLessThan(600)
+    expect(state.rootScreenCentre.y).toBeLessThan(300)
+
+    // Readable scale, never blown up past 1x even though this fixture would fit larger.
+    expect(state.camera.k).toBeLessThanOrEqual(1)
+    expect(state.camera.k).toBeGreaterThan(0)
+    chart.destroy()
+  })
+
+  it('fit() zooms out far enough to show a chart wider than the viewport', async () => {
+    // A deliberately wide tree: one root, forty children, each 120 wide.
+    const wide = [
+      { id: 'root', name: 'Root' },
+      ...Array.from({ length: 40 }, (_, i) => ({ id: `c${i}`, parentId: 'root', name: `C${i}` })),
+    ]
+    const el = document.createElement('div')
+    el.style.width = '800px'
+    el.style.height = '600px'
+    document.body.appendChild(el)
+    const chart = createOrgChart(el, {
+      data: wide,
+      nodeSize: { w: 120, h: 48 },
+      worker: false,
+    })
+    await nextFrame()
+    await nextFrame()
+
+    chart.api.fit()
+    await nextFrame()
+    await nextFrame()
+
+    const state = chart.api.getState()
+    const width = state.bounds.maxX - state.bounds.minX
+    // The content is far wider than the viewport, so fit must go well below the
+    // default 0.05 floor. A fixed floor here would leave the chart clipped.
+    expect(width).toBeGreaterThan(800)
+    expect(state.camera.k * width).toBeLessThanOrEqual(800)
     chart.destroy()
   })
 

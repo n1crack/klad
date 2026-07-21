@@ -17,7 +17,10 @@ export function buildOrg(target: number): NodeItem[] {
   while (data.length < target) {
     const next: string[] = []
     for (const parentId of frontier) {
-      for (let i = 0; i < 6 && data.length < target; i++) {
+      // Fan-out varies per manager. A uniform six-wide tree is pathologically wide —
+      // 200 nodes comes out ~30,000px across — and looks nothing like a real chart.
+      const reports = 2 + ((counter * 7 + parentId.length) % 3)
+      for (let i = 0; i < reports && data.length < target; i++) {
         const id = `n${counter++}`
         data.push({ id, parentId, name: `Person ${counter}`, title: `Role ${i}` })
         next.push(id)
@@ -41,7 +44,10 @@ export interface Example {
 // Shared by every example except "Large", which needs its own scale and its
 // own lazily-built dataset (see below) so switching to one of the small
 // examples never pays the cost of building the 20k-node tree.
-const SHARED_DATA = buildOrg(200)
+// Small enough that the whole chart is comprehensible at 1:1. A few hundred nodes
+// is realistic but spreads subtrees thousands of pixels apart, so you only ever see
+// a vertical slice of it — which is what the Large example is for.
+const SHARED_DATA = buildOrg(28)
 
 const SIZE_VARIANTS = [
   { w: 140, h: 56 },
@@ -59,7 +65,7 @@ export const EXAMPLES: Example[] = [
   {
     id: 'basic',
     name: 'Basic',
-    description: '~200 nodes, every option left at its default. The reference example.',
+    description: '28 nodes, every option left at its default. The reference example.',
     data: SHARED_DATA,
     options: {},
   },

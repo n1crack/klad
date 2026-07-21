@@ -22,7 +22,12 @@ const DRAG_THRESHOLD_PX = 4
  */
 export function attachInput(
   canvas: HTMLCanvasElement,
-  limits: ZoomLimits,
+  /**
+   * Read as a getter, not captured. The zoom floor moves with the content: a chart
+   * wider than the viewport lowers it so Fit can show everything. Snapshotting the
+   * limits here would clamp against a stale floor forever after.
+   */
+  limitsOf: () => ZoomLimits,
   callbacks: InputCallbacks,
 ): () => void {
   let dragging = false
@@ -69,7 +74,7 @@ export function attachInput(
           clientY: (a!.y + b!.y) / 2,
         })
         callbacks.setCamera(
-          zoomAt(callbacks.getCamera(), midpoint.x, midpoint.y, distance / pinchDistance, limits),
+          zoomAt(callbacks.getCamera(), midpoint.x, midpoint.y, distance / pinchDistance, limitsOf()),
         )
       }
       pinchDistance = distance
@@ -100,7 +105,7 @@ export function attachInput(
     event.preventDefault()
     const point = localPoint(event)
     callbacks.setCamera(
-      zoomAt(callbacks.getCamera(), point.x, point.y, Math.pow(WHEEL_STEP, -event.deltaY), limits),
+      zoomAt(callbacks.getCamera(), point.x, point.y, Math.pow(WHEEL_STEP, -event.deltaY), limitsOf()),
     )
   }
 

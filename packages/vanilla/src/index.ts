@@ -101,7 +101,29 @@ const FIT_PADDING = 32
 
 export function createOrgChart(host: HTMLElement, options: Options): OrgChartInstance {
   const theme = resolveTheme(options.theme)
-  const limits = options.zoomLimits ?? DEFAULT_LIMITS
+  const configuredLimits = options.zoomLimits ?? DEFAULT_LIMITS
+
+  /**
+   * The zoom floor has to be able to move. A wide org chart is far larger than any
+   * viewport — 200 nodes at a fan-out of six is already ~30,000px across — so a fixed
+   * `minK` means the Fit button cannot actually fit, which is worse than useless
+   * because it looks broken. The floor is therefore lowered to whatever "show me
+   * everything" requires, and no further, so ordinary zooming out still stops at the
+   * configured limit on charts that comfortably fit.
+   */
+  let limits: ZoomLimits = { ...configuredLimits }
+
+  const recomputeLimits = (): void => {
+    const rect = host.getBoundingClientRect()
+    const w = bounds.maxX - bounds.minX
+    const h = bounds.maxY - bounds.minY
+    if (w <= 0 || h <= 0 || rect.width <= 0 || rect.height <= 0) return
+    const needed = Math.min(
+      Math.max(1, rect.width - FIT_PADDING * 2) / w,
+      Math.max(1, rect.height - FIT_PADDING * 2) / h,
+    )
+    limits = { minK: Math.min(configuredLimits.minK, needed), maxK: configuredLimits.maxK }
+  }
   const lod = options.lodThresholds ?? DEFAULT_LOD
 
   host.style.position = host.style.position || 'relative'
@@ -237,6 +259,36 @@ export function createOrgChart(host: HTMLElement, options: Options): OrgChartIns
   let overlay: ReturnType<typeof createOverlay> | null = null
   let a11y: A11yTree | null = null
 
+  /**
+   * Where the chart opens.
+   *
+   * Not a fit. An org chart is far wider than it is tall — a few hundred nodes is
+   * already tens of thousands of pixels across — so fitting the whole thing shrinks
+   * every card to an unreadable sliver, which reads as a broken chart rather than a
+   * zoomed-out one. Open at a readable scale anchored on the first root instead, and
+   * leave "show me everything" to an explicit `fit()`. Charts small enough to fit
+   * whole still do, because the scale is capped at the fit scale rather than exceeding it.
+   */
+  const openingCamera = (): Camera => {
+    const rect = host.getBoundingClientRect()
+    const size = { width: rect.width, height: rect.height }
+    const fitted = fitCamera(bounds, size, FIT_PADDING, limits)
+    // 1:1. Not the fit scale — on a wide chart that is a tiny number, which is the
+    // whole problem this avoids.
+    const k = 1
+
+    const rootIndex = tree.roots[0]
+    const rootBox = rootIndex === undefined ? null : boxOfSource(rootIndex)
+    if (rootBox === null) return fitted
+
+    return {
+      x: size.width / 2 - (rootBox.x + rootBox.w / 2) * k,
+      // Sit the root near the top, not the middle: everything of interest hangs below it.
+      y: FIT_PADDING - rootBox.y * k,
+      k,
+    }
+  }
+
   const getState = (): ChartState => {
     const rootBox = tree.roots.length > 0 ? boxOfSource(tree.roots[0]!) : null
     const centre =
@@ -294,6 +346,7 @@ export function createOrgChart(host: HTMLElement, options: Options): OrgChartIns
       // property access, and it keeps the overlay from ever using stale boxes.
       boxes = chartHost.boxes
       bounds = chartHost.bounds
+      recomputeLimits()
       // Identity changes only on relayout, which is exactly when the reverse
       // map is stale.
       if (chartHost.visibleToSource !== visibleToSource) {
@@ -302,8 +355,7 @@ export function createOrgChart(host: HTMLElement, options: Options): OrgChartIns
       }
       if (needsInitialFit && bounds.maxX > bounds.minX && bounds.maxY > bounds.minY) {
         needsInitialFit = false
-        const rect = host.getBoundingClientRect()
-        camera = fitCamera(bounds, { width: rect.width, height: rect.height }, FIT_PADDING, limits)
+        camera = openingCamera()
         chartHost.setCamera(camera)
         drawn = await chartHost.render()
         boxes = chartHost.boxes
@@ -348,7 +400,7 @@ export function createOrgChart(host: HTMLElement, options: Options): OrgChartIns
   const observer = new ResizeObserver(resize)
   observer.observe(host)
 
-  const detachInput = attachInput(canvas, limits, {
+  const detachInput = attachInput(canvas, () => limits, {
     getCamera: () => camera,
     setCamera,
     onTap(screenX, screenY) {

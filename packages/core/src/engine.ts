@@ -100,16 +100,25 @@ export function createChartEngine(renderer: Renderer): ChartEngine {
     const n = pruned.tree.count
     const sizes = new Float64Array(n * 2)
     prunedLabels = Array.from({ length: n })
+
+    // For lr/rl the tree grows along x, so the layout — which always works in a
+    // top-down space — must be told each node's extent along that growth axis. Feed
+    // it width and height swapped; `applyOrientation`'s transpose then swaps them
+    // back, leaving a card the shape the caller asked for rather than a rotated one.
+    const horizontal = options.orientation === 'lr' || options.orientation === 'rl'
+
     for (let i = 0; i < n; i++) {
       const src = visibleToSource[i]!
-      sizes[i * 2] = sourceSizes[src * 2] ?? 0
-      sizes[i * 2 + 1] = sourceSizes[src * 2 + 1] ?? 0
+      const w = sourceSizes[src * 2] ?? 0
+      const h = sourceSizes[src * 2 + 1] ?? 0
+      sizes[i * 2] = horizontal ? h : w
+      sizes[i * 2 + 1] = horizontal ? w : h
       prunedLabels[i] = sourceLabels[src] ?? ''
     }
 
     const result = layout(pruned.tree, sizes, {
-      spacingX: options.spacingX,
-      spacingY: options.spacingY,
+      spacingX: horizontal ? options.spacingY : options.spacingX,
+      spacingY: horizontal ? options.spacingX : options.spacingY,
     })
     boxes = result.boxes
     bounds = applyOrientation(boxes, result.bounds, options.orientation, options.rtl)
