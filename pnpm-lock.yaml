@@ -38,6 +38,12 @@ importers:
 
   packages/core: {}
 
+  packages/vanilla:
+    dependencies:
+      '@n1crack/orgchart-core':
+        specifier: workspace:*
+        version: link:../core
+
 packages:
 
   '@blazediff/core@1.9.1':
