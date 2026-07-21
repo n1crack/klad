@@ -41,6 +41,8 @@ let chart: ReturnType<typeof createOrgChart> | null = null
  */
 const overlayElements = new Set<HTMLElement>()
 
+const WRAPPER_STYLE = { display: 'block', boxSizing: 'border-box', width: '100%', height: '100%' } as const
+
 /** Options with `renderNode` attached only when there is slot content to render. */
 function withRenderNode(options: Options): Options {
   return slots.node === undefined ? { ...options } : { ...options, renderNode }
@@ -49,7 +51,16 @@ function withRenderNode(options: Options): Options {
 function renderNode(element: HTMLElement, context: NodeContext): void {
   const node = slots.node
   if (node === undefined) return
-  render(h('div', { class: 'orgchart-node' }, node(context)), element)
+  // The wrapper fills the overlay slot it is rendered into. The slot element
+  // already carries an inline width/height matching the declared nodeSize, but
+  // this div sits between them, so without stretching it a percentage height on
+  // the consumer's card has nothing to resolve against and the card collapses to
+  // its content — leaving the canvas-drawn box visible underneath. Vanilla has no
+  // such wrapper, so omitting this makes the two adapters disagree.
+  render(
+    h('div', { class: 'orgchart-node', style: WRAPPER_STYLE }, node(context)),
+    element,
+  )
   overlayElements.add(element)
 }
 

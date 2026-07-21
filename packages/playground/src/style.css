@@ -82,31 +82,6 @@ body {
   margin: 0;
 }
 
-/*
- * Workaround for a sizing gap in the Vue adapter (packages/vue/src/OrgChart.vue):
- * its renderNode wraps slot content in `h('div', { class: 'orgchart-node' }, ...)`,
- * a plain div with no explicit size. The pooled overlay element it's rendered
- * into (packages/vanilla/src/overlay.ts) does set an explicit inline
- * width/height matching the node box, but that wrapper div itself is
- * auto-sized — so a percentage height on the card inside it (e.g. `.card`'s
- * `height: 100%` below) has nothing to resolve against and the card shrinks
- * to its own content height instead of filling the declared nodeSize. That's
- * invisible when a card's natural content height happens to be close to its
- * nodeSize (the original default `.card` at 180x64), but becomes an obvious
- * sliver of the canvas-drawn node box peeking out below shorter content
- * (e.g. avatar-card at 224x96, whose content is ~76px tall). This rule papers
- * over it for every example in this playground; the real fix is for
- * `OrgChart.vue`'s wrapper div to stretch to fill the slot it's rendered
- * into, so the vanilla and Vue adapters agree without every consumer needing
- * to know about this.
- */
-.orgchart-node {
-  display: block;
-  box-sizing: border-box;
-  width: 100%;
-  height: 100%;
-}
-
 /* Node cards, rendered into the overlay by both demos. */
 .card {
   box-sizing: border-box;
