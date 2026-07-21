@@ -30,6 +30,16 @@ export {
 export type { VisibleTree } from './visible.js'
 export { pruneToVisible } from './visible.js'
 
+export type { MinimapSize, MinimapTransform, SilhouetteOptions, Silhouette } from './minimap.js'
+export {
+  computeMinimapTransform,
+  computeSilhouette,
+  DEFAULT_SILHOUETTE_OPTIONS,
+  minimapToWorld,
+  viewportRectInMinimap,
+  worldToMinimap,
+} from './minimap.js'
+
 export type { TextMeasurer, TextMetricsSource } from './text/measure.js'
 export { createTextMeasurer } from './text/measure.js'
 
