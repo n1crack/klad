@@ -51,5 +51,6 @@ export { createChartEngine } from './engine.js'
 export type { EngineOptions, MainToWorker, WireTree, WorkerToMain } from './worker/protocol.js'
 export { toWireTree, wireTreeToTree } from './worker/protocol.js'
 
-export type { ChartHost } from './worker/host.js'
-export { createChartHost } from './worker/host.js'
+// ChartHost is deliberately NOT re-exported here. It is the only DOM-bound module
+// in this package, and keeping it off the main entry is what lets this entry be
+// imported inside a Web Worker. Reach it at '@n1crack/orgchart-core/host'.

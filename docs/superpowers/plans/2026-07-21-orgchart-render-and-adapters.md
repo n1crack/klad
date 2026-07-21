@@ -2181,8 +2181,13 @@ it('exposes identical layout output on both paths', async () => {
 Add to `packages/core/src/index.ts`:
 
 ```ts
-export type { ChartHost } from './worker/host.js'
-export { createChartHost } from './worker/host.js'
+// NOT re-exported from index.ts. `host.ts` is the only DOM-bound module in this
+// package, and keeping it off the main entry is what lets that entry be imported
+// inside a Web Worker. It gets its own subpath export instead:
+//
+//   "./host": { "types": "./src/worker/host.ts", "import": "./src/worker/host.ts" }
+//
+// Consumers reach it at `@n1crack/orgchart-core/host`.
 ```
 
 - [ ] **Step 6: Run the tests**
@@ -2691,9 +2696,9 @@ export function createOverlay(container: HTMLElement, callbacks: OverlayCallback
 `packages/vanilla/src/index.ts` — the module is long, so it is given in one block:
 
 ```ts
+import { createChartHost, type ChartHost } from '@n1crack/orgchart-core/host'
 import {
   DEFAULT_LOD,
-  createChartHost,
   fit as fitCamera,
   normalize,
   overlayEnabled,
@@ -2703,7 +2708,6 @@ import {
   zoomAt,
   type Bounds,
   type Camera,
-  type ChartHost,
   type LodThresholds,
   type NodeData,
   type Orientation,

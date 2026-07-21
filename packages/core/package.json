@@ -4,10 +4,27 @@
   "type": "module",
   "license": "MIT",
   "sideEffects": false,
+  "//": "exports point at source during development so the workspace resolves without a build step; publishConfig.exports replaces them with the built dist paths at publish time. The ./host subpath is separate on purpose: host.ts is the one DOM-bound module in this package, and keeping it out of the main entry is what lets the entry stay importable inside a Web Worker.",
   "exports": {
     ".": {
-      "types": "./dist/index.d.ts",
-      "import": "./dist/index.js"
+      "types": "./src/index.ts",
+      "import": "./src/index.ts"
+    },
+    "./host": {
+      "types": "./src/worker/host.ts",
+      "import": "./src/worker/host.ts"
+    }
+  },
+  "publishConfig": {
+    "exports": {
+      ".": {
+        "types": "./dist/index.d.ts",
+        "import": "./dist/index.js"
+      },
+      "./host": {
+        "types": "./dist/worker/host.d.ts",
+        "import": "./dist/worker/host.js"
+      }
     }
   },
   "files": ["dist"],
