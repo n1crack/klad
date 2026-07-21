@@ -1,5 +1,5 @@
 {
-  "name": "@n1crack/orgchart",
+  "name": "@n1crack/orgchart-vue",
   "version": "1.0.0-alpha.0",
   "type": "module",
   "license": "MIT",
@@ -21,10 +21,18 @@
   },
   "files": ["dist"],
   "dependencies": {
-    "@n1crack/orgchart-core": "workspace:*"
+    "@n1crack/orgchart": "workspace:*"
+  },
+  "peerDependencies": {
+    "vue": ">=3.5 <4"
+  },
+  "devDependencies": {
+    "@vitejs/plugin-vue": "^6.0.0",
+    "vue": "^3.5.0",
+    "vue-tsc": "^3.3.0"
   },
   "scripts": {
     "test": "vitest run",
-    "typecheck": "tsc --noEmit -p tsconfig.json"
+    "typecheck": "vue-tsc --noEmit -p tsconfig.json"
   }
 }
