@@ -50,3 +50,6 @@ export type { ChartEngine } from './engine.js'
 export { createChartEngine } from './engine.js'
 export type { EngineOptions, MainToWorker, WireTree, WorkerToMain } from './worker/protocol.js'
 export { toWireTree, wireTreeToTree } from './worker/protocol.js'
+
+export type { ChartHost } from './worker/host.js'
+export { createChartHost } from './worker/host.js'
