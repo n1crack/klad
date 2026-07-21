@@ -51,9 +51,18 @@ export interface Frame {
   boxes: Float64Array
   /** Parent index per node, -1 for roots. Used to draw connectors. */
   parent: Int32Array
-  /** Indices to draw; only the first `visibleCount` entries are read. */
+  /**
+   * Indices to draw. `visible[0, visibleCount)` are nodes whose own box
+   * overlaps the viewport — draw their fill, stroke, and label.
+   * `visible[0, edgeCount)` is a superset (`edgeCount >= visibleCount`) that
+   * also includes nodes just outside the viewport whose connector to a
+   * parent could still cross it — draw only their connector, not the box
+   * itself. Nothing beyond `edgeCount` is meaningful.
+   */
   visible: Uint32Array
   visibleCount: number
+  /** See `visible`. Always `>= visibleCount`. Drives the edge-stroking loop only. */
+  edgeCount: number
   /** Label per node index. May be empty when the tier draws no text. */
   labels: readonly string[]
   camera: Camera

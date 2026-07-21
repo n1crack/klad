@@ -15,11 +15,16 @@ function fakeRenderer(): Renderer & { frames: Frame[] } {
       // `highlight` (the engine's own `highlightBuffer`, mutated in place),
       // `boxes`, or `parent` — the first test comparing one of those across
       // renders would silently compare a buffer against itself.
+      //
+      // Sliced to `edgeCount`, not `visibleCount`: `edgeCount` is the wider
+      // bound (see renderer.ts's `Frame.visible` docblock), and a capture
+      // truncated to `visibleCount` would silently discard the margin-only
+      // entries a defect-1 regression test needs to inspect.
       frames.push({
         ...f,
         boxes: f.boxes.slice(),
         parent: f.parent.slice(),
-        visible: f.visible.slice(0, f.visibleCount),
+        visible: f.visible.slice(0, f.edgeCount),
         labels: f.labels.slice(),
         camera: { ...f.camera },
         highlight: f.highlight === null ? null : f.highlight.slice(),
@@ -428,6 +433,106 @@ describe('ChartEngine bounds isolation (F4)', () => {
     expect(a.bounds).not.toBe(b.bounds)
     a.bounds.maxX = 12_345
     expect(b.bounds.maxX).toBe(0)
+  })
+})
+
+// Defect 1: connectors must not vanish just because one endpoint (or, at
+// extreme zoom, both) is off screen. `render()` culls to the viewport before
+// the renderer ever sees a node, so these three cases have to be checked at
+// the culling boundary, not by inspecting pixels.
+describe('ChartEngine connector culling (defect 1)', () => {
+  it('already draws correctly when the PARENT is off screen and the child is visible (verifies, does not fix)', () => {
+    const renderer = fakeRenderer()
+    const engine = createChartEngine(renderer)
+    const data = [{ id: 'a' }, { id: 'b', parentId: 'a' }]
+    const tree = normalize(data)
+    engine.setViewport(400, 400, 1)
+    engine.setData(toWireTree(tree), sizesFor(tree.count), ['a', 'b'], new Uint8Array(tree.count).fill(1))
+    // 'a' sits at world y in [0, 50]; 'b' at world y in [98, 148] (height 50 +
+    // spacingY 48, from tidy.ts's y[i] formula). camera.y = -90 puts 'a'
+    // entirely above screen y 0, while 'b' lands at screen y [8, 58].
+    engine.setCamera({ x: 0, y: -90, k: 1 })
+    engine.render()
+
+    const frame = renderer.frames.at(-1)!
+    const aIndex = tree.idToIndex.get('a')!
+    const bIndex = tree.idToIndex.get('b')!
+    const aPruned = Array.from(engine.visibleToSource).indexOf(aIndex)
+    const bPruned = Array.from(engine.visibleToSource).indexOf(bIndex)
+
+    // 'b' is genuinely visible...
+    expect(Array.from(frame.visible.slice(0, frame.visibleCount))).toContain(bPruned)
+    // ...and its parent pointer resolves to 'a' regardless of whether 'a'
+    // itself made it into any culled set — canvas2d.ts reads `parent[i]`
+    // directly out of the full array, never gated on the parent's own
+    // presence in `visible`. That's the whole reason this case needs no fix.
+    expect(frame.parent[bPruned]).toBe(aPruned)
+  })
+
+  it('includes an off-screen CHILD in the edge set so its connector to a visible parent still draws', () => {
+    const renderer = fakeRenderer()
+    const engine = createChartEngine(renderer)
+    const data = [{ id: 'a' }, { id: 'b', parentId: 'a' }]
+    const tree = normalize(data)
+    // A viewport just 10 world-units tall: 'a' (world y [0, 50]) only grazes
+    // it at the very top, while 'b' (world y [98, 148]) is entirely below —
+    // exactly the "node visible, its child is off screen" hole in the spec.
+    engine.setViewport(1000, 10, 1)
+    engine.setData(toWireTree(tree), sizesFor(tree.count), ['a', 'b'], new Uint8Array(tree.count).fill(1))
+    engine.setCamera({ x: 0, y: 0, k: 1 })
+    engine.render()
+
+    const frame = renderer.frames.at(-1)!
+    const bIndex = tree.idToIndex.get('b')!
+    const bPruned = Array.from(engine.visibleToSource).indexOf(bIndex)
+    expect(bPruned).toBeGreaterThanOrEqual(0)
+
+    // 'b' must not be drawn as a node (it is not genuinely on screen)...
+    expect(Array.from(frame.visible.slice(0, frame.visibleCount))).not.toContain(bPruned)
+    // ...but it must still be present in the wider edge set, or its
+    // connector to the visible 'a' never gets a chance to render at all.
+    expect(Array.from(frame.visible.slice(0, frame.edgeCount))).toContain(bPruned)
+  })
+
+  it('includes a child whose connector crosses the viewport even though BOTH endpoints are off screen', () => {
+    const renderer = fakeRenderer()
+    const engine = createChartEngine(renderer)
+    const data = [{ id: 'a' }, { id: 'b', parentId: 'a' }]
+    const tree = normalize(data)
+    // 'a' bottoms out at world y 50; 'b' starts at world y 98 — a 48-unit gap
+    // (exactly spacingY). A 20-unit-tall viewport at world y [60, 80] sits
+    // entirely inside that gap: neither box overlaps it, yet the connector's
+    // horizontal crossbar (at the midpoint between 50 and 98) passes right
+    // through screen space. This is only reachable at extreme zoom / a tiny
+    // gap-sized viewport, which is exactly the scenario the bug report describes.
+    engine.setViewport(1000, 20, 1)
+    engine.setData(toWireTree(tree), sizesFor(tree.count), ['a', 'b'], new Uint8Array(tree.count).fill(1))
+    engine.setCamera({ x: 0, y: -60, k: 1 })
+    engine.render()
+
+    const frame = renderer.frames.at(-1)!
+    const bIndex = tree.idToIndex.get('b')!
+    const bPruned = Array.from(engine.visibleToSource).indexOf(bIndex)
+    expect(bPruned).toBeGreaterThanOrEqual(0)
+
+    // Neither node is genuinely visible...
+    expect(frame.visibleCount).toBe(0)
+    // ...but 'b' is still in the edge set, so its connector — which is what
+    // actually crosses the viewport here — still gets drawn.
+    expect(Array.from(frame.visible.slice(0, frame.edgeCount))).toContain(bPruned)
+  })
+
+  it('does not widen the edge set for a node whose connector is nowhere near the viewport', () => {
+    const renderer = fakeRenderer()
+    const { engine } = seed(renderer)
+    // Push the whole chart far off screen, same as the existing "culls to
+    // the viewport instead of drawing everything" test — but here asserting
+    // on edgeCount too, since that's the number a margin bug would inflate.
+    engine.setCamera({ x: -100_000, y: -100_000, k: 1 })
+    engine.render()
+    const frame = renderer.frames.at(-1)!
+    expect(frame.visibleCount).toBe(0)
+    expect(frame.edgeCount).toBe(0)
   })
 })
 

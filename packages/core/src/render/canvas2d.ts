@@ -40,13 +40,17 @@ export function createCanvas2DRenderer(
     ctx.save()
     ctx.scale(devicePixelRatio, devicePixelRatio)
 
-    const { boxes, parent, visible, visibleCount, camera } = frame
+    const { boxes, parent, visible, visibleCount, edgeCount, camera } = frame
     const k = camera.k
 
-    // Edges first so nodes paint over the joins.
-    if (visibleCount > 0) {
+    // Edges first so nodes paint over the joins. Walks `edgeCount`, not
+    // `visibleCount`: a node just outside the viewport can still have a
+    // connector that crosses into it (see engine.ts's `cullMargin`), and
+    // that wider set is exactly what `edgeCount` covers. The node itself is
+    // never drawn for entries beyond `visibleCount` — only its connector.
+    if (edgeCount > 0) {
       ctx.beginPath()
-      for (let n = 0; n < visibleCount; n++) {
+      for (let n = 0; n < edgeCount; n++) {
         const i = visible[n]!
         const p = parent[i]!
         if (p === -1) continue
