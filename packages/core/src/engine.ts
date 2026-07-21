@@ -232,9 +232,15 @@ interface Ghost {
   to: Box
 }
 
-interface Transition {
+/** Common shape of anything `progressOf` can time: a start timestamp and a
+ * duration, both in the caller's clock units. `Transition` and `RingFlash`
+ * both satisfy this structurally — one function, no duplicated math. */
+interface TimedAnimation {
   startedAt: number
   duration: number
+}
+
+interface Transition extends TimedAnimation {
   /** Keyed by SOURCE index (stable across a toggle, unlike a pruned index). */
   fromBySource: Map<number, TweenEntry>
   ghosts: Ghost[]
@@ -244,10 +250,31 @@ interface Transition {
   ghostQuad: QuadTree | null
 }
 
-function progressOf(t: Transition, now: number): number {
+function progressOf(t: TimedAnimation, now: number): number {
   if (t.duration <= 0) return 1
   const raw = (now - t.startedAt) / t.duration
   return raw <= 0 ? 0 : raw >= 1 ? 1 : raw
+}
+
+/**
+ * A touch longer than `TRANSITION_DURATION_MS` so the ring is still
+ * resolving as the layout transition it accompanies settles, per the brief
+ * ("in the same range as the layout transition, or a touch longer"). Not
+ * exposed as a knob (yet), same reasoning as `TRANSITION_DURATION_MS`.
+ */
+const RING_DURATION_MS = 350
+
+/**
+ * A one-shot flash ring drawn around the node a `setOpen` toggle just acted
+ * on — a confirmation, not a celebration: it fires once, expands slightly,
+ * and fades out, never repeating. Keyed by SOURCE index (like `Ghost`, and
+ * for the same reason: a toggle can remove the node's OWN pruned index only
+ * if the node itself were pruned, which never happens for the node someone
+ * just toggled — but resolving via source keeps this consistent with every
+ * other piece of toggle-driven state here).
+ */
+interface RingFlash extends TimedAnimation {
+  source: number
 }
 
 /**
@@ -499,6 +526,21 @@ export function createChartEngine(renderer: Renderer): ChartEngine {
   let ghostDrawAlpha = new Float32Array(0)
   let revealAlphaBuffer = new Float32Array(0)
 
+  // --- one-shot toggle ring state ---
+  // `setOpen` arms a CANDIDATE here; `relayout()` resolves it into `ring` (or
+  // drops it) the next time it runs, exactly like `pendingTransition` above.
+  // SOURCE index of the candidate, or -1 when none is armed.
+  let pendingRingSource = -1
+  // Set once a SECOND distinct source is toggled before the first candidate
+  // is resolved — the engine's only signal that this is a bulk operation
+  // (`expandAll`/`collapseAll`) rather than a single user toggle, since a
+  // bulk operation looks identical to many single `setOpen` calls otherwise.
+  // See `setOpen` for the full reasoning.
+  let pendingRingBulk = false
+  let ring: RingFlash | null = null
+  // Reused each frame instead of allocating — at most one ring is ever live.
+  let ringBoxBuffer = new Float64Array(4)
+
   const relayout = (now: number): void => {
     const prevBoxes = boxes
     const prevVisibleToSource = visibleToSource
@@ -565,6 +607,24 @@ export function createChartEngine(renderer: Renderer): ChartEngine {
       renderBoxes = boxes
     }
     pendingTransition = false
+
+    // Resolve the ring candidate `setOpen` armed, exactly like
+    // `pendingTransition` above: only when THIS relayout was actually
+    // toggle-triggered (`pendingRingSource` is only ever set inside
+    // `setOpen`) does this touch `ring` at all — a `setData`/`setOptions`
+    // relayout leaves an in-progress ring from an earlier toggle alone,
+    // since it isn't the concern this bookkeeping exists for. Gated on
+    // `animate` (a reduced-motion host gets no flash) and on
+    // `pendingRingBulk` (a bulk expandAll/collapseAll — many distinct
+    // sources toggled before this relayout ran — never gets one either).
+    if (pendingRingSource !== -1) {
+      ring =
+        animate && !pendingRingBulk
+          ? { source: pendingRingSource, startedAt: now, duration: RING_DURATION_MS }
+          : null
+      pendingRingSource = -1
+      pendingRingBulk = false
+    }
 
     layoutDirty = false
   }
@@ -681,6 +741,53 @@ export function createChartEngine(renderer: Renderer): ChartEngine {
     }
     // --- end transition ---
 
+    // --- one-shot toggle ring ---
+    // Cost here is O(1) regardless of tree size: at most one ring is ever
+    // live, so this is never more than a single bounds check plus a single
+    // box read, matching "drawing it is one stroked path".
+    let ringActive = false
+    let ringProgress = 0
+    if (ring !== null) {
+      const p = progressOf(ring, now)
+      if (p >= 1) {
+        // Done: same zero-overhead steady state as a finished transition.
+        ring = null
+      } else {
+        // Resolve via `prunedFromSource`, not a linear scan: the ring's
+        // SOURCE index is stable across relayouts, but its PRUNED index
+        // shifts every time the tree is pruned differently, exactly like
+        // every other piece of source-keyed state here (`Ghost.source`,
+        // `TweenEntry`'s map key). Guarded rather than assumed in range —
+        // the toggled node itself always survives ITS OWN toggle, but an
+        // unrelated LATER collapse of an ancestor could prune it away while
+        // the ring is still fading, and this must degrade to "no ring"
+        // rather than read a stale or out-of-range box.
+        const pruned =
+          ring.source >= 0 && ring.source < prunedFromSource.length
+            ? prunedFromSource[ring.source]!
+            : -1
+        if (pruned === -1) {
+          ring = null
+        } else {
+          ringActive = true
+          ringProgress = p
+          // `renderBoxes`, not `boxes`: the ring must follow the same
+          // interpolated position as the node itself during a layout
+          // transition, per the brief, rather than snapping to the final
+          // layout while the node glides. The toggled node is virtually
+          // always a genuinely visible node (the user just clicked it), so
+          // the ordinary per-frame node-tween loop above has already
+          // brought `renderBoxes` at this index up to date this frame.
+          const o = pruned * 4
+          ringBoxBuffer[0] = renderBoxes[o]!
+          ringBoxBuffer[1] = renderBoxes[o + 1]!
+          ringBoxBuffer[2] = renderBoxes[o + 2]!
+          ringBoxBuffer[3] = renderBoxes[o + 3]!
+        }
+      }
+    }
+    // --- end one-shot toggle ring ---
+
     if (highlightSource === null) {
       highlightBuffer = null
     } else {
@@ -726,6 +833,9 @@ export function createChartEngine(renderer: Renderer): ChartEngine {
       ghostBoxes: ghostDrawBoxes,
       ghostAlpha: ghostDrawAlpha,
       ghostCount,
+      ringActive,
+      ringBox: ringBoxBuffer,
+      ringProgress,
     })
 
     // Reports only the genuinely on-screen set (see the `ChartEngine.render`
@@ -768,6 +878,11 @@ export function createChartEngine(renderer: Renderer): ChartEngine {
       // no longer exists.
       pendingTransition = false
       transition = null
+      // Same reasoning for the ring: its SOURCE index means nothing against
+      // a new dataset, so drop any candidate and any in-flight flash.
+      pendingRingSource = -1
+      pendingRingBulk = false
+      ring = null
       layoutDirty = true
     },
     setOptions(partial) {
@@ -792,6 +907,27 @@ export function createChartEngine(renderer: Renderer): ChartEngine {
       open[index] = v
       pendingTransition = true
       layoutDirty = true
+      // Arm (or update) the ring candidate. The engine has no way to tell a
+      // single user toggle apart from one call in a host's `expandAll`/
+      // `collapseAll` loop — both are just a `setOpen` call — so it infers
+      // "bulk" from HOW MANY DISTINCT nodes get toggled before the next
+      // relayout consumes this candidate (see `relayout`): a real bulk
+      // operation flips many different indices in one synchronous burst,
+      // while a single toggle (even a rapid double-toggle of the SAME node)
+      // only ever touches one. This also means a second, genuinely separate
+      // single toggle that lands before the first one's relayout naturally
+      // REPLACES the candidate rather than queuing a second ring — which is
+      // exactly the cap the brief asks for ("only a single ring can be live
+      // at a time"), as a side effect of this same bookkeeping rather than a
+      // second mechanism.
+      if (!pendingRingBulk) {
+        if (pendingRingSource === -1) {
+          pendingRingSource = index
+        } else if (pendingRingSource !== index) {
+          pendingRingBulk = true
+          pendingRingSource = -1
+        }
+      }
     },
     setCamera(next) {
       // Called every frame; keep this a plain spread of three numbers so it
@@ -817,6 +953,9 @@ export function createChartEngine(renderer: Renderer): ChartEngine {
         // per the brief — no lingering ghosts or half-tweened positions.
         transition = null
         renderBoxes = boxes
+        // Same switch governs the ring: a reduced-motion host gets no
+        // flash, so drop one that's already mid-flight too.
+        ring = null
       }
     },
     render,

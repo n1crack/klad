@@ -106,6 +106,29 @@ export interface Frame {
   ghostBoxes: Float64Array
   ghostAlpha: Float32Array
   ghostCount: number
+  /**
+   * True while a one-shot expand/collapse confirmation ring is being drawn
+   * this frame — a brief outline flash around the node a `setOpen` toggle
+   * just acted on. When false, `ringBox`/`ringProgress` are meaningless.
+   * Never true for a bulk `expandAll`/`collapseAll`-style operation (many
+   * distinct toggles in one burst) or while animation is disabled — see
+   * engine.ts's `setOpen`/`relayout` for how that's decided.
+   */
+  ringActive: boolean
+  /**
+   * `[x, y, w, h]` of the ringed node this frame, in world units — the same
+   * convention as `boxes`, and following the same interpolated position as
+   * the node itself during a layout transition (never a stale snapshot of
+   * the final layout while the node glides elsewhere).
+   */
+  ringBox: Float64Array
+  /**
+   * 0 (just fired) to 1 (fully faded) progress through the one-shot flash,
+   * a pure function of the `now` passed to `render()` — never a renderer-
+   * side clock read. The renderer derives both the outward growth and the
+   * fade-out alpha from this single number.
+   */
+  ringProgress: number
 }
 
 export interface DrawCallStats {

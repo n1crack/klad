@@ -30,11 +30,13 @@ function fakeRenderer(): Renderer & { frames: Frame[] } {
         labels: f.labels.slice(),
         camera: { ...f.camera },
         highlight: f.highlight === null ? null : f.highlight.slice(),
-        // Same reasoning: `revealAlpha`/`ghostBoxes`/`ghostAlpha` are also
-        // engine-owned buffers reused (and grown) across frames.
+        // Same reasoning: `revealAlpha`/`ghostBoxes`/`ghostAlpha`/`ringBox`
+        // are also engine-owned buffers reused (and grown, or in `ringBox`'s
+        // case fixed-size-and-reused) across frames.
         revealAlpha: f.revealAlpha === null ? null : f.revealAlpha.slice(0, f.visibleCount),
         ghostBoxes: f.ghostBoxes.slice(0, f.ghostCount * 4),
         ghostAlpha: f.ghostAlpha.slice(0, f.ghostCount),
+        ringBox: f.ringBox.slice(),
       })
     },
     stats: { lastDrawCalls: { edgeStrokes: 0, nodes: 0, labels: 0 } },
@@ -922,6 +924,126 @@ describe('ChartEngine expand/collapse transition', () => {
 
     engine.render(1250) // done
     expect(renderer.frames.at(-1)!.revealAlpha).toBeNull()
+  })
+})
+
+// One-shot expand/collapse confirmation ring: fires once on the toggled
+// node, never for a bulk expandAll/collapseAll-style burst, and never while
+// animation is disabled. `render(now)` is always called with an explicit
+// `now` here, same discipline as the transition tests above.
+describe('ChartEngine one-shot toggle ring', () => {
+  it('flashes a ring on the toggled node, then clears it once the flash completes', () => {
+    const renderer = fakeRenderer()
+    const { engine, tree } = seed(renderer)
+    engine.setAnimate(true)
+    engine.setCamera({ x: 0, y: 0, k: 1 })
+    engine.render(1000) // all open — establishes the pre-toggle layout
+
+    const bIndex = tree.idToIndex.get('b')!
+    const bPrunedBefore = Array.from(engine.visibleToSource).indexOf(bIndex)
+    expect(bPrunedBefore).toBeGreaterThanOrEqual(0)
+    const bBoxBefore = [
+      engine.boxes[bPrunedBefore * 4]!,
+      engine.boxes[bPrunedBefore * 4 + 1]!,
+      engine.boxes[bPrunedBefore * 4 + 2]!,
+      engine.boxes[bPrunedBefore * 4 + 3]!,
+    ]
+
+    engine.setOpen(bIndex, false) // collapses 'c'
+    engine.render(1000) // t=0 of both the layout transition and the ring
+    const start = renderer.frames.at(-1)!
+    expect(start.ringActive).toBe(true)
+    expect(start.ringProgress).toBeCloseTo(0, 5)
+    // At progress 0 the ring sits exactly on 'b's PRE-toggle box — same
+    // "progress 0 reproduces the pre-toggle layout exactly" guarantee the
+    // transition itself already gives, since the ring follows the same
+    // interpolated (`renderBoxes`) position as the node.
+    expect(start.ringBox[0]).toBeCloseTo(bBoxBefore[0]!, 10)
+    expect(start.ringBox[1]).toBeCloseTo(bBoxBefore[1]!, 10)
+    expect(start.ringBox[2]).toBeCloseTo(bBoxBefore[2]!, 10)
+    expect(start.ringBox[3]).toBeCloseTo(bBoxBefore[3]!, 10)
+
+    engine.render(1175) // partway through the ring's 350ms window
+    const mid = renderer.frames.at(-1)!
+    expect(mid.ringActive).toBe(true)
+    expect(mid.ringProgress).toBeGreaterThan(0)
+    expect(mid.ringProgress).toBeLessThan(1)
+
+    engine.render(1350) // past the ring's duration
+    expect(renderer.frames.at(-1)!.ringActive).toBe(false)
+  })
+
+  it('does not fire for a bulk expandAll/collapseAll-style burst of distinct toggles', () => {
+    const renderer = fakeRenderer()
+    const { engine, tree } = seed(renderer)
+    engine.setAnimate(true)
+    engine.setCamera({ x: 0, y: 0, k: 1 })
+    engine.render(1000)
+
+    // A bulk operation looks, from the engine's side, like several `setOpen`
+    // calls with no `render()` in between — indistinguishable from
+    // individual toggles unless the engine notices multiple DISTINCT source
+    // indices were touched before the next relayout consumes the candidate.
+    engine.setOpen(tree.idToIndex.get('b')!, false)
+    engine.setOpen(tree.idToIndex.get('d')!, false)
+    engine.render(1000)
+
+    expect(renderer.frames.at(-1)!.ringActive).toBe(false)
+  })
+
+  it('does not fire when animation is disabled', () => {
+    const renderer = fakeRenderer()
+    const { engine, tree } = seed(renderer)
+    // animate left at its default (false) — reduced-motion hosts get no ring.
+    engine.setCamera({ x: 0, y: 0, k: 1 })
+    engine.render(1000)
+
+    engine.setOpen(tree.idToIndex.get('b')!, false)
+    engine.render(1000)
+
+    expect(renderer.frames.at(-1)!.ringActive).toBe(false)
+  })
+
+  it('drops an in-flight ring immediately when animation is disabled mid-flash', () => {
+    const renderer = fakeRenderer()
+    const { engine, tree } = seed(renderer)
+    engine.setAnimate(true)
+    engine.setCamera({ x: 0, y: 0, k: 1 })
+    engine.render(1000)
+    engine.setOpen(tree.idToIndex.get('b')!, false)
+    engine.render(1000)
+    expect(renderer.frames.at(-1)!.ringActive).toBe(true)
+
+    engine.setAnimate(false)
+    engine.render(1010)
+    expect(renderer.frames.at(-1)!.ringActive).toBe(false)
+  })
+
+  it('replaces the ring when a second, separate single toggle lands mid-flash — never more than one live', () => {
+    const renderer = fakeRenderer()
+    const { engine, tree } = seed(renderer)
+    engine.setAnimate(true)
+    engine.setCamera({ x: 0, y: 0, k: 1 })
+    engine.render(1000)
+
+    engine.setOpen(tree.idToIndex.get('b')!, false)
+    engine.render(1000)
+    expect(renderer.frames.at(-1)!.ringActive).toBe(true)
+
+    engine.render(1100) // still mid-flash for 'b'
+
+    const dIndex = tree.idToIndex.get('d')!
+    const dPrunedBefore = Array.from(engine.visibleToSource).indexOf(dIndex)
+    const dBoxBefore = [engine.boxes[dPrunedBefore * 4]!, engine.boxes[dPrunedBefore * 4 + 1]!]
+
+    engine.setOpen(dIndex, false) // a second, genuinely separate single toggle
+    engine.render(1100)
+    const frame = renderer.frames.at(-1)!
+    expect(frame.ringActive).toBe(true)
+    // Restarted for 'd' at progress 0, not continuing (or stacking with) 'b's.
+    expect(frame.ringProgress).toBeCloseTo(0, 5)
+    expect(frame.ringBox[0]).toBeCloseTo(dBoxBefore[0]!, 10)
+    expect(frame.ringBox[1]).toBeCloseTo(dBoxBefore[1]!, 10)
   })
 })
 

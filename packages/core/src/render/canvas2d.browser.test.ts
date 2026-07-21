@@ -49,6 +49,9 @@ function frame(overrides: Partial<Frame> = {}): Frame {
     ghostBoxes: new Float64Array(0),
     ghostAlpha: new Float32Array(0),
     ghostCount: 0,
+    ringActive: false,
+    ringBox: new Float64Array(4),
+    ringProgress: 0,
     ...overrides,
   }
 }
