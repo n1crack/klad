@@ -567,9 +567,14 @@ export function createOrgChart(host: HTMLElement, options: Options): OrgChartIns
   // window of recent pointer samples (see input.ts), not the single last
   // delta — a momentary jitter right at release must not fling the chart.
   // Decays exponentially and stops once it drops below a small threshold.
-  const MOMENTUM_TAU_MS = 300
+  // Total glide distance is roughly release velocity x tau, so tau is the knob
+  // that decides how far a flick carries. 300ms was the first guess and read as
+  // too fast in use — the chart ran away from the finger. 180ms keeps the coast
+  // obviously present without overshooting what the user aimed at.
+  const MOMENTUM_TAU_MS = 180
   const MOMENTUM_MIN_VELOCITY = 0.02 // px/ms (~20px/s) — below this, stop rather than crawl forever.
-  const MOMENTUM_MAX_VELOCITY = 3 // px/ms (~3000px/s) — clamps an unrealistic sample-noise spike.
+  // Clamps a sample-noise spike into something a hand could plausibly have done.
+  const MOMENTUM_MAX_VELOCITY = 2 // px/ms (~2000px/s)
 
   const stepMomentum = (now: number): void => {
     if (destroyed) {
