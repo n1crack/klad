@@ -10,8 +10,20 @@ function fakeRenderer(): Renderer & { frames: Frame[] } {
     frames,
     resize: vi.fn(),
     draw: (f: Frame) => {
-      // Copy the parts assertions read; the engine reuses its buffers.
-      frames.push({ ...f, visible: f.visible.slice(0, f.visibleCount) })
+      // Deep-copy every buffer the engine reuses in place across frames. A
+      // shallow copy of just `visible` would let two captured frames share
+      // `highlight` (the engine's own `highlightBuffer`, mutated in place),
+      // `boxes`, or `parent` — the first test comparing one of those across
+      // renders would silently compare a buffer against itself.
+      frames.push({
+        ...f,
+        boxes: f.boxes.slice(),
+        parent: f.parent.slice(),
+        visible: f.visible.slice(0, f.visibleCount),
+        labels: f.labels.slice(),
+        camera: { ...f.camera },
+        highlight: f.highlight === null ? null : f.highlight.slice(),
+      })
     },
     stats: { lastDrawCalls: { edgeStrokes: 0, nodes: 0, labels: 0 } },
   }
@@ -47,7 +59,10 @@ describe('toWireTree / wireTreeToTree', () => {
     const back = wireTreeToTree(toWireTree(tree))
     expect(back.count).toBe(tree.count)
     expect(Array.from(back.parent)).toEqual(Array.from(tree.parent))
+    expect(Array.from(back.childStart)).toEqual(Array.from(tree.childStart))
     expect(Array.from(back.childIndex)).toEqual(Array.from(tree.childIndex))
+    expect(Array.from(back.roots)).toEqual(Array.from(tree.roots))
+    expect(Array.from(back.depth)).toEqual(Array.from(tree.depth))
     expect(Array.from(back.order)).toEqual(Array.from(tree.order))
   })
 })
@@ -136,21 +151,123 @@ describe('ChartEngine', () => {
     // out of the pruned buffer and hit-test its centre instead of assuming a
     // fixed point.
     const pruned = Array.from(engine.visibleToSource).indexOf(rootIndex)
+    // Guard the index before using it: if a regression ever dropped the root
+    // from the pruned set, `pruned` would be -1 and `engine.boxes[-4]` would
+    // read `undefined`, producing a confusing NaN comparison below instead of
+    // a clean assertion failure here.
+    expect(pruned).toBeGreaterThanOrEqual(0)
     const cx = engine.boxes[pruned * 4]! + engine.boxes[pruned * 4 + 2]! / 2
     const cy = engine.boxes[pruned * 4 + 1]! + engine.boxes[pruned * 4 + 3]! / 2
     expect(engine.hitTest(cx, cy)).toBe(rootIndex)
     expect(engine.hitTest(-500, -500)).toBe(-1)
   })
 
+  it('hit-tests correctly even before the first render()', () => {
+    const renderer = fakeRenderer()
+    const { engine } = seed(renderer)
+    // Nothing has been laid out yet — hitTest must trigger its own relayout
+    // rather than assuming render() already ran.
+    expect(engine.visibleToSource.length).toBe(0)
+    expect(engine.hitTest(-999_999, -999_999)).toBe(-1)
+    expect(engine.visibleToSource.length).toBe(4)
+  })
+
   it('maps highlight ids onto the drawn frame', () => {
     const renderer = fakeRenderer()
     const { engine, tree } = seed(renderer)
     engine.setCamera({ x: 0, y: 0, k: 1 })
-    engine.setHighlight(Uint32Array.from([tree.idToIndex.get('d')!]))
+    const dIndex = tree.idToIndex.get('d')!
+    engine.setHighlight(Uint32Array.from([dIndex]))
     engine.render()
     const frame = renderer.frames.at(-1)!
     expect(frame.highlight).not.toBeNull()
-    expect(frame.highlight!.some((v) => v === 1)).toBe(true)
+    // Assert the exact array, derived independently from visibleToSource, not
+    // just "some entry is set" — index-space translation (source -> pruned)
+    // is the highest-risk behaviour in this file, and a wrong-node highlight
+    // would still satisfy a `.some(v => v === 1)` check.
+    const expected = Array.from(engine.visibleToSource).map((src) => (src === dIndex ? 1 : 0))
+    expect(Array.from(frame.highlight!)).toEqual(expected)
+  })
+
+  it('clears highlight when setHighlight(null) is called', () => {
+    const renderer = fakeRenderer()
+    const { engine, tree } = seed(renderer)
+    engine.setCamera({ x: 0, y: 0, k: 1 })
+    engine.setHighlight(Uint32Array.from([tree.idToIndex.get('a')!]))
+    engine.render()
+    expect(renderer.frames.at(-1)!.highlight).not.toBeNull()
+    engine.setHighlight(null)
+    engine.render()
+    expect(renderer.frames.at(-1)!.highlight).toBeNull()
+  })
+
+  it('reports the dragged node in pruned index space via dragIndex', () => {
+    const renderer = fakeRenderer()
+    const { engine, tree } = seed(renderer)
+    engine.setCamera({ x: 0, y: 0, k: 1 })
+    const dIndex = tree.idToIndex.get('d')!
+    engine.setDrag(dIndex)
+    engine.render()
+    const frame = renderer.frames.at(-1)!
+    expect(frame.dragIndex).not.toBe(-1)
+    expect(engine.visibleToSource[frame.dragIndex]).toBe(dIndex)
+  })
+
+  it('reports dragIndex -1 when nothing is being dragged', () => {
+    const renderer = fakeRenderer()
+    const { engine } = seed(renderer)
+    engine.setCamera({ x: 0, y: 0, k: 1 })
+    engine.render()
+    expect(renderer.frames.at(-1)!.dragIndex).toBe(-1)
+  })
+
+  it('exposes bounds reflecting the last layout', () => {
+    const renderer = fakeRenderer()
+    const { engine } = seed(renderer)
+    engine.setCamera({ x: 0, y: 0, k: 1 })
+    engine.render()
+    expect(engine.bounds.maxX).toBeGreaterThan(engine.bounds.minX)
+    expect(engine.bounds.maxY).toBeGreaterThan(engine.bounds.minY)
+  })
+
+  it('mirrors the layout horizontally when rtl is set', () => {
+    const renderer = fakeRenderer()
+    const { engine } = seed(renderer)
+    engine.setCamera({ x: 0, y: 0, k: 1 })
+    engine.render()
+    const before = engine.boxes.slice()
+    engine.setOptions({ rtl: true })
+    engine.render()
+    expect(Array.from(engine.boxes)).not.toEqual(Array.from(before))
+  })
+
+  it('ignores an out-of-range setOpen index', () => {
+    const renderer = fakeRenderer()
+    const { engine } = seed(renderer)
+    engine.setCamera({ x: 0, y: 0, k: 1 })
+    engine.render()
+    const before = engine.boxes
+    expect(() => engine.setOpen(-1, false)).not.toThrow()
+    expect(() => engine.setOpen(999, false)).not.toThrow()
+    engine.render()
+    expect(engine.boxes).toBe(before)
+  })
+
+  it('renders zero visible nodes before setViewport is called', () => {
+    const renderer = fakeRenderer()
+    const engine = createChartEngine(renderer)
+    const tree = normalize(DATA)
+    engine.setData(toWireTree(tree), sizesFor(tree.count), ['a', 'b', 'c', 'd'], new Uint8Array(tree.count).fill(1))
+    engine.setCamera({ x: 0, y: 0, k: 1 })
+    expect(() => engine.render()).not.toThrow()
+    expect(renderer.frames.at(-1)!.visibleCount).toBe(0)
+  })
+
+  it('forwards viewport changes to the renderer', () => {
+    const renderer = fakeRenderer()
+    const engine = createChartEngine(renderer)
+    engine.setViewport(640, 480, 2)
+    expect(renderer.resize).toHaveBeenCalledWith(640, 480, 2)
   })
 
   it('survives an empty dataset', () => {
@@ -161,5 +278,190 @@ describe('ChartEngine', () => {
     engine.setCamera({ x: 0, y: 0, k: 1 })
     expect(() => engine.render()).not.toThrow()
     expect(renderer.frames.at(-1)!.visibleCount).toBe(0)
+  })
+})
+
+// F1: setOptions/setOpen must dirty the layout only on an actual
+// layout-affecting change. `layout()` always allocates a fresh `boxes`, so
+// reference identity across renders is a reliable "did it relayout" probe.
+describe('ChartEngine dirty tracking (F1)', () => {
+  it('does not relayout when only lod changes', () => {
+    const renderer = fakeRenderer()
+    const { engine } = seed(renderer)
+    engine.setCamera({ x: 0, y: 0, k: 1 })
+    engine.render()
+    const before = engine.boxes
+    engine.setOptions({ lod: { text: 0.5, overlay: 0.9 } })
+    engine.render()
+    expect(engine.boxes).toBe(before)
+  })
+
+  it('does not relayout on a no-op orientation set', () => {
+    const renderer = fakeRenderer()
+    const { engine } = seed(renderer)
+    engine.setCamera({ x: 0, y: 0, k: 1 })
+    engine.render()
+    const before = engine.boxes
+    engine.setOptions({ orientation: 'tb' }) // already 'tb' — DEFAULT_OPTIONS
+    engine.render()
+    expect(engine.boxes).toBe(before)
+  })
+
+  it('does not relayout when setOpen sets an already-open node', () => {
+    const renderer = fakeRenderer()
+    const { engine, tree } = seed(renderer)
+    engine.setCamera({ x: 0, y: 0, k: 1 })
+    engine.render()
+    const before = engine.boxes
+    engine.setOpen(tree.idToIndex.get('b')!, true) // seed() opens every node already
+    engine.render()
+    expect(engine.boxes).toBe(before)
+  })
+
+  it('relayouts (fresh boxes) when a layout-affecting option actually changes', () => {
+    const renderer = fakeRenderer()
+    const { engine } = seed(renderer)
+    engine.setCamera({ x: 0, y: 0, k: 1 })
+    engine.render()
+    const before = engine.boxes
+    engine.setOptions({ spacingX: 999 })
+    engine.render()
+    expect(engine.boxes).not.toBe(before)
+  })
+
+  it('relayouts (fresh boxes) when setOpen actually flips a flag', () => {
+    const renderer = fakeRenderer()
+    const { engine, tree } = seed(renderer)
+    engine.setCamera({ x: 0, y: 0, k: 1 })
+    engine.render()
+    const before = engine.boxes
+    engine.setOpen(tree.idToIndex.get('b')!, false)
+    engine.render()
+    expect(engine.boxes).not.toBe(before)
+  })
+})
+
+// F2: setData/setCamera must defensive-copy every caller-owned buffer at the
+// boundary. In the worker path these arrive as structured clones the engine
+// already owns; in the main-thread fallback the host still owns the object,
+// so aliasing it is a route for the two transports to disagree.
+describe('ChartEngine caller-owned buffer aliasing (F2)', () => {
+  it('does not write through into the caller-owned open array', () => {
+    const renderer = fakeRenderer()
+    const engine = createChartEngine(renderer)
+    const tree = normalize(DATA)
+    engine.setViewport(800, 600, 1)
+    const hostOpen = new Uint8Array(tree.count).fill(1)
+    engine.setData(toWireTree(tree), sizesFor(tree.count), ['a', 'b', 'c', 'd'], hostOpen)
+    engine.setOpen(tree.idToIndex.get('b')!, false)
+    expect(Array.from(hostOpen)).toEqual([1, 1, 1, 1])
+  })
+
+  it('does not read a later mutation of the caller-owned sizes array', () => {
+    const renderer = fakeRenderer()
+    const engine = createChartEngine(renderer)
+    const tree = normalize(DATA)
+    engine.setViewport(800, 600, 1)
+    const hostSizes = sizesFor(tree.count)
+    engine.setData(toWireTree(tree), hostSizes, ['a', 'b', 'c', 'd'], new Uint8Array(tree.count).fill(1))
+    engine.setCamera({ x: 0, y: 0, k: 1 })
+    // Mutate the caller's buffer after handing it over, then force a relayout
+    // through an unrelated call (not another setData) to prove the engine
+    // never reaches back into the host's array.
+    hostSizes[0] = 999
+    engine.setOptions({ spacingX: 20 })
+    engine.render()
+    const prunedA = Array.from(engine.visibleToSource).indexOf(tree.idToIndex.get('a')!)
+    expect(prunedA).toBeGreaterThanOrEqual(0)
+    expect(engine.boxes[prunedA * 4 + 2]).toBe(100)
+  })
+
+  it('does not write through into the caller-owned camera object', () => {
+    const renderer = fakeRenderer()
+    const { engine } = seed(renderer)
+    const cam = { x: 0, y: 0, k: 1 }
+    engine.setCamera(cam)
+    engine.render()
+    expect(renderer.frames.at(-1)!.tier).toBe('full')
+    // Mutate the host's camera object directly, without calling setCamera again.
+    cam.k = 0.01
+    engine.render()
+    expect(renderer.frames.at(-1)!.tier).toBe('full')
+  })
+})
+
+// F3: highlight/drag hold SOURCE indices, meaningless against a new dataset.
+describe('ChartEngine resets highlight and drag on setData (F3)', () => {
+  it('clears highlight and drag when a new dataset is loaded', () => {
+    const renderer = fakeRenderer()
+    const { engine, tree } = seed(renderer)
+    engine.setCamera({ x: 0, y: 0, k: 1 })
+    engine.setHighlight(Uint32Array.from([tree.idToIndex.get('c')!]))
+    engine.setDrag(tree.idToIndex.get('c')!)
+    engine.render()
+    expect(renderer.frames.at(-1)!.highlight).not.toBeNull()
+    expect(renderer.frames.at(-1)!.dragIndex).not.toBe(-1)
+
+    const NEW_DATA = [{ id: 'x' }, { id: 'y', parentId: 'x' }, { id: 'z', parentId: 'x' }]
+    const newTree = normalize(NEW_DATA)
+    engine.setData(
+      toWireTree(newTree),
+      sizesFor(newTree.count),
+      ['x', 'y', 'z'],
+      new Uint8Array(newTree.count).fill(1),
+    )
+    engine.setCamera({ x: 0, y: 0, k: 1 })
+    engine.render()
+    const frame = renderer.frames.at(-1)!
+    expect(frame.highlight).toBeNull()
+    expect(frame.dragIndex).toBe(-1)
+  })
+})
+
+// F4: `Bounds` has no readonly fields, so returning the module singleton
+// before the first relayout lets one engine's (or a caller's) mutation
+// corrupt every other engine created before or after it.
+describe('ChartEngine bounds isolation (F4)', () => {
+  it('does not share the initial bounds object between engines', () => {
+    const a = createChartEngine(fakeRenderer())
+    const b = createChartEngine(fakeRenderer())
+    expect(a.bounds).not.toBe(b.bounds)
+    a.bounds.maxX = 12_345
+    expect(b.bounds.maxX).toBe(0)
+  })
+})
+
+// F6: setData accepts an `open` array of any length; the copy taken for F2
+// must be sized to `tree.count`, not to whatever length the caller passed.
+describe('ChartEngine open-length reconciliation (F6)', () => {
+  it('zero-extends a short open array, degrading predictably instead of blanking the chart', () => {
+    const renderer = fakeRenderer()
+    const engine = createChartEngine(renderer)
+    // a -> b -> c: closing b's default-missing flag hides c but keeps b itself.
+    const data = [{ id: 'a' }, { id: 'b', parentId: 'a' }, { id: 'c', parentId: 'b' }]
+    const tree = normalize(data)
+    engine.setViewport(800, 600, 1)
+    // Only 'a' is given explicitly; 'b' and 'c' zero-extend to closed.
+    engine.setData(toWireTree(tree), sizesFor(tree.count), ['a', 'b', 'c'], Uint8Array.from([1]))
+    engine.setCamera({ x: 0, y: 0, k: 1 })
+    const drawn = engine.render()
+    // 'b' stays visible (its own visibility isn't gated by its own flag); 'c'
+    // is hidden because its parent 'b' defaulted to closed.
+    expect(drawn.length).toBe(2)
+  })
+
+  it('ignores the tail of an open array longer than the tree', () => {
+    const renderer = fakeRenderer()
+    const engine = createChartEngine(renderer)
+    const data = [{ id: 'a' }, { id: 'b', parentId: 'a' }]
+    const tree = normalize(data)
+    engine.setViewport(800, 600, 1)
+    const longOpen = Uint8Array.from([1, 1, 1, 1, 1])
+    expect(() =>
+      engine.setData(toWireTree(tree), sizesFor(tree.count), ['a', 'b'], longOpen),
+    ).not.toThrow()
+    engine.setCamera({ x: 0, y: 0, k: 1 })
+    const drawn = engine.render()
+    expect(drawn.length).toBe(2)
   })
 })
