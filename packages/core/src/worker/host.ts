@@ -186,7 +186,7 @@ export function createChartHost(
       // across the postMessage boundary — a dedicated Worker's
       // `performance.now()` shares the main thread's time origin (see
       // chart.worker.ts), so the small postMessage-latency skew between the
-      // two is negligible against a ~250ms transition, and not worth a
+      // two is negligible against a ~420ms transition, and not worth a
       // protocol field.
       if (engine !== null) return Promise.resolve(engine.render(now))
       return new Promise<Uint32Array>((resolve) => {

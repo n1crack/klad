@@ -27,6 +27,23 @@ export function createCanvas2DRenderer(
 
   const stats = { lastDrawCalls: { edgeStrokes: 0, nodes: 0, labels: 0 } as DrawCallStats }
 
+  /**
+   * An elbow is three axis-aligned segments meeting at two bends: `seg0`
+   * (leaving the parent) and `seg2` (entering the child) each touch exactly
+   * ONE bend, but `segMid` (the crossbar) touches BOTH — so a naive
+   * per-corner clamp (`radius <= seg0`, `radius <= seg2`) is not enough on
+   * its own: if both bends round INTO `segMid` from opposite ends, the two
+   * arcs overshoot and cross exactly when `segMid < 2 * radius`. Halving the
+   * `segMid` budget between the two corners (`segMid / 2`) is what prevents
+   * that — see `svg.ts`'s `clampEdgeCornerRadius`, which this must match
+   * exactly, since the export's whole promise is to look like the canvas.
+   */
+  function clampEdgeCornerRadius(seg0: number, segMid: number, seg2: number, radius: number): number {
+    if (radius <= 0) return 0
+    const limit = Math.min(seg0, seg2, segMid / 2)
+    return radius < limit ? radius : limit
+  }
+
   const resize = (width: number, height: number, dpr: number): void => {
     devicePixelRatio = dpr
     surface.width = Math.round(width * dpr)
@@ -49,6 +66,17 @@ export function createCanvas2DRenderer(
     // cross the viewport while neither of its endpoints' own boxes does (see
     // engine.ts's `buildEdgeIndex`), so the set of connectors to draw is not
     // derivable from the set of visible nodes.
+    // World units, scaled by `k` exactly like the node corner radius below —
+    // same reasoning: coordinates reaching `ctx` here are already converted
+    // to screen space (`world * k + camera.xy`), so a radius traveling
+    // alongside them must be scaled the same way to stay proportionate at
+    // any zoom. Zeroed at the `block` tier for the same perf reason as the
+    // node radius: at extreme zoom-out a 50k chart can have thousands of
+    // edges on screen, and the roundRect-vs-rect saving there has a direct
+    // analogue here (`quadraticCurveTo` calls vs plain `lineTo`) that isn't
+    // worth paying at a zoom level where the rounding is imperceptible.
+    const edgeRadius = frame.tier === 'block' ? 0 : theme.edgeCornerRadius * k
+
     if (edgeCount > 0) {
       ctx.beginPath()
       for (let n = 0; n < edgeCount; n++) {
@@ -64,20 +92,50 @@ export function createCanvas2DRenderer(
           const cx = boxes[io]! * k + camera.x
           const cy = (boxes[io + 1]! + boxes[io + 3]! / 2) * k + camera.y
           const midX = (px + cx) / 2
+          const r =
+            edgeRadius > 0
+              ? clampEdgeCornerRadius(Math.abs(midX - px), Math.abs(cy - py), Math.abs(cx - midX), edgeRadius)
+              : 0
           ctx.moveTo(px, py)
-          ctx.lineTo(midX, py)
-          ctx.lineTo(midX, cy)
-          ctx.lineTo(cx, cy)
+          if (r <= 0) {
+            ctx.lineTo(midX, py)
+            ctx.lineTo(midX, cy)
+            ctx.lineTo(cx, cy)
+          } else {
+            const dir0 = midX > px ? 1 : -1
+            const dirMid = cy > py ? 1 : -1
+            const dir2 = cx > midX ? 1 : -1
+            ctx.lineTo(midX - dir0 * r, py)
+            ctx.quadraticCurveTo(midX, py, midX, py + dirMid * r)
+            ctx.lineTo(midX, cy - dirMid * r)
+            ctx.quadraticCurveTo(midX, cy, midX + dir2 * r, cy)
+            ctx.lineTo(cx, cy)
+          }
         } else {
           const px = (boxes[po]! + boxes[po + 2]! / 2) * k + camera.x
           const py = (boxes[po + 1]! + boxes[po + 3]!) * k + camera.y
           const cx = (boxes[io]! + boxes[io + 2]! / 2) * k + camera.x
           const cy = boxes[io + 1]! * k + camera.y
           const midY = (py + cy) / 2
+          const r =
+            edgeRadius > 0
+              ? clampEdgeCornerRadius(Math.abs(midY - py), Math.abs(cx - px), Math.abs(cy - midY), edgeRadius)
+              : 0
           ctx.moveTo(px, py)
-          ctx.lineTo(px, midY)
-          ctx.lineTo(cx, midY)
-          ctx.lineTo(cx, cy)
+          if (r <= 0) {
+            ctx.lineTo(px, midY)
+            ctx.lineTo(cx, midY)
+            ctx.lineTo(cx, cy)
+          } else {
+            const dir0 = midY > py ? 1 : -1
+            const dirMid = cx > px ? 1 : -1
+            const dir2 = cy > midY ? 1 : -1
+            ctx.lineTo(px, midY - dir0 * r)
+            ctx.quadraticCurveTo(px, midY, px + dirMid * r, midY)
+            ctx.lineTo(cx - dirMid * r, midY)
+            ctx.quadraticCurveTo(cx, midY, cx, midY + dir2 * r)
+            ctx.lineTo(cx, cy)
+          }
         }
       }
       ctx.strokeStyle = theme.edgeStroke

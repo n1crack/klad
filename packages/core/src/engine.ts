@@ -8,7 +8,7 @@ import { pruneToVisible } from './visible.js'
 import { layout } from './layout/tidy.js'
 import { applyOrientation } from './layout/orientation.js'
 import { buildQuadTree, type QuadTree } from './spatial/quadtree.js'
-import { visibleRect, easeOutCubic } from './viewport.js'
+import { visibleRect, easeOutCubic, easeInOutCubic } from './viewport.js'
 import { DEFAULT_LOD, lodFor } from './render/lod.js'
 import type { Tree } from './tree.js'
 
@@ -62,8 +62,8 @@ export interface ChartEngine {
   readonly transitioning: boolean
   /**
    * True while the one-shot toggle ring is still fading. Deliberately a
-   * SEPARATE flag from `transitioning`: `RING_DURATION_MS` (350ms) outlives
-   * `TRANSITION_DURATION_MS` (250ms) on purpose (see `RING_DURATION_MS`'s
+   * SEPARATE flag from `transitioning`: `RING_DURATION_MS` (900ms) outlives
+   * `TRANSITION_DURATION_MS` (420ms) on purpose (see `RING_DURATION_MS`'s
    * docblock), so the layout transition can finish while the ring still has
    * fading left to do. A caller that only keeps requesting frames while
    * `transitioning` is true — as the vanilla layer's `scheduleFrame` used to
@@ -254,10 +254,24 @@ function lerpBox(from: Box, to: Box, t: number): Box {
   }
 }
 
-/** Roughly 250ms reads as a settling reveal without feeling sluggish on a
- * repeated expand/collapse; not exposed as a knob (yet) since nothing has
- * asked for a different pace. */
-const TRANSITION_DURATION_MS = 250
+/**
+ * Roughly 420ms reads as a deliberate, followable slide without feeling
+ * sluggish on a repeated expand/collapse; not exposed as a knob (yet) since
+ * nothing has asked for a different pace.
+ *
+ * This used to be 250ms, paired with `easeOutCubic` for the position tween.
+ * That combination read as an instant jump rather than a move: a tidy-tree
+ * re-center can slide a subtree thousands of world units, and `easeOutCubic`
+ * front-loads ~80% of the motion into the first third of the duration — at
+ * 250ms, most of a large reflow was already over within ~100ms, which the
+ * eye reads as "teleport, then a small settle" rather than a slide. Raising
+ * the duration alone would not have fixed that front-loading; see
+ * `easeInOutCubic`'s use below for the other half of the fix. The two
+ * changes are paired: either alone (a longer duration still front-loaded, or
+ * a symmetric ease still over almost as fast) reportedly still read as a
+ * snap.
+ */
+const TRANSITION_DURATION_MS = 420
 
 interface TweenEntry {
   box: Box
@@ -348,21 +362,27 @@ function buildTransition(
   // 1. Wherever every old-layout node (and any still-fading ghost) visually
   // is RIGHT NOW, not where it started or where it will settle — this is
   // what makes a second toggle mid-flight retarget instead of snapping.
+  // `easeInOutCubic`, not `easeOutCubic`: this is position/size math (the
+  // same `lerpBox` the render-loop's tween uses), not an alpha fade, so it
+  // has to use the same symmetric curve as the movement itself — otherwise a
+  // toggle that lands mid-transition would retarget FROM a point computed on
+  // one curve while animating TO it on another, which is exactly the kind of
+  // seam that reads as a stutter.
   const prevPositionBySource = new Map<number, Box>()
-  const prevEased = prevTransition === null ? 1 : easeOutCubic(progressOf(prevTransition, now))
+  const prevEasedPos = prevTransition === null ? 1 : easeInOutCubic(progressOf(prevTransition, now))
   for (let i = 0; i < prevVisibleToSource.length; i++) {
     const src = prevVisibleToSource[i]!
     let box = boxAt(prevBoxes, i)
     if (prevTransition !== null) {
       const entry = prevTransition.fromBySource.get(src)
-      if (entry !== undefined) box = lerpBox(entry.box, box, prevEased)
+      if (entry !== undefined) box = lerpBox(entry.box, box, prevEasedPos)
     }
     prevPositionBySource.set(src, box)
   }
   if (prevTransition !== null) {
     for (const ghost of prevTransition.ghosts) {
       if (!prevPositionBySource.has(ghost.source)) {
-        prevPositionBySource.set(ghost.source, lerpBox(ghost.from, ghost.to, prevEased))
+        prevPositionBySource.set(ghost.source, lerpBox(ghost.from, ghost.to, prevEasedPos))
       }
     }
   }
@@ -719,12 +739,26 @@ export function createChartEngine(renderer: Renderer): ChartEngine {
         transition = null
         renderBoxes = boxes
       } else {
-        const eased = easeOutCubic(progress)
+        // Two DIFFERENT curves, deliberately, not one shared between them —
+        // same split as the toggle ring's grow/fade in canvas2d.ts:
+        //  - `easedPos` (symmetric ease-in-out) drives every position/size
+        //    tween below (surviving nodes AND ghosts, since a ghost's
+        //    "shrink toward its parent" is a `lerpBox` too, same as a
+        //    surviving node's move) — this is the half the owner asked for:
+        //    accelerate, then decelerate, so the eye can follow the slide
+        //    instead of it front-loading into the first third of the
+        //    duration the way `easeOutCubic` does.
+        //  - `easedAlpha` (unchanged: `easeOutCubic`) still drives the
+        //    reveal fade-in and the ghost fade-out — those read fine as a
+        //    fast-start fade and the brief only asks to fix the MOVEMENT of
+        //    surviving nodes, not the fade curves.
+        const easedPos = easeInOutCubic(progress)
+        const easedAlpha = easeOutCubic(progress)
 
         const applyTween = (idx: number): void => {
           const entry = transition!.fromBySource.get(visibleToSource[idx]!)
           if (entry === undefined) return
-          writeBox(renderBoxes, idx, lerpBox(entry.box, boxAt(boxes, idx), eased))
+          writeBox(renderBoxes, idx, lerpBox(entry.box, boxAt(boxes, idx), easedPos))
         }
         // Every drawn NODE needs its own box tweened, plus its parent's (so
         // a connector reaching up to that parent, drawn from the same
@@ -753,7 +787,7 @@ export function createChartEngine(renderer: Renderer): ChartEngine {
           for (let s = 0; s < nodeCount; s++) {
             const entry = transition.fromBySource.get(visibleToSource[cullBuffer[s]!]!)
             if (entry !== undefined && entry.revealed) {
-              revealAlphaBuffer[s] = eased
+              revealAlphaBuffer[s] = easedAlpha
               anyRevealed = true
             } else {
               revealAlphaBuffer[s] = 1
@@ -776,8 +810,8 @@ export function createChartEngine(renderer: Renderer): ChartEngine {
           if (ghostDrawAlpha.length < gcount) ghostDrawAlpha = new Float32Array(gcount)
           for (let g = 0; g < gcount; g++) {
             const ghost = transition.ghosts[ghostCullBuffer[g]!]!
-            writeBox(ghostDrawBoxes, g, lerpBox(ghost.from, ghost.to, eased))
-            ghostDrawAlpha[g] = 1 - eased
+            writeBox(ghostDrawBoxes, g, lerpBox(ghost.from, ghost.to, easedPos))
+            ghostDrawAlpha[g] = 1 - easedAlpha
           }
           ghostCount = gcount
         }

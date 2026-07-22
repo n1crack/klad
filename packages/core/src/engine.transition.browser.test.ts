@@ -81,10 +81,10 @@ describe('expand/collapse transition, rendered on a real canvas', () => {
     const atStart = pixelAt(canvas, cx, cy)
     expect(atStart[3]).toBeGreaterThan(0) // still opaque — the ghost hasn't faded at all yet
 
-    engine.render(1125) // halfway
+    engine.render(1210) // halfway
     const atHalfway = pixelAt(canvas, cx, cy)
 
-    engine.render(1250) // past the transition's duration
+    engine.render(1420) // past the transition's duration
     expect(engine.transitioning).toBe(false)
     const atEnd = pixelAt(canvas, cx, cy)
     // By the end the ghost is gone and 'c's old position (now outside the
@@ -123,10 +123,10 @@ describe('expand/collapse transition, rendered on a real canvas', () => {
     const cy = engine.boxes[cPruned * 4 + 1]! + engine.boxes[cPruned * 4 + 3]! / 2 + 50
     const atStart = pixelAt(canvas, cx, cy)
 
-    engine.render(1125)
+    engine.render(1210)
     const atHalfway = pixelAt(canvas, cx, cy)
 
-    engine.render(1250)
+    engine.render(1420)
     expect(engine.transitioning).toBe(false)
     const atEnd = pixelAt(canvas, cx, cy)
 

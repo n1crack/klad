@@ -6,6 +6,19 @@ export interface Theme {
   cornerRadius: number
   edgeStroke: string
   edgeWidth: number
+  /**
+   * World units, like `cornerRadius` — scales with zoom the same way (the
+   * renderer multiplies it by `camera.k` right alongside the node corner
+   * radius). Defaults to `0`: a sharp 90-degree elbow, unchanged from every
+   * existing consumer's current output. Set above `0` for a rounded elbow —
+   * an arc/quadratic at each bend instead of a hard `lineTo` corner, in both
+   * `canvas2d.ts` and `svg.ts` (the export deliberately mirrors the canvas
+   * exactly). Clamped per-edge against that edge's own two segment lengths
+   * (see each renderer's elbow-drawing code) so a short connector's arcs
+   * never overshoot and cross — the clamp is applied at draw time, not
+   * here, since it depends on the specific edge's geometry.
+   */
+  edgeCornerRadius: number
   labelColour: string
   /** A full CSS font shorthand, e.g. '14px system-ui, sans-serif'. */
   labelFont: string
@@ -51,6 +64,7 @@ export const DEFAULT_THEME: Readonly<Theme> = Object.freeze({
   cornerRadius: 6,
   edgeStroke: '#d4d4d8',
   edgeWidth: 1,
+  edgeCornerRadius: 0,
   labelColour: '#18181b',
   labelFont: '14px system-ui, -apple-system, Segoe UI, sans-serif',
   labelPadding: 10,
