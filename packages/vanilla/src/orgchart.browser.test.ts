@@ -896,6 +896,82 @@ describe('createOrgChart', () => {
     chart.destroy()
   })
 
+  // --- per-node counts -----------------------------------------------------
+
+  it('reports direct children, descendants, depth and subtree height per node', async () => {
+    // a -> b -> d, a -> c. So 'a' has 2 direct, 3 descendants, height 2.
+    const chart = make()
+    await nextFrame()
+
+    expect(chart.api.stats('a')).toEqual({
+      directChildren: 2,
+      descendants: 3,
+      depth: 0,
+      height: 2,
+    })
+    expect(chart.api.stats('b')).toEqual({
+      directChildren: 1,
+      descendants: 1,
+      depth: 1,
+      height: 1,
+    })
+    expect(chart.api.stats('d')).toEqual({
+      directChildren: 0,
+      descendants: 0,
+      depth: 2,
+      height: 0,
+    })
+    expect(chart.api.stats('nope')).toBeNull()
+    chart.destroy()
+  })
+
+  it('counts the whole tree, not just the expanded part', async () => {
+    const chart = make({ collapsedByDefault: true })
+    await nextFrame()
+
+    // Only the root is on screen, but what a card should say is "3 people
+    // under me" — folding a branch up does not make those people disappear.
+    expect(chart.api.getState().visibleCount).toBe(1)
+    expect(chart.api.stats('a')!.descendants).toBe(3)
+    chart.destroy()
+  })
+
+  it('hands the same counts to renderNode', async () => {
+    const seen = new Map<string, string>()
+    const chart = make({
+      renderNode: (
+        el: HTMLElement,
+        ctx: { id: string; directChildren: number; descendants: number; height: number; depth: number },
+      ) => {
+        seen.set(ctx.id, `${ctx.directChildren}/${ctx.descendants}/${ctx.depth}/${ctx.height}`)
+        el.dataset.id = ctx.id
+      },
+    })
+    await settle()
+    await nextFrame()
+
+    expect(seen.get('a')).toBe('2/3/0/2')
+    expect(seen.get('d')).toBe('0/0/2/0')
+    chart.destroy()
+  })
+
+  it('recomputes the counts when the data is replaced', async () => {
+    const chart = make()
+    await nextFrame()
+    expect(chart.api.stats('a')!.descendants).toBe(3)
+
+    chart.update([{ id: 'a', name: 'Root' }, { id: 'b', parentId: 'a', name: 'Only' }])
+    await nextFrame()
+
+    expect(chart.api.stats('a')).toEqual({
+      directChildren: 1,
+      descendants: 1,
+      depth: 0,
+      height: 1,
+    })
+    chart.destroy()
+  })
+
   it('does not auto-pan on toggle when autoPanOnToggle is false', async () => {
     const chart = make({ collapsedByDefault: true, autoPanOnToggle: false })
     await nextFrame()

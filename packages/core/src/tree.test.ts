@@ -1,5 +1,5 @@
 import { describe, expect, it } from 'vitest'
-import { normalize, subtreeOf, wouldCreateCycle } from './tree.js'
+import { normalize, subtreeOf, wouldCreateCycle, computeSubtreeStats } from './tree.js'
 
 describe('normalize', () => {
   it('indexes a simple tree and builds CSR children', () => {
@@ -210,5 +210,90 @@ describe('wouldCreateCycle', () => {
     const b = t.idToIndex.get('b')!
     expect(wouldCreateCycle(t, b, 99)).toBe(false)
     expect(wouldCreateCycle(t, b, -5)).toBe(false)
+  })
+})
+
+describe('computeSubtreeStats', () => {
+  // a
+  // ├── b
+  // │   ├── d
+  // │   └── e
+  // │       └── f
+  // └── c
+  const DATA = [
+    { id: 'a' },
+    { id: 'b', parentId: 'a' },
+    { id: 'c', parentId: 'a' },
+    { id: 'd', parentId: 'b' },
+    { id: 'e', parentId: 'b' },
+    { id: 'f', parentId: 'e' },
+  ]
+
+  const statsOf = (data: { id: string; parentId?: string }[]) => {
+    const tree = normalize(data)
+    const stats = computeSubtreeStats(tree)
+    return (id: string) => {
+      const i = tree.idToIndex.get(id)!
+      return {
+        directChildren: stats.directChildren[i]!,
+        descendants: stats.descendants[i]!,
+        height: stats.height[i]!,
+        depth: tree.depth[i]!,
+      }
+    }
+  }
+
+  it('counts direct children, total descendants, and subtree height', () => {
+    const at = statsOf(DATA)
+
+    expect(at('a')).toEqual({ directChildren: 2, descendants: 5, height: 3, depth: 0 })
+    expect(at('b')).toEqual({ directChildren: 2, descendants: 3, height: 2, depth: 1 })
+    // A leaf: nothing below it in any of the three senses.
+    expect(at('c')).toEqual({ directChildren: 0, descendants: 0, height: 0, depth: 1 })
+    expect(at('d')).toEqual({ directChildren: 0, descendants: 0, height: 0, depth: 2 })
+    // One child, which is itself a leaf.
+    expect(at('e')).toEqual({ directChildren: 1, descendants: 1, height: 1, depth: 2 })
+    expect(at('f')).toEqual({ directChildren: 0, descendants: 0, height: 0, depth: 3 })
+  })
+
+  it('keeps each root to its own subtree', () => {
+    const at = statsOf([
+      { id: 'r1' },
+      { id: 'r1a', parentId: 'r1' },
+      { id: 'r2' },
+      { id: 'r2a', parentId: 'r2' },
+      { id: 'r2b', parentId: 'r2a' },
+    ])
+
+    expect(at('r1').descendants).toBe(1)
+    expect(at('r1').height).toBe(1)
+    expect(at('r2').descendants).toBe(2)
+    expect(at('r2').height).toBe(2)
+  })
+
+  it('handles an empty tree', () => {
+    const stats = computeSubtreeStats(normalize([]))
+    expect(stats.directChildren.length).toBe(0)
+    expect(stats.descendants.length).toBe(0)
+    expect(stats.height.length).toBe(0)
+  })
+
+  // The reverse-preorder accumulation exists so depth never costs stack: a
+  // recursive post-order walk blows up on a chain this long, which is an
+  // input the library states it supports.
+  it('does not recurse — a 50k-deep chain is a supported input', () => {
+    const chain = Array.from({ length: 50_000 }, (_, i) => ({
+      id: `n${i}`,
+      ...(i === 0 ? {} : { parentId: `n${i - 1}` }),
+    }))
+    const at = statsOf(chain)
+
+    expect(at('n0')).toEqual({
+      directChildren: 1,
+      descendants: 49_999,
+      height: 49_999,
+      depth: 0,
+    })
+    expect(at('n49999').descendants).toBe(0)
   })
 })

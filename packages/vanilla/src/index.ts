@@ -9,6 +9,7 @@ import {
   fit as fitCamera,
   interpolate,
   layout,
+  computeSubtreeStats,
   normalize,
   overlayEnabled,
   pan,
@@ -30,6 +31,7 @@ import {
   type Size,
   type SvgExportOptions,
   type Theme,
+  type SubtreeStats,
   type Tree,
   type Warning,
   type ZoomLimits,
@@ -39,7 +41,33 @@ import { attachInput } from './input.js'
 import { createMinimap, type Minimap, type MinimapOptions } from './minimap.js'
 import { createOverlay } from './overlay.js'
 
-export interface NodeContext {
+/**
+ * Where a node sits in the tree and how much hangs off it. Handed to
+ * `renderNode` on every card and returned by `api.stats`, so a template can
+ * show "12 direct / 340 total" without walking anything: all four numbers are
+ * precomputed once per tree (see core's `computeSubtreeStats`) and read here
+ * as array lookups. Counting a subtree while drawing it would be O(subtree)
+ * per node per frame, which is exactly the shape of work the 50k-node budget
+ * rules out.
+ *
+ * All four describe the FULL tree, not the currently expanded part: a
+ * collapsed branch's nodes still count. What a card shows is "this node has
+ * 340 people under it", which does not change because the user folded it up.
+ */
+export interface NodeStats {
+  /** Direct children. */
+  directChildren: number
+  /** Every node below this one, at any depth. A leaf is 0. */
+  descendants: number
+  /** Distance from the root: a root is 0. */
+  depth: number
+  /** How far the node's own subtree extends BELOW it: 0 for a leaf, 1 when
+   * every child is a leaf. The mirror of `depth`, and a different question
+   * from it. */
+  height: number
+}
+
+export interface NodeContext extends NodeStats {
   id: string
   item: NodeData
   open: boolean
@@ -204,6 +232,13 @@ export interface OrgChartApi {
   collapseAll(): void
   expandTo(id: string): void
   search(query: string | ((item: NodeData) => boolean)): SearchResult[]
+  /**
+   * Where `id` sits in the tree and how much hangs off it — see `NodeStats`.
+   * `null` for an id this chart doesn't have. The same numbers `renderNode`
+   * receives, for a caller driving its own UI (a sidebar, a breadcrumb, a
+   * summary line) rather than a card.
+   */
+  stats(id: string): NodeStats | null
   highlight(ids: string[] | null): void
   /**
    * Serializes the whole VISIBLE tree (collapsed branches excluded, same rule
@@ -335,6 +370,10 @@ export function createOrgChart(host: HTMLElement, options: Options): OrgChartIns
 
   let currentOptions = options
   let tree: Tree = normalize(options.data)
+  // Computed once per tree, never per frame and never per node on demand —
+  // see `computeSubtreeStats` in core. Every consumer below (`renderNode`'s
+  // context, `api.stats`) is then a plain array lookup.
+  let stats: SubtreeStats = computeSubtreeStats(tree)
   let open = new Uint8Array(tree.count)
   let camera: Camera = { x: 0, y: 0, k: 1 }
   // Explicitly annotated: under TS 5.9, `new Uint32Array(0)` infers
@@ -472,6 +511,15 @@ export function createOrgChart(host: HTMLElement, options: Options): OrgChartIns
     sourceToPruned = new Map()
     for (let i = 0; i < visibleToSource.length; i++) sourceToPruned.set(visibleToSource[i]!, i)
   }
+
+  /** `NodeStats` for a node by INDEX — four array reads, no walking. See
+   * `NodeStats` and core's `computeSubtreeStats`. */
+  const statsOf = (index: number): NodeStats => ({
+    directChildren: stats.directChildren[index]!,
+    descendants: stats.descendants[index]!,
+    depth: tree.depth[index]!,
+    height: stats.height[index]!,
+  })
 
   const boxOfSource = (source: number) => {
     const i = sourceToPruned.get(source)
@@ -1467,6 +1515,10 @@ export function createOrgChart(host: HTMLElement, options: Options): OrgChartIns
       }
       return results
     },
+    stats(id) {
+      const index = tree.idToIndex.get(id)
+      return index === undefined ? null : statsOf(index)
+    },
     highlight(ids) {
       if (ids === null) {
         chartHost.setHighlight(null)
@@ -1614,6 +1666,7 @@ export function createOrgChart(host: HTMLElement, options: Options): OrgChartIns
         open: open[item.index] === 1,
         hasChildren: tree.childStart[item.index + 1]! > tree.childStart[item.index]!,
         toggle: () => (open[item.index] === 1 ? api.collapse(item.id) : api.expand(item.id)),
+        ...statsOf(item.index),
       })
     },
   })
@@ -1658,6 +1711,7 @@ export function createOrgChart(host: HTMLElement, options: Options): OrgChartIns
     update(data, partial) {
       currentOptions = { ...currentOptions, ...partial, data }
       tree = normalize(data)
+      stats = computeSubtreeStats(tree)
       rebuildItemIndex()
       syncAnimate()
       initOpen()

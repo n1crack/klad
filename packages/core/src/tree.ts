@@ -183,3 +183,56 @@ export function wouldCreateCycle(tree: Tree, index: number, newParent: number): 
   }
   return false
 }
+
+/**
+ * Per-node subtree sizes, all three of them, in one O(count) pass.
+ *
+ * Computed once against a `Tree` and then read as plain array lookups. That
+ * split is the whole point: a card that wants to show "12 direct / 340 total"
+ * needs the number while it is being drawn, and walking a subtree at that
+ * moment would be O(subtree) per node per frame — precisely the shape of work
+ * the 50k-node budget rules out. Recomputing is only ever needed when the tree
+ * itself changes, which is when `normalize` runs anyway.
+ *
+ * Never recurses: a 50k-deep chain is a supported input, so the accumulation
+ * walks `tree.order` (preorder — parents always precede their children)
+ * backwards, which visits every node only after all of its own children. That
+ * is the same guarantee a post-order recursion gives, without the stack.
+ */
+export interface SubtreeStats {
+  /** Number of direct children per node. */
+  directChildren: Int32Array
+  /** Number of nodes strictly below each node — its whole subtree minus
+   * itself. A leaf is 0. */
+  descendants: Int32Array
+  /** How many levels the node's own subtree extends below it: 0 for a leaf,
+   * 1 for a node whose children are all leaves. Deliberately NOT the node's
+   * distance from the root, which is `tree.depth` and answers a different
+   * question. */
+  height: Int32Array
+}
+
+export function computeSubtreeStats(tree: Tree): SubtreeStats {
+  const n = tree.count
+  const directChildren = new Int32Array(n)
+  const descendants = new Int32Array(n)
+  const height = new Int32Array(n)
+
+  for (let i = 0; i < n; i++) {
+    directChildren[i] = tree.childStart[i + 1]! - tree.childStart[i]!
+  }
+
+  // Reverse preorder: every node is visited after all of its descendants, so
+  // a child's totals are final by the time its parent reads them. Roots
+  // (`parent === -1`) simply have nobody to contribute to.
+  for (let k = n - 1; k >= 0; k--) {
+    const i = tree.order[k]!
+    const p = tree.parent[i]!
+    if (p === -1) continue
+    descendants[p]! += descendants[i]! + 1
+    const viaChild = height[i]! + 1
+    if (viaChild > height[p]!) height[p] = viaChild
+  }
+
+  return { directChildren, descendants, height }
+}

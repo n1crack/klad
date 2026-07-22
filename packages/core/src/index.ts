@@ -1,8 +1,8 @@
 export const VERSION = '1.0.0-alpha.0'
 
 export type { NodeData, Warning, WarningCode, Size, Bounds } from './types.js'
-export type { Tree } from './tree.js'
-export { normalize, subtreeOf, wouldCreateCycle } from './tree.js'
+export type { Tree, SubtreeStats } from './tree.js'
+export { normalize, subtreeOf, wouldCreateCycle, computeSubtreeStats } from './tree.js'
 
 export type { LayoutOptions, LayoutResult } from './layout/tidy.js'
 export { layout } from './layout/tidy.js'
