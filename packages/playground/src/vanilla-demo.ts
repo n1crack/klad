@@ -7,6 +7,7 @@ import {
   minimapDefaultPosition,
   minimapOptionFor,
   themeFor,
+  accordionProgress,
   type Department,
   type Example,
   type MinimapPosition,
@@ -322,16 +323,21 @@ function renderAccordion(element: HTMLElement, context: NodeContext): void {
   card.querySelector('small')!.textContent = String(item.title ?? '')
 
   const open = item.detail === true
+  const progress = accordionProgress(item)
   const body = card.querySelector<HTMLDivElement>('.accordion-body')!
-  body.textContent = open
-    ? String(item.department ?? '—') +
-      ' · ' +
-      String(context.directChildren) +
-      ' direct · ' +
-      String(context.descendants) +
-      ' total'
-    : ''
-  body.classList.toggle('is-open', open)
+  body.textContent =
+    String(item.department ?? '—') +
+    ' · ' +
+    String(context.directChildren) +
+    ' direct · ' +
+    String(context.descendants) +
+    ' total'
+  // Driven by the same eased number the node's height is, so the text fades
+  // in as the room for it appears rather than popping at one end. Hidden
+  // outright at zero: an empty pane still drawing its own divider reads as a
+  // rendering fault rather than a closed pane.
+  body.classList.toggle('is-open', progress > 0)
+  body.style.opacity = String(progress)
 
   const disclosure = card.querySelector<HTMLButtonElement>('.accordion-btn')!
   disclosure.textContent = open ? 'Hide details' : 'Details'
@@ -339,12 +345,13 @@ function renderAccordion(element: HTMLElement, context: NodeContext): void {
   disclosure.onclick = (event) => {
     event.stopPropagation()
     item.detail = !open
-    // The node's own SIZE changes with the disclosure (see the example's
+    // The node's own SIZE follows the disclosure (see this example's
     // `nodeSize` in data.ts), and sizes are declared rather than measured —
     // layout runs in a worker with no DOM — so the chart has to be told to
-    // re-read them. `refresh` does exactly that and keeps expand/collapse,
-    // camera and highlight where they were, which `update()` would not.
-    element.dispatchEvent(new CustomEvent('playground:relayout', { bubbles: true }))
+    // re-read them. The demo eases `detailT` between 0 and 1 and re-measures
+    // on each frame of it, which is what makes the node slide rather than
+    // snap.
+    element.dispatchEvent(new CustomEvent('playground:slide', { bubbles: true }))
   }
 }
 
@@ -508,6 +515,40 @@ export function mountVanilla(
   }
 
   /**
+   * Eases every accordion card's `detailT` toward its open/closed target and
+   * re-measures the chart on each frame, which is what turns a size change
+   * into a slide: `nodeSize` is read at layout time, so animating the size
+   * means animating the number it returns.
+   *
+   * One `refresh()` per frame for the ~200ms this runs. That is a full
+   * relayout per frame, which is affordable here — this example is 28 nodes —
+   * and deliberately not what the library does for its own expand/collapse
+   * transition, which interpolates already-computed positions instead
+   * precisely so it never relayouts per frame. An app animating node sizes on
+   * a large tree should expect the same distinction to matter.
+   */
+  const SLIDE_MS = 200
+  let slideHandle: number | null = null
+  const stepSlide = (): void => {
+    slideHandle = null
+    let moving = false
+    for (const item of example.data) {
+      const target = item.detail === true ? 1 : 0
+      const current = accordionProgress(item)
+      if (current === target) continue
+      const step = 1000 / 60 / SLIDE_MS
+      const next = target > current ? Math.min(target, current + step) : Math.max(target, current - step)
+      item.detailT = next
+      if (next !== target) moving = true
+    }
+    chart.api.refresh()
+    if (moving) slideHandle = requestAnimationFrame(stepSlide)
+  }
+  const onSlide = (): void => {
+    if (slideHandle === null) slideHandle = requestAnimationFrame(stepSlide)
+  }
+
+  /**
    * The go-to-node command in one gesture: mark the way from the root, then
    * fly there and flash the ring on arrival. `pathTo` returns the root-to-node
    * id chain, which is exactly what `highlight` wants, and `focus` opens every
@@ -522,6 +563,7 @@ export function mountVanilla(
 
   host.addEventListener('playground:repaint', onRepaint)
   host.addEventListener('playground:relayout', onRelayout)
+  host.addEventListener('playground:slide', onSlide)
   host.addEventListener('playground:goto', onGoto)
 
   return {
@@ -531,6 +573,8 @@ export function mountVanilla(
     destroy: () => {
       host.removeEventListener('playground:repaint', onRepaint)
       host.removeEventListener('playground:relayout', onRelayout)
+      host.removeEventListener('playground:slide', onSlide)
+      if (slideHandle !== null) cancelAnimationFrame(slideHandle)
       host.removeEventListener('playground:goto', onGoto)
       chart.destroy()
     },

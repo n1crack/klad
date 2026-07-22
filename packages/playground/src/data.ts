@@ -291,6 +291,22 @@ export interface Example {
 // a vertical slice of it — which is what the Large example is for.
 const SHARED_DATA = buildOrg(28)
 
+/**
+ * The accordion example's two node heights, and how far a given card is
+ * between them. `detailT` is eased from 0 to 1 by the demo (see
+ * `renderAccordion` in vanilla-demo.ts) rather than flipped, so the node
+ * slides open instead of jumping — `nodeSize` is read at layout time, so
+ * animating the SIZE means animating the number `nodeSize` returns and
+ * re-measuring as it changes.
+ */
+export const ACCORDION_CLOSED_H = 72
+export const ACCORDION_OPEN_H = 132
+
+export function accordionProgress(item: NodeItem): number {
+  const t = Number(item.detailT ?? 0)
+  return Number.isFinite(t) ? Math.min(1, Math.max(0, t)) : 0
+}
+
 const SIZE_VARIANTS = [
   { w: 140, h: 56 },
   { w: 200, h: 72 },
@@ -416,12 +432,17 @@ export const EXAMPLES: Example[] = [
     id: 'accordion',
     name: 'Accordion detail',
     description:
-      "A second, independent kind of open: the card's own detail pane, which has nothing to do with the chart's expand/collapse of children. The disclosure state lives on the node data, and the node GROWS with it — nodeSize is a function of that same flag, so opening a card makes it taller and the whole layout reflows around it. Sizes are declared, never measured off the DOM (layout runs in a worker), so the card asks the chart to re-read them via api.refresh(), which keeps expand/collapse, camera and highlight exactly where they were. 232×72 closed, 232×132 open.",
+      "A second, independent kind of open: the card's own detail pane, which has nothing to do with the chart's expand/collapse of children. The disclosure state lives on the node data, and the node GROWS with it — nodeSize is a function of that state, so opening a card makes it taller and the whole layout reflows around it. It slides rather than snapping: sizes are declared, never measured off the DOM (layout runs in a worker), so the demo eases the number nodeSize returns from 72 to 132 over 200ms and calls api.refresh() on each frame — which re-reads every node's size while keeping expand/collapse, camera and highlight exactly where they were. Note that this is a full relayout per frame, affordable at 28 nodes and deliberately not how the library's own expand/collapse transition works.",
     data: SHARED_DATA,
     options: {
-      // A function of the node's own disclosure flag: the card is taller when
-      // its detail pane is open, and the layout reflows around it.
-      nodeSize: (item) => (item.detail === true ? { w: 232, h: 132 } : { w: 232, h: 72 }),
+      // A function of the card's own disclosure PROGRESS, not just its open
+      // flag: the demo eases that number from 0 to 1 and re-measures each
+      // frame, so the node slides open instead of snapping. See
+      // `ACCORDION_CLOSED_H`/`ACCORDION_OPEN_H` and `renderAccordion`.
+      nodeSize: (item) => ({
+        w: 232,
+        h: ACCORDION_CLOSED_H + (ACCORDION_OPEN_H - ACCORDION_CLOSED_H) * accordionProgress(item),
+      }),
     },
     content: 'accordion',
   },

@@ -85,14 +85,18 @@ export function createCanvas2DRenderer(
     // worth paying at a zoom level where the rounding is imperceptible.
     const edgeRadius = frame.tier === 'block' ? 0 : theme.edgeCornerRadius * k
 
-    if (edgeCount > 0) {
-      ctx.beginPath()
-      for (let n = 0; n < edgeCount; n++) {
-        const i = edges[n]!
-        const p = parent[i]!
-        if (p === -1) continue
-        const io = i * 4
-        const po = p * 4
+    /**
+     * Appends one connector's elbow to the CURRENT path. Split out so the
+     * edges can be drawn in two passes without the geometry existing twice:
+     * ordinary edges in one path, highlighted ones in another. A path can
+     * carry only one stroke style, so two colours means two passes — but the
+     * elbow maths must stay a single definition, since it also has to keep
+     * matching `buildEdgeIndex`'s cull boxes in engine.ts exactly.
+     */
+    const traceEdge = (i: number, p: number): void => {
+      const io = i * 4
+      const po = p * 4
+      {
         if (frame.horizontal) {
           // Growth axis is x: leave the parent's right edge, split on x.
           const px = (boxes[po]! + boxes[po + 2]!) * k + camera.x
@@ -146,10 +150,59 @@ export function createCanvas2DRenderer(
           }
         }
       }
+    }
+
+    /**
+     * An edge counts as highlighted when BOTH of its endpoints are. For the
+     * motivating case — "show me the way to this node", where the caller
+     * highlights the root-to-node chain — that is exactly the edges along the
+     * path and nothing else: consecutive nodes in a path are parent and
+     * child, while a highlighted node's other children are not themselves
+     * highlighted, so their edges stay ordinary. It also degrades sensibly
+     * for any other highlight set (a search result's scattered nodes light up
+     * on their own, with no stray connector implying a relationship between
+     * them).
+     */
+    const highlight = frame.highlight
+    const edgeLit = (i: number, p: number): boolean =>
+      highlight !== null && highlight[i] === 1 && highlight[p] === 1
+
+    if (edgeCount > 0) {
+      // Pass 1: everything not on a highlighted path. When nothing is
+      // highlighted at all — the whole steady state — the `edgeLit` test is a
+      // null check and this is the single pass it always was.
+      ctx.beginPath()
+      for (let n = 0; n < edgeCount; n++) {
+        const i = edges[n]!
+        const p = parent[i]!
+        if (p === -1 || edgeLit(i, p)) continue
+        traceEdge(i, p)
+      }
       ctx.strokeStyle = theme.edgeStroke
       ctx.lineWidth = theme.edgeWidth
       ctx.stroke()
       calls.edgeStrokes = 1
+
+      // Pass 2: the highlighted path, drawn after so it lies over the
+      // ordinary edges it crosses rather than under them, and thicker, so it
+      // reads as a route rather than a recoloured line.
+      if (highlight !== null) {
+        let anyLit = false
+        ctx.beginPath()
+        for (let n = 0; n < edgeCount; n++) {
+          const i = edges[n]!
+          const p = parent[i]!
+          if (p === -1 || !edgeLit(i, p)) continue
+          traceEdge(i, p)
+          anyLit = true
+        }
+        if (anyLit) {
+          ctx.strokeStyle = theme.edgeHighlightStroke
+          ctx.lineWidth = theme.edgeHighlightWidth
+          ctx.stroke()
+          calls.edgeStrokes = 2
+        }
+      }
     }
 
     const radius = frame.tier === 'block' ? 0 : theme.cornerRadius * k

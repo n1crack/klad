@@ -1086,19 +1086,26 @@ export function createOrgChart(host: HTMLElement, options: Options): OrgChartIns
     const box = boxOfSource(source)
     if (box === null) return false
     const rect = host.getBoundingClientRect()
-    animateTo({
-      x: rect.width / 2 - (box.x + box.w / 2) * camera.k,
-      y: rect.height / 2 - (box.y + box.h / 2) * camera.k,
-      k: camera.k,
-    })
-    // After `animateTo`, which cancels camera animations — the ring is the
-    // engine's own state rather than a camera animation, so it is not among
-    // what that clears, but ordering them this way keeps that independence
-    // obvious rather than incidental.
-    if (ring && currentOptions.ring !== false) {
-      chartHost.flashRing(source)
-      scheduleFrame()
-    }
+    const flash =
+      ring && currentOptions.ring !== false
+        ? () => {
+            chartHost.flashRing(source)
+            scheduleFrame()
+          }
+        : undefined
+    // The ring fires on ARRIVAL, not on departure. Armed at the start it
+    // spends its opening — the brightest part, before the fade — playing out
+    // while the camera is still travelling, so what reaches the eye at the
+    // destination is whatever is left of it. Waiting for the tween means the
+    // whole flash happens where the user is looking.
+    animateTo(
+      {
+        x: rect.width / 2 - (box.x + box.w / 2) * camera.k,
+        y: rect.height / 2 - (box.y + box.h / 2) * camera.k,
+        k: camera.k,
+      },
+      flash,
+    )
     return true
   }
 
@@ -1173,6 +1180,13 @@ export function createOrgChart(host: HTMLElement, options: Options): OrgChartIns
    * `focus()` tween or a kinetic-pan coast.
    */
   let cameraAnimHandle: number | null = null
+  /**
+   * Run once when the current `animateTo` tween reaches its target, then
+   * cleared. Dropped — never called — if the tween is cancelled, because
+   * whatever the callback was for ("now that we have arrived...") is exactly
+   * what a cancellation means did not happen.
+   */
+  let onTweenArrive: (() => void) | null = null
   let tweenFrom: Camera | null = null
   let tweenTo: Camera | null = null
   let tweenStart = 0
@@ -1207,6 +1221,7 @@ export function createOrgChart(host: HTMLElement, options: Options): OrgChartIns
     }
     tweenFrom = null
     tweenTo = null
+    onTweenArrive = null
     momentumVX = 0
     momentumVY = 0
     if (dropToggleAnchor) {
@@ -1232,6 +1247,9 @@ export function createOrgChart(host: HTMLElement, options: Options): OrgChartIns
       cameraAnimHandle = null
       tweenFrom = null
       tweenTo = null
+      const arrived = onTweenArrive
+      onTweenArrive = null
+      arrived?.()
       return
     }
     cameraAnimHandle = requestAnimationFrame(stepTween)
@@ -1249,12 +1267,14 @@ export function createOrgChart(host: HTMLElement, options: Options): OrgChartIns
    * changes nothing visible, this reads as "now heading somewhere else"
    * rather than a stutter.
    */
-  const animateTo = (target: Camera): void => {
+  const animateTo = (target: Camera, onArrive?: () => void): void => {
     cancelCameraAnimation()
     if (!animationsEnabled()) {
       applyCamera(target)
+      onArrive?.()
       return
     }
+    onTweenArrive = onArrive ?? null
     tweenFrom = { ...camera }
     tweenTo = target
     tweenStart = performance.now()

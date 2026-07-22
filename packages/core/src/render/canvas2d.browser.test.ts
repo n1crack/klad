@@ -261,3 +261,70 @@ describe('createCanvas2DRenderer', () => {
     expect(Array.from(pixelAt(lit, 60, 35))).not.toEqual(Array.from(pixelAt(plain, 60, 35)))
   })
 })
+
+describe('highlighted path edges', () => {
+  // Parent 0 at y 0..50, child 1 at y 100..150, both 100 wide at x 0. With
+  // camera {10,10,1} the connector runs down the shared centre line at screen
+  // x = 60, between screen y 60 and y 110 — so y 85 is on the elbow's vertical
+  // leg, clear of either box.
+  const ON_THE_EDGE = { x: 60, y: 85 }
+
+  it('draws an edge in the ordinary colour when nothing is highlighted', () => {
+    const canvas = makeCanvas()
+    const renderer = createCanvas2DRenderer(canvas, DEFAULT_THEME, measurerFor)
+    renderer.resize(400, 300, 1)
+    renderer.draw(frame())
+
+    const [r, , b, a] = pixelAt(canvas, ON_THE_EDGE.x, ON_THE_EDGE.y)
+    expect(a).toBeGreaterThan(0)
+    // DEFAULT_THEME.edgeStroke is #d4d4d8 — a neutral grey, i.e. r ~= g ~= b.
+    expect(Math.abs(r! - b!)).toBeLessThan(12)
+  })
+
+  // An edge is "on the path" when BOTH its endpoints are highlighted, which
+  // for a root-to-node chain is exactly the edges along it. Without this the
+  // nodes light up but the route between them does not, so what the eye gets
+  // is a scatter of lit boxes rather than a way through the tree.
+  it('draws an edge in the highlight colour when both its endpoints are lit', () => {
+    const canvas = makeCanvas()
+    const renderer = createCanvas2DRenderer(canvas, DEFAULT_THEME, measurerFor)
+    renderer.resize(400, 300, 1)
+    renderer.draw(frame({ highlight: Uint8Array.from([1, 1]) }))
+
+    const [r, g, b] = pixelAt(canvas, ON_THE_EDGE.x, ON_THE_EDGE.y)
+    // DEFAULT_THEME.edgeHighlightStroke is #f59e0b: strongly warm, so red
+    // dominates blue by a wide margin — the one thing that cannot be true of
+    // the neutral grey it replaces.
+    expect(r!).toBeGreaterThan(b! + 80)
+    expect(g!).toBeGreaterThan(b!)
+  })
+
+  it('leaves an edge ordinary when only one endpoint is lit', () => {
+    const canvas = makeCanvas()
+    const renderer = createCanvas2DRenderer(canvas, DEFAULT_THEME, measurerFor)
+    renderer.resize(400, 300, 1)
+    // Only the child. A highlight that lights a node without lighting its
+    // parent says nothing about the connector between them — a search result
+    // deep in the tree must not imply a route it was never asked to draw.
+    renderer.draw(frame({ highlight: Uint8Array.from([0, 1]) }))
+
+    const [r, , b] = pixelAt(canvas, ON_THE_EDGE.x, ON_THE_EDGE.y)
+    expect(Math.abs(r! - b!)).toBeLessThan(12)
+  })
+
+  it('reports the second stroke pass only when a path is actually lit', () => {
+    const canvas = makeCanvas()
+    const renderer = createCanvas2DRenderer(canvas, DEFAULT_THEME, measurerFor)
+    renderer.resize(400, 300, 1)
+
+    renderer.draw(frame())
+    expect(renderer.stats.lastDrawCalls.edgeStrokes).toBe(1)
+
+    // A highlight with no lit EDGE in it must not pay for a second pass.
+    renderer.draw(frame({ highlight: Uint8Array.from([0, 1]) }))
+    expect(renderer.stats.lastDrawCalls.edgeStrokes).toBe(1)
+
+    renderer.draw(frame({ highlight: Uint8Array.from([1, 1]) }))
+    expect(renderer.stats.lastDrawCalls.edgeStrokes).toBe(2)
+  })
+})

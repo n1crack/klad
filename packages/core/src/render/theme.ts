@@ -44,6 +44,17 @@ export interface Theme {
   labelPadding: number
   highlightFill: string
   highlightStroke: string
+  /**
+   * Colour and width for a connector whose BOTH endpoints are highlighted —
+   * the edges along a highlighted path, which is what makes "show me the way
+   * to this node" read as a route rather than a set of separately lit nodes.
+   * Kept as their own tokens rather than reusing `highlightStroke`/`edgeWidth`
+   * because a line needs more weight than a node outline to register at the
+   * same strength: an edge is one pixel of ink where a node is a whole box of
+   * it.
+   */
+  edgeHighlightStroke: string
+  edgeHighlightWidth: number
   /** Alpha applied to a node while it is being dragged. */
   dragGhostAlpha: number
   /** Colour of the one-shot expand/collapse confirmation ring. */
@@ -89,6 +100,8 @@ export const DEFAULT_THEME: Readonly<Theme> = Object.freeze({
   labelPadding: 10,
   highlightFill: '#fef3c7',
   highlightStroke: '#f59e0b',
+  edgeHighlightStroke: '#f59e0b',
+  edgeHighlightWidth: 2.5,
   dragGhostAlpha: 0.6,
   // Reuses the highlight accent rather than introducing a new hue — the
   // ring and the highlight both mean "this node", so sharing a colour
