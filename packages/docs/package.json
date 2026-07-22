@@ -3,7 +3,7 @@
   "private": true,
   "type": "module",
   "scripts": {
-    "dev": "vitepress dev .",
+    "dev": "node scripts/bundle-playground.mjs && vitepress dev .",
     "build": "node scripts/bundle-playground.mjs && vitepress build .",
     "preview": "vitepress preview .",
     "//playground": "The embedded playground is a build artefact, not source: it is rebuilt for this site's base path on every docs build and gitignored. `pnpm --filter @n1crack/orgchart-playground dev` is still the way to work on it.",

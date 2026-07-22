@@ -1,3 +1,6 @@
+import { readFileSync } from 'node:fs'
+import { dirname, join } from 'node:path'
+import { fileURLToPath } from 'node:url'
 import { defineConfig } from 'vitepress'
 import { tabsMarkdownPlugin } from 'vitepress-plugin-tabs'
 
@@ -19,6 +22,46 @@ const BASE = process.env.DOCS_BASE ?? '/orgchart/'
 
 const DESCRIPTION =
   'A framework-agnostic org chart that renders 50,000 nodes at 60fps. Canvas in a Web Worker; your Vue, React or plain-DOM components mounted only where they can be read.'
+
+/**
+ * Serves the embedded playground's own `index.html` in DEV.
+ *
+ * Its assets are already served — they are ordinary files under `public/` —
+ * but the HTML entry is not: VitePress's dev server answers any navigation
+ * with its own SPA shell, which then finds no route for `/playground/` and
+ * renders a 404. Production is unaffected, because there the file is copied
+ * out verbatim and no SPA fallback stands in front of it.
+ *
+ * Registered before Vite's internal middlewares (a plain `use` inside
+ * `configureServer`, not the returned post-hook) so it answers first, and
+ * scoped to the one exact path so nothing else changes.
+ */
+function servePlaygroundInDev(base: string) {
+  const indexPath = join(dirname(fileURLToPath(import.meta.url)), '..', 'public', 'playground', 'index.html')
+  const route = `${base}playground/`
+
+  return {
+    name: 'orgchart-playground-dev',
+    configureServer(server: { middlewares: { use: (fn: unknown) => void } }) {
+      server.middlewares.use((req: { url?: string }, res: {
+        setHeader: (k: string, v: string) => void
+        end: (body?: string) => void
+      }, next: () => void) => {
+        const path = (req.url ?? '').split('?')[0]
+        if (path !== route && path !== route.replace(/\/$/, '')) return next()
+        try {
+          res.setHeader('Content-Type', 'text/html')
+          res.end(readFileSync(indexPath, 'utf8'))
+        } catch {
+          // Not built yet — say so plainly rather than showing a 404 that
+          // suggests the route itself is wrong.
+          res.setHeader('Content-Type', 'text/html')
+          res.end('<p>The playground has not been built yet. Run <code>pnpm --filter @n1crack/orgchart-docs build</code>, or start the docs with <code>pnpm docs</code>, which builds it first.</p>')
+        }
+      })
+    },
+  }
+}
 
 export default defineConfig({
   title: 'OrgChart',
@@ -75,6 +118,8 @@ export default defineConfig({
       ['meta', { name: 'twitter:description', content: description }],
     )
   },
+
+  vite: { plugins: [servePlaygroundInDev(BASE)] },
 
   markdown: {
     config(md) {
