@@ -234,6 +234,17 @@ choreography instead:
 This is a meaningful redesign of the engine transition (staged timeline) plus the vanilla
 auto-pan (anchor-on-node rather than pan-to-node). Non-trivial; do it as a focused pass.
 
-Also to check: on the photo-tile example the owner saw "3 items directly under the
-toggle" — investigate whether that is a layout/overlap bug or just the node's real
-children.
+---
+
+## Missing runtime API methods (surfaced by the playground redesign)
+
+The playground worked around both by remounting, but the real fix is on the API:
+
+- **`api.setTheme(theme)`** is missing. `update()` never re-resolves the theme after
+  construction (silent no-op), so the edge-radius slider had to destroy and recreate the
+  whole chart to change one theme token. A runtime theme setter that re-runs
+  `resolveTheme` and repaints is the right shape. Mirrors `setMinimap`, already added.
+- **Export uses its own independent `theme` option**, separate from the live chart theme,
+  so an exported SVG/PNG does not reflect a theme changed at runtime (e.g. edge radius).
+  Decide whether export should default to the chart's current theme and only override when
+  asked — probably yes.
