@@ -212,3 +212,28 @@ Requested by the owner, held because both touch `packages/playground/src/main.ts
   core agent lands it.
 - **Minimap position control** — a picker for `top-left | top-right | bottom-left |
   bottom-right`, wired to the `minimap` option.
+
+---
+
+## Queued: two-phase expand/collapse choreography (owner, after current work)
+
+The transition is currently a single simultaneous tween — every node lerps old→new at
+once, revealed nodes fade in from the parent position. The owner wants a staged
+choreography instead:
+
+- **Expand:** first the right-hand siblings slide apart to open a gap; once there is
+  enough room, the children then materialise into that space with a grow/genie + fade-in,
+  settling into place. Two phases, room-first then reveal — not simultaneous.
+- **Collapse:** the exact reverse — children shrink and fade away first, then the siblings
+  close the gap.
+- **Camera:** the clicked node stays visually pinned in place; everything else moves away
+  from it. Right now the auto-pan tweens the camera *to* the node after the fact; the ask
+  is for the toggled node to be the fixed anchor the layout grows out from, so it never
+  appears to move.
+
+This is a meaningful redesign of the engine transition (staged timeline) plus the vanilla
+auto-pan (anchor-on-node rather than pan-to-node). Non-trivial; do it as a focused pass.
+
+Also to check: on the photo-tile example the owner saw "3 items directly under the
+toggle" — investigate whether that is a layout/overlap bug or just the node's real
+children.
