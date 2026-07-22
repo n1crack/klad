@@ -55,6 +55,24 @@ export function minimapOptionFor(
   return typeof configured === 'object' ? { ...configured, position } : { position }
 }
 
+/** Slider bounds and default for the "Line width" control. `EDGE_WIDTH_DEFAULT`
+ * is the library's own `DEFAULT_THEME.edgeWidth`. */
+export const EDGE_WIDTH_MIN = 0.5
+export const EDGE_WIDTH_MAX = 6
+export const EDGE_WIDTH_STEP = 0.5
+export const EDGE_WIDTH_DEFAULT = 1
+
+/**
+ * How heavy a highlighted path's connectors are for a given ordinary edge
+ * width. A route drawn at the same weight as everything else stops reading as
+ * a route, and a fixed extra (rather than a multiplier) keeps that true at
+ * both ends of the slider: +1.5px is decisive against a hairline and still
+ * proportionate against a thick one, where a multiplier would run away.
+ */
+export function highlightWidthFor(edgeWidth: number): number {
+  return edgeWidth + 1.5
+}
+
 /** Slider bounds and default for the "Edge radius" control — see `themeFor`. */
 export const EDGE_RADIUS_MIN = 0
 export const EDGE_RADIUS_MAX = 24
@@ -281,6 +299,13 @@ export interface Example {
   options: Partial<Options>
   /** Which node-content treatment to render; see {@link NodeContentKind}. */
   content: NodeContentKind
+  /**
+   * Shows the sidebar's "Go to node" combo box for this example. Deliberately
+   * a per-example opt-in rather than a control that is always there: it is the
+   * point of exactly one example, and a chart-wide control that only means
+   * something on one of them is worse than no control.
+   */
+  gotoControl?: boolean
 }
 
 // Shared by every example except "Large", which needs its own scale and its
@@ -454,6 +479,16 @@ export const EXAMPLES: Example[] = [
     data: SHARED_DATA,
     options: { nodeSize: { w: 212, h: 96 } },
     content: 'actions',
+  },
+  {
+    id: 'goto',
+    name: 'Go to node',
+    description:
+      "Everything starts closed, and the combo box in the sidebar jumps to whichever node you pick — opening the way to it if it is buried, going straight there if it is already on screen. One call does both: api.focus(id) expands every collapsed ancestor and then centres the node, waiting for the layout that expansion produced rather than reading a box that does not exist yet. The path from the root is painted with api.highlight(api.pathTo(id)), which lights the nodes and the connectors between them, and the confirmation ring fires on arrival rather than on departure so the whole flash happens where you are looking.",
+    data: SHARED_DATA,
+    options: { collapsedByDefault: true, nodeSize: { w: 200, h: 72 } },
+    content: 'card',
+    gotoControl: true,
   },
   {
     id: 'canvas-only',

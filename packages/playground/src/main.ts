@@ -7,6 +7,10 @@ import {
   EDGE_RADIUS_DEFAULT,
   EDGE_RADIUS_MAX,
   EDGE_RADIUS_MIN,
+  EDGE_WIDTH_DEFAULT,
+  EDGE_WIDTH_MAX,
+  EDGE_WIDTH_MIN,
+  EDGE_WIDTH_STEP,
   EXAMPLES,
   MINIMAP_POSITIONS,
   minimapDefaultOn,
@@ -169,7 +173,8 @@ const minimapGroup = sidebarGroup('Minimap', minimapButton, minimapPositionField
 let currentSetEdgeRadius: ((radius: number) => void) | null = null
 let currentSetNodeFill: ((nodeFill: string) => void) | null = null
 let currentSetBlockFill: ((blockFill: string) => void) | null = null
-let currentSetRingStroke: ((ringStroke: string) => void) | null = null
+let currentSetAccent: ((accent: string) => void) | null = null
+let currentSetEdgeWidth: ((width: number) => void) | null = null
 let currentSetRingEnabled: ((enabled: boolean) => void) | null = null
 
 const edgeRadiusField = document.createElement('div')
@@ -196,6 +201,38 @@ edgeRadiusRange.oninput = () => {
   const radius = Number(edgeRadiusRange.value)
   edgeRadiusValue.textContent = String(radius)
   currentSetEdgeRadius?.(radius)
+}
+
+// "Line width" — `theme.edgeWidth`, the weight of every connector. It also
+// drives `edgeHighlightWidth` through `highlightWidthFor`, so a highlighted
+// route stays proportionally heavier than the lines around it at any setting;
+// a route drawn at the same weight as everything else stops reading as a
+// route at all.
+const edgeWidthField = document.createElement('div')
+edgeWidthField.className = 'field field-range'
+const edgeWidthLabel = document.createElement('label')
+edgeWidthLabel.textContent = 'Line width'
+edgeWidthLabel.htmlFor = 'edge-width-range'
+const edgeWidthRow = document.createElement('div')
+edgeWidthRow.className = 'field-range-row'
+const edgeWidthRange = document.createElement('input')
+edgeWidthRange.type = 'range'
+edgeWidthRange.id = 'edge-width-range'
+edgeWidthRange.min = String(EDGE_WIDTH_MIN)
+edgeWidthRange.max = String(EDGE_WIDTH_MAX)
+edgeWidthRange.step = String(EDGE_WIDTH_STEP)
+edgeWidthRange.value = String(EDGE_WIDTH_DEFAULT)
+const edgeWidthValue = document.createElement('output')
+edgeWidthValue.className = 'field-range-value'
+edgeWidthValue.setAttribute('for', 'edge-width-range')
+edgeWidthValue.textContent = String(EDGE_WIDTH_DEFAULT)
+edgeWidthRow.append(edgeWidthRange, edgeWidthValue)
+edgeWidthField.append(edgeWidthLabel, edgeWidthRow)
+
+edgeWidthRange.oninput = () => {
+  const width = Number(edgeWidthRange.value)
+  edgeWidthValue.textContent = String(width)
+  currentSetEdgeWidth?.(width)
 }
 
 // "Node fill" — the owner's ask: when the canvas is zoomed out small, nodes
@@ -283,12 +320,17 @@ function applyBlockFill(): void {
 blockFillCheckbox.onchange = applyBlockFill
 blockFillInput.oninput = applyBlockFill
 
-// "Ring colour" + "Ring" on/off — both drive the one-shot expand/collapse
-// confirmation flash (`theme.ringStroke` / `Options.ring`). The colour
-// picker is a real theme token, applied live through `api.setTheme(...)`,
-// same mechanism as "Node fill"/"Edge radius" above; the on/off toggle is
-// NOT a theme token (see `Options.ring`'s docblock in
-// packages/vanilla/src/index.ts) so it goes through the dedicated
+// "Accent" — one colour for everything that answers a question the viewer
+// asked: the one-shot confirmation ring, a highlighted node's outline, and
+// the connectors along a highlighted path. They are three separate theme
+// tokens, since a consumer may want them apart, but a route drawn in one
+// colour and confirmed in another reads as two unrelated events rather than
+// one answer — so this control drives all three together (see each demo's
+// `setAccent`). All three are real theme tokens, applied live through
+// `api.setTheme(...)`, the same mechanism as "Node fill"/"Edge radius" above.
+//
+// The "Ring" on/off beside it is NOT a theme token (see `Options.ring`'s
+// docblock in packages/vanilla/src/index.ts) so it goes through the dedicated
 // `api.setRing(...)` method instead, mirroring the minimap on/off button's
 // `btn-toggle` styling below.
 const ringStrokeInput = document.createElement('input')
@@ -297,7 +339,7 @@ ringStrokeInput.id = 'ring-stroke-input'
 ringStrokeInput.className = 'color-input'
 ringStrokeInput.value = RING_STROKE_DEFAULT
 const ringStrokeLabel = document.createElement('label')
-ringStrokeLabel.textContent = 'Ring colour'
+ringStrokeLabel.textContent = 'Accent'
 ringStrokeLabel.htmlFor = 'ring-stroke-input'
 const ringStrokeValue = document.createElement('output')
 ringStrokeValue.className = 'field-range-value'
@@ -313,7 +355,7 @@ ringStrokeField.append(ringStrokeLabel, ringStrokeRow)
 ringStrokeInput.oninput = () => {
   const hex = ringStrokeInput.value
   ringStrokeValue.textContent = hex.toUpperCase()
-  currentSetRingStroke?.(hex)
+  currentSetAccent?.(hex)
 }
 
 let ringEnabled = true
@@ -360,9 +402,70 @@ const canvasBgField = document.createElement('div')
 canvasBgField.className = 'field'
 canvasBgField.append(canvasBgLabel, canvasBgRow)
 
+// "Go to node" — an EXTERNAL control, deliberately: the point of the example
+// it belongs to is that navigating the chart does not have to start from the
+// chart. Picking a name expands whatever is in the way, paints the route from
+// the root, and flies there.
+//
+// Shown only for examples that ask for it (`Example.gotoControl`), and
+// repopulated on every mount, since the list is the example's own data.
+const gotoSelect = document.createElement('select')
+gotoSelect.id = 'goto-select'
+gotoSelect.className = 'select'
+const gotoLabel = document.createElement('label')
+gotoLabel.textContent = 'Go to node'
+gotoLabel.htmlFor = 'goto-select'
+const gotoField = document.createElement('div')
+gotoField.className = 'field'
+gotoField.append(gotoLabel, gotoSelect)
+
+gotoSelect.onchange = () => {
+  const id = gotoSelect.value
+  if (id === '') return
+  // `pathTo` is the root-to-node chain, which is exactly what `highlight`
+  // wants; an edge is painted when both its endpoints are lit, so this lights
+  // the way and not merely its ends. `focus` opens every collapsed ancestor
+  // before centring, so this works from the fully closed chart the example
+  // starts as.
+  currentApi?.highlight(currentApi.pathTo(id))
+  currentApi?.focus(id, { ring: true })
+}
+
+/**
+ * Fills the combo box with `example`'s own nodes, indented by depth so the
+ * list reads as the tree it navigates, and hides the whole field for examples
+ * that did not ask for it.
+ */
+function syncGotoControl(example: Example): void {
+  gotoField.hidden = example.gotoControl !== true
+  if (!gotoField.hidden) {
+    const depthOf = new Map<string, number>()
+    gotoSelect.innerHTML = ''
+    const placeholder = document.createElement('option')
+    placeholder.value = ''
+    placeholder.textContent = 'Pick a node…'
+    gotoSelect.append(placeholder)
+    for (const item of example.data) {
+      const parentId = item.parentId
+      const depth =
+        parentId === undefined || parentId === null ? 0 : (depthOf.get(String(parentId)) ?? 0) + 1
+      depthOf.set(item.id, depth)
+      const option = document.createElement('option')
+      option.value = item.id
+      // Non-breaking spaces: a native <option> collapses ordinary leading
+      // whitespace, so plain spaces would indent nothing at all.
+      option.textContent = '  '.repeat(depth) + String(item.name ?? item.id)
+      gotoSelect.append(option)
+    }
+  }
+  gotoSelect.value = ''
+}
+
 const appearanceGroup = sidebarGroup(
   'Appearance',
+  gotoField,
   edgeRadiusField,
+  edgeWidthField,
   nodeFillField,
   blockFillField,
   ringStrokeField,
@@ -490,11 +593,13 @@ function show(stack: Stack, exampleId: string): void {
   currentSetEdgeRadius = null
   currentSetNodeFill = null
   currentSetBlockFill = null
-  currentSetRingStroke = null
+  currentSetAccent = null
+  currentSetEdgeWidth = null
   currentSetRingEnabled = null
   surface.innerHTML = ''
 
   const example = findExample(exampleId)
+  syncGotoControl(example)
   descriptionText.textContent = example.description
 
   // Reset every live control to whatever this example itself declares before
@@ -521,6 +626,8 @@ function show(stack: Stack, exampleId: string): void {
   blockFillValue.textContent = 'Transparent'
   ringStrokeInput.value = RING_STROKE_DEFAULT
   ringStrokeValue.textContent = RING_STROKE_DEFAULT.toUpperCase()
+  edgeWidthRange.value = String(EDGE_WIDTH_DEFAULT)
+  edgeWidthValue.textContent = String(EDGE_WIDTH_DEFAULT)
   ringEnabled = true
   updateRingEnabledButton()
 
@@ -533,7 +640,8 @@ function show(stack: Stack, exampleId: string): void {
     currentSetEdgeRadius = (radius) => chart.setEdgeRadius(radius)
     currentSetNodeFill = (nodeFill) => chart.setNodeFill(nodeFill)
     currentSetBlockFill = (blockFill) => chart.setBlockFill(blockFill)
-    currentSetRingStroke = (ringStroke) => chart.setRingStroke(ringStroke)
+    currentSetAccent = (accent) => chart.setAccent(accent)
+    currentSetEdgeWidth = (width) => chart.setEdgeWidth(width)
     currentSetRingEnabled = (enabled) => chart.setRingEnabled(enabled)
     teardown = () => chart.destroy()
   } else if (stack === 'vue') {
@@ -553,7 +661,8 @@ function show(stack: Stack, exampleId: string): void {
       setEdgeRadius: (radius: number) => void
       setNodeFill: (nodeFill: string) => void
       setBlockFill: (blockFill: string) => void
-      setRingStroke: (ringStroke: string) => void
+      setAccent: (accent: string) => void
+      setEdgeWidth: (width: number) => void
       setRingEnabled: (enabled: boolean) => void
     }
     currentSetMinimap = (on) => instance.setMinimap(on)
@@ -561,7 +670,8 @@ function show(stack: Stack, exampleId: string): void {
     currentSetEdgeRadius = (radius) => instance.setEdgeRadius(radius)
     currentSetNodeFill = (nodeFill) => instance.setNodeFill(nodeFill)
     currentSetBlockFill = (blockFill) => instance.setBlockFill(blockFill)
-    currentSetRingStroke = (ringStroke) => instance.setRingStroke(ringStroke)
+    currentSetAccent = (accent) => instance.setAccent(accent)
+    currentSetEdgeWidth = (width) => instance.setEdgeWidth(width)
     currentSetRingEnabled = (enabled) => instance.setRingEnabled(enabled)
     teardown = () => app.unmount()
   } else {
@@ -581,7 +691,8 @@ function show(stack: Stack, exampleId: string): void {
     currentSetEdgeRadius = (radius) => reactHandle.current?.setEdgeRadius(radius)
     currentSetNodeFill = (nodeFill) => reactHandle.current?.setNodeFill(nodeFill)
     currentSetBlockFill = (blockFill) => reactHandle.current?.setBlockFill(blockFill)
-    currentSetRingStroke = (ringStroke) => reactHandle.current?.setRingStroke(ringStroke)
+    currentSetAccent = (accent) => reactHandle.current?.setAccent(accent)
+    currentSetEdgeWidth = (width) => reactHandle.current?.setEdgeWidth(width)
     currentSetRingEnabled = (enabled) => reactHandle.current?.setRingEnabled(enabled)
     teardown = () => root.unmount()
   }

@@ -4,6 +4,7 @@ import { OrgChart, type NodeContext, type OrgChartApi, type OrgChartHandle, type
 import {
   DEPARTMENT_COLOR,
   EDGE_RADIUS_DEFAULT,
+  highlightWidthFor,
   initials,
   minimapDefaultOn,
   minimapDefaultPosition,
@@ -149,7 +150,8 @@ export interface ReactDemoHandle {
   setEdgeRadius(radius: number): void
   setNodeFill(nodeFill: string): void
   setBlockFill(blockFill: string): void
-  setRingStroke(ringStroke: string): void
+  setAccent(accent: string): void
+  setEdgeWidth(width: number): void
   setRingEnabled(enabled: boolean): void
 }
 
@@ -243,8 +245,20 @@ export function ReactDemo({ example, onReady, ref }: ReactDemoProps): ReactNode 
       setBlockFill: (blockFill: string) => {
         chartRef.current?.api?.setTheme({ blockFill })
       },
-      setRingStroke: (ringStroke: string) => {
-        chartRef.current?.api?.setTheme({ ringStroke })
+      // One accent for the ring, a highlighted node's outline and a
+      // highlighted path's connectors — see the vanilla demo's `setAccent`.
+      setAccent: (accent: string) => {
+        chartRef.current?.api?.setTheme({
+          ringStroke: accent,
+          edgeHighlightStroke: accent,
+          highlightStroke: accent,
+        })
+      },
+      setEdgeWidth: (width: number) => {
+        chartRef.current?.api?.setTheme({
+          edgeWidth: width,
+          edgeHighlightWidth: highlightWidthFor(width),
+        })
       },
       // `OrgChartApi.setRing` — NOT a theme token, so it goes through its own
       // method rather than `setTheme`; see `Options.ring`'s docblock in

@@ -2,6 +2,7 @@ import { createOrgChart, type Options, type OrgChartApi } from '@n1crack/orgchar
 import {
   DEPARTMENT_COLOR,
   EDGE_RADIUS_DEFAULT,
+  highlightWidthFor,
   initials,
   minimapDefaultOn,
   minimapDefaultPosition,
@@ -445,7 +446,8 @@ export interface VanillaDemoHandle {
   setEdgeRadius(radius: number): void
   setNodeFill(nodeFill: string): void
   setBlockFill(blockFill: string): void
-  setRingStroke(ringStroke: string): void
+  setAccent(accent: string): void
+  setEdgeWidth(width: number): void
   setRingEnabled(enabled: boolean): void
 }
 
@@ -597,8 +599,15 @@ export function mountVanilla(
     setBlockFill(blockFill) {
       chart.api.setTheme({ blockFill })
     },
-    setRingStroke(ringStroke) {
-      chart.api.setTheme({ ringStroke })
+    setAccent(accent) {
+      chart.api.setTheme({
+        ringStroke: accent,
+        edgeHighlightStroke: accent,
+        highlightStroke: accent,
+      })
+    },
+    setEdgeWidth(width) {
+      chart.api.setTheme({ edgeWidth: width, edgeHighlightWidth: highlightWidthFor(width) })
     },
     setRingEnabled(enabled) {
       chart.api.setRing(enabled)

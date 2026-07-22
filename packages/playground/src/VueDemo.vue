@@ -5,6 +5,7 @@ import { computed, ref } from 'vue'
 import {
   DEPARTMENT_COLOR,
   EDGE_RADIUS_DEFAULT,
+  highlightWidthFor,
   initials,
   minimapDefaultOn,
   minimapDefaultPosition,
@@ -97,9 +98,26 @@ function setBlockFill(blockFill: string): void {
   chartRef.value?.api?.setTheme({ blockFill })
 }
 
-/** Same `setTheme` path — the confirmation ring's colour. */
-function setRingStroke(ringStroke: string): void {
-  chartRef.value?.api?.setTheme({ ringStroke })
+/**
+ * One colour for everything that says "this is the thing you asked about":
+ * the confirmation ring, a highlighted node's outline, and the connectors
+ * along a highlighted path. They are separate theme tokens because a consumer
+ * may well want them apart, but a route drawn in one colour and confirmed in
+ * another reads as two unrelated events rather than one answer, so the
+ * playground drives them together.
+ */
+function setAccent(accent: string): void {
+  chartRef.value?.api?.setTheme({
+    ringStroke: accent,
+    edgeHighlightStroke: accent,
+    highlightStroke: accent,
+  })
+}
+
+/** Same `setTheme` path — connector weight, with the highlighted route kept
+ * proportionally heavier so it still reads as a route. */
+function setEdgeWidth(width: number): void {
+  chartRef.value?.api?.setTheme({ edgeWidth: width, edgeHighlightWidth: highlightWidthFor(width) })
 }
 
 /** `OrgChartApi.setRing` — NOT a theme token, so it goes through its own
@@ -115,7 +133,8 @@ defineExpose({
   setEdgeRadius,
   setNodeFill,
   setBlockFill,
-  setRingStroke,
+  setAccent,
+  setEdgeWidth,
   setRingEnabled,
 })
 
