@@ -63,7 +63,7 @@ export interface ChartEngine {
   /**
    * True while the one-shot toggle ring is still fading. Deliberately a
    * SEPARATE flag from `transitioning`: `RING_DURATION_MS` (900ms) outlives
-   * `TRANSITION_DURATION_MS` (420ms) on purpose (see `RING_DURATION_MS`'s
+   * `TRANSITION_DURATION_MS` (450ms) on purpose (see `RING_DURATION_MS`'s
    * docblock), so the layout transition can finish while the ring still has
    * fading left to do. A caller that only keeps requesting frames while
    * `transitioning` is true — as the vanilla layer's `scheduleFrame` used to
@@ -255,23 +255,82 @@ function lerpBox(from: Box, to: Box, t: number): Box {
 }
 
 /**
- * Roughly 420ms reads as a deliberate, followable slide without feeling
- * sluggish on a repeated expand/collapse; not exposed as a knob (yet) since
- * nothing has asked for a different pace.
+ * The expand/collapse transition is a STAGED choreography, not one
+ * simultaneous tween, per the owner's brief:
  *
- * This used to be 250ms, paired with `easeOutCubic` for the position tween.
- * That combination read as an instant jump rather than a move: a tidy-tree
- * re-center can slide a subtree thousands of world units, and `easeOutCubic`
- * front-loads ~80% of the motion into the first third of the duration — at
- * 250ms, most of a large reflow was already over within ~100ms, which the
- * eye reads as "teleport, then a small settle" rather than a slide. Raising
- * the duration alone would not have fixed that front-loading; see
- * `easeInOutCubic`'s use below for the other half of the fix. The two
- * changes are paired: either alone (a longer duration still front-loaded, or
- * a symmetric ease still over almost as fast) reportedly still read as a
- * snap.
+ *  - Expand: phase 1 makes room — the toggled node's siblings (and their
+ *    subtrees) reflow into their new positions while the children stay
+ *    hidden — then phase 2 reveals the children (grow-from-parent + fade)
+ *    into the space phase 1 just opened.
+ *  - Collapse is the exact reverse: phase 1 shrinks/fades the children away
+ *    toward the parent, then phase 2 closes the gap by reflowing the
+ *    siblings back together.
+ *
+ * So "phase 1" and "phase 2" are just time windows; which VISUAL job each
+ * one does (reposition vs. reveal/shrink) flips with the toggle's direction
+ * — see `Transition.opening` and `repositionRaw`/`emphasisRaw` below.
+ *
+ * `PHASE_OVERLAP_MS` lets phase 2 start a little before phase 1 fully
+ * finishes, so the hand-off between them reads as one continuous motion
+ * rather than two animations with a dead beat in between — small relative to
+ * either phase, tuned by eye alongside the phase lengths themselves.
+ *
+ * Total duration (`TRANSITION_DURATION_MS`, derived below) intentionally
+ * stays quick: the owner was explicit that the whole thing must not feel
+ * slow, even now that it is two stages rather than one. The former
+ * single-phase duration was 420ms; splitting it in two without shortening
+ * anything would have doubled the perceived length, so each phase is
+ * shorter than that on its own — the two phases together, minus the
+ * overlap, land at roughly the same ballpark as before.
  */
-const TRANSITION_DURATION_MS = 420
+const PHASE_ONE_MS = 260
+const PHASE_TWO_MS = 260
+const PHASE_OVERLAP_MS = 70
+const TRANSITION_DURATION_MS = PHASE_ONE_MS + PHASE_TWO_MS - PHASE_OVERLAP_MS
+
+/** Fraction of the total duration phase 1 alone occupies. */
+const PHASE_ONE_FRACTION = PHASE_ONE_MS / TRANSITION_DURATION_MS
+/** Fraction of the total duration at which phase 2 begins — before phase 1's
+ * own fraction ends, by `PHASE_OVERLAP_MS`, for the overlap described above. */
+const PHASE_TWO_START_FRACTION = (PHASE_ONE_MS - PHASE_OVERLAP_MS) / TRANSITION_DURATION_MS
+
+function clamp01(t: number): number {
+  return t <= 0 ? 0 : t >= 1 ? 1 : t
+}
+
+/** Raw (un-eased) progress through phase 1 alone, given the OVERALL raw
+ * transition progress (0..1). Clamped: stays at 1 for the remainder of the
+ * transition once phase 1 itself is done. */
+function phaseOneProgress(overall: number): number {
+  return clamp01(overall / PHASE_ONE_FRACTION)
+}
+
+/** Raw (un-eased) progress through phase 2 alone. Clamped: stays at 0 until
+ * phase 2 actually starts. */
+function phaseTwoProgress(overall: number): number {
+  return clamp01((overall - PHASE_TWO_START_FRACTION) / (1 - PHASE_TWO_START_FRACTION))
+}
+
+/**
+ * Raw progress for the REPOSITION job — siblings sliding apart to make room
+ * (expand) or sliding back together to close the gap (collapse) — as a
+ * function of the toggle's direction. This is phase 1 on an expand (make
+ * room FIRST) and phase 2 on a collapse (close the gap LAST, after the
+ * children have already left).
+ */
+function repositionRaw(overall: number, opening: boolean): number {
+  return opening ? phaseOneProgress(overall) : phaseTwoProgress(overall)
+}
+
+/**
+ * Raw progress for the EMPHASIS job — the children's grow+fade reveal
+ * (expand) or shrink+fade removal (collapse). Always the mirror of
+ * `repositionRaw`: phase 2 on an expand (reveal AFTER room is made), phase 1
+ * on a collapse (children leave FIRST, before the gap closes).
+ */
+function emphasisRaw(overall: number, opening: boolean): number {
+  return opening ? phaseTwoProgress(overall) : phaseOneProgress(overall)
+}
 
 interface TweenEntry {
   box: Box
@@ -304,12 +363,78 @@ interface Transition extends TimedAnimation {
    * the main quadtree, so a huge collapsed subtree only costs at cull time
    * for the ghosts actually near the viewport. */
   ghostQuad: QuadTree | null
+  /** True for an expand (the toggle that started this transition set a node
+   * OPEN, revealing descendants), false for a collapse (it set one CLOSED,
+   * removing them). Decides which physical phase — 1 or 2 — the reposition
+   * job and the emphasis job each land in; see `repositionRaw`/`emphasisRaw`.
+   * Captured once from the `setOpen` call that armed this transition (see
+   * `pendingTransitionOpening`), not re-derived from the transition's
+   * contents, because a mixed transition (rare: several distinct toggles
+   * landing before one relayout) can carry both reveals and ghosts at once,
+   * and there is no way to recover "which direction" from that mix after the
+   * fact — the direction of the LAST toggle that triggered this relayout is
+   * the only sensible single answer. */
+  opening: boolean
 }
 
 function progressOf(t: TimedAnimation, now: number): number {
   if (t.duration <= 0) return 1
   const raw = (now - t.startedAt) / t.duration
   return raw <= 0 ? 0 : raw >= 1 ? 1 : raw
+}
+
+/** The three eased values `render()` and `buildTransition()` both need for a
+ * given transition at a given instant — computed once per use so the two
+ * call sites can never drift apart on which curve goes with which job. */
+interface TransitionEasing {
+  /** Drives the position tween of ordinary surviving nodes (`revealed:
+   * false` entries) — the "make room" / "close the gap" reflow. */
+  repositionPos: number
+  /** Drives the position (grow-from-parent / shrink-to-parent) tween of
+   * revealed entries and ghosts — the "reveal" / "shrink away" job. */
+  emphasisPos: number
+  /** Drives the alpha fade of revealed entries and ghosts. A separate curve
+   * from `emphasisPos` for the same reason the old single-phase code kept
+   * position and alpha separate: `easeOutCubic`'s fast-start fade still
+   * reads right for a fade, but a symmetric ease-in-out is still right for
+   * the accompanying move — see the module docblock above. */
+  emphasisAlpha: number
+}
+
+function easingFor(transition: Transition, now: number): TransitionEasing {
+  const overall = progressOf(transition, now)
+  const rep = repositionRaw(overall, transition.opening)
+  const emp = emphasisRaw(overall, transition.opening)
+  return {
+    repositionPos: easeInOutCubic(rep),
+    emphasisPos: easeInOutCubic(emp),
+    emphasisAlpha: easeOutCubic(emp),
+  }
+}
+
+/**
+ * Public, side-effect-free escape hatch for a DOM-aware host's camera math —
+ * NOT used by `render()` itself (which goes through `easingFor` above against
+ * its own live `Transition` object).
+ *
+ * The toggled node always survives its own toggle (a `setOpen` call only
+ * ever affects its DESCENDANTS' visibility), so it is always a "reposition"
+ * entry, never a "reveal"/"ghost" one. A host that wants to hold that node's
+ * SCREEN position fixed while the layout moves around it (see
+ * packages/vanilla's camera anchor) needs to know exactly how far that one
+ * node has travelled between its pre-toggle and post-toggle box at any
+ * instant — which is exactly this curve, the same one `easingFor` computes
+ * internally for `repositionPos`. Exposing the curve itself (pure function of
+ * `startedAt`/`now`/`opening`) rather than a per-node accessor on
+ * `ChartEngine` keeps this usable from a host that may be rendering through a
+ * Web Worker, where no engine instance is reachable at all: the host already
+ * knows the node's pre- and post-toggle world box on the main thread (it
+ * asked for both, once each), and only needs this one number per frame to
+ * interpolate between them itself.
+ */
+export function transitionAnchorProgress(startedAt: number, now: number, opening: boolean): number {
+  const overall = progressOf({ startedAt, duration: TRANSITION_DURATION_MS }, now)
+  return easeInOutCubic(repositionRaw(overall, opening))
 }
 
 /**
@@ -358,31 +483,35 @@ function buildTransition(
   visibleToSource: Int32Array,
   prunedParent: Int32Array,
   prunedFromSource: Int32Array,
+  opening: boolean,
 ): Transition {
   // 1. Wherever every old-layout node (and any still-fading ghost) visually
   // is RIGHT NOW, not where it started or where it will settle — this is
   // what makes a second toggle mid-flight retarget instead of snapping.
-  // `easeInOutCubic`, not `easeOutCubic`: this is position/size math (the
-  // same `lerpBox` the render-loop's tween uses), not an alpha fade, so it
-  // has to use the same symmetric curve as the movement itself — otherwise a
-  // toggle that lands mid-transition would retarget FROM a point computed on
-  // one curve while animating TO it on another, which is exactly the kind of
-  // seam that reads as a stutter.
+  // Each entry/ghost is repositioned using the SAME curve `render()` was
+  // actually drawing it with a moment ago (`easingFor`, keyed by whether it
+  // was a reposition or an emphasis entry, and by the OLD transition's own
+  // `opening`) — otherwise a toggle that lands mid-transition would retarget
+  // FROM a point computed on one curve while animating TO it on another,
+  // which is exactly the kind of seam that reads as a stutter.
   const prevPositionBySource = new Map<number, Box>()
-  const prevEasedPos = prevTransition === null ? 1 : easeInOutCubic(progressOf(prevTransition, now))
+  const prevEasing = prevTransition === null ? null : easingFor(prevTransition, now)
   for (let i = 0; i < prevVisibleToSource.length; i++) {
     const src = prevVisibleToSource[i]!
     let box = boxAt(prevBoxes, i)
     if (prevTransition !== null) {
       const entry = prevTransition.fromBySource.get(src)
-      if (entry !== undefined) box = lerpBox(entry.box, box, prevEasedPos)
+      if (entry !== undefined) {
+        const t = entry.revealed ? prevEasing!.emphasisPos : prevEasing!.repositionPos
+        box = lerpBox(entry.box, box, t)
+      }
     }
     prevPositionBySource.set(src, box)
   }
   if (prevTransition !== null) {
     for (const ghost of prevTransition.ghosts) {
       if (!prevPositionBySource.has(ghost.source)) {
-        prevPositionBySource.set(ghost.source, lerpBox(ghost.from, ghost.to, prevEasedPos))
+        prevPositionBySource.set(ghost.source, lerpBox(ghost.from, ghost.to, prevEasing!.emphasisPos))
       }
     }
   }
@@ -500,7 +629,7 @@ function buildTransition(
     ghostQuad = buildQuadTree(unionBoxes, { minX, minY, maxX, maxY })
   }
 
-  return { startedAt: now, duration: TRANSITION_DURATION_MS, fromBySource, ghosts, ghostQuad }
+  return { startedAt: now, duration: TRANSITION_DURATION_MS, fromBySource, ghosts, ghostQuad, opening }
 }
 
 /**
@@ -582,6 +711,11 @@ export function createChartEngine(renderer: Renderer): ChartEngine {
   // this false, so loading a new dataset or changing spacing/orientation
   // still snaps instantly — only a toggle animates.
   let pendingTransition = false
+  // The DIRECTION of whichever `setOpen` call most recently set
+  // `pendingTransition` true — i.e. whether that call opened or closed its
+  // node. Read only when `pendingTransition` is (see `relayout`), so a stale
+  // value left over from an earlier toggle is never mistakenly consulted.
+  let pendingTransitionOpening = true
   let transition: Transition | null = null
   // The boxes actually handed to the renderer. Aliases `boxes` (zero extra
   // cost) whenever no transition is running; a real mutable copy, selectively
@@ -667,6 +801,7 @@ export function createChartEngine(renderer: Renderer): ChartEngine {
         visibleToSource,
         prunedParent,
         prunedFromSource,
+        pendingTransitionOpening,
       )
       renderBoxes = boxes.slice()
     } else {
@@ -739,26 +874,20 @@ export function createChartEngine(renderer: Renderer): ChartEngine {
         transition = null
         renderBoxes = boxes
       } else {
-        // Two DIFFERENT curves, deliberately, not one shared between them —
-        // same split as the toggle ring's grow/fade in canvas2d.ts:
-        //  - `easedPos` (symmetric ease-in-out) drives every position/size
-        //    tween below (surviving nodes AND ghosts, since a ghost's
-        //    "shrink toward its parent" is a `lerpBox` too, same as a
-        //    surviving node's move) — this is the half the owner asked for:
-        //    accelerate, then decelerate, so the eye can follow the slide
-        //    instead of it front-loading into the first third of the
-        //    duration the way `easeOutCubic` does.
-        //  - `easedAlpha` (unchanged: `easeOutCubic`) still drives the
-        //    reveal fade-in and the ghost fade-out — those read fine as a
-        //    fast-start fade and the brief only asks to fix the MOVEMENT of
-        //    surviving nodes, not the fade curves.
-        const easedPos = easeInOutCubic(progress)
-        const easedAlpha = easeOutCubic(progress)
+        // Staged choreography: `repositionPos` (surviving nodes making room
+        // or closing the gap) and `emphasisPos`/`emphasisAlpha` (revealed
+        // nodes and ghosts growing/fading in or shrinking/fading out) are
+        // now DIFFERENT PHASES of the timeline, not just different curves
+        // applied to the same instant — see `easingFor`, `repositionRaw`, and
+        // `emphasisRaw` above for how `transition.opening` decides which
+        // physical phase (1 or 2) each job lands in.
+        const easing = easingFor(transition, now)
 
         const applyTween = (idx: number): void => {
           const entry = transition!.fromBySource.get(visibleToSource[idx]!)
           if (entry === undefined) return
-          writeBox(renderBoxes, idx, lerpBox(entry.box, boxAt(boxes, idx), easedPos))
+          const t = entry.revealed ? easing.emphasisPos : easing.repositionPos
+          writeBox(renderBoxes, idx, lerpBox(entry.box, boxAt(boxes, idx), t))
         }
         // Every drawn NODE needs its own box tweened, plus its parent's (so
         // a connector reaching up to that parent, drawn from the same
@@ -787,7 +916,7 @@ export function createChartEngine(renderer: Renderer): ChartEngine {
           for (let s = 0; s < nodeCount; s++) {
             const entry = transition.fromBySource.get(visibleToSource[cullBuffer[s]!]!)
             if (entry !== undefined && entry.revealed) {
-              revealAlphaBuffer[s] = easedAlpha
+              revealAlphaBuffer[s] = easing.emphasisAlpha
               anyRevealed = true
             } else {
               revealAlphaBuffer[s] = 1
@@ -810,8 +939,8 @@ export function createChartEngine(renderer: Renderer): ChartEngine {
           if (ghostDrawAlpha.length < gcount) ghostDrawAlpha = new Float32Array(gcount)
           for (let g = 0; g < gcount; g++) {
             const ghost = transition.ghosts[ghostCullBuffer[g]!]!
-            writeBox(ghostDrawBoxes, g, lerpBox(ghost.from, ghost.to, easedPos))
-            ghostDrawAlpha[g] = 1 - easedAlpha
+            writeBox(ghostDrawBoxes, g, lerpBox(ghost.from, ghost.to, easing.emphasisPos))
+            ghostDrawAlpha[g] = 1 - easing.emphasisAlpha
           }
           ghostCount = gcount
         }
@@ -987,6 +1116,7 @@ export function createChartEngine(renderer: Renderer): ChartEngine {
       if (open[index] === v) return
       open[index] = v
       pendingTransition = true
+      pendingTransitionOpening = value
       layoutDirty = true
       // Arm (or replace) the ring candidate, but only when THIS call asked
       // for one. A caller making several `setOpen` calls before the next

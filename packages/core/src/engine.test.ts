@@ -786,7 +786,7 @@ describe('ChartEngine expand/collapse transition', () => {
     engine.render(1000)
     expect(engine.transitioning).toBe(true)
 
-    engine.render(1420) // exactly the 420ms duration: progress 1
+    engine.render(1450) // exactly the 450ms total duration (two staged phases): progress 1
     expect(engine.transitioning).toBe(false)
     const frame = renderer.frames.at(-1)!
     expect(Array.from(frame.boxes)).toEqual(Array.from(engine.boxes))
@@ -810,7 +810,7 @@ describe('ChartEngine expand/collapse transition', () => {
     // still being drawn as a ghost.
     expect(Array.from(engine.visibleToSource)).not.toContain(tree.idToIndex.get('c')!)
 
-    engine.render(1420) // past the duration
+    engine.render(1450) // past the total duration
     const done = renderer.frames.at(-1)!
     expect(done.ghostCount).toBe(0)
   })
@@ -827,7 +827,7 @@ describe('ChartEngine expand/collapse transition', () => {
     engine.setOpen(bIndex, false) // transition 1 starts at t=1000
     engine.render(1000)
 
-    engine.render(1210) // halfway through transition 1 (progress 0.5)
+    engine.render(1225) // halfway through transition 1's total duration (progress 0.5)
     const halfway = renderer.frames.at(-1)!
     const bPrunedHalfway = Array.from(engine.visibleToSource).indexOf(bIndex)
     expect(bPrunedHalfway).toBeGreaterThanOrEqual(0)
@@ -836,7 +836,7 @@ describe('ChartEngine expand/collapse transition', () => {
 
     // Interrupt with a second toggle at the SAME instant.
     engine.setOpen(bIndex, true)
-    engine.render(1210)
+    engine.render(1225)
     const retargeted = renderer.frames.at(-1)!
     const bPrunedNow = Array.from(engine.visibleToSource).indexOf(bIndex)
     expect(bPrunedNow).toBeGreaterThanOrEqual(0)
@@ -922,7 +922,7 @@ describe('ChartEngine expand/collapse transition', () => {
     expect(frame0.revealAlpha).not.toBeNull()
     expect(frame0.revealAlpha![slot]).toBeCloseTo(0, 5)
 
-    engine.render(1420) // done
+    engine.render(1450) // done
     expect(renderer.frames.at(-1)!.revealAlpha).toBeNull()
   })
 })
@@ -1082,7 +1082,7 @@ describe('ChartEngine one-shot toggle ring', () => {
 
   it('keeps `engine.ringActive` true after `transitioning` has already gone false', () => {
     // RING_DURATION_MS (900ms) deliberately outlives TRANSITION_DURATION_MS
-    // (420ms, see engine.ts) so the ring is still resolving well after the
+    // (450ms, see engine.ts) so the ring is still resolving well after the
     // layout transition settles. A caller driving its own frame loop off only
     // `transitioning` — as the vanilla layer's `scheduleFrame` briefly did —
     // stops asking for frames the instant the transition ends and freezes
@@ -1100,7 +1100,7 @@ describe('ChartEngine one-shot toggle ring', () => {
     expect(engine.transitioning).toBe(true)
     expect(engine.ringActive).toBe(true)
 
-    engine.render(1500) // past the 420ms transition, still well inside the 900ms ring
+    engine.render(1500) // past the 450ms transition, still well inside the 900ms ring
     expect(engine.transitioning).toBe(false)
     expect(engine.ringActive).toBe(true)
 
