@@ -38,6 +38,15 @@ const nextFrame = () => new Promise((r) => requestAnimationFrame(() => r(null)))
 // settled camera too.
 const settle = () => new Promise<void>((resolve) => setTimeout(() => resolve(), 260))
 
+// A single-node expand/collapse now runs the engine's own staged layout
+// transition (see engine.ts's `TRANSITION_DURATION_MS`, currently 450ms —
+// two phases plus a small overlap), and the camera anchor rides along with
+// it for as long as that transition runs. That is LONGER than the 200ms
+// camera-tween `settle()` above waits out, so a test that toggles a node and
+// then reads back the camera/layout needs to wait out the transition itself,
+// not just a tween.
+const settleTransition = () => new Promise<void>((resolve) => setTimeout(() => resolve(), 550))
+
 describe('createOrgChart', () => {
   it('creates a canvas inside the host', () => {
     const el = host()
@@ -560,47 +569,61 @@ describe('createOrgChart', () => {
 
   // --- auto-pan on toggle --------------------------------------------------
 
-  it('approaches the toggled node and its children on expand, never zooming past 1:1', async () => {
+  it('pins the toggled node to its exact on-screen position through an expand', async () => {
     const chart = make({ collapsedByDefault: true })
     await nextFrame()
     await nextFrame()
 
-    const before = chart.api.getState().camera
+    const before = chart.api.getState()
     chart.api.expand('a') // root 'a' has two children, b and c
-    await settle()
+    await settleTransition()
     await nextFrame()
-    const after = chart.api.getState().camera
+    const after = chart.api.getState()
 
-    expect(after.x !== before.x || after.y !== before.y || after.k !== before.k).toBe(true)
-    expect(after.k).toBeLessThanOrEqual(1)
+    // The whole point of the camera anchor: the toggled node ('a', the root
+    // here — see `rootScreenCentre`) never moves on screen, even though the
+    // camera itself has to change underneath it to hold that still while its
+    // newly revealed children push the rest of the layout around.
+    expect(after.rootScreenCentre.x).toBeCloseTo(before.rootScreenCentre.x, 0)
+    expect(after.rootScreenCentre.y).toBeCloseTo(before.rootScreenCentre.y, 0)
+    // Zoom is never touched by the toggle anchor — only pan.
+    expect(after.camera.k).toBeCloseTo(before.camera.k, 5)
     chart.destroy()
   })
 
-  it('approaches the toggled node on collapse', async () => {
+  it('pins the toggled node to its exact on-screen position through a collapse', async () => {
     const chart = make()
     await nextFrame()
     await nextFrame()
-    chart.api.fit()
-    await settle()
-    await nextFrame()
 
-    chart.api.collapse('b')
-    await settle()
-    await nextFrame()
-    const afterCollapse = chart.api.getState().camera
-    expect(afterCollapse.k).toBeLessThanOrEqual(1)
-
-    // `focus('b')` at the camera's now-current zoom centres squarely on 'b'.
-    // If auto-pan had truly approached 'b', re-focusing on it afterward is a
-    // no-op; if auto-pan had centred on the wrong point, this would move the
-    // camera again.
+    // Put 'b' at a known, deliberately off-centre-of-the-fitted-view screen
+    // position first (dead centre of the viewport), so pinning it there
+    // through the collapse — rather than it merely happening to already be
+    // near that spot — is a meaningful check.
     chart.api.focus('b')
     await settle()
     await nextFrame()
-    const focused = chart.api.getState().camera
+    const beforeK = chart.api.getState().camera.k
 
-    expect(afterCollapse.x).toBeCloseTo(focused.x, 0)
-    expect(afterCollapse.y).toBeCloseTo(focused.y, 0)
+    chart.api.collapse('b')
+    await settleTransition()
+    await nextFrame()
+    const afterCollapse = chart.api.getState().camera
+
+    // `focus('b')` centres 'b's CURRENT (post-collapse) box on the viewport.
+    // If the anchor genuinely held 'b' at the same screen position (dead
+    // centre, from the `focus('b')` above) throughout the collapse, this is
+    // a no-op — 'b' is already exactly where a fresh `focus('b')` would put
+    // it; if the anchor drifted, this moves the camera again.
+    chart.api.focus('b')
+    await settle()
+    await nextFrame()
+    const refocused = chart.api.getState().camera
+
+    expect(afterCollapse.x).toBeCloseTo(refocused.x, 0)
+    expect(afterCollapse.y).toBeCloseTo(refocused.y, 0)
+    // Zoom is never touched by the toggle anchor — only pan.
+    expect(afterCollapse.k).toBeCloseTo(beforeK, 5)
     chart.destroy()
   })
 
@@ -611,7 +634,7 @@ describe('createOrgChart', () => {
 
     const before = chart.api.getState().camera
     chart.api.expand('a')
-    await settle()
+    await settleTransition()
     await nextFrame()
     const after = chart.api.getState().camera
 

@@ -61,7 +61,7 @@ export type { ExportData, SvgExportOptions } from './render/svg.js'
 export { escapeXml, toSVG } from './render/svg.js'
 
 export type { ChartEngine } from './engine.js'
-export { createChartEngine } from './engine.js'
+export { createChartEngine, transitionAnchorProgress } from './engine.js'
 export type { EngineOptions, MainToWorker, WireTree, WorkerToMain } from './worker/protocol.js'
 export { toWireTree, wireTreeToTree } from './worker/protocol.js'
 

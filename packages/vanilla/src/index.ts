@@ -17,6 +17,7 @@ import {
   screenToWorld,
   toSVG as coreToSVG,
   toWireTree,
+  transitionAnchorProgress,
   zoomAt,
   type Bounds,
   type Camera,
@@ -84,14 +85,13 @@ export interface Options {
   /**
    * After a single-node `expand`/`collapse` (not `expandAll`/`collapseAll`,
    * which always `fit()` — the whole chart changed, so a full fit is the
-   * sensible response), tween the camera to approach the toggled node: on
-   * expand, framed together with its immediate children; on collapse, the
-   * node alone. This runs every time, on- or off-screen alike — the point is
-   * to take the user's eye to what they just acted on, not merely to nudge it
-   * into view when it happens to be out of frame. Never re-fits the whole
-   * chart (that would throw away a zoom level the user chose) and never zooms
-   * in past 1:1 — a two-child node blowing up to an enormous card would look
-   * broken, not attentive. Defaults to `true`.
+   * sensible response), pins the toggled node to a FIXED screen position for
+   * the whole staged layout transition (see engine.ts's two-phase
+   * choreography), rather than panning the camera TO it: the node is the
+   * fixed point everything else grows out of or collapses back into, on- or
+   * off-screen alike — the point is to hold what the user just acted on
+   * still, not to move the camera at all. Zoom is never touched by this —
+   * only the pan. Defaults to `true`.
    */
   autoPanOnToggle?: boolean
   /**
@@ -566,19 +566,82 @@ export function createOrgChart(host: HTMLElement, options: Options): OrgChartIns
    */
   let needsInitialFit = true
 
+  /** Screen-space centre of `box`, in this element's own coordinate space —
+   * `camera.x/y` units, not CSS pixels of the page. */
+  const boxCentre = (box: { x: number; y: number; w: number; h: number }): { x: number; y: number } => ({
+    x: box.x + box.w / 2,
+    y: box.y + box.h / 2,
+  })
+
+  const lerpPoint = (
+    from: { x: number; y: number },
+    to: { x: number; y: number },
+    t: number,
+  ): { x: number; y: number } => ({
+    x: from.x + (to.x - from.x) * t,
+    y: from.y + (to.y - from.y) * t,
+  })
+
   /**
-   * Set by a single-node `expand`/`collapse` (see `setOpenFlag`). Consumed on
-   * the next frame that reports fresh boxes, because the region to pan to
-   * cannot be known until the toggle's relayout has actually run. Cleared by
-   * `update()` since a data reload invalidates the index it names.
+   * Keeps a single-node `expand`/`collapse`'s toggled node pinned to a FIXED
+   * screen position for as long as the engine's layout transition is moving
+   * things around it — the camera no longer pans TO the node (see the
+   * removed `autoPanToRegion`); instead the node is the fixed point the rest
+   * of the layout grows out of or collapses back into, and this is what
+   * keeps it fixed, frame by frame, by adjusting the camera instead.
+   *
+   * `fromCentre`/`toCentre` are the node's own world-space centre a moment
+   * before the toggle and once the toggle's relayout has run — the node
+   * always survives its own toggle (only its DESCENDANTS' visibility
+   * changes), so it always has both. Interpolating between them with
+   * `transitionAnchorProgress` (exported by core for exactly this) replays
+   * the SAME curve the engine itself is drawing that node's own box with
+   * internally, without this layer ever reaching into the engine's
+   * transition state — which also means it works unchanged whether the
+   * engine is rendering in-process or in a Web Worker.
    */
-  let pendingAutoPanIndex: number | null = null
+  interface CameraAnchor {
+    source: number
+    screenX: number
+    screenY: number
+    fromCentre: { x: number; y: number }
+    toCentre: { x: number; y: number }
+    /** This toggle's direction (expand/collapse) — `transitionAnchorProgress`
+     * needs it to know which of the two staged phases the node's OWN
+     * reposition tween falls into. */
+    opening: boolean
+    /** This layer's own `requestAnimationFrame` clock, at the instant the
+     * relayout this toggle triggered actually ran — the same instant the
+     * engine used as its OWN transition's start (see `setOpenFlag` and
+     * `scheduleFrame` for how the two stay in sync without the engine
+     * exposing that timestamp directly). */
+    startedAt: number
+  }
+  let cameraAnchor: CameraAnchor | null = null
+
+  /**
+   * Set by a single-node `expand`/`collapse` (see `setOpenFlag`), captured
+   * BEFORE the toggle is even sent to the engine: the node's current on-screen
+   * position (the pin point) and its current world-space centre. Promoted
+   * into `cameraAnchor` on the next frame that reports fresh boxes, because
+   * the node's POST-toggle centre cannot be known until the toggle's relayout
+   * has actually run. Cleared by `update()` since a data reload invalidates
+   * the index it names.
+   */
+  let pendingAnchor: {
+    source: number
+    screenX: number
+    screenY: number
+    fromCentre: { x: number; y: number }
+    opening: boolean
+  } | null = null
 
   /**
    * Set by `expandAll`/`collapseAll`: the whole chart changed shape, so the
-   * sensible response is a full `fit()` rather than trying to frame a region —
-   * there is no single "affected region" for a bulk operation. Takes priority
-   * over `pendingAutoPanIndex` if somehow both end up set before the next frame.
+   * sensible response is a full `fit()` rather than trying to pin any single
+   * node — there is no one "the toggled node" for a bulk operation. Takes
+   * priority over `pendingAnchor`/`cameraAnchor` if somehow both end up set
+   * before the next frame.
    */
   let pendingFullFit = false
 
@@ -622,13 +685,32 @@ export function createOrgChart(host: HTMLElement, options: Options): OrgChartIns
       // produced rather than stale ones from before it.
       if (pendingFullFit) {
         pendingFullFit = false
-        pendingAutoPanIndex = null
+        pendingAnchor = null
+        cameraAnchor = null
         api.fit()
-      } else if (pendingAutoPanIndex !== null) {
-        const index = pendingAutoPanIndex
-        pendingAutoPanIndex = null
-        autoPanToRegion(index)
+      } else if (pendingAnchor !== null) {
+        const anchor = pendingAnchor
+        pendingAnchor = null
+        // The node's post-relayout box — always present (see `CameraAnchor`'s
+        // docblock), but degrade to "no anchor" rather than trust that if it
+        // somehow isn't.
+        const toBox = boxOfSource(anchor.source)
+        cameraAnchor =
+          toBox === null
+            ? null
+            : {
+                source: anchor.source,
+                screenX: anchor.screenX,
+                screenY: anchor.screenY,
+                fromCentre: anchor.fromCentre,
+                toCentre: boxCentre(toBox),
+                opening: anchor.opening,
+                startedAt: now,
+              }
       }
+      // Applies every frame the anchor is active, not just the one it was
+      // (re)established on — see `CameraAnchor`'s docblock.
+      applyCameraAnchor(now)
       if (minimap !== null) {
         // Identity check, not "every frame": `computeSilhouette` walks every
         // node, so it only runs when `boxes` is actually a NEW array, i.e. a
@@ -675,6 +757,34 @@ export function createOrgChart(host: HTMLElement, options: Options): OrgChartIns
     chartHost.setCamera(camera)
     emit('viewportChange', { camera })
     scheduleFrame()
+  }
+
+  /**
+   * Advances the active `cameraAnchor`, if any, for the current frame — see
+   * its docblock for the overall design. Two cases:
+   *
+   *  - Reduced motion / `animate: false`: the engine skips its own transition
+   *    entirely and snaps straight to the final layout, so there is nothing
+   *    to track frame by frame. Jump the camera once, using the node's FINAL
+   *    centre (`t = 1`), and drop the anchor immediately — "jump straight to
+   *    the final layout with the node anchored, no tween", per the brief.
+   *  - Animated and still running: `transitionAnchorProgress` replays the
+   *    engine's OWN reposition curve for this one node to find exactly where
+   *    its centre is RIGHT NOW, and the camera is solved so that point maps
+   *    to the fixed screen anchor. Dropped the instant the engine's own
+   *    transition ends — after that both ends of the interpolation are the
+   *    SAME point, so there is nothing left for it to do, and the camera it
+   *    leaves behind already holds the node exactly at its pinned spot.
+   */
+  const applyCameraAnchor = (now: number): void => {
+    const anchor = cameraAnchor
+    if (anchor === null) return
+    const stillAnimating = animationsEnabled() && chartHost.transitioning
+    const t = stillAnimating ? transitionAnchorProgress(anchor.startedAt, now, anchor.opening) : 1
+    const world = lerpPoint(anchor.fromCentre, anchor.toCentre, t)
+    const nextCamera = { x: anchor.screenX - world.x * camera.k, y: anchor.screenY - world.y * camera.k, k: camera.k }
+    applyCamera(nextCamera)
+    if (!stillAnimating) cameraAnchor = null
   }
 
   /**
@@ -728,6 +838,12 @@ export function createOrgChart(host: HTMLElement, options: Options): OrgChartIns
     tweenTo = null
     momentumVX = 0
     momentumVY = 0
+    // Same "the user's hand always wins immediately" rule extends to the
+    // toggle camera anchor: a `focus()`/`fit()`/manual pan or zoom while a
+    // toggle's anchor is still holding a node in place is deliberate action
+    // that should simply win, not fight the anchor on the next frame.
+    cameraAnchor = null
+    pendingAnchor = null
   }
 
   /** Used by pointer, wheel, and pinch input — see `cancelCameraAnimation`. */
@@ -822,88 +938,35 @@ export function createOrgChart(host: HTMLElement, options: Options): OrgChartIns
     cameraAnimHandle = requestAnimationFrame(stepMomentum)
   }
 
-  /**
-   * World-space bounding box of `index` together with its immediate children
-   * — but only if `index` is open, i.e. an expand just revealed them.
-   * Otherwise just `index`'s own box, which is exactly the collapse case:
-   * its children just left the visible set, so there is nothing else to
-   * frame.
-   */
-  const affectedRegion = (index: number): Bounds | null => {
-    let minX = Infinity
-    let minY = Infinity
-    let maxX = -Infinity
-    let maxY = -Infinity
-    let any = false
-    const include = (node: number): void => {
-      const box = boxOfSource(node)
-      if (box === null) return
-      any = true
-      if (box.x < minX) minX = box.x
-      if (box.y < minY) minY = box.y
-      if (box.x + box.w > maxX) maxX = box.x + box.w
-      if (box.y + box.h > maxY) maxY = box.y + box.h
-    }
-    include(index)
-    if (open[index] === 1) {
-      for (let c = tree.childStart[index]!; c < tree.childStart[index + 1]!; c++) {
-        include(tree.childIndex[c]!)
+  const setOpenFlag = (index: number, value: boolean): void => {
+    if (currentOptions.autoPanOnToggle !== false) {
+      const box = boxOfSource(index)
+      if (box !== null) {
+        const centre = boxCentre(box)
+        let fromCentre = centre
+        let screenX = centre.x * camera.k + camera.x
+        let screenY = centre.y * camera.k + camera.y
+        if (cameraAnchor !== null && cameraAnchor.source === index) {
+          // Re-toggling the SAME node the anchor is already holding: keep the
+          // exact same pin point (not the FINAL box's screen position, which
+          // during a transition is generally NOT where the node currently
+          // reads on screen), and continue from wherever it visually is right
+          // now — via the same curve `applyCameraAnchor` used to put it there
+          // — rather than the stale final box `boxOfSource` would otherwise
+          // give. This is the camera-side half of "a second toggle
+          // mid-transition retargets instead of snapping".
+          const now = performance.now()
+          const stillAnimating = animationsEnabled() && chartHost.transitioning
+          const t = stillAnimating
+            ? transitionAnchorProgress(cameraAnchor.startedAt, now, cameraAnchor.opening)
+            : 1
+          fromCentre = lerpPoint(cameraAnchor.fromCentre, cameraAnchor.toCentre, t)
+          screenX = cameraAnchor.screenX
+          screenY = cameraAnchor.screenY
+        }
+        pendingAnchor = { source: index, screenX, screenY, fromCentre, opening: value }
       }
     }
-    return any ? { minX, minY, maxX, maxY } : null
-  }
-
-  /**
-   * Tweens the camera to approach the node just toggled by a single-node
-   * expand/collapse. Runs every time — on screen or off — because the point
-   * of the interaction is to take the user's eye to what they acted on, not
-   * merely to nudge the camera when the node happens to already be out of
-   * frame.
-   *
-   * On expand this frames the node together with its immediate children (see
-   * `affectedRegion`); on collapse, the node alone, since there is nothing
-   * else left to include. Zoom is chosen to fit that group with the same
-   * padding `fit()` uses elsewhere — comfortable, not edge-to-edge — but is
-   * capped at 1:1: a node with only two children blowing up to an enormous
-   * card would look broken, not attentive. If the group is too wide to fit
-   * even at that capped zoom, the toggled node itself stays centred rather
-   * than compromising to include every child — the node is what the user
-   * acted on, not its children.
-   */
-  const autoPanToRegion = (index: number): void => {
-    const region = affectedRegion(index)
-    if (region === null) return
-    const rect = host.getBoundingClientRect()
-    if (rect.width <= 0 || rect.height <= 0) return
-    const size = { width: rect.width, height: rect.height }
-
-    const fitted = fitCamera(region, size, FIT_PADDING, limits)
-    const k = Math.min(1, fitted.k)
-    const available = {
-      width: size.width - FIT_PADDING * 2,
-      height: size.height - FIT_PADDING * 2,
-    }
-    const regionFits =
-      (region.maxX - region.minX) * k <= available.width &&
-      (region.maxY - region.minY) * k <= available.height
-
-    if (regionFits) {
-      animateTo(centreOn({ ...camera, k }, region, size))
-      return
-    }
-
-    const nodeBox = boxOfSource(index)
-    if (nodeBox === null) return
-    const nodeBounds: Bounds = {
-      minX: nodeBox.x,
-      minY: nodeBox.y,
-      maxX: nodeBox.x + nodeBox.w,
-      maxY: nodeBox.y + nodeBox.h,
-    }
-    animateTo(centreOn({ ...camera, k }, nodeBounds, size))
-  }
-
-  const setOpenFlag = (index: number, value: boolean): void => {
     open[index] = value ? 1 : 0
     // A single-node toggle — the exact case the ring exists for — so `ring`
     // is explicitly `true` here (matching the engine's default, but spelled
@@ -912,7 +975,6 @@ export function createOrgChart(host: HTMLElement, options: Options): OrgChartIns
     chartHost.setOpen(index, value, true)
     emit('toggle', { id: tree.indexToId[index]!, open: value })
     a11yDirty = true
-    if (currentOptions.autoPanOnToggle !== false) pendingAutoPanIndex = index
     scheduleFrame()
   }
 
@@ -1336,9 +1398,10 @@ export function createOrgChart(host: HTMLElement, options: Options): OrgChartIns
       rebuildItemIndex()
       syncAnimate()
       initOpen()
-      // A pending auto-pan/full-fit names indices or relies on state from the
-      // tree that just got replaced; a reload invalidates both.
-      pendingAutoPanIndex = null
+      // A pending/active anchor or full-fit names an index or relies on state
+      // from the tree that just got replaced; a reload invalidates all of it.
+      pendingAnchor = null
+      cameraAnchor = null
       pendingFullFit = false
       applyData()
       setupMinimap()
