@@ -3,8 +3,8 @@ layout: home
 
 hero:
   name: OrgChart
-  text: 50,000 nodes. 60fps.
-  tagline: Canvas in a worker. Your components only where they can be read.
+  text: The whole org, at 60fps.
+  tagline: Fifty thousand people on a canvas in a Web Worker — with your own Vue, React or plain-DOM cards mounted only where they are big enough to read.
   image:
     src: /hero.png
     alt: An org chart of six cards in perspective, floating above their connectors
@@ -20,12 +20,12 @@ hero:
       link: https://github.com/n1crack/orgchart
 
 features:
-  - title: No DOM you can't see
-    details: A node gets an element only when it is in the viewport and zoomed in far enough to read — about fifty at a time, pooled. Everything else is canvas.
-  - title: Vue, React, or neither
-    details: One DOM-free engine, three thin bindings. The frameworkless API is the reference; a fourth binding is a small job.
-  - title: Nothing jumps
-    details: Expand a node and it stays exactly where it was on screen, to the pixel, while the layout moves around it.
+  - title: 50,000 nodes, about 50 elements
+    details: A node gets a DOM element once it is on screen and zoomed in far enough to read — never before. The rest is canvas, so the chart can be as big as the company is.
+  - title: Bring your own card
+    details: A Vue slot, a React render prop, or a plain function that gets an element. One DOM-free engine under all three, and a fourth binding is an afternoon's work.
+  - title: Expand without losing your place
+    details: Open a node and it holds its exact spot on screen, to the pixel, while the layout reflows around it. The camera keeps its zoom; the minimap keeps its frame.
 ---
 
 ## Draw one
