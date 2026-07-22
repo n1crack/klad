@@ -154,7 +154,7 @@ function renderStatus(element: HTMLElement, context: NodeContext): void {
   }
   // No toggle button here: at this card's information density (name, title,
   // two badges) there's no clearance left for one without overlapping the
-  // badge row. The toolbar's Expand All / Collapse All still work.
+  // badge row. The sidebar's Expand All / Collapse All still work.
 }
 
 /** Squarer, image-dominant tile: a CSS-gradient "photo" (initials) over a name/title band. */

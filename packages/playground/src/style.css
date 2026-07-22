@@ -1,5 +1,5 @@
 /*
- * Design tokens for the playground SHELL (header, toolbar, description card,
+ * Design tokens for the playground SHELL (header, sidebar, description card,
  * surface frame) — not the node cards below, which are deliberate per-example
  * looks and keep their own `color-mix(in srgb, canvas/canvastext, …)` values
  * unchanged. `canvas`/`canvastext` are the two system colours that flip with
@@ -75,37 +75,53 @@ body {
   color: var(--text-muted);
 }
 
-.toolbar {
+/*
+ * `.layout` is the sidebar + chart-area row below the slim header: the
+ * sidebar gets a fixed width and its own scrollbar, `.content` takes
+ * whatever's left. `min-height: 0` here (and again on `.content`/`.surface`
+ * below) is load-bearing — without it, a flex child's default `min-height:
+ * auto` refuses to shrink below its content's height, and the row would grow
+ * taller than the viewport instead of the sidebar/surface scrolling within
+ * it, which is exactly the "host collapses to 0 height" failure mode the
+ * chart's own ResizeObserver-driven sizing is vulnerable to.
+ */
+.layout {
   display: flex;
-  flex-wrap: wrap;
-  align-items: stretch;
-  gap: 0.9rem 1.35rem;
-  padding: 0.75rem 1.25rem;
+  flex: 1;
+  min-height: 0;
+}
+
+.sidebar {
+  flex: 0 0 264px;
+  width: 264px;
+  display: flex;
+  flex-direction: column;
   background: var(--surface-raised);
+  border-right: 1px solid var(--border);
+  overflow-y: auto;
+}
+
+.sidebar-body {
+  display: flex;
+  flex-direction: column;
+  gap: 1.1rem;
+  padding: 1rem;
+}
+
+.sidebar-group {
+  display: flex;
+  flex-direction: column;
+  gap: 0.5rem;
+  padding-bottom: 1.1rem;
   border-bottom: 1px solid var(--border);
 }
 
-.toolbar-group {
-  display: flex;
-  flex-direction: column;
-  gap: 0.4rem;
-  padding-right: 1.35rem;
-  border-right: 1px solid var(--border);
+.sidebar-group:last-of-type {
+  border-bottom: none;
+  padding-bottom: 0;
 }
 
-.toolbar-group:last-of-type {
-  border-right: none;
-  padding-right: 0;
-}
-
-/* The Export group is visually distinct (see `.btn-export`) and reads best
-   pinned to the far side of the bar, away from the controls that shape what
-   the chart looks like. */
-.toolbar-group-end {
-  margin-left: auto;
-}
-
-.toolbar-group-caption {
+.sidebar-group-caption {
   font-size: 0.68rem;
   font-weight: 700;
   text-transform: uppercase;
@@ -113,17 +129,54 @@ body {
   color: var(--text-muted);
 }
 
-.toolbar-group-body {
+/* Buttons wrap two-or-so per row (there's room for that at 264px); `.field`s
+   below always claim a full row — a `<select>` or the colour picker reads
+   better stacked at its own width than squeezed to fit alongside a sibling. */
+.sidebar-group-body {
   display: flex;
-  align-items: center;
   flex-wrap: wrap;
   gap: 0.5rem;
+}
+
+.sidebar-group-body .btn {
+  flex: 1 1 auto;
+}
+
+.content {
+  flex: 1;
+  min-width: 0;
+  min-height: 0;
+  display: flex;
+  flex-direction: column;
+}
+
+/* Below this width the sidebar stops trying to sit alongside the chart —
+   there isn't room for both — and instead becomes a capped-height, scrollable
+   strip above it, same as it already is internally past its own content
+   height. */
+@media (max-width: 720px) {
+  .layout {
+    flex-direction: column;
+  }
+
+  .sidebar {
+    flex: 0 0 auto;
+    width: auto;
+    max-height: 45vh;
+    border-right: none;
+    border-bottom: 1px solid var(--border);
+  }
+
+  .sidebar-group-body .btn {
+    flex: 1 1 auto;
+  }
 }
 
 .field {
   display: flex;
   flex-direction: column;
   gap: 0.3rem;
+  flex: 1 1 100%;
 }
 
 .field label {
@@ -132,12 +185,8 @@ body {
   color: var(--text-muted);
 }
 
-.field-compact {
-  min-width: 0;
-}
-
 .field-range {
-  min-width: 190px;
+  min-width: 0;
 }
 
 .field-range-row {
@@ -226,10 +275,9 @@ body {
   color: var(--accent);
 }
 
-/* Export sits apart from the rest of the toolbar (see `.toolbar-group-end`)
-   and is filled with the accent colour so it reads as the bar's one
-   "produce an artefact" action, distinct from the controls that only change
-   what's on screen. */
+/* Export sits in the sidebar's last group and is filled with the accent
+   colour so it reads as the sidebar's one "produce an artefact" action,
+   distinct from the controls that only change what's on screen. */
 .btn-export {
   background: var(--accent);
   border-color: var(--accent);
@@ -239,6 +287,33 @@ body {
 .btn-export:hover {
   background: color-mix(in srgb, var(--accent) 88%, canvastext 12%);
   border-color: color-mix(in srgb, var(--accent) 88%, canvastext 12%);
+}
+
+/* Canvas background picker — same field/value rhythm as the edge-radius
+   slider (see `.field-range`/`.field-range-value` above), swapped to a
+   colour swatch instead of a numeric readout. Native `<input type="color">`
+   chrome varies a lot per browser, so this only normalises size, radius and
+   the same border/hover/focus tokens every other control uses; the swatch
+   itself is left to the browser. */
+.color-input {
+  width: 3rem;
+  height: 2.1rem;
+  padding: 0.15rem;
+  border-radius: var(--radius-sm);
+  border: 1px solid var(--border-strong);
+  background: var(--surface);
+  cursor: pointer;
+  transition: border-color 120ms ease, box-shadow 120ms ease;
+}
+
+.color-input:hover {
+  border-color: var(--accent);
+}
+
+.color-input:focus-visible {
+  outline: none;
+  border-color: var(--accent);
+  box-shadow: 0 0 0 3px color-mix(in srgb, var(--accent) 30%, transparent);
 }
 
 .example-description {
