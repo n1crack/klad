@@ -97,6 +97,7 @@ self.onmessage = (event: MessageEvent<MainToWorker>): void => {
         t: 'frame',
         visible: drawn,
         transitioning: engine.transitioning,
+        transitionStartedAt: engine.transitionStartedAt,
         ringActive: engine.ringActive,
         lastDrawnBoxes,
         lastDrawnAlpha,

@@ -159,5 +159,12 @@ export type WorkerToMain =
        * what lets the main-thread host's DOM overlay honour the same fade the
        * worker's canvas just painted with. */
       lastDrawnAlpha: Float32Array | null
+      /** Mirrors `ChartEngine.transitionStartedAt` — the origin the running
+       * transition's curve is measured from, `null` when none is running. A
+       * host advancing its own animation in lockstep with the transition (the
+       * toggle camera anchor) has to measure from this exact value; see the
+       * getter's docblock for why it cannot be inferred from the host's own
+       * frame clock in worker mode. */
+      transitionStartedAt: number | null
     }
   | { t: 'error'; message: string }

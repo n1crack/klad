@@ -277,6 +277,51 @@ describe('minimap', () => {
     chart.destroy()
   })
 
+  // Regression: the silhouette (and the transform derived with it) used to be
+  // rebuilt the instant a toggle's relayout landed, while the canvas was still
+  // animating its way there. The minimap's whole coordinate space therefore
+  // jumped to the FINAL layout on the toggle frame, and the viewport rectangle
+  // — still drawn from the pre-toggle camera, since the camera anchor has not
+  // moved it yet — landed somewhere else entirely (far to one side on a root
+  // expand, where the layout's own origin shifts the most) and then slid back
+  // across the whole minimap as the camera caught up.
+  it('takes up a toggle’s new layout only once its transition has finished', async () => {
+    const el = host()
+    const chart = createOrgChart(el, {
+      data: buildOrg(300),
+      nodeSize: { w: 120, h: 48 },
+      worker: false,
+      minimap: true,
+    })
+    await new Promise((r) => setTimeout(r, 260))
+    await nextFrame()
+
+    const minimapCanvas = el.querySelectorAll('canvas')[1] as HTMLCanvasElement
+    const ctx = minimapCanvas.getContext('2d')!
+    let repaints = 0
+    const original = ctx.putImageData.bind(ctx)
+    ctx.putImageData = ((...args: [ImageData, number, number]) => {
+      repaints++
+      original(...args)
+    }) as typeof ctx.putImageData
+
+    chart.api.collapse('root')
+    // Four frames in, the transition is still running: the minimap must still
+    // be showing — and measuring against — the layout that was on screen when
+    // the toggle landed, because that is what the canvas is still showing too.
+    for (let i = 0; i < 4; i++) await nextFrame()
+    expect(chart.api.getState().visibleCount).toBeGreaterThan(0)
+    expect(repaints).toBe(0)
+
+    await new Promise((r) => setTimeout(r, 550))
+    await nextFrame()
+    await nextFrame()
+    // Settled: exactly one repaint, for the one relayout the toggle produced.
+    expect(repaints).toBe(1)
+
+    chart.destroy()
+  })
+
   it('destroy() removes the minimap element', async () => {
     const el = host()
     const chart = createOrgChart(el, {

@@ -66,6 +66,15 @@ export interface ChartHost {
    * mode this comes from each `frame` message's own field of the same name.
    */
   readonly lastDrawnAlpha: Float32Array | null
+  /**
+   * Mirrors `ChartEngine.transitionStartedAt` on either path — the origin the
+   * running transition's curve is measured from, `null` when none is running.
+   * A caller animating alongside the transition must measure from this, not
+   * from its own frame clock: the two paths start the transition at different
+   * instants (in-process on the first frame after the toggle, in worker mode
+   * as soon as the `open` message is dequeued).
+   */
+  readonly transitionStartedAt: number | null
 }
 
 /**
@@ -114,6 +123,8 @@ export function createChartHost(
   // Mirrors the in-process `engine.transitioning` for worker mode, updated
   // from each `frame` message's `transitioning` flag.
   let workerTransitioning = false
+  // Same mirroring, for `engine.transitionStartedAt`.
+  let workerTransitionStartedAt: number | null = null
   // Same mirroring, for `engine.ringActive` — see its docblock for why this
   // has to be tracked separately from `workerTransitioning` rather than
   // folded into it.
@@ -151,6 +162,7 @@ export function createChartHost(
         if (message.t === 'frame') {
           framesReceived++
           workerTransitioning = message.transitioning
+          workerTransitionStartedAt = message.transitionStartedAt
           workerRingActive = message.ringActive
           workerLastDrawnBoxes = message.lastDrawnBoxes
           workerLastDrawnAlpha = message.lastDrawnAlpha
@@ -281,6 +293,9 @@ export function createChartHost(
     },
     get ringActive() {
       return engine !== null ? engine.ringActive : workerRingActive
+    },
+    get transitionStartedAt() {
+      return engine !== null ? engine.transitionStartedAt : workerTransitionStartedAt
     },
     get lastDrawnAlpha() {
       return engine !== null ? engine.lastDrawnAlpha : workerLastDrawnAlpha

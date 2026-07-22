@@ -817,6 +817,51 @@ describe('createOrgChart', () => {
     chart.destroy()
   })
 
+  // The pixel-scanning test above can only run on the main-thread path: in
+  // worker mode the canvas is transferred to the worker and cannot be read
+  // back. The toggled node's overlay CARD is the equivalent probe there — it
+  // is positioned from the box the WORKER interpolated (`lastDrawnBoxes`,
+  // carried back on each frame message) times the camera the MAIN THREAD
+  // solved, so any disagreement between the two clocks shows up as the card
+  // sliding, exactly as the canvas underneath it does.
+  it('pins the toggled node through an expand in worker mode too', async () => {
+    const chart = make({
+      worker: true,
+      collapsedByDefault: true,
+      ring: false,
+      renderNode: (el: HTMLElement, ctx: { id: string }) => {
+        el.dataset.id = ctx.id
+        el.textContent = ctx.id
+      },
+    })
+    await settle()
+    await nextFrame()
+
+    const cardX = (): number | null => {
+      const el = document.querySelector('[data-id="a"]') as HTMLElement | null
+      if (el === null) return null
+      const m = /translate3d\(([-\d.]+)px/.exec(el.style.transform)
+      return m === null ? null : parseFloat(m[1]!)
+    }
+
+    const before = cardX()
+    expect(before).not.toBeNull()
+
+    chart.api.expand('a')
+    let worst = 0
+    let samples = 0
+    for (let i = 0; i < 30; i++) {
+      await nextFrame()
+      const now = cardX()
+      if (now === null) continue
+      samples++
+      worst = Math.max(worst, Math.abs(now - before!))
+    }
+    expect(samples).toBeGreaterThan(10)
+    expect(worst).toBeLessThan(1)
+    chart.destroy()
+  })
+
   it('does not auto-pan on toggle when autoPanOnToggle is false', async () => {
     const chart = make({ collapsedByDefault: true, autoPanOnToggle: false })
     await nextFrame()

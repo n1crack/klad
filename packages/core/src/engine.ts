@@ -61,6 +61,26 @@ export interface ChartEngine {
   /** True while an expand/collapse transition is still in progress. */
   readonly transitioning: boolean
   /**
+   * The timestamp the running transition was started from — the `now` the
+   * relayout that built it was given — or `null` when none is running.
+   *
+   * Exists for a host that has to advance something of its own ALONGSIDE the
+   * transition, in lockstep with it: the vanilla layer's toggle camera anchor
+   * replays this exact transition's reposition curve (see
+   * `transitionAnchorProgress`) to hold the toggled node still on screen, and
+   * that only cancels out if both are evaluated against the same origin.
+   *
+   * A host cannot reliably infer that origin. On the in-process path the
+   * relayout happens inside the first `render(now)` after the toggle, so the
+   * frame time is right; in worker mode the `open` message relayouts as soon
+   * as it is DEQUEUED, which is when the click happened, up to a frame before
+   * the host's next `requestAnimationFrame` timestamp. A host assuming the
+   * latter runs its own curve up to ~16ms behind the engine's — small, but it
+   * is a phase error on a curve, so it reads as the pinned node sliding out
+   * and back rather than as a constant offset.
+   */
+  readonly transitionStartedAt: number | null
+  /**
    * True while the one-shot toggle ring is still fading. Deliberately a
    * SEPARATE flag from `transitioning`: `RING_DURATION_MS` (900ms) outlives
    * `TRANSITION_DURATION_MS` (450ms) on purpose (see `RING_DURATION_MS`'s
@@ -1624,6 +1644,9 @@ export function createChartEngine(renderer: Renderer): ChartEngine {
     render,
     get transitioning() {
       return transition !== null
+    },
+    get transitionStartedAt() {
+      return transition === null ? null : transition.startedAt
     },
     get ringActive() {
       return ring !== null

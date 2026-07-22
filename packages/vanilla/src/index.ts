@@ -862,7 +862,19 @@ export function createOrgChart(host: HTMLElement, options: Options): OrgChartIns
                 fromCentre: anchor.fromCentre,
                 toCentre: boxCentre(toBox),
                 opening: anchor.opening,
-                startedAt: now,
+                // The ENGINE's own origin for the transition this anchor
+                // rides, never this frame's timestamp — the two are not the
+                // same instant, and the difference is a phase error on a
+                // curve rather than a constant offset. In worker mode the
+                // engine relayouts the moment the `open` message is dequeued,
+                // i.e. when the click happened, up to a frame before this
+                // callback's `now`; the anchor then ran ~16ms behind what the
+                // canvas was painting and the "pinned" node slid out and back
+                // by a couple of pixels. Falls back to `now` only if the
+                // engine reports no transition at all (animation disabled, or
+                // it already finished within this same frame), where the
+                // anchor resolves at `t = 1` immediately anyway.
+                startedAt: chartHost.transitionStartedAt ?? now,
               }
         // Only the frame that ESTABLISHES an anchor applies it here; every
         // later frame advances it before `render()` instead (see the call at
@@ -876,6 +888,21 @@ export function createOrgChart(host: HTMLElement, options: Options): OrgChartIns
         // Identity check, not "every frame": `computeSilhouette` walks every
         // node, so it only runs when `boxes` is actually a NEW array, i.e. a
         // real relayout happened — see `lastMinimapBoxes`'s docblock.
+        //
+        // ...and not WHILE a transition is running, even though the new boxes
+        // are already available. The silhouette and the transform derived with
+        // it define the minimap's whole coordinate space, and taking up the
+        // final layout's space mid-transition puts the minimap in a different
+        // one from the canvas: the viewport rectangle is still drawn from a
+        // camera that has not travelled there yet, so it lands somewhere the
+        // user is not looking — far to one side on a root expand, where the
+        // layout's own origin moves most — and then slides across the minimap
+        // as the camera catches up. Holding the pre-toggle layout for the
+        // duration keeps the minimap agreeing with what the canvas is actually
+        // showing, and the one update lands when everything has settled. The
+        // frame loop guarantees this runs: `scheduleFrame` keeps asking for
+        // frames while `transitioning` is true, so there is always a frame
+        // after it goes false.
         if (boxes !== lastMinimapBoxes) {
           lastMinimapBoxes = boxes
           minimap.onLayout(boxes, bounds)
