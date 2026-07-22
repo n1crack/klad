@@ -64,3 +64,36 @@
 .plugin-tabs--tab {
   font-weight: 600;
 }
+
+/* ---------------------------------------------------------------------------
+ * The hero mark.
+ *
+ * The default theme puts a large blurred blob behind the hero image, in the
+ * brand colour at full strength — on a wordmark it reads as a glow, on a line
+ * drawing it reads as a stain seeping out from under it. This makes it a soft
+ * halo instead: wider than the mark, far weaker, and radial so it fades to
+ * nothing rather than ending at an edge.
+ * ------------------------------------------------------------------------ */
+.VPHero .image-container {
+  /* The theme's own transform tips the image; the mark is a diagram and reads
+     wrong at an angle. */
+  transform: none;
+}
+
+.VPHero .image-bg {
+  width: 116%;
+  height: 116%;
+  background: radial-gradient(closest-side, rgba(37, 99, 235, 0.3), rgba(37, 99, 235, 0) 70%);
+  filter: blur(40px);
+  opacity: 1;
+}
+
+.dark .VPHero .image-bg {
+  background: radial-gradient(closest-side, rgba(96, 165, 250, 0.34), rgba(96, 165, 250, 0) 70%);
+}
+
+.VPHero .VPImage {
+  width: 100%;
+  max-width: 320px;
+  height: auto;
+}

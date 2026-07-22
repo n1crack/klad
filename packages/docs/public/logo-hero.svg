@@ -1,0 +1,36 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 64 64" role="img" aria-label="OrgChart">
+  <!--
+    The mark is the thing the library actually draws: a parent, an elbow bus,
+    three children. Not an abstract swoosh — a reader who has seen the chart
+    recognises it, and at 16px it still reads as a hierarchy rather than as a
+    generic shape.
+
+    Two weights only. The nodes carry the colour; the connectors are the
+    quieter grey the chart itself uses for edges, so the mark has the same
+    figure/ground relationship as the product.
+  -->
+  <g fill="none" stroke="#94a3b8" stroke-width="3" stroke-linecap="round" stroke-linejoin="round">
+    <path d="M32 21v6" />
+    <path d="M10 33v4" />
+    <path d="M54 33v4" />
+    <path d="M32 27h20a2 2 0 0 1 2 2v4" />
+    <path d="M32 27H12a2 2 0 0 0-2 2v4" />
+    <path d="M32 27v10" />
+  </g>
+  <rect x="19" y="7" width="26" height="14" rx="4" fill="#2563eb" />
+  <g fill="none" stroke="#94a3b8" stroke-width="2.5" stroke-linecap="round" stroke-linejoin="round">
+    <path d="M32 51v3" />
+    <path d="M25 54h14" />
+    <path d="M25 54v3" />
+    <path d="M39 54v3" />
+  </g>
+  <g fill="none" stroke="#2563eb" stroke-width="3">
+    <rect x="3.5" y="38.5" width="13" height="12" rx="3" />
+    <rect x="25.5" y="38.5" width="13" height="12" rx="3" />
+    <rect x="47.5" y="38.5" width="13" height="12" rx="3" />
+  </g>
+  <g fill="#bfdbfe" stroke="#3b82f6" stroke-width="2">
+    <rect x="20" y="57" width="10" height="5" rx="2" />
+    <rect x="34" y="57" width="10" height="5" rx="2" />
+  </g>
+</svg>

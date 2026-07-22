@@ -5,6 +5,9 @@ hero:
   name: OrgChart
   text: 50,000 nodes. 60fps.
   tagline: Canvas in a worker. Your components only where they can be read.
+  image:
+    src: /logo-hero.svg
+    alt: A parent node above three children, joined by elbow connectors
   actions:
     - theme: brand
       text: Get started
