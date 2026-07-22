@@ -75,6 +75,23 @@ addButton('Fit', () => currentApi?.fit())
 addButton('Expand All', () => currentApi?.expandAll())
 addButton('Collapse All', () => currentApi?.collapseAll())
 
+function download(blob: Blob, filename: string): void {
+  const url = URL.createObjectURL(blob)
+  const link = document.createElement('a')
+  link.href = url
+  link.download = filename
+  link.click()
+  URL.revokeObjectURL(url)
+}
+
+addButton('Export SVG', () => {
+  const svg = currentApi?.toSVG()
+  if (svg !== undefined) download(new Blob([svg], { type: 'image/svg+xml' }), 'org-chart.svg')
+})
+addButton('Export PNG', () => {
+  void currentApi?.toBlob({ format: 'png', scale: 2 }).then((blob) => download(blob, 'org-chart.png'))
+})
+
 const description = document.createElement('div')
 description.className = 'example-description'
 

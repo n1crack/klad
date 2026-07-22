@@ -231,13 +231,13 @@ export const EXAMPLES: Example[] = [
     id: 'large',
     name: 'Large (20k)',
     description:
-      '20,000 nodes. Zoom in and out to watch the LOD tiers switch (thresholds at k = 0.25 and k = 0.6) and judge whether they feel right.',
+      '20,000 nodes with the minimap on. Zoom in and out to watch the LOD tiers switch (thresholds at k = 0.25 and k = 0.6), and use the silhouette in the corner to see where you are in the whole tree.',
     // Getter, not a plain property: the 20k-node tree is built on first read
     // of `.data`, i.e. only once this example is actually selected.
     get data() {
       return largeData()
     },
-    options: {},
+    options: { minimap: true },
     content: 'card',
   },
 ]
