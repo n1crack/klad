@@ -8,7 +8,7 @@ Work continues on the `dev` branch. The full design is
 
 ## Where things stand
 
-Five packages, all green (~400 tests): `@n1crack/orgchart-core`, `@n1crack/orgchart`
+Five packages, all green (423 tests): `@n1crack/orgchart-core`, `@n1crack/orgchart`
 (vanilla), `@n1crack/orgchart-vue`, `@n1crack/orgchart-react`, plus a private playground.
 Everything runs from source through the pnpm workspace — no build step yet. `pnpm dev`
 serves the playground; `pnpm test` / `pnpm typecheck` / `pnpm lint` from the root.
@@ -21,22 +21,26 @@ including arrow-left/right, minimap silhouette, export, `setMinimap`, `setTheme`
 Vue and React adapters, the two-phase expand/collapse transition with camera anchor and
 overlay sync, the one-shot ring, and a redesigned sidebar playground with live controls.
 
-## The one big feature still unbuilt for v1.0
+## Deferred out of v1.0
 
-### 1. Drag-and-drop reparenting
-The spec (§11.1) promises it and it is the last missing feature. Core already has the
-cycle guard: `wouldCreateCycle(tree, index, newParent)` and `reparent` semantics are
-designed. What's missing is the whole interaction in the vanilla layer: pointer-drag a
-node, draw a ghost, highlight the drop target via the main-thread quadtree, reject a drop
-that would form a cycle (event reports `prevented`), and on a valid drop mutate the tree
-with a dirty-subtree relayout and a tween. Touch: `packages/vanilla` (drag handling on
-top of the existing input module), `packages/core` engine (a `reparent` mutation +
-incremental relayout), events (`reparent`, and a `warning`/`prevented` path). Add it to
-all three adapters' event surfaces. Playground: a draggable example.
+### Drag-and-drop reparenting → next major
+Decided 2026-07-22: **not** shipping in v1.0. The spec (§11.1) promises it, but the
+interaction is a project in itself and 1.0 is otherwise feature-complete, so it moves
+to the next major rather than holding the release.
 
-## Release engineering (needed before npm)
+For whenever it is picked up: core already has the cycle guard —
+`wouldCreateCycle(tree, index, newParent)` — and `reparent` semantics are designed.
+What's missing is the whole interaction in the vanilla layer: pointer-drag a node,
+draw a ghost, highlight the drop target via the main-thread quadtree, reject a drop
+that would form a cycle (event reports `prevented`), and on a valid drop mutate the
+tree with a dirty-subtree relayout and a tween. Touch: `packages/vanilla` (drag
+handling on top of the existing input module), `packages/core` engine (a `reparent`
+mutation + incremental relayout), events (`reparent`, and a `warning`/`prevented`
+path). Add it to all three adapters' event surfaces. Playground: a draggable example.
 
-### 2. Build + publish pipeline
+## The only thing left for v1.0
+
+### 1. Build + publish pipeline
 Everything resolves from `.ts` source via each package's `exports` (with `publishConfig`
 already carrying the intended `dist` paths). To actually publish:
 - `tsdown` build per publishable package (core, vanilla, vue, react) → `dist` (ESM only).
@@ -64,13 +68,35 @@ already carrying the intended `dist` paths). To actually publish:
 - **`tree.ts` bounds-check duplicated 3x** → small `inRange` helper. Cosmetic.
 - **`.gitignore` duplicate entries** (bare + slash form). Cosmetic.
 
-## Verify the four-task polish actually landed (do this first next session)
+## Fixed on 2026-07-22 (all owner-verified in the playground)
 
-The last agent (root-flash bug, reveal-from-bottom, transparent `blockFill` + control,
-ring colour + on/off) should be merged by the time you read this. Confirm in the
-playground: toggle the root and it must NOT flash; children emerge from a node's bottom
-edge; zoomed out, the shape-only tier is transparent by default and colourable; the ring
-can be turned off and recoloured. If any of those is wrong, that is the first fix.
+Six defects, each with a regression test that fails without its fix:
+
+- **Toggle camera anchor applied after the render it belonged to** — every frame was
+  painted with the previous frame's camera against this frame's positions, so the
+  pinned node slid ~12px and swung back. Now advanced before `render()`; drift is
+  exactly zero.
+- **The worker read its own clock** — a dedicated Worker's `performance.now()` counts
+  from when the WORKER was created, not the document, so a transition started on one
+  clock and advanced with the other finished instantly: the canvas snapped to the
+  settled layout while the camera eased on alone. Every message now carries the main
+  thread's clock; the worker never reads one.
+- **The anchor guessed the transition's origin** — in worker mode the `open` message
+  relayouts when dequeued (click time), not on the next frame, leaving the anchor a
+  frame behind. The engine reports `transitionStartedAt` and the anchor measures from
+  it.
+- **Overlay cards ignored the reveal alpha** — an expand holds revealed children at
+  alpha 0 through phase 1, on a zero-size box at the parent's edge, so their cards
+  showed as bubbles hanging off the parent for ~190ms. `lastDrawnAlpha` is plumbed
+  through to the overlay's `opacity`.
+- **The minimap refit itself on every relayout** — collapsing the root made that one
+  node fill the widget. The frame is held and only refitted when a layout no longer
+  fits; the root is pinned to its widget pixel (and re-offset per frame against its
+  interpolated position, so the rectangle doesn't slide during the transition).
+- **A bare tap dropped the toggle anchor** — input cancels animations on `pointerdown`
+  before it knows a pan is coming, but the layout keeps animating regardless, so
+  tapping during a collapse left the toggled node somewhere else entirely. A touch
+  that changes no camera no longer drops it; real gestures still do.
 
 ## Ground rules that carried through this project
 
