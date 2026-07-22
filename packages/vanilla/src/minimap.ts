@@ -30,13 +30,35 @@ export interface Minimap {
    * changed) — recomputes the silhouette and repaints the small canvas.
    * Never call this per frame: `computeSilhouette` walks every node, which is
    * exactly the cost a minimap exists to avoid paying on every camera move.
+   *
+   * `anchorWorld` is a world point whose position in the WIDGET should not
+   * move across this relayout — the chart's root, in practice. It is needed
+   * because holding the transform steady is not, on its own, enough to hold
+   * the picture steady: a relayout can move the tree within world space
+   * itself. Collapsing the root is exactly that case — tidy no longer centres
+   * it over children it no longer has, so its world x changes — and under a
+   * fixed transform the whole silhouette then jumps sideways. The chart's
+   * canvas has the toggle camera anchor to absorb this; this is the minimap's
+   * equivalent. Omit it and the transform is used as-is.
    */
-  onLayout(boxes: Float64Array, bounds: Bounds): void
+  onLayout(boxes: Float64Array, bounds: Bounds, anchorWorld?: { x: number; y: number }): void
   /**
    * Call on every camera change. Cheap: two point transforms and a CSS
    * `transform` write on an already-painted overlay, no silhouette work.
+   *
+   * `anchorWorld` is the anchor's CURRENT world position — the same point
+   * `onLayout` pins, read live rather than as of the last relayout. It
+   * matters during a toggle: the silhouette deliberately holds the pre-toggle
+   * layout until the transition finishes, but the camera starts moving
+   * immediately (it is pinning the toggled node's screen position while the
+   * layout slides underneath), so a rectangle mapped through the stale
+   * transform slides across the widget for the whole transition and snaps
+   * back when the new silhouette lands. Re-offsetting the map by the anchor's
+   * live position is the same correction `onLayout` applies, done per frame:
+   * the root is pinned on screen and pinned in the widget, so the rectangle
+   * simply does not move. Omit it and the stored transform is used as-is.
    */
-  onCamera(camera: Camera, viewport: ViewportSize): void
+  onCamera(camera: Camera, viewport: ViewportSize, anchorWorld?: { x: number; y: number }): void
   destroy(): void
 }
 
@@ -186,6 +208,33 @@ export function createMinimap(
   container.appendChild(root)
 
   let transform: MinimapTransform | null = null
+  /**
+   * Where the previous relayout's `anchorWorld` landed in WIDGET space, or
+   * `null` if there was none. Held in widget space rather than world space on
+   * purpose: the world position of the anchor is exactly what a relayout is
+   * free to change, and this is the thing that must not change.
+   */
+  let anchorAt: { x: number; y: number } | null = null
+
+  /**
+   * `t` shifted so `anchorWorld` lands on the widget pixel the anchor
+   * occupied as of the last relayout (`anchorAt`) — the correction that keeps
+   * a world-space move of the tree from moving the picture. Returns `t`
+   * untouched when there is nothing to anchor against, which is the first
+   * relayout and the case where a caller passes no anchor at all. Never
+   * changes the scale.
+   */
+  const anchoredTo = (
+    t: MinimapTransform | null,
+    anchorWorld: { x: number; y: number } | undefined,
+  ): MinimapTransform | null => {
+    if (t === null || anchorAt === null || anchorWorld === undefined) return t
+    return {
+      scale: t.scale,
+      offsetX: anchorAt.x - anchorWorld.x * t.scale,
+      offsetY: anchorAt.y - anchorWorld.y * t.scale,
+    }
+  }
 
   /**
    * True when `bounds` lies entirely inside the widget under `t` — i.e. the
@@ -255,7 +304,7 @@ export function createMinimap(
   root.addEventListener('pointercancel', onPointerUp)
 
   return {
-    onLayout(boxes, bounds) {
+    onLayout(boxes, bounds, anchorWorld) {
       // Keep the frame we already have whenever the new layout still fits in
       // it, and refit only when it genuinely doesn't. Refitting on every
       // relayout — which is what fitting `bounds` unconditionally amounts to
@@ -270,17 +319,41 @@ export function createMinimap(
       // the same size for the same camera. Expanding past the frame's edge
       // still refits, because at that point the alternative is drawing the
       // tree outside the widget.
-      const reuse = transform !== null && fitsUnder(transform, bounds)
+      //
+      // Reusing the SCALE is only half of it, though: a relayout can also
+      // move the tree within world space, and collapsing the root is exactly
+      // that — tidy stops centring it over children it no longer has, so its
+      // world x changes. Under a transform reused verbatim the whole
+      // silhouette jumps sideways by that much. So the reused transform is
+      // re-offset to put `anchorWorld` back on the widget pixel the previous
+      // layout's anchor occupied, which is the minimap's counterpart to the
+      // chart's toggle camera anchor.
+      const candidate = anchoredTo(transform, anchorWorld)
+      // Checked against the RE-OFFSET transform, not the old one: holding the
+      // anchor still can itself push the tree past an edge (expanding a root
+      // pinned near the left grows to the right), and that is a genuine
+      // refit, same as outgrowing the scale.
+      const reuse = candidate !== null && fitsUnder(candidate, bounds)
       const silhouette = computeSilhouette(boxes, bounds, { width, height }, {
         ...SILHOUETTE_OPTIONS,
-        ...(reuse ? { transform: transform! } : {}),
+        ...(reuse ? { transform: candidate! } : {}),
       })
       transform = silhouette.transform
+      // Re-read after the fact so this is right on both paths: reused, where
+      // it reproduces `anchorAt` unchanged by construction, and refitted,
+      // where the anchor lands wherever the fresh fit put it.
+      anchorAt =
+        anchorWorld === undefined ? null : worldToMinimap(transform, anchorWorld.x, anchorWorld.y)
       paintSilhouette(ctx, silhouette)
     },
-    onCamera(camera, viewport) {
+    onCamera(camera, viewport, anchorWorld) {
       if (transform === null) return
-      const rect = viewportRectInMinimap(transform, camera, viewport)
+      // Re-offset per frame, never stored: `transform` stays the map the
+      // painted silhouette was rasterised with (and the one click-to-navigate
+      // inverts), while the rectangle is measured against the map the anchor
+      // is on RIGHT NOW. Outside a transition the two are the same, since the
+      // anchor is exactly where the last relayout left it.
+      const rect = viewportRectInMinimap(anchoredTo(transform, anchorWorld)!, camera, viewport)
       const { x, y, w, h } = clampViewportRect(rect, width, height)
       viewportEl.style.transform = `translate(${x}px, ${y}px)`
       viewportEl.style.width = `${w}px`

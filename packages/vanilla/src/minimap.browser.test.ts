@@ -416,6 +416,95 @@ describe('minimap', () => {
     chart.destroy()
   })
 
+  // What the user actually watches is the blue viewport rectangle, and a root
+  // toggle must leave it exactly where it was: the chart's camera anchor pins
+  // the root's SCREEN position through the toggle, so if the minimap pins the
+  // root's WIDGET position too, the region the rectangle describes is
+  // unchanged in both spaces. It moves if either half is missing — a refit
+  // changes its size, an unshifted frame changes its position — which is why
+  // this one assertion covers both.
+  it('leaves the viewport rectangle where it was after a root toggle', async () => {
+    const el = host()
+    const chart = createOrgChart(el, {
+      data: buildOrg(300),
+      nodeSize: { w: 120, h: 48 },
+      worker: false,
+      minimap: true,
+      ring: false,
+    })
+    await new Promise((r) => setTimeout(r, 260))
+    await nextFrame()
+
+    const minimapRoot = el.querySelector<HTMLElement>('.orgchart-minimap')!
+    const viewportEl = minimapRoot.children[1] as HTMLElement
+    const readRect = (): { x: number; y: number; w: number; h: number } => {
+      const m = /translate\(([-\d.]+)px,\s*([-\d.]+)px\)/.exec(viewportEl.style.transform)!
+      return {
+        x: parseFloat(m[1]!),
+        y: parseFloat(m[2]!),
+        w: parseFloat(viewportEl.style.width),
+        h: parseFloat(viewportEl.style.height),
+      }
+    }
+
+    const before = readRect()
+    expect(before.w).toBeGreaterThan(0)
+
+    chart.api.collapse('root')
+    await new Promise((r) => setTimeout(r, 700))
+    await nextFrame()
+    await nextFrame()
+
+    expect(chart.api.getState().visibleCount).toBe(1)
+    const after = readRect()
+    expect(after.w).toBeCloseTo(before.w, 0)
+    expect(after.h).toBeCloseTo(before.h, 0)
+    expect(after.x).toBeCloseTo(before.x, 0)
+    expect(after.y).toBeCloseTo(before.y, 0)
+
+    chart.destroy()
+  })
+
+  // The same invariant, sampled DURING the toggle rather than only after it.
+  // The silhouette deliberately holds the pre-toggle layout until the
+  // transition ends, but the camera starts moving on the first frame, so a
+  // rectangle mapped through the stale transform slides across the widget for
+  // the whole ~450ms and snaps back at the end. Only a mid-transition sample
+  // catches that.
+  it('holds the viewport rectangle still for every frame of a root toggle', async () => {
+    const el = host()
+    const chart = createOrgChart(el, {
+      data: buildOrg(300),
+      nodeSize: { w: 120, h: 48 },
+      worker: false,
+      minimap: true,
+      ring: false,
+    })
+    await new Promise((r) => setTimeout(r, 260))
+    await nextFrame()
+
+    const minimapRoot = el.querySelector<HTMLElement>('.orgchart-minimap')!
+    const viewportEl = minimapRoot.children[1] as HTMLElement
+    const readX = (): number => {
+      const m = /translate\(([-\d.]+)px,\s*([-\d.]+)px\)/.exec(viewportEl.style.transform)!
+      return parseFloat(m[1]!)
+    }
+
+    const before = readX()
+    chart.api.collapse('root')
+    let worst = 0
+    let samples = 0
+    for (let i = 0; i < 30; i++) {
+      await nextFrame()
+      samples++
+      worst = Math.max(worst, Math.abs(readX() - before))
+    }
+    expect(samples).toBeGreaterThan(10)
+    expect(worst).toBeLessThan(1)
+
+    chart.destroy()
+  })
+
   it('destroy() removes the minimap element', async () => {
     const el = host()
     const chart = createOrgChart(el, {

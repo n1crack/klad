@@ -905,11 +905,30 @@ export function createOrgChart(host: HTMLElement, options: Options): OrgChartIns
         // after it goes false.
         if (boxes !== lastMinimapBoxes && !chartHost.transitioning) {
           lastMinimapBoxes = boxes
-          minimap.onLayout(boxes, bounds)
+          // The root is the anchor the minimap holds still across a relayout
+          // — see `Minimap.onLayout`. It is the one node a reader orients
+          // themselves by, it is what the chart's own camera anchor most
+          // often pins, and it is also the node whose world position a
+          // collapse moves furthest (tidy stops centring it over children it
+          // no longer has).
+          const rootIndex = tree.roots[0]
+          const rootBox = rootIndex === undefined ? null : boxOfSource(rootIndex)
+          if (rootBox === null) minimap.onLayout(boxes, bounds)
+          else minimap.onLayout(boxes, bounds, boxCentre(rootBox))
         }
         // Cheap by contrast: two point transforms and a CSS transform write.
+        //
+        // The anchor here is the root's INTERPOLATED position — where it is
+        // being drawn this frame, not where it will settle — because that is
+        // what the camera is pinned against mid-transition. Feeding the
+        // settled position instead would put the rectangle back on the same
+        // sliding path this exists to remove.
         const rect = host.getBoundingClientRect()
-        minimap.onCamera(camera, { width: rect.width, height: rect.height })
+        const liveRootIndex = tree.roots[0]
+        const liveRootBox = liveRootIndex === undefined ? null : interpolatedBoxOfSource(liveRootIndex)
+        const size = { width: rect.width, height: rect.height }
+        if (liveRootBox === null) minimap.onCamera(camera, size)
+        else minimap.onCamera(camera, size, boxCentre(liveRootBox))
       }
       refreshA11y()
       if (overlay !== null) {
