@@ -211,6 +211,17 @@ export interface OrgChartApi {
    * object also repositions or resizes it.
    */
   setMinimap(minimap: boolean | MinimapOptions): void
+  /**
+   * Merges `partial` over the CURRENT theme (not the built-in defaults —
+   * a previous `setTheme` call's tokens stay in place unless this one
+   * overrides them too), re-resolves it, and repaints. Paint-only, like
+   * `setMinimap`: it never touches tree/layout state, so camera position,
+   * expand/collapse state and scroll position are all untouched — unlike the
+   * remount a caller had to do for this before this method existed. Takes
+   * effect on the very next frame; if a transition is mid-flight, it keeps
+   * animating with the new theme's colours from that frame on.
+   */
+  setTheme(theme: Partial<Theme>): void
   getState(): ChartState
 }
 
@@ -248,7 +259,13 @@ const EMPTY_GHOST_ALPHA: Float32Array = new Float32Array(0)
 const INERT_RING_BOX: Float64Array = new Float64Array(4)
 
 export function createOrgChart(host: HTMLElement, options: Options): OrgChartInstance {
-  const theme = resolveTheme(options.theme)
+  // Mutable so `api.setTheme` can swap it in place — `createChartHost`
+  // captures this same value at construction, and every later reader (the
+  // `toBlob` export renderer below, `api.setTheme` itself) closes over this
+  // binding rather than a snapshot, so reassigning it here is exactly what a
+  // live theme update needs. See `api.setTheme` for the merge-and-repaint
+  // side of this.
+  let theme = resolveTheme(options.theme)
   const configuredLimits = options.zoomLimits ?? DEFAULT_LIMITS
 
   /**
@@ -1409,6 +1426,16 @@ export function createOrgChart(host: HTMLElement, options: Options): OrgChartIns
     setMinimap(minimap) {
       currentOptions = { ...currentOptions, minimap }
       setupMinimap()
+      scheduleFrame()
+    },
+    setTheme(partial) {
+      // Merges over the CURRENT (already-resolved) theme, not the built-in
+      // defaults — passing `theme` as `resolveTheme`'s `base` is what keeps
+      // every earlier `setTheme` call's tokens in place instead of resetting
+      // them each time a new one comes in.
+      theme = resolveTheme(partial, theme)
+      currentOptions = { ...currentOptions, theme }
+      chartHost.setTheme(theme)
       scheduleFrame()
     },
     getState,

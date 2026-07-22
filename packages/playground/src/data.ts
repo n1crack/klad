@@ -61,11 +61,29 @@ export const EDGE_RADIUS_MAX = 24
 export const EDGE_RADIUS_DEFAULT = 0
 
 /**
+ * The initial swatch value for the "Node fill" control — the library's own
+ * default (`DEFAULT_THEME.nodeFill` in packages/core/src/render/theme.ts),
+ * not each example's own effective value. Unlike `EDGE_RADIUS_DEFAULT`, this
+ * is NEVER baked into `themeFor`/construction-time options: an example that
+ * declares its own `nodeFill` for a reason (Avatar/Monogram's transparent
+ * node box, so only the circle+name paint) must keep it on first mount,
+ * untouched, until a viewer actually drags this control — see
+ * `setNodeFill` in vanilla-demo.ts/VueDemo.vue/ReactDemo.tsx, which goes
+ * straight through `api.setTheme({ nodeFill })`, never through
+ * `buildOptions`/`themeFor`.
+ */
+export const NODE_FILL_DEFAULT = '#ffffff'
+
+/**
  * The effective `theme` for `example`, with `edgeCornerRadius` set from the
  * playground's own slider. Merged over the example's own declared theme
  * (rather than replacing it) so examples that already set theme tokens for
  * their own reasons — Avatar circle's transparent node box, for instance —
  * keep them; the slider only ever adds or overrides the one token it owns.
+ *
+ * `nodeFill` deliberately has NO equivalent parameter here — see
+ * `NODE_FILL_DEFAULT`'s docblock for why that control never touches
+ * construction-time options at all, live-only via `api.setTheme`.
  */
 export function themeFor(example: Example, edgeCornerRadius: number): NonNullable<Options['theme']> {
   return { ...example.options.theme, edgeCornerRadius }

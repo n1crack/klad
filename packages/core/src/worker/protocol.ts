@@ -80,6 +80,14 @@ export type MainToWorker =
   | { t: 'highlight'; ids: Uint32Array | null }
   | { t: 'drag'; index: number }
   | { t: 'animate'; enabled: boolean }
+  /**
+   * Paint-only, mirroring `Renderer.setTheme` — carries an already-resolved
+   * `Theme` (never a `Partial<Theme>`; the main thread resolves it before
+   * this is sent, same as `init`'s own `theme` field does). Structured-cloned
+   * rather than transferred: a `Theme` is a handful of strings/numbers, not a
+   * typed array, so there is nothing worth transferring here.
+   */
+  | { t: 'theme'; theme: unknown }
 
 export type WorkerToMain =
   | { t: 'layout'; boxes: Float64Array; bounds: Bounds; visibleToSource: Int32Array }

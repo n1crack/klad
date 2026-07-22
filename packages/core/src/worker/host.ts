@@ -2,7 +2,7 @@ import { createChartEngine, type ChartEngine } from '../engine.js'
 import { createCanvas2DRenderer } from '../render/canvas2d.js'
 import { createTextMeasurer } from '../text/measure.js'
 import { buildQuadTree, type QuadTree } from '../spatial/quadtree.js'
-import type { RenderSurface } from '../render/renderer.js'
+import type { Renderer, RenderSurface } from '../render/renderer.js'
 import type { Theme } from '../render/theme.js'
 import type { Camera } from '../viewport.js'
 import type { Bounds } from '../types.js'
@@ -18,6 +18,15 @@ export interface ChartHost {
   setHighlight(ids: Uint32Array | null): void
   setDrag(index: number): void
   setAnimate(enabled: boolean): void
+  /**
+   * Paint-only theme swap, effective from the next `render()` on either path
+   * — see `Renderer.setTheme`'s docblock for why this never touches layout
+   * or hit-testing. Takes an already-resolved `Theme`, not a partial: the
+   * caller (`OrgChartApi.setTheme` in packages/vanilla) owns merging a
+   * caller-supplied partial over the current theme and re-resolving it, so
+   * this layer only ever forwards a complete, ready-to-paint theme.
+   */
+  setTheme(theme: Theme): void
   render(now?: number): Promise<Uint32Array>
   hitTest(worldX: number, worldY: number): Promise<number>
   destroy(): void
@@ -69,6 +78,11 @@ export function createChartHost(
 ): ChartHost {
   let worker: Worker | null = null
   let engine: ChartEngine | null = null
+  // In-process only (`worker === null`) — the only thing a theme change
+  // actually touches; hoisted out of the `if (worker === null)` block below
+  // so `setTheme` can reach it without `engine` needing to know about theme
+  // at all (it doesn't — see engine.ts).
+  let renderer: Renderer | null = null
 
   // Main-thread mirror used for hit-testing in worker mode, and for the overlay
   // on both paths.
@@ -148,7 +162,7 @@ export function createChartHost(
   }
 
   if (worker === null) {
-    const renderer = createCanvas2DRenderer(canvas as unknown as RenderSurface, theme, (font) => {
+    renderer = createCanvas2DRenderer(canvas as unknown as RenderSurface, theme, (font) => {
       const probe = document.createElement('canvas').getContext('2d')
       if (probe === null) throw new Error('OrgChart: 2D canvas context unavailable')
       probe.font = font
@@ -195,6 +209,10 @@ export function createChartHost(
       engine?.setAnimate(enabled)
       post({ t: 'animate', enabled })
     },
+    setTheme(next) {
+      renderer?.setTheme(next)
+      post({ t: 'theme', theme: next })
+    },
 
     render(now) {
       // In-process: thread `now` straight through, same caller-drives-time
@@ -222,6 +240,7 @@ export function createChartHost(
       worker?.terminate()
       worker = null
       engine = null
+      renderer = null
       quad = null
       pendingFrame = null
     },

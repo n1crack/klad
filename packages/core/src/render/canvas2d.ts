@@ -16,12 +16,20 @@ import { easeInQuad, easeOutCubic } from '../viewport.js'
  */
 export function createCanvas2DRenderer(
   surface: RenderSurface,
-  theme: Theme,
+  initialTheme: Theme,
   measurerFor: (font: string) => TextMeasurer,
 ): Renderer {
   const ctx = surface.getContext('2d')
   if (ctx === null) throw new Error('OrgChart: 2D canvas context unavailable')
 
+  // Mutable so `setTheme` can swap it in place — every reference to `theme.*`
+  // below is a closure over this binding, so reassigning it here is picked up
+  // by the very next `draw()` call with no other change needed. The text
+  // measurer is deliberately NOT rebuilt on a theme change: `measurerFor` is
+  // only ever consulted for `labelFont`, which stays fixed at construction —
+  // `setTheme` is documented as paint-only, and font metrics recompute is a
+  // relayout-adjacent cost this call is not meant to pay.
+  let theme = initialTheme
   const measurer = measurerFor(theme.labelFont)
   let devicePixelRatio = 1
 
@@ -148,8 +156,14 @@ export function createCanvas2DRenderer(
 
     // Nodes a collapse is still removing, drawn before the surviving nodes
     // so a settled ancestor paints crisply over whatever is shrinking into
-    // it. No connector, no label, no highlight/drag handling — a ghost is
-    // gone from the pruned tree and none of those concepts apply to it.
+    // it. No label or highlight/drag handling — a ghost is gone from the
+    // pruned tree and neither concept applies to it — but it IS stroked,
+    // same as a real node at this tier, so the brief window it's visible
+    // (see engine.ts's `ghostFadeRaw`, front-loaded specifically so this
+    // window is brief) reads as "a card shrinking away" rather than a blank
+    // filled rectangle. Stroking costs one extra `ctx.stroke()` per ghost,
+    // same as a real node, and ghosts are already bounded to those near the
+    // viewport, so this stays within the per-frame budget.
     if (frame.ghostCount > 0) {
       for (let g = 0; g < frame.ghostCount; g++) {
         const o = g * 4
@@ -163,6 +177,11 @@ export function createCanvas2DRenderer(
         else ctx.rect(x, y, w, h)
         ctx.fillStyle = theme.nodeFill
         ctx.fill()
+        if (frame.tier !== 'block') {
+          ctx.strokeStyle = theme.nodeStroke
+          ctx.lineWidth = theme.nodeStrokeWidth
+          ctx.stroke()
+        }
         calls.nodes++
       }
       ctx.globalAlpha = 1
@@ -281,9 +300,14 @@ export function createCanvas2DRenderer(
     stats.lastDrawCalls = calls
   }
 
+  const setTheme = (next: Theme): void => {
+    theme = next
+  }
+
   return {
     resize,
     draw,
+    setTheme,
     get stats() {
       return stats
     },

@@ -1,5 +1,5 @@
 /** @jsxImportSource react */
-import { useCallback, useImperativeHandle, useMemo, useRef, useState, type CSSProperties, type ReactNode, type Ref } from 'react'
+import { useCallback, useImperativeHandle, useMemo, useRef, type CSSProperties, type ReactNode, type Ref } from 'react'
 import { OrgChart, type NodeContext, type OrgChartApi, type OrgChartHandle, type Options } from '@n1crack/orgchart-react'
 import {
   DEPARTMENT_COLOR,
@@ -135,6 +135,7 @@ export interface ReactDemoHandle {
   setMinimap(on: boolean): void
   setMinimapPosition(position: MinimapPosition): void
   setEdgeRadius(radius: number): void
+  setNodeFill(nodeFill: string): void
 }
 
 export interface ReactDemoProps {
@@ -158,8 +159,8 @@ export function ReactDemo({ example, onReady, ref }: ReactDemoProps): ReactNode 
   /**
    * Whether the minimap is on, and which corner it's in, for THIS mounted
    * chart. Deliberately `useRef`, not `useState`: they still feed `options`
-   * below (so a later remount — see `edgeRadius` — starts the fresh chart
-   * with the current values baked in), but mutating a ref does not trigger a
+   * below (so a REMOUNT — e.g. switching example/stack — starts the fresh
+   * chart with the current values baked in), but mutating a ref does not trigger a
    * re-render, and reading `.current` inside `useMemo` does not add it as a
    * tracked dependency.
    *
@@ -178,39 +179,16 @@ export function ReactDemo({ example, onReady, ref }: ReactDemoProps): ReactNode 
   const minimapOnRef = useRef(minimapDefaultOn(example))
   const minimapPositionRef = useRef<MinimapPosition>(minimapDefaultPosition(example))
 
-  /**
-   * `edgeCornerRadius` lives under `theme`, and theme is resolved exactly
-   * once at chart construction (`resolveTheme(options.theme)` in
-   * `packages/vanilla/src/index.ts`) — `instance.update()`, which is all the
-   * effect below ever calls, merges its `partial` into `currentOptions` but
-   * never re-resolves or re-applies theme. Routing a theme change through
-   * the normal render-triggered `options` path would therefore be a silent
-   * no-op: the effect would run `instance.update()` and nothing would be
-   * redrawn differently. This one IS real state (unlike the two refs above)
-   * because changing it is meant to force exactly the re-render + prop
-   * change those two have to avoid: `key={edgeRadius}` on `<OrgChart>` below
-   * turns that into a full remount — React unmounts the whole `<OrgChart>`
-   * instance and mounts a fresh one, whose own mount effect calls
-   * `createOrgChart` with the new theme baked in from scratch (picking up
-   * the current `minimapOnRef`/`minimapPositionRef` values too, since
-   * `options` reads them at that moment). A real `setTheme` API (mirroring
-   * `setMinimap`) would let this go through the cheap, state-preserving path
-   * instead; see the playground's polish report. This remount does lose
-   * camera position and expand/collapse state on every drag tick, unlike
-   * `setMinimap`/`setMinimapPosition`.
-   */
-  const [edgeRadius, setEdgeRadiusState] = useState(EDGE_RADIUS_DEFAULT)
-
   const options: Options = useMemo<Options>(
     () => ({
       data: example.data,
       nodeSize: DEFAULT_NODE_SIZE,
       label: (item) => String(item.name ?? ''),
       ...example.options,
-      theme: themeFor(example, edgeRadius),
+      theme: themeFor(example, EDGE_RADIUS_DEFAULT),
       minimap: minimapOptionFor(example, minimapOnRef.current, minimapPositionRef.current),
     }),
-    [example, edgeRadius],
+    [example],
   )
 
   const handleReady = useCallback(() => {
@@ -232,24 +210,32 @@ export function ReactDemo({ example, onReady, ref }: ReactDemoProps): ReactNode 
         minimapPositionRef.current = position
         chartRef.current?.api?.setMinimap(minimapOptionFor(example, minimapOnRef.current, position))
       },
+      // `edgeCornerRadius`/`nodeFill` both live under `theme`, which used to
+      // require a full `key={...}` remount to change post-construction
+      // (theme was resolved exactly once, at `createOrgChart`, and
+      // `instance.update()` never re-resolved it). `OrgChartApi.setTheme`
+      // (packages/vanilla/src/index.ts) fixes that: it merges a partial
+      // theme over whatever the chart is already showing, re-resolves it,
+      // and repaints — paint-only, so this no longer resets camera position
+      // or expand/collapse state the way the remount used to on every drag
+      // tick.
       setEdgeRadius: (radius: number) => {
-        // Updating state is enough: `key={edgeRadius}` on `<OrgChart>` below
-        // does the rest by forcing a remount — see the comment on `edgeRadius`
-        // above for why a plain options-prop update (`instance.update()`)
-        // would not.
-        setEdgeRadiusState(radius)
+        chartRef.current?.api?.setTheme({ edgeCornerRadius: radius })
+      },
+      setNodeFill: (nodeFill: string) => {
+        chartRef.current?.api?.setTheme({ nodeFill })
       },
     }),
     [example],
   )
 
   if (example.content === 'none') {
-    return <OrgChart key={edgeRadius} ref={chartRef} className="chart-host" options={options} onReady={handleReady} />
+    return <OrgChart ref={chartRef} className="chart-host" options={options} onReady={handleReady} />
   }
 
   const render = RENDERERS[example.content]
   return (
-    <OrgChart key={edgeRadius} ref={chartRef} className="chart-host" options={options} onReady={handleReady}>
+    <OrgChart ref={chartRef} className="chart-host" options={options} onReady={handleReady}>
       {render}
     </OrgChart>
   )

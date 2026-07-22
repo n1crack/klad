@@ -106,6 +106,50 @@ describe('createOrgChart', () => {
     chart.destroy()
   })
 
+  it('setTheme repaints with the new theme without relaying out', async () => {
+    const chart = make()
+    await nextFrame()
+    const before = chart.api.getState()
+
+    // Spy on the canvas 2D context's `fillStyle` SETTER (not a mock context —
+    // the real one `createOrgChart` created) so this test can tell the new
+    // theme actually reached the paint, the same signal a human eye would
+    // use, rather than just trusting `setTheme` didn't throw.
+    const canvas = document.querySelector('canvas')!
+    const ctx = canvas.getContext('2d')!
+    const proto = Object.getPrototypeOf(ctx) as object
+    const descriptor = Object.getOwnPropertyDescriptor(proto, 'fillStyle')!
+    const fillStyles: unknown[] = []
+    Object.defineProperty(ctx, 'fillStyle', {
+      configurable: true,
+      get() {
+        return descriptor.get!.call(ctx)
+      },
+      set(v: unknown) {
+        fillStyles.push(v)
+        descriptor.set!.call(ctx, v)
+      },
+    })
+
+    chart.api.setTheme({ nodeFill: '#ff00ff' })
+    await nextFrame()
+
+    expect(fillStyles).toContain('#ff00ff')
+
+    // Paint-only: none of the layout-derived state moved. `bounds` and
+    // `visibleCount` are the closest thing the public API exposes to "the
+    // layout boxes" (raw boxes aren't part of `OrgChartApi`'s surface) — both
+    // are pure functions of the tree/layout, never of theme, so either
+    // moving would mean a relayout snuck in.
+    const after = chart.api.getState()
+    expect(after.bounds).toEqual(before.bounds)
+    expect(after.visibleCount).toBe(before.visibleCount)
+    expect(after.nodeCount).toBe(before.nodeCount)
+    expect(after.camera).toEqual(before.camera)
+
+    chart.destroy()
+  })
+
   it('expands the ancestor chain when focusing a hidden node', async () => {
     const chart = make({ collapsedByDefault: true })
     await nextFrame()

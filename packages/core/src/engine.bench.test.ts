@@ -37,6 +37,7 @@ function noopRenderer(): Renderer {
   return {
     resize: () => {},
     draw: () => {},
+    setTheme: () => {},
     stats: { lastDrawCalls: { edgeStrokes: 0, nodes: 0, labels: 0 } },
   }
 }

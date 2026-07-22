@@ -27,11 +27,11 @@ type Item = NodeContext['item']
 /**
  * Whether the minimap is on, and which corner it's in, for THIS mounted
  * chart. Deliberately PLAIN variables, not `ref`s: they still feed the
- * `options` computed below (so a later remount — see `edgeRadius` — starts
- * the fresh chart with the current values baked in), but reading a plain
- * variable inside `computed` does not register it as a reactive dependency.
- * If it did — if these were refs — then changing either one would recompute
- * `options` to a new object, which OrgChart.vue's own
+ * `options` computed below (so a REMOUNT — e.g. switching example/stack —
+ * starts the fresh chart with the current values baked in), but reading a
+ * plain variable inside `computed` does not register it as a reactive
+ * dependency. If it did — if these were refs — then changing either one
+ * would recompute `options` to a new object, which OrgChart.vue's own
  * `watch(() => props.options, ..., { deep: true })` would see as a prop
  * change and respond to with `chart.update()`, which calls `initOpen()` and
  * resets every node's open/closed state. That is exactly the reset
@@ -45,35 +45,12 @@ type Item = NodeContext['item']
 let minimapOn = minimapDefaultOn(props.example)
 let minimapPosition: MinimapPosition = minimapDefaultPosition(props.example)
 
-/**
- * `edgeCornerRadius` lives under `theme`, and theme is resolved exactly once
- * at chart construction (`resolveTheme(options.theme)` in
- * `packages/vanilla/src/index.ts`) — `chart.update()`, which is all
- * OrgChart.vue's own `watch(() => props.options, ...)` ever calls, merges
- * its `partial` into `currentOptions` but never re-resolves or re-applies
- * theme. Routing a theme change through the normal reactive-options path
- * would therefore be a silent no-op: `update()` would run and nothing would
- * be redrawn differently. This one IS a real `ref` (unlike `minimapOn`/
- * `minimapPosition` above) because changing it is meant to force exactly the
- * reactive response those two have to avoid: the `:key="edgeRadius"` on
- * `<OrgChart>` below turns a change to this ref into a full remount — Vue
- * tears down the whole `<OrgChart>` instance and mounts a fresh one,
- * `onMounted` runs again, and `createOrgChart` gets called with the new
- * theme baked in from scratch (picking up the current `minimapOn`/
- * `minimapPosition` values too, since `options` below reads them at that
- * moment). A real `setTheme` API (mirroring `setMinimap`) would let this go
- * through the cheap, state-preserving path instead; see the playground's
- * polish report. This remount does lose camera position and expand/collapse
- * state on every drag tick, unlike `setMinimap`/`setMinimapPosition`.
- */
-const edgeRadius = ref(EDGE_RADIUS_DEFAULT)
-
 const options = computed<Options>(() => ({
   data: props.example.data,
   nodeSize: DEFAULT_NODE_SIZE,
   label: (item) => String(item.name ?? ''),
   ...props.example.options,
-  theme: themeFor(props.example, edgeRadius.value),
+  theme: themeFor(props.example, EDGE_RADIUS_DEFAULT),
   minimap: minimapOptionFor(props.example, minimapOn, minimapPosition),
 }))
 
@@ -96,14 +73,26 @@ function setMinimapPosition(position: MinimapPosition): void {
   chartRef.value?.api?.setMinimap(minimapOptionFor(props.example, minimapOn, position))
 }
 
+/**
+ * `edgeCornerRadius` lives under `theme`, and used to require a full
+ * `<OrgChart :key="...">` remount to change post-construction (theme was
+ * resolved exactly once, at `createOrgChart`, and `chart.update()` never
+ * re-resolved it). `OrgChartApi.setTheme` (packages/vanilla/src/index.ts)
+ * fixes that: it merges a partial theme over whatever the chart is already
+ * showing, re-resolves it, and repaints — paint-only, so this no longer
+ * resets camera position or expand/collapse state the way the remount used
+ * to on every drag tick.
+ */
 function setEdgeRadius(radius: number): void {
-  // Updating the ref is enough: the `:key="edgeRadius"` on `<OrgChart>` below
-  // does the rest by forcing a remount — see the comment on the ref above
-  // for why a plain reactive `options` update (`chart.update()`) would not.
-  edgeRadius.value = radius
+  chartRef.value?.api?.setTheme({ edgeCornerRadius: radius })
 }
 
-defineExpose({ setMinimap, setMinimapPosition, setEdgeRadius })
+/** Same `setTheme` path as `setEdgeRadius` — see its comment. */
+function setNodeFill(nodeFill: string): void {
+  chartRef.value?.api?.setTheme({ nodeFill })
+}
+
+defineExpose({ setMinimap, setMinimapPosition, setEdgeRadius, setNodeFill })
 
 // Shared by the avatar/status/photo templates below, mirroring the vanilla
 // demo's renderAvatar/renderStatus/renderPhoto so both stacks land on the
@@ -124,7 +113,7 @@ function headcountOf(item: Item): number {
 </script>
 
 <template>
-  <OrgChart :key="edgeRadius" ref="chartRef" :options="options" class="chart-host" @ready="handleReady">
+  <OrgChart ref="chartRef" :options="options" class="chart-host" @ready="handleReady">
     <!--
       One `#node` slot, branching on `example.content` — the same tag the
       vanilla demo switches on to pick a render function. `v-if` directly on
