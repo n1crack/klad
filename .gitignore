@@ -42,3 +42,10 @@ dist/
 # vitest browser-mode screenshot output
 .vitest-attachments/
 **/__screenshots__/
+
+# Licence copies placed into each publishable package at build time by
+# scripts/copy-license.mjs — npm packs only what is inside a package
+# directory, so the files have to exist there, but the originals at the repo
+# root are the source of truth and these are refreshed on every build.
+packages/*/LICENSE
+packages/*/LICENSE-COMMERCIAL.md

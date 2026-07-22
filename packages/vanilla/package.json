@@ -24,6 +24,7 @@
     "@n1crack/orgchart-core": "workspace:*"
   },
   "scripts": {
+    "build": "node ../../scripts/copy-license.mjs && tsdown",
     "test": "vitest run",
     "typecheck": "tsc --noEmit -p tsconfig.json"
   }

@@ -9,18 +9,24 @@
   },
   "scripts": {
     "dev": "pnpm --filter @n1crack/orgchart-playground dev",
+    "build": "turbo run build",
     "test": "turbo run test",
     "typecheck": "turbo run typecheck",
     "lint": "oxlint packages",
-    "format": "prettier --write \"packages/**/*.{ts,vue,json,md}\""
+    "format": "prettier --write \"packages/**/*.{ts,vue,json,md}\"",
+    "changeset": "changeset",
+    "version-packages": "changeset version && pnpm install --lockfile-only",
+    "release": "turbo run build && changeset publish"
   },
   "devDependencies": {
+    "@changesets/cli": "^2.31.1",
     "@types/node": "^22.10.0",
     "@vitest/browser": "^4.1.10",
     "@vitest/browser-playwright": "4.1.10",
     "oxlint": "^1.0.0",
     "playwright": "^1.61.1",
     "prettier": "^3.4.0",
+    "tsdown": "^0.22.13",
     "turbo": "^2.3.0",
     "typescript": "5.9.2",
     "vitest": "^4.1.0"

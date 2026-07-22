@@ -29,6 +29,7 @@
   },
   "files": ["dist", "LICENSE", "LICENSE-COMMERCIAL.md"],
   "scripts": {
+    "build": "node ../../scripts/copy-license.mjs && tsdown",
     "test": "vitest run",
     "test:watch": "vitest",
     "typecheck": "tsc --noEmit -p tsconfig.json && tsc --noEmit -p tsconfig.browser-test.json && tsc --noEmit -p tsconfig.worker.json"

@@ -1,0 +1,63 @@
+name: Release
+
+on:
+  push:
+    branches: [main]
+
+# Publishing is not something to do twice at once.
+concurrency:
+  group: release
+  cancel-in-progress: false
+
+permissions:
+  contents: write
+  pull-requests: write
+  # Lets npm accept the publish on the workflow's own OIDC identity, so the
+  # package carries a provenance attestation tying it to this commit and this
+  # workflow. Requires npm >= 9.5 and a public package; both hold here.
+  id-token: write
+
+jobs:
+  release:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          # Changesets needs the history to work out what changed.
+          fetch-depth: 0
+
+      - uses: pnpm/action-setup@v4
+
+      - uses: actions/setup-node@v4
+        with:
+          node-version-file: package.json
+          cache: pnpm
+          registry-url: https://registry.npmjs.org
+
+      - run: pnpm install --frozen-lockfile
+
+      - run: pnpm exec playwright install --with-deps chromium
+
+      # Publishing something that does not pass its own tests is worse than
+      # not publishing: it cannot be taken back, only superseded.
+      - run: pnpm lint
+      - run: pnpm typecheck
+      - run: pnpm test
+
+      # Two modes, decided by whether any changeset files are pending:
+      #  - pending  -> opens (or updates) a "Version Packages" PR that applies
+      #                them, bumps versions and rewrites the changelogs.
+      #  - none     -> the versions on main are already the intended ones, so
+      #                `publish` runs and pushes whatever is not on npm yet.
+      # Merging that PR is therefore the act that releases, and it is a normal
+      # reviewable diff rather than a button that does something unseen.
+      - uses: changesets/action@v1
+        with:
+          version: pnpm version-packages
+          publish: pnpm release
+          title: 'Release: version packages'
+          commit: 'chore: version packages'
+        env:
+          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+          NPM_CONFIG_PROVENANCE: true
+          NODE_AUTH_TOKEN: ${{ secrets.NPM_TOKEN }}

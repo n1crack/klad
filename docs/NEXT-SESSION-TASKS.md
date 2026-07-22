@@ -40,20 +40,53 @@ path). Add it to all three adapters' event surfaces. Playground: a draggable exa
 
 ## The only thing left for v1.0
 
-### 1. Build + publish pipeline
-Everything resolves from `.ts` source via each package's `exports` (with `publishConfig`
-already carrying the intended `dist` paths). To actually publish:
-- `tsdown` build per publishable package (core, vanilla, vue, react) → `dist` (ESM only).
-  SFC `.d.ts` for Vue via `vue-tsc`.
-- `changesets` for versioning + changelog.
-- Copy `LICENSE` and `LICENSE-COMMERCIAL.md` into each publishable
-  package as part of the build. Their `files` arrays already list them, and npm
-  silently skips a listed file that isn't there — so without the copy step the
-  tarballs ship with no licence at all, which is exactly the wrong thing for a
-  dual-licensed package.
-- Wire `build` into turbo; the packages' `publishConfig.exports` already point at `dist`.
-- One final release of the OLD `vue3-org-chart` npm package pointing at the new
-  `@n1crack/orgchart-*` (README only) — optional.
+### 1. First publish to npm
+The pipeline itself is built (see below); what remains needs the npm account,
+so it happens from the machine that has it:
+
+- Add an **`NPM_TOKEN`** repository secret (an npm automation token with
+  publish rights on the `@n1crack` scope). Nothing else is missing — the
+  release workflow is already written against it.
+- Confirm the `@n1crack` scope exists and the four package names are free.
+- Decide the first published version. Everything currently sits at
+  `1.0.0-alpha.0`; `pnpm changeset` then `pnpm version-packages` is what moves
+  it.
+- Optional: one last release of the OLD `vue3-org-chart` npm package whose
+  README points at `@n1crack/orgchart-*`.
+
+### What is already in place
+
+- **`tsdown` build per publishable package** → `dist`, ESM only, with
+  declarations. Core emits three entries (`index`, `worker/host`,
+  `worker/chart.worker`) named so the built layout mirrors the source one —
+  the worker has to land beside `host.js`, which fetches it by relative URL.
+- **Vue SFC declarations** via `vue-tsc`, against `tsconfig.build.json`, which
+  exists for one reason: every package's `exports` points at its own source
+  during development, so declaration emit produced imports referencing a
+  sibling's SOURCE path, and every cross-package type silently became
+  `undefined` in the shipped `.d.ts` — `NodeData`, and with it the payload of
+  every event a consumer handles. Pointing at the siblings' built declarations
+  fixes it; turbo's `^build` guarantees they exist. `@n1crack/orgchart-core`
+  is a direct dependency of the Vue package for the same reason: its published
+  types name it.
+- **Licence files copied into each package at build time**
+  (`scripts/copy-license.mjs`). npm packs only what is inside a package
+  directory and silently skips a listed path that is not there, so without
+  this the tarballs would ship with no licence at all. Verified with
+  `npm pack --dry-run`: all four carry `LICENSE` and `LICENSE-COMMERCIAL.md`.
+- **`changesets`**, with the four published packages `fixed` to one version —
+  they are one library split across an engine and three bindings, and a
+  consumer should not have to work out which version combinations were ever
+  tested together. The playground is ignored.
+- **`build` wired into turbo** and into `pnpm build`.
+- **CI** (`.github/workflows/ci.yml`): lint, typecheck, test, build on every
+  push to `main`/`dev` and every PR. Installs Chromium, since the suites run
+  in a real browser.
+- **Release** (`.github/workflows/release.yml`): on `main`, the changesets
+  action either opens a "Version Packages" PR (when changesets are pending) or
+  publishes what is not yet on npm (when they are not). Merging that PR is the
+  act that releases, and it is a reviewable diff rather than a button.
+  Publishes with npm provenance via OIDC.
 
 ## Queued polish (from decisions-to-revisit.md — none blocking)
 

@@ -35,6 +35,7 @@
     "react-dom": "^19.2.0"
   },
   "scripts": {
+    "build": "node ../../scripts/copy-license.mjs && tsdown",
     "test": "vitest run",
     "typecheck": "tsc --noEmit -p tsconfig.json"
   }

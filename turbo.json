@@ -11,7 +11,8 @@
     },
     "build": {
       "dependsOn": ["^build"],
-      "outputs": ["dist/**"]
+      "inputs": ["src/**", "tsdown.config.ts", "tsconfig*.json", "package.json", "$TURBO_DEFAULT$"],
+      "outputs": ["dist/**", "LICENSE", "LICENSE-COMMERCIAL.md"]
     }
   }
 }
