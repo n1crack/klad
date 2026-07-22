@@ -45,5 +45,11 @@ Reach the imperative API from a descendant component with `useOrgChart()`
 (`const { api, state } = useOrgChart()`), or from a template `ref` on
 `<OrgChart>` itself.
 
-Full options/API reference, events, and accessibility notes live in the
-[repository README](https://github.com/n1crack/orgchart#readme).
+Guide, API reference and roadmap:
+[the documentation](https://github.com/n1crack/orgchart).
+
+## Licence
+
+Dual-licensed: [GNU AGPL v3 or later](./LICENSE), or a commercial licence for
+use the AGPL does not permit — see [LICENSE-COMMERCIAL.md](./LICENSE-COMMERCIAL.md),
+or email yusuf@ozdemir.be.

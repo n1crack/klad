@@ -3,8 +3,8 @@ layout: home
 
 hero:
   name: OrgChart
-  text: 50,000 nodes at 60fps.
-  tagline: A framework-agnostic org chart. The tree is laid out and drawn on a canvas inside a Web Worker; real components are mounted only for the handful of nodes actually on screen and zoomed in far enough to read.
+  text: 50,000 nodes. 60fps.
+  tagline: Canvas in a worker. Your components only where they can be read.
   actions:
     - theme: brand
       text: Get started
@@ -17,19 +17,17 @@ hero:
       link: https://github.com/n1crack/orgchart
 
 features:
-  - title: Built for trees that are actually large
-    details: A DOM-per-node chart cannot reach 50,000 nodes — that is 50,000 component instances plus as many connector elements, and both memory and layout time run out long before. Nothing here creates DOM for a node unless that node is both visible and legible.
-  - title: Your components, where they are readable
-    details: Above a zoom threshold, real Vue or React components (or plain DOM) are mounted over the canvas for the ~50 nodes in the viewport, pooled and repositioned rather than recreated. Below it, the canvas draws the box itself and no DOM exists at all.
-  - title: One engine, three bindings
-    details: Layout, viewport maths, the spatial index and the renderer live in a DOM-free core. The frameworkless API is the reference implementation; the Vue and React adapters are thin bindings over it, and writing a fourth is a small job.
-  - title: Interaction that holds still
-    details: Expanding a node keeps it pinned exactly where it was on screen while the layout moves around it, to the pixel. Panning has kinetic momentum, the minimap keeps its frame across a toggle, and a full keyboard tree sits underneath for screen readers.
+  - title: No DOM you can't see
+    details: A node gets an element only when it is in the viewport and zoomed in far enough to read — about fifty at a time, pooled. Everything else is canvas.
+  - title: Vue, React, or neither
+    details: One DOM-free engine, three thin bindings. The frameworkless API is the reference; a fourth binding is a small job.
+  - title: Nothing jumps
+    details: Expand a node and it stays exactly where it was on screen, to the pixel, while the layout moves around it.
 ---
 
-## Install and draw a chart
+## Draw one
 
-::: tabs
+::: tabs key:stack
 
 == Vanilla
 
@@ -49,8 +47,6 @@ const chart = createOrgChart(document.getElementById('chart')!, {
   nodeSize: { w: 180, h: 64 },
   label: (item) => String(item.name ?? ''),
 })
-
-chart.on('nodeClick', ({ id }) => console.log('clicked', id))
 ```
 
 == Vue
@@ -105,22 +101,15 @@ export function Chart() {
 
 :::
 
-That is a working chart: pan, zoom, click, keyboard navigation, and a canvas
-that stays at 60fps whether the array has three rows in it or fifty thousand.
+Pan, zoom, click, keyboard navigation. `data` is flat — `{ id, parentId?, ...yours }` —
+so the array from your API is usually already the right shape.
 
-`data` is flat. Every item is `{ id, parentId?, ...anything else you keep on
-it }`; there is no nested-children shape, and an item whose `parentId` names
-nothing becomes a root with a `warning` event rather than an exception.
+## The catch
 
-## What it costs you
+`nodeSize` is declared, not measured. Layout runs in a Web Worker, where there
+is no element to call `getBoundingClientRect()` on — that is what buys the
+50,000. Your content fits the box you declare.
 
-`nodeSize` is required, and declared rather than measured. Layout runs inside a
-Web Worker, which has no DOM: it cannot mount your component, read its
-`getBoundingClientRect()`, and only then decide where the box goes — there is
-nothing to mount there. So you say how big a node is, either as one size or as
-a function of the node's own data, and your content fits the box you declared.
-
-That single constraint is what the 50,000-node number is bought with. If your
-chart is a hundred nodes and every card is a different height decided by its
-own content, a DOM-based chart will serve you better and there is no shame in
-saying so.
+If your chart is a hundred nodes and every card is a different height decided
+by its content, use a DOM-based chart instead. [Sizing](/guide/sizing) has the
+whole trade.

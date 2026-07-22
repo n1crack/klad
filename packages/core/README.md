@@ -43,3 +43,9 @@ main entry stays importable inside the Web Worker it also ships
 Full architecture notes live in the
 [repository README](https://github.com/n1crack/orgchart#readme) and the
 [design document](https://github.com/n1crack/orgchart/blob/main/docs/superpowers/specs/2026-07-21-orgchart-rework-design.md).
+
+## Licence
+
+Dual-licensed: [GNU AGPL v3 or later](./LICENSE), or a commercial licence for
+use the AGPL does not permit — see [LICENSE-COMMERCIAL.md](./LICENSE-COMMERCIAL.md),
+or email yusuf@ozdemir.be.

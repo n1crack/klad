@@ -1,6 +1,6 @@
 # Events
 
-::: tabs
+::: tabs key:stack
 
 == Vanilla
 

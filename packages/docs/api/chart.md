@@ -4,7 +4,7 @@ The imperative handle. `createOrgChart` returns an instance whose `.api` is
 this; in Vue reach it with `useOrgChart()` or a `ref` on the component, in
 React with a `ref` on `<OrgChart>`.
 
-::: tabs
+::: tabs key:stack
 
 == Vanilla
 

@@ -34,5 +34,11 @@ chart.on('nodeClick', ({ id, item }) => console.log(id, item))
 Using Vue? Use [`@n1crack/orgchart-vue`](https://www.npmjs.com/package/@n1crack/orgchart-vue)
 instead — it's built on this package and adds a `#node` scoped slot.
 
-Full options/API reference, events, and accessibility notes live in the
-[repository README](https://github.com/n1crack/orgchart#readme).
+Guide, API reference and roadmap:
+[the documentation](https://github.com/n1crack/orgchart).
+
+## Licence
+
+Dual-licensed: [GNU AGPL v3 or later](./LICENSE), or a commercial licence for
+use the AGPL does not permit — see [LICENSE-COMMERCIAL.md](./LICENSE-COMMERCIAL.md),
+or email yusuf@ozdemir.be.

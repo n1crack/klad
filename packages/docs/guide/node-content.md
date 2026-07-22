@@ -12,7 +12,7 @@ thousand times.
 
 ## Rendering a card
 
-::: tabs
+::: tabs key:stack
 
 == Vanilla
 

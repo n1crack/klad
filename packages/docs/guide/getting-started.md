@@ -5,7 +5,7 @@
 Install the binding you want. Each one depends on the layers beneath it, so
 there is never a second package to remember.
 
-::: tabs
+::: tabs key:stack
 
 == Vanilla
 
@@ -29,21 +29,16 @@ npm install @n1crack/orgchart-react
 
 React 18 or newer, as a peer dependency.
 
-== Core only
-
-```bash
-npm install @n1crack/orgchart-core
-```
-
-Only if you are writing a binding for a framework that does not have one. It
-is the pure-logic layer — layout, viewport maths, the quadtree, the renderer,
-the worker protocol — and it touches no DOM.
-
 :::
+
+There is a fourth package, `@n1crack/orgchart-core`, but you only install it
+directly to write a binding for a framework that does not have one. It is the
+pure-logic layer — layout, viewport maths, the quadtree, the renderer, the
+worker protocol — and it touches no DOM.
 
 ## A chart
 
-::: tabs
+::: tabs key:stack
 
 == Vanilla
 
