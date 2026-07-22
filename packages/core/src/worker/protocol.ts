@@ -88,6 +88,22 @@ export type WorkerToMain =
    * main-thread host can tell a caller whether to keep scheduling frames
    * without a worker round trip of its own. Both are threaded through
    * separately — see `ChartEngine.ringActive`'s docblock for why the ring
-   * can still need frames after the layout transition has already ended. */
-  | { t: 'frame'; visible: Uint32Array; transitioning: boolean; ringActive: boolean }
+   * can still need frames after the layout transition has already ended.
+   *
+   * `lastDrawnBoxes` mirrors `ChartEngine.lastDrawnBoxes` exactly: interpolated
+   * boxes for exactly the source indices in `visible`, same order, `null`
+   * whenever `transitioning` is false. Bounded by `visible.length` (the
+   * near-viewport drawn set), never by total node count — this is what lets
+   * the main-thread host's DOM overlay and camera anchor track the SAME
+   * per-frame geometry the worker's canvas just painted, without streaming
+   * the whole (potentially 50k-node) layout across the boundary every
+   * frame. Transferred, not structured-cloned, when present — see
+   * chart.worker.ts. */
+  | {
+      t: 'frame'
+      visible: Uint32Array
+      transitioning: boolean
+      ringActive: boolean
+      lastDrawnBoxes: Float64Array | null
+    }
   | { t: 'error'; message: string }

@@ -108,6 +108,61 @@ describe('createChartHost with a worker', () => {
     b.host.destroy()
   })
 
+  it('exposes lastDrawnBoxes across the worker boundary, aligned with the drawn set, bounded when idle', async () => {
+    const NESTED = [
+      { id: 'a' },
+      { id: 'b', parentId: 'a' },
+      { id: 'c', parentId: 'b' },
+      { id: 'd', parentId: 'a' },
+    ]
+    async function seedNested(preferWorker: boolean) {
+      const h = createChartHost(mount(), DEFAULT_THEME, preferWorker)
+      const t = normalize(NESTED)
+      h.setViewport(800, 600, 1)
+      h.setAnimate(true)
+      h.setData(toWireTree(t), sizes(t.count), ['a', 'b', 'c', 'd'], new Uint8Array(t.count).fill(1))
+      h.setCamera({ x: 0, y: 0, k: 1 })
+      await h.render()
+      return { host: h, tree: t }
+    }
+
+    const main = await seedNested(false)
+    const worker = await seedNested(true)
+
+    // Idle on both paths: nothing to duplicate, so this stays `null`.
+    expect(main.host.lastDrawnBoxes).toBeNull()
+    expect(worker.host.lastDrawnBoxes).toBeNull()
+
+    // Collapsing 'b' removes 'c' and reflows the rest — a real transition.
+    main.host.setOpen(main.tree.idToIndex.get('b')!, false)
+    worker.host.setOpen(worker.tree.idToIndex.get('b')!, false)
+    const drawnMain = await main.host.render()
+    const drawnWorker = await worker.host.render()
+
+    expect(main.host.transitioning).toBe(true)
+    expect(worker.host.transitioning).toBe(true)
+    expect(main.host.lastDrawnBoxes).not.toBeNull()
+    expect(worker.host.lastDrawnBoxes).not.toBeNull()
+    // Bounded to the drawn/visible set on both paths — never the total node
+    // count — and the SAME shape on either path.
+    expect(main.host.lastDrawnBoxes!.length).toBe(drawnMain.length * 4)
+    expect(worker.host.lastDrawnBoxes!.length).toBe(drawnWorker.length * 4)
+
+    // Once the transition finishes (real wall-clock time: neither path
+    // threads a caller clock across the worker boundary), it goes back to
+    // `null` on both.
+    await new Promise((r) => setTimeout(r, 550))
+    await main.host.render()
+    await worker.host.render()
+    expect(main.host.transitioning).toBe(false)
+    expect(worker.host.transitioning).toBe(false)
+    expect(main.host.lastDrawnBoxes).toBeNull()
+    expect(worker.host.lastDrawnBoxes).toBeNull()
+
+    main.host.destroy()
+    worker.host.destroy()
+  })
+
   it('falls back in-process when the canvas cannot be transferred', async () => {
     const canvas = mount()
     // Taking a 2D context first makes transferControlToOffscreen throw.

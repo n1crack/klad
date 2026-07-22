@@ -78,6 +78,36 @@ export interface ChartEngine {
    * in-progress transition's interpolated positions — hit-testing and any
    * other consumer of this getter must not chase a moving target. */
   readonly boxes: Float64Array
+  /**
+   * Boxes in the pruned index space for THIS FRAME: interpolated while an
+   * expand/collapse transition is running, the exact same array as `boxes`
+   * otherwise (so a caller can always read this instead of `boxes` and get
+   * identical values outside a transition, at zero extra cost). This is the
+   * geometry `render()` actually painted the canvas with — what a DOM
+   * overlay or a camera anchor should track, so it moves in lockstep with
+   * what's on screen rather than snapping to where the layout will settle.
+   *
+   * Only entries for nodes `render()` actually drew this frame (near-
+   * viewport, per its own cull) — plus their parents, for connector
+   * endpoints — are guaranteed fresh; see `render()`'s tween loop. Every
+   * entry is correct outside a transition, since this then aliases `boxes`
+   * exactly. Do NOT use this for hit-testing — see `boxes`'s docblock and
+   * `hitTest`, which deliberately never reads this.
+   */
+  readonly renderBoxes: Float64Array
+  /**
+   * Interpolated boxes for exactly the SOURCE indices in the `Uint32Array`
+   * `render()` most recently returned, in the SAME order (each entry is 4
+   * `Float64`s: x, y, w, h) — `null` whenever no transition is running (a
+   * caller should fall back to `boxes`/`visibleToSource` then, rather than
+   * pay to duplicate them). Exists for a host that cannot reach this engine
+   * directly — one driving it across a Web Worker boundary — to mirror
+   * exactly the geometry the overlay/camera-anchor need without transferring
+   * the full `renderBoxes` array (which can be O(total pruned count)) every
+   * frame. Cost is O(the count `render()` just returned), i.e. bounded by
+   * the visible/drawn set, never by total node count.
+   */
+  readonly lastDrawnBoxes: Float64Array | null
   readonly bounds: Bounds
   /** Pruned index -> source index. */
   readonly visibleToSource: Int32Array
@@ -725,6 +755,19 @@ export function createChartEngine(renderer: Renderer): ChartEngine {
   let ghostDrawBoxes = new Float64Array(0)
   let ghostDrawAlpha = new Float32Array(0)
   let revealAlphaBuffer = new Float32Array(0)
+  // Interpolated boxes for exactly the SOURCE indices `render()` most
+  // recently returned, in the same order (4 float64s per entry) — freshly
+  // allocated every `render()` call (same discipline as `drawn` itself,
+  // which this is built alongside: bounded by `nodeCount`, never total node
+  // count), and `null` whenever no transition is running. A host that
+  // cannot reach this engine directly — one driving it from across a Web
+  // Worker — cannot read `renderBoxes` above (that array lives, and is
+  // mutated, only on this side of the boundary), so this is what crosses
+  // instead: paired with `render()`'s own return value, it gives exactly
+  // the geometry the DOM overlay and the camera anchor need, at a cost
+  // proportional to the visible/drawn set. See `worker/protocol.ts`'s
+  // `frame` message and `worker/host.ts`'s mirroring of this getter.
+  let lastDrawnBoxes: Float64Array | null = null
 
   // --- one-shot toggle ring state ---
   // `setOpen` arms a CANDIDATE here — but only when its caller-supplied
@@ -1048,8 +1091,29 @@ export function createChartEngine(renderer: Renderer): ChartEngine {
     // Reports only the genuinely on-screen set (see the `ChartEngine.render`
     // docblock) — the wider edge set is an implementation detail of
     // connector drawing, not something a host should see as "visible".
+    //
+    // `lastDrawnBoxes` is built in the SAME loop, at no extra asymptotic
+    // cost (still O(nodeCount)): `null` while idle — a caller should just
+    // use `boxes`/`visibleToSource` then, rather than pay to duplicate
+    // them — and, while `transition` is non-null, each node's CURRENT
+    // interpolated box (already sitting in `renderBoxes` at this exact
+    // pruned index, since the tween loop above ran over this same
+    // `cullBuffer` a moment ago).
     const drawn = new Uint32Array(nodeCount)
-    for (let i = 0; i < nodeCount; i++) drawn[i] = visibleToSource[cullBuffer[i]!]!
+    const drawnBoxes: Float64Array | null = transition === null ? null : new Float64Array(nodeCount * 4)
+    for (let i = 0; i < nodeCount; i++) {
+      const idx = cullBuffer[i]!
+      drawn[i] = visibleToSource[idx]!
+      if (drawnBoxes !== null) {
+        const src = idx * 4
+        const dst = i * 4
+        drawnBoxes[dst] = renderBoxes[src]!
+        drawnBoxes[dst + 1] = renderBoxes[src + 1]!
+        drawnBoxes[dst + 2] = renderBoxes[src + 2]!
+        drawnBoxes[dst + 3] = renderBoxes[src + 3]!
+      }
+    }
+    lastDrawnBoxes = drawnBoxes
     return drawn
   }
 
@@ -1170,6 +1234,12 @@ export function createChartEngine(renderer: Renderer): ChartEngine {
     },
     get boxes() {
       return boxes
+    },
+    get renderBoxes() {
+      return renderBoxes
+    },
+    get lastDrawnBoxes() {
+      return lastDrawnBoxes
     },
     get bounds() {
       return bounds

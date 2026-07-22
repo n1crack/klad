@@ -66,9 +66,24 @@ self.onmessage = (event: MessageEvent<MainToWorker>): void => {
     // with the main thread's `requestAnimationFrame` clock — nothing needs
     // threading across the postMessage boundary for this to stay correct.
     const drawn = engine.render()
+    // `null` while idle (see `ChartEngine.lastDrawnBoxes`'s docblock) — so a
+    // steady-state frame (the common case) transfers nothing beyond `drawn`
+    // itself, exactly like before this feature existed. Transferred, not
+    // cloned, when present: bounded by `drawn.length`, never total node
+    // count, so this never re-introduces the O(total nodes) per-frame cost
+    // the 50k budget forbids.
+    const lastDrawnBoxes = engine.lastDrawnBoxes
+    const transfer: Transferable[] = [drawn.buffer]
+    if (lastDrawnBoxes !== null) transfer.push(lastDrawnBoxes.buffer)
     post(
-      { t: 'frame', visible: drawn, transitioning: engine.transitioning, ringActive: engine.ringActive },
-      [drawn.buffer],
+      {
+        t: 'frame',
+        visible: drawn,
+        transitioning: engine.transitioning,
+        ringActive: engine.ringActive,
+        lastDrawnBoxes,
+      },
+      transfer,
     )
 
     if (message.t === 'data' || message.t === 'options' || message.t === 'open') {

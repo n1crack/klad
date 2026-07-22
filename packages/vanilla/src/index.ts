@@ -306,6 +306,19 @@ export function createOrgChart(host: HTMLElement, options: Options): OrgChartIns
   let frameRequested = false
   let destroyed = false
 
+  /**
+   * Source index -> this frame's INTERPOLATED box, rebuilt every frame from
+   * `chartHost.lastDrawnBoxes` (which is aligned 1:1 with `drawn` — see its
+   * docblock in `worker/host.ts`) — `null` whenever no transition is
+   * running, in which case every consumer below falls back to the ordinary
+   * final-layout `boxOfSource`. Bounded to `drawn.length` (the near-viewport
+   * drawn set), never total node count, matching the 50k budget: this is
+   * exactly the same set the canvas itself just painted with these exact
+   * positions, so nothing here scans, or even sizes itself against, the
+   * whole tree.
+   */
+  let renderBoxBySource: Map<number, { x: number; y: number; w: number; h: number }> | null = null
+
   let minimap: Minimap | null = null
   // Identity check, not a dirty flag some mutation sets: `chartHost.boxes` is
   // a fresh array only on an actual relayout (see engine.ts's `layout()`),
@@ -410,6 +423,56 @@ export function createOrgChart(host: HTMLElement, options: Options): OrgChartIns
       w: boxes[i * 4 + 2]!,
       h: boxes[i * 4 + 3]!,
     }
+  }
+
+  /**
+   * `boxOfSource`, but returns wherever a node visually IS on the canvas
+   * THIS FRAME rather than where it will settle — the interpolated box, for
+   * as long as the engine's own layout transition is moving it, falling
+   * back to `boxOfSource`'s ordinary final-layout box otherwise (identical
+   * to it outside a transition, and for any node outside the bounded
+   * drawn/visible set `renderBoxBySource` covers — see its docblock).
+   *
+   * This is what the DOM overlay positions cards from (see `scheduleFrame`'s
+   * `overlay.update` call) and what `setOpenFlag` reads a node's CURRENT
+   * on-screen position from when arming a new camera anchor — both need
+   * "what's actually drawn right now", not "the settled target". The one
+   * deliberate exception is the anchor's OWN `toCentre` (the settled target
+   * itself, resolved via `boxOfSource` directly in `scheduleFrame`'s
+   * `pendingAnchor` branch) — that one must stay on the final layout
+   * regardless of what's mid-flight, or the anchor would be chasing a
+   * moving target instead of holding a fixed one.
+   */
+  const interpolatedBoxOfSource = (source: number) => {
+    const interpolated = renderBoxBySource?.get(source)
+    return interpolated ?? boxOfSource(source)
+  }
+
+  /**
+   * Rebuilds `renderBoxBySource` from whatever `chartHost.lastDrawnBoxes` says
+   * right now, keyed against the CURRENT `drawn` (the two are always aligned
+   * 1:1 — see `ChartHost.lastDrawnBoxes`'s docblock). Called once per
+   * `render()` this layer actually awaits, so a caller reading
+   * `interpolatedBoxOfSource` between frames (e.g. `setOpenFlag`, triggered
+   * by a click) always sees the most recently drawn frame's geometry.
+   */
+  const refreshRenderBoxBySource = (): void => {
+    const lastDrawnBoxes = chartHost.lastDrawnBoxes
+    if (lastDrawnBoxes === null) {
+      renderBoxBySource = null
+      return
+    }
+    const map = new Map<number, { x: number; y: number; w: number; h: number }>()
+    for (let i = 0; i < drawn.length; i++) {
+      const o = i * 4
+      map.set(drawn[i]!, {
+        x: lastDrawnBoxes[o]!,
+        y: lastDrawnBoxes[o + 1]!,
+        w: lastDrawnBoxes[o + 2]!,
+        h: lastDrawnBoxes[o + 3]!,
+      })
+    }
+    renderBoxBySource = map
   }
 
   /**
@@ -664,6 +727,7 @@ export function createOrgChart(host: HTMLElement, options: Options): OrgChartIns
       // property access, and it keeps the overlay from ever using stale boxes.
       boxes = chartHost.boxes
       bounds = chartHost.bounds
+      refreshRenderBoxBySource()
       recomputeLimits()
       // Identity changes only on relayout, which is exactly when the reverse
       // map is stale.
@@ -680,6 +744,7 @@ export function createOrgChart(host: HTMLElement, options: Options): OrgChartIns
         chartHost.setCamera(camera)
         drawn = await chartHost.render(now)
         boxes = chartHost.boxes
+        refreshRenderBoxBySource()
       }
       // Runs after the relayout above, so it sees the boxes the toggle actually
       // produced rather than stale ones from before it.
@@ -728,11 +793,11 @@ export function createOrgChart(host: HTMLElement, options: Options): OrgChartIns
         if (overlayEnabled(camera.k, lod) && currentOptions.renderNode !== undefined) {
           overlay.update(
             Array.from(drawn, (index) => ({ index, id: tree.indexToId[index]! })),
-            boxOfSource,
+            interpolatedBoxOfSource,
             camera,
           )
         } else {
-          overlay.update([], boxOfSource, camera)
+          overlay.update([], interpolatedBoxOfSource, camera)
         }
       }
       publish()
@@ -940,7 +1005,15 @@ export function createOrgChart(host: HTMLElement, options: Options): OrgChartIns
 
   const setOpenFlag = (index: number, value: boolean): void => {
     if (currentOptions.autoPanOnToggle !== false) {
-      const box = boxOfSource(index)
+      // `interpolatedBoxOfSource`, not `boxOfSource`: toggling a DIFFERENT
+      // node than whichever one a PRIOR toggle's anchor is already holding
+      // (the `cameraAnchor.source === index` branch below handles the SAME-
+      // node case on its own, via the anchor's own curve) can land while
+      // that earlier transition is still running — the final-layout box
+      // would then disagree with wherever `index` actually reads on screen
+      // right now, producing exactly the snap this whole feature exists to
+      // avoid.
+      const box = interpolatedBoxOfSource(index)
       if (box !== null) {
         const centre = boxCentre(box)
         let fromCentre = centre
