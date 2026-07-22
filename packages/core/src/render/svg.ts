@@ -133,6 +133,23 @@ function fmt(n: number): string {
 }
 
 /**
+ * An elbow is three axis-aligned segments meeting at two bends: `seg0`
+ * (leaving the parent) and `seg2` (entering the child) each touch exactly
+ * ONE bend, but `segMid` (the crossbar) touches BOTH — so a naive per-corner
+ * clamp (`radius <= seg0`, `radius <= seg2`) is not enough on its own: if
+ * both bends round INTO `segMid` from opposite ends, the two arcs overshoot
+ * and cross exactly when `segMid < 2 * radius`. Halving the `segMid` budget
+ * between the two corners (`segMid / 2`) is what prevents that — must match
+ * canvas2d.ts's `clampEdgeCornerRadius` exactly, since the export's whole
+ * promise is to look like the canvas.
+ */
+function clampEdgeCornerRadius(seg0: number, segMid: number, seg2: number, radius: number): number {
+  if (radius <= 0) return 0
+  const limit = Math.min(seg0, seg2, segMid / 2)
+  return radius < limit ? radius : limit
+}
+
+/**
  * Builds every connector as ONE batched `<path>` `d` string — a single
  * element regardless of node count, for the same reason canvas2d.ts strokes
  * every edge in one `Path2D`: a 50k-edge document with one `<path>` per
@@ -141,9 +158,14 @@ function fmt(n: number): string {
  *
  * The elbow geometry (`px,py` / `cx,cy` / the horizontal-vs-vertical split
  * on `horizontal`) is copied verbatim from canvas2d.ts's edge-drawing loop —
- * this is the exact thing svg.test.ts's cross-check asserts stays true.
- * Iterates the flat index space directly (no recursion), so a 50k-deep
- * chain costs one pass, not one stack frame per level.
+ * this is the exact thing svg.test.ts's cross-check asserts stays true. That
+ * now includes `edgeRadius`: when greater than 0 (and the clamp above hasn't
+ * reduced it to 0 for a too-short segment), each bend becomes a quadratic
+ * `Q` segment — the SVG equivalent of `quadraticCurveTo` — instead of a
+ * hard `L` corner, using the corner point itself as the control point,
+ * exactly like the canvas renderer. Iterates the flat index space directly
+ * (no recursion), so a 50k-deep chain costs one pass, not one stack frame
+ * per level.
  */
 function buildEdgePath(
   boxes: Float64Array,
@@ -151,6 +173,7 @@ function buildEdgePath(
   horizontal: boolean,
   offsetX: number,
   offsetY: number,
+  edgeRadius: number,
 ): string {
   const n = parent.length
   const parts: string[] = []
@@ -180,14 +203,50 @@ function buildEdgePath(
     cy += offsetY
     if (horizontal) {
       const midX = (px + cx) / 2
-      parts.push(
-        `M${fmt(px)},${fmt(py)} L${fmt(midX)},${fmt(py)} L${fmt(midX)},${fmt(cy)} L${fmt(cx)},${fmt(cy)}`,
-      )
+      const r =
+        edgeRadius > 0
+          ? clampEdgeCornerRadius(Math.abs(midX - px), Math.abs(cy - py), Math.abs(cx - midX), edgeRadius)
+          : 0
+      if (r <= 0) {
+        parts.push(
+          `M${fmt(px)},${fmt(py)} L${fmt(midX)},${fmt(py)} L${fmt(midX)},${fmt(cy)} L${fmt(cx)},${fmt(cy)}`,
+        )
+      } else {
+        const dir0 = midX > px ? 1 : -1
+        const dirMid = cy > py ? 1 : -1
+        const dir2 = cx > midX ? 1 : -1
+        parts.push(
+          `M${fmt(px)},${fmt(py)}` +
+            ` L${fmt(midX - dir0 * r)},${fmt(py)}` +
+            ` Q${fmt(midX)},${fmt(py)} ${fmt(midX)},${fmt(py + dirMid * r)}` +
+            ` L${fmt(midX)},${fmt(cy - dirMid * r)}` +
+            ` Q${fmt(midX)},${fmt(cy)} ${fmt(midX + dir2 * r)},${fmt(cy)}` +
+            ` L${fmt(cx)},${fmt(cy)}`,
+        )
+      }
     } else {
       const midY = (py + cy) / 2
-      parts.push(
-        `M${fmt(px)},${fmt(py)} L${fmt(px)},${fmt(midY)} L${fmt(cx)},${fmt(midY)} L${fmt(cx)},${fmt(cy)}`,
-      )
+      const r =
+        edgeRadius > 0
+          ? clampEdgeCornerRadius(Math.abs(midY - py), Math.abs(cx - px), Math.abs(cy - midY), edgeRadius)
+          : 0
+      if (r <= 0) {
+        parts.push(
+          `M${fmt(px)},${fmt(py)} L${fmt(px)},${fmt(midY)} L${fmt(cx)},${fmt(midY)} L${fmt(cx)},${fmt(cy)}`,
+        )
+      } else {
+        const dir0 = midY > py ? 1 : -1
+        const dirMid = cx > px ? 1 : -1
+        const dir2 = cy > midY ? 1 : -1
+        parts.push(
+          `M${fmt(px)},${fmt(py)}` +
+            ` L${fmt(px)},${fmt(midY - dir0 * r)}` +
+            ` Q${fmt(px)},${fmt(midY)} ${fmt(px + dirMid * r)},${fmt(midY)}` +
+            ` L${fmt(cx - dirMid * r)},${fmt(midY)}` +
+            ` Q${fmt(cx)},${fmt(midY)} ${fmt(cx)},${fmt(midY + dir2 * r)}` +
+            ` L${fmt(cx)},${fmt(cy)}`,
+        )
+      }
     }
   }
   return parts.join(' ')
@@ -247,7 +306,7 @@ export function toSVG(data: ExportData, opts: SvgExportOptions = {}): string {
   const width = Math.max(0, bounds.maxX - bounds.minX) + padding * 2
   const height = Math.max(0, bounds.maxY - bounds.minY) + padding * 2
 
-  const edgePath = buildEdgePath(boxes, parent, horizontal, offsetX, offsetY)
+  const edgePath = buildEdgePath(boxes, parent, horizontal, offsetX, offsetY, theme.edgeCornerRadius)
 
   const radiusAttr = theme.cornerRadius > 0 ? ` rx="${fmt(theme.cornerRadius)}"` : ''
   const nodeParts: string[] = Array.from({ length: n })

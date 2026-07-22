@@ -54,6 +54,17 @@ function makeRecorder(): {
   const edgeSegments: Point[][] = []
   const texts: RecordedText[] = []
   let currentPath: Point[] | null = null
+  // Subpaths already closed off by a later `moveTo` within the SAME
+  // beginPath()/stroke() pair, waiting to be committed to `edgeSegments`
+  // once `stroke()` fires. Grouping by `moveTo` (rather than the fixed
+  // "4 points per edge" chunking this used before rounded elbows existed)
+  // is what lets this recorder cope with edges of DIFFERENT point counts in
+  // the same batch — a straight elbow is 4 points (`moveTo` + 3 `lineTo`), a
+  // rounded one is 8 (`moveTo`, `lineTo`, `quadraticCurveTo` x2 worth of
+  // points, `lineTo`, `quadraticCurveTo` x2 worth of points, `lineTo`), and a
+  // radius clamped to 0 for one short edge but not its neighbours means a
+  // single batch can contain both shapes at once.
+  let pendingSegments: Point[][] = []
 
   const ctx: RenderContext2D = {
     fillStyle: undefined,
@@ -70,12 +81,21 @@ function makeRecorder(): {
     clearRect() {},
     beginPath() {
       currentPath = []
+      pendingSegments = []
     },
     moveTo(x, y) {
-      currentPath?.push({ x, y })
+      if (currentPath !== null && currentPath.length > 0) pendingSegments.push(currentPath)
+      currentPath = [{ x, y }]
     },
     lineTo(x, y) {
       currentPath?.push({ x, y })
+    },
+    quadraticCurveTo(cpx, cpy, x, y) {
+      // Recorded as two points (control, then end) — the same shape
+      // `parseEdgeSegments` extracts from an SVG `Q` command's two
+      // coordinate pairs, so a rounded elbow's point count matches on both
+      // sides of the cross-check.
+      currentPath?.push({ x: cpx, y: cpy }, { x, y })
     },
     roundRect(x, y, w, h, radii) {
       rects.push({ x, y, w, h, radius: radii })
@@ -91,11 +111,9 @@ function makeRecorder(): {
       // stroke() call — a node's own beginPath()/roundRect()/fill()/stroke()
       // sequence never pushes into currentPath (roundRect isn't moveTo/
       // lineTo), so this can't misfile a node's stroke as an edge.
-      if (currentPath !== null && currentPath.length > 0) {
-        for (let i = 0; i < currentPath.length; i += 4) {
-          edgeSegments.push(currentPath.slice(i, i + 4))
-        }
-      }
+      if (currentPath !== null && currentPath.length > 0) pendingSegments.push(currentPath)
+      if (pendingSegments.length > 0) edgeSegments.push(...pendingSegments)
+      pendingSegments = []
       currentPath = null
     },
     fillText(text, x, y) {
@@ -214,17 +232,29 @@ function parseRects(svg: string): RecordedRect[] {
   return out
 }
 
-/** Parses the single batched edge `<path>`'s `d` into one 4-point group per edge. */
+/**
+ * Parses the single batched edge `<path>`'s `d` into one point-group per
+ * edge, split on each `M` (moveto) command rather than a fixed point count —
+ * a straight elbow is `M L L L` (4 points), a rounded one is
+ * `M L Q L Q L` (8 points, since each `Q`'s control+end pair both match the
+ * coordinate regex below), and a batch can mix both shapes when one edge's
+ * radius clamps to 0 and a neighbour's doesn't. Mirrors `makeRecorder`'s
+ * `moveTo`-driven grouping on the canvas side exactly, for the same reason.
+ */
 function parseEdgeSegments(svg: string): Point[][] {
   const dMatch = /<path class="e" d="([^"]*)"\/>/.exec(svg)
   if (dMatch === null) return []
   const d = dMatch[1]!
+  if (d.length === 0) return []
   const pointRe = /(-?[\d.]+),(-?[\d.]+)/g
-  const points: Point[] = []
-  for (const m of d.matchAll(pointRe)) points.push({ x: Number(m[1]), y: Number(m[2]) })
-  const segments: Point[][] = []
-  for (let i = 0; i < points.length; i += 4) segments.push(points.slice(i, i + 4))
-  return segments
+  return d
+    .split(/(?=M)/)
+    .filter((sub) => sub.length > 0)
+    .map((sub) => {
+      const points: Point[] = []
+      for (const m of sub.matchAll(pointRe)) points.push({ x: Number(m[1]), y: Number(m[2]) })
+      return points
+    })
 }
 
 function parseTexts(svg: string): RecordedText[] {
@@ -288,6 +318,183 @@ describe.each<Orientation>(['tb', 'bt', 'lr', 'rl'])('toSVG matches canvas2d geo
       expect(svgTexts[i]!.y).toBeCloseTo(texts[i]!.y, 1)
       expect(svgTexts[i]!.text).toBe(built.labels[i])
     }
+  })
+})
+
+describe.each<Orientation>(['tb', 'bt', 'lr', 'rl'])(
+  'rounded connector elbows (edgeCornerRadius > 0) match between canvas and svg (%s)',
+  (orientation) => {
+    it('draws without throwing and matches the svg export point-for-point', () => {
+      const built = buildFixture(orientation)
+      const theme = { ...DEFAULT_THEME, edgeCornerRadius: 6 }
+      const { ctx, surface, edgeSegments } = makeRecorder()
+      const renderer = createCanvas2DRenderer(surface, theme, measurerFor)
+      expect(() => renderer.draw(frameFrom(built))).not.toThrow()
+      void ctx
+
+      const svg = toSVG(exportDataFrom(built), { padding: 0, theme })
+      // A rounded elbow is a curve, not a straight-cornered polyline.
+      expect(svg).toContain('Q')
+
+      const svgEdges = parseEdgeSegments(svg)
+      expect(svgEdges.length).toBeGreaterThan(0)
+      expect(svgEdges).toHaveLength(edgeSegments.length)
+      // Every edge's point count must match between the two renderers
+      // exactly, whatever that count turns out to be for a given edge — a
+      // rounded corner is 8 points (moveTo, tangent-in, [corner,
+      // tangent-out] x2, tangent-in, [corner, tangent-out], final point);
+      // a corner the per-edge clamp reduced to 0 (e.g. a lone child this
+      // fixture's tidy-tree layout happens to centre directly under its
+      // parent, collapsing that edge's crossbar to zero width) falls back
+      // to the ordinary 4-point straight elbow instead — both are valid,
+      // and the two renderers must agree on which one applies to EACH edge.
+      let anyRounded = false
+      for (let e = 0; e < edgeSegments.length; e++) {
+        const expected = edgeSegments[e]!
+        const actual = svgEdges[e]!
+        expect(actual).toHaveLength(expected.length)
+        expect([4, 8]).toContain(actual.length)
+        if (actual.length === 8) anyRounded = true
+        for (let p = 0; p < expected.length; p++) {
+          expect(actual[p]!.x).toBeCloseTo(expected[p]!.x, 1)
+          expect(actual[p]!.y).toBeCloseTo(expected[p]!.y, 1)
+        }
+      }
+      // At least one edge in this fixture must actually have rounded —
+      // otherwise this test would pass even if the radius were silently
+      // ignored everywhere.
+      expect(anyRounded).toBe(true)
+    })
+  },
+)
+
+describe('edge corner radius scales with zoom like the node corner radius', () => {
+  it('doubles the on-screen bend distance when the camera zoom doubles', () => {
+    const built = buildFixture('tb')
+    const theme = { ...DEFAULT_THEME, edgeCornerRadius: 4 }
+    const frame1x = frameFrom(built)
+    const frame2x = { ...frame1x, camera: { x: 0, y: 0, k: 2 } }
+
+    const rec1 = makeRecorder()
+    createCanvas2DRenderer(rec1.surface, theme, measurerFor).draw(frame1x)
+    const rec2 = makeRecorder()
+    createCanvas2DRenderer(rec2.surface, theme, measurerFor).draw(frame2x)
+
+    // Compare the first edge's tangent-in point (index 1) against its
+    // moveTo point (index 0): the screen-space distance between them IS the
+    // effective on-screen radius (world radius * k), so it must double
+    // alongside the camera's k, exactly like `theme.cornerRadius` already
+    // does for node corners (see canvas2d.ts's `radius = theme.cornerRadius * k`).
+    const dist = (seg: Point[]): number => Math.hypot(seg[1]!.x - seg[0]!.x, seg[1]!.y - seg[0]!.y)
+    const d1 = dist(rec1.edgeSegments[0]!)
+    const d2 = dist(rec2.edgeSegments[0]!)
+    expect(d2).toBeCloseTo(d1 * 2, 5)
+  })
+})
+
+describe('edge corner radius clamps against a short connector', () => {
+  /** parent centred at x=50 (box x=0..100, so `px` = 50); child centred at
+   * x=60 (box x=10..110, so `cx` = 60) — a 10-unit crossbar, deliberately
+   * shorter than twice the requested radius (100), so the clamp must
+   * reduce the effective radius rather than let the two corners' arcs
+   * overshoot into and past each other. */
+  const data: ExportData = {
+    boxes: Float64Array.from([0, 0, 100, 50, 10, 200, 100, 50]),
+    parent: Int32Array.from([-1, 0]),
+    labels: ['Root', 'Child'],
+    bounds: { minX: 0, minY: 0, maxX: 110, maxY: 250 },
+    horizontal: false,
+  }
+
+  it('does not throw and clamps the two arcs to meet, not cross, at the crossbar midpoint', () => {
+    const theme = { ...DEFAULT_THEME, edgeCornerRadius: 100 }
+    let svg = ''
+    expect(() => {
+      svg = toSVG(data, { padding: 0, theme })
+    }).not.toThrow()
+
+    // px=50, py=50, cx=60, cy=200, midY=125. seg0 = seg2 = 75, segMid = 10.
+    // Clamp: r = min(75, 75, 10/2) = 5 — the shared crossbar, not the
+    // (comfortably longer) outer legs, is what limits it here.
+    // tangent_out (corner 1, along the crossbar) = (55, 125).
+    // tangent_in (corner 2, along the crossbar) = (55, 125) — the SAME
+    // point: the two arcs meet exactly at the crossbar's midpoint rather
+    // than overshooting past each other, which is what the clamp exists to
+    // guarantee for a connector this short.
+    const svgEdges = parseEdgeSegments(svg)
+    expect(svgEdges).toHaveLength(1)
+    const points = svgEdges[0]!
+    expect(points).toHaveLength(8)
+    // index 0: M(50,50); 1: tangent-in corner1 (50,120); 2: corner1 control
+    // (50,125); 3: tangent-out corner1 (55,125); 4: tangent-in corner2
+    // (55,125); 5: corner2 control (60,125); 6: tangent-out corner2
+    // (60,130); 7: L(60,200).
+    expect(points[3]!.x).toBeCloseTo(55, 1)
+    expect(points[3]!.y).toBeCloseTo(125, 1)
+    expect(points[4]!.x).toBeCloseTo(55, 1)
+    expect(points[4]!.y).toBeCloseTo(125, 1)
+    // The two touching points must not have crossed (actual[3].x <= actual[4].x
+    // given px < cx here) — equality is the exact boundary this clamp targets.
+    expect(points[3]!.x).toBeLessThanOrEqual(points[4]!.x + 1e-6)
+  })
+
+  it('falls back to a fully straight elbow (no Q at all) when the crossbar collapses to zero length', () => {
+    // Same parent, but the child re-centred directly above/below it
+    // (cx === px) — a zero-length crossbar. `segMid / 2` clamps the radius
+    // to 0 regardless of how large the theme asks for, same as a `rect`
+    // falling back from `roundRect` at radius 0.
+    const zeroCrossbar: ExportData = {
+      boxes: Float64Array.from([0, 0, 100, 50, 0, 200, 100, 50]),
+      parent: Int32Array.from([-1, 0]),
+      labels: ['Root', 'Child'],
+      bounds: { minX: 0, minY: 0, maxX: 100, maxY: 250 },
+      horizontal: false,
+    }
+    const theme = { ...DEFAULT_THEME, edgeCornerRadius: 100 }
+    const svg = toSVG(zeroCrossbar, { padding: 0, theme })
+    const pathMatch = /<path class="e" d="([^"]*)"\/>/.exec(svg)
+    expect(pathMatch).not.toBeNull()
+    expect(pathMatch![1]).not.toContain('Q')
+    expect(pathMatch![1]).toContain('L')
+  })
+
+  it('draws the same short connector on canvas without throwing', () => {
+    const theme = { ...DEFAULT_THEME, edgeCornerRadius: 100 }
+    const { surface } = makeRecorder()
+    const renderer = createCanvas2DRenderer(surface, theme, measurerFor)
+    const frame: Frame = {
+      boxes: data.boxes,
+      parent: data.parent,
+      visible: Uint32Array.from([0, 1]),
+      visibleCount: 2,
+      edges: Uint32Array.from([1]),
+      edgeCount: 1,
+      labels: data.labels,
+      camera: { x: 0, y: 0, k: 1 },
+      dpr: 1,
+      tier: 'full',
+      horizontal: false,
+      highlight: null,
+      dragIndex: -1,
+      revealAlpha: null,
+      ghostBoxes: new Float64Array(0),
+      ghostAlpha: new Float32Array(0),
+      ghostCount: 0,
+      ringActive: false,
+      ringBox: new Float64Array(4),
+      ringProgress: 0,
+    }
+    expect(() => renderer.draw(frame)).not.toThrow()
+  })
+})
+
+describe('straight elbows (edgeCornerRadius: 0, the default) never emit a curve command', () => {
+  it('contains only M/L commands in the edge path', () => {
+    const built = buildFixture('tb')
+    const svg = toSVG(exportDataFrom(built), { padding: 0 })
+    const pathMatch = /<path class="e" d="([^"]*)"\/>/.exec(svg)
+    expect(pathMatch).not.toBeNull()
+    expect(pathMatch![1]).not.toContain('Q')
   })
 })
 

@@ -31,6 +31,9 @@ export interface RenderContext2D {
   beginPath(): void
   moveTo(x: number, y: number): void
   lineTo(x: number, y: number): void
+  /** Used to round the two bends of a connector elbow when `theme.edgeCornerRadius` is
+   * greater than 0 — see canvas2d.ts's edge-drawing loop. */
+  quadraticCurveTo(cpx: number, cpy: number, x: number, y: number): void
   roundRect(x: number, y: number, w: number, h: number, radii: number): void
   rect(x: number, y: number, w: number, h: number): void
   fill(): void
