@@ -322,6 +322,57 @@ describe('minimap', () => {
     chart.destroy()
   })
 
+  // Round-trips the minimap's two directions against each other, which is the
+  // only way to catch a shift between them without restating one in terms of
+  // the other: click a point in the widget (widget px -> world, via
+  // `minimapToWorld`), let the camera centre on it, then read back where the
+  // viewport rectangle lands (world -> widget px, via `worldToMinimap`). Click
+  // the widget's centre and the rectangle must come back centred on the
+  // widget's centre. A padding applied on one direction only, or a viewport
+  // measured differently by the two, lands the rectangle off to one side.
+  it('round-trips a click at its centre back to a rectangle centred on it', async () => {
+    const el = host()
+    const chart = createOrgChart(el, {
+      data: buildOrg(300),
+      nodeSize: { w: 120, h: 48 },
+      worker: false,
+      minimap: true,
+    })
+    await new Promise((r) => setTimeout(r, 260))
+    await nextFrame()
+
+    const minimapRoot = el.querySelector<HTMLElement>('.orgchart-minimap')!
+    const widget = minimapRoot.getBoundingClientRect()
+    minimapRoot.dispatchEvent(
+      new PointerEvent('pointerdown', {
+        clientX: widget.left + widget.width / 2,
+        clientY: widget.top + widget.height / 2,
+        pointerId: 1,
+        bubbles: true,
+      }),
+    )
+    minimapRoot.dispatchEvent(new PointerEvent('pointerup', { pointerId: 1, bubbles: true }))
+    // The pan is a camera tween, not an instant jump.
+    await new Promise((r) => setTimeout(r, 260))
+    await nextFrame()
+
+    const viewportEl = minimapRoot.querySelector('div') as HTMLElement
+    const m = /translate\(([-\d.]+)px,\s*([-\d.]+)px\)/.exec(viewportEl.style.transform)!
+    const centreX = parseFloat(m[1]!) + parseFloat(viewportEl.style.width) / 2
+    const centreY = parseFloat(m[2]!) + parseFloat(viewportEl.style.height) / 2
+
+    // Against the minimap's OWN coordinate space (the canvas), not the root
+    // element's border box: the widget draws a 1px border outside a 200x140
+    // content box, so its `getBoundingClientRect()` is 202x142 while every
+    // coordinate inside — the canvas, the rectangle's `translate` — is
+    // measured from the padding box the border encloses.
+    const minimapCanvas = minimapRoot.querySelector('canvas') as HTMLCanvasElement
+    expect(centreX).toBeCloseTo(minimapCanvas.width / 2, 1)
+    expect(centreY).toBeCloseTo(minimapCanvas.height / 2, 1)
+
+    chart.destroy()
+  })
+
   it('destroy() removes the minimap element', async () => {
     const el = host()
     const chart = createOrgChart(el, {
