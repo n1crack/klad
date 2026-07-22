@@ -259,7 +259,17 @@ export function buildOrg(target: number, fanOut: FanOut = wideFanOut): NodeItem[
  * - 'photo'    — squarer, image-dominant tile (CSS-gradient "photo" + initials).
  * - 'none'     — no overlay content at all: canvas-only, frameworkless cost.
  */
-export type NodeContentKind = 'card' | 'avatar' | 'monogram' | 'status' | 'photo' | 'none'
+export type NodeContentKind =
+  | 'card'
+  | 'avatar'
+  | 'monogram'
+  | 'status'
+  | 'photo'
+  | 'counts'
+  | 'dropdown'
+  | 'accordion'
+  | 'actions'
+  | 'none'
 
 export interface Example {
   id: string
@@ -383,6 +393,42 @@ export const EXAMPLES: Example[] = [
     data: SHARED_DATA,
     options: { nodeSize: { w: 132, h: 156 } },
     content: 'photo',
+  },
+  {
+    id: 'counts',
+    name: 'Subtree counts',
+    description:
+      'Every card reports its own subtree: direct reports, everyone below at any depth, its level from the root, and how deep its own subtree runs. All four come from the node context and are precomputed once per tree, so a card reads them as array lookups rather than counting a subtree while it is being drawn. Collapse a branch and the numbers do not change — they describe the whole tree, not the part currently expanded. nodeSize: 216×96.',
+    data: SHARED_DATA,
+    options: { nodeSize: { w: 216, h: 96 } },
+    content: 'counts',
+  },
+  {
+    id: 'dropdown',
+    name: 'Card with a dropdown',
+    description:
+      'A real <select> living on a pooled overlay card above the canvas. Opening the menu must not pan the chart and choosing an option must not read as a node tap; the chosen value is written back to the node data so it survives the element being recycled onto another node. nodeSize: 208×92.',
+    data: SHARED_DATA,
+    options: { nodeSize: { w: 208, h: 92 } },
+    content: 'dropdown',
+  },
+  {
+    id: 'accordion',
+    name: 'Accordion detail',
+    description:
+      "A second, independent kind of open: the card's own detail pane, which has nothing to do with the chart's expand/collapse of children. The disclosure state lives on the node data rather than being inferred from the chart's, and the pane opens inside the box the layout already reserved — nodeSize is declared up front, so the node is sized for the open state (232×132).",
+    data: SHARED_DATA,
+    options: { nodeSize: { w: 232, h: 132 } },
+    content: 'accordion',
+  },
+  {
+    id: 'actions',
+    name: 'Custom buttons',
+    description:
+      "The node as a small toolbar: star it, jump to it, expand it. Arbitrary controls can live on a card and each keeps its own click — the chart's own toggle is just one button among them rather than an affordance the library imposes. The ⇢ button marks the path from the root and flies there with a confirmation ring, which is the go-to-node command in one gesture. nodeSize: 212×96.",
+    data: SHARED_DATA,
+    options: { nodeSize: { w: 212, h: 96 } },
+    content: 'actions',
   },
   {
     id: 'canvas-only',

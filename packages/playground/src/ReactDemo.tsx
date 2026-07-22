@@ -128,6 +128,18 @@ const RENDERERS: Record<Exclude<Example['content'], 'none'>, (context: NodeConte
   monogram: renderMonogram,
   status: renderStatus,
   photo: renderPhoto,
+  // The four card treatments added for the 1.0 feature work — subtree counts,
+  // a dropdown, an accordion, a button toolbar — are demonstrated in the
+  // vanilla demo, which is the reference implementation every adapter is
+  // written against. They fall back to the plain card here, exactly as they do
+  // in the Vue demo's `v-else` branch: the point they make is about the node
+  // context and the overlay, both of which are adapter-independent, so
+  // restating each of them three times would add maintenance without adding
+  // anything a reader learns from.
+  counts: renderCard,
+  dropdown: renderCard,
+  accordion: renderCard,
+  actions: renderCard,
 }
 
 /** Imperative handle main.ts uses to drive the mounted React chart's live controls. */

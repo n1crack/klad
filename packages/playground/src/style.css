@@ -756,3 +756,282 @@ body {
   background: rgba(0, 0, 0, 0.35);
   color: #fff;
 }
+
+/* ---------------------------------------------------------------------------
+ * Subtree counts card. Four numbers about the node's own subtree, read
+ * straight off the node context (see `renderCounts` in vanilla-demo.ts).
+ * ------------------------------------------------------------------------ */
+.counts-card {
+  --accent: #64748b;
+  box-sizing: border-box;
+  width: 100%;
+  height: 100%;
+  display: flex;
+  flex-direction: column;
+  justify-content: center;
+  gap: 0.2rem;
+  padding: 0.5rem 0.7rem 0.5rem 0.85rem;
+  border: 1px solid color-mix(in srgb, canvastext 20%, canvas 80%);
+  border-left: 4px solid var(--accent);
+  border-radius: 8px;
+  background: color-mix(in srgb, canvas 92%, canvastext 8%);
+  box-shadow: 0 1px 3px color-mix(in srgb, canvastext 15%, transparent);
+  overflow: hidden;
+  position: relative;
+}
+
+.counts-card strong {
+  font-size: 0.9rem;
+  font-weight: 700;
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+}
+
+.counts-card small {
+  font-size: 0.78rem;
+  color: color-mix(in srgb, canvastext 60%, canvas 40%);
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+}
+
+.counts-row {
+  display: flex;
+  gap: 0.28rem;
+  margin-top: 0.2rem;
+  overflow: hidden;
+}
+
+/* Monospace digits so the numbers don't jitter sideways as they change
+   width — these sit in a fixed-size box and are read by comparison. */
+.count {
+  font-size: 0.68rem;
+  font-weight: 700;
+  font-variant-numeric: tabular-nums;
+  padding: 0.1rem 0.4rem;
+  border-radius: 5px;
+  min-width: 1.6rem;
+  text-align: center;
+  cursor: help;
+}
+
+.count-direct {
+  color: color-mix(in srgb, var(--accent) 70%, canvastext 30%);
+  background: color-mix(in srgb, var(--accent) 16%, canvas 84%);
+}
+
+.count-total {
+  color: color-mix(in srgb, canvastext 75%, canvas 25%);
+  background: color-mix(in srgb, canvastext 10%, canvas 90%);
+}
+
+.count-depth,
+.count-height {
+  color: color-mix(in srgb, canvastext 55%, canvas 45%);
+  background: transparent;
+  border: 1px solid color-mix(in srgb, canvastext 18%, canvas 82%);
+}
+
+/* ---------------------------------------------------------------------------
+ * Dropdown card: a real form control on a pooled overlay element.
+ * ------------------------------------------------------------------------ */
+.dropdown-card {
+  box-sizing: border-box;
+  width: 100%;
+  height: 100%;
+  display: flex;
+  flex-direction: column;
+  justify-content: center;
+  gap: 0.35rem;
+  padding: 0.5rem 0.7rem;
+  border: 1px solid color-mix(in srgb, canvastext 20%, canvas 80%);
+  border-radius: 8px;
+  background: color-mix(in srgb, canvas 92%, canvastext 8%);
+  box-shadow: 0 1px 3px color-mix(in srgb, canvastext 15%, transparent);
+  overflow: hidden;
+}
+
+.dropdown-text {
+  display: flex;
+  flex-direction: column;
+  min-width: 0;
+}
+
+.dropdown-text strong {
+  font-size: 0.9rem;
+  font-weight: 700;
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+}
+
+.dropdown-text small {
+  font-size: 0.76rem;
+  color: color-mix(in srgb, canvastext 60%, canvas 40%);
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+}
+
+.dropdown-select {
+  font: inherit;
+  font-size: 0.76rem;
+  padding: 0.18rem 0.3rem;
+  border: 1px solid color-mix(in srgb, canvastext 25%, canvas 75%);
+  border-radius: 6px;
+  background: canvas;
+  color: canvastext;
+  cursor: pointer;
+}
+
+/* ---------------------------------------------------------------------------
+ * Accordion card: the card's own disclosure, independent of the chart's
+ * expand/collapse. The node box is sized for the OPEN state up front, since
+ * layout cannot measure a card (see the README).
+ * ------------------------------------------------------------------------ */
+.accordion-card {
+  box-sizing: border-box;
+  width: 100%;
+  height: 100%;
+  display: flex;
+  flex-direction: column;
+  gap: 0.3rem;
+  padding: 0.55rem 0.7rem;
+  border: 1px solid color-mix(in srgb, canvastext 20%, canvas 80%);
+  border-radius: 8px;
+  background: color-mix(in srgb, canvas 92%, canvastext 8%);
+  box-shadow: 0 1px 3px color-mix(in srgb, canvastext 15%, transparent);
+  overflow: hidden;
+}
+
+.accordion-head {
+  display: flex;
+  align-items: center;
+  gap: 0.4rem;
+  min-width: 0;
+}
+
+.accordion-text {
+  display: flex;
+  flex-direction: column;
+  min-width: 0;
+  flex: 1 1 auto;
+}
+
+.accordion-text strong {
+  font-size: 0.9rem;
+  font-weight: 700;
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+}
+
+.accordion-text small {
+  font-size: 0.76rem;
+  color: color-mix(in srgb, canvastext 60%, canvas 40%);
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+}
+
+.accordion-btn {
+  font: inherit;
+  font-size: 0.68rem;
+  font-weight: 600;
+  flex: 0 0 auto;
+  padding: 0.15rem 0.45rem;
+  border: 1px solid color-mix(in srgb, canvastext 25%, canvas 75%);
+  border-radius: 999px;
+  background: canvas;
+  color: canvastext;
+  cursor: pointer;
+  white-space: nowrap;
+}
+
+.accordion-body {
+  font-size: 0.74rem;
+  line-height: 1.35;
+  color: color-mix(in srgb, canvastext 65%, canvas 35%);
+  border-top: 1px dashed color-mix(in srgb, canvastext 18%, canvas 82%);
+  padding-top: 0.3rem;
+  /* Collapsed leaves no border or padding behind — an empty pane still
+     drawing its own divider reads as a rendering fault, not a closed pane. */
+  display: none;
+}
+
+.accordion-body.is-open {
+  display: block;
+}
+
+/* ---------------------------------------------------------------------------
+ * Actions card: the node as a small toolbar of custom buttons.
+ * ------------------------------------------------------------------------ */
+.actions-card {
+  box-sizing: border-box;
+  width: 100%;
+  height: 100%;
+  display: flex;
+  flex-direction: column;
+  justify-content: center;
+  gap: 0.35rem;
+  padding: 0.5rem 0.7rem;
+  border: 1px solid color-mix(in srgb, canvastext 20%, canvas 80%);
+  border-radius: 8px;
+  background: color-mix(in srgb, canvas 92%, canvastext 8%);
+  box-shadow: 0 1px 3px color-mix(in srgb, canvastext 15%, transparent);
+  overflow: hidden;
+}
+
+.actions-text {
+  display: flex;
+  flex-direction: column;
+  min-width: 0;
+}
+
+.actions-text strong {
+  font-size: 0.9rem;
+  font-weight: 700;
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+}
+
+.actions-text small {
+  font-size: 0.76rem;
+  color: color-mix(in srgb, canvastext 60%, canvas 40%);
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+}
+
+.actions-bar {
+  display: flex;
+  gap: 0.3rem;
+}
+
+.action-btn {
+  font: inherit;
+  font-size: 0.8rem;
+  line-height: 1;
+  width: 1.7rem;
+  height: 1.7rem;
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  border: 1px solid color-mix(in srgb, canvastext 22%, canvas 78%);
+  border-radius: 6px;
+  background: canvas;
+  color: canvastext;
+  cursor: pointer;
+}
+
+.action-btn:hover {
+  background: color-mix(in srgb, canvastext 8%, canvas 92%);
+}
+
+.action-btn.is-on {
+  color: #f59e0b;
+  border-color: color-mix(in srgb, #f59e0b 55%, canvas 45%);
+  background: color-mix(in srgb, #f59e0b 14%, canvas 86%);
+}
