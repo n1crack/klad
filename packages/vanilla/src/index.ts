@@ -903,7 +903,7 @@ export function createOrgChart(host: HTMLElement, options: Options): OrgChartIns
         // frame loop guarantees this runs: `scheduleFrame` keeps asking for
         // frames while `transitioning` is true, so there is always a frame
         // after it goes false.
-        if (boxes !== lastMinimapBoxes) {
+        if (boxes !== lastMinimapBoxes && !chartHost.transitioning) {
           lastMinimapBoxes = boxes
           minimap.onLayout(boxes, bounds)
         }
