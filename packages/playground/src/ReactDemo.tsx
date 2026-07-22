@@ -1,7 +1,7 @@
 /** @jsxImportSource react */
-import { useCallback, useMemo, useRef, type CSSProperties, type ReactNode } from 'react'
+import { useCallback, useImperativeHandle, useMemo, useRef, useState, type CSSProperties, type ReactNode, type Ref } from 'react'
 import { OrgChart, type NodeContext, type OrgChartApi, type OrgChartHandle, type Options } from '@n1crack/orgchart-react'
-import { DEPARTMENT_COLOR, initials, type Department, type Example } from './data.js'
+import { DEPARTMENT_COLOR, initials, minimapDefaultOn, minimapOptionFor, type Department, type Example } from './data.js'
 
 const DEFAULT_NODE_SIZE = { w: 180, h: 64 }
 
@@ -69,6 +69,7 @@ function renderMonogram(context: NodeContext): ReactNode {
     <div className="monogram-card" style={style}>
       <div className="monogram-circle">{initials(String(item.name ?? ''))}</div>
       <span className="monogram-name">{String(item.name ?? '')}</span>
+      <ToggleButton {...context} />
     </div>
   )
 }
@@ -118,9 +119,15 @@ const RENDERERS: Record<Exclude<Example['content'], 'none'>, (context: NodeConte
   photo: renderPhoto,
 }
 
+/** Imperative handle main.ts uses to flip the minimap for the mounted React chart. */
+export interface ReactDemoHandle {
+  setMinimap(on: boolean): void
+}
+
 export interface ReactDemoProps {
   example: Example
   onReady?: (api: OrgChartApi) => void
+  ref?: Ref<ReactDemoHandle>
 }
 
 /**
@@ -132,8 +139,16 @@ export interface ReactDemoProps {
  * function that returns null) so this adapter never claims overlay DOM it
  * doesn't need — matching the vanilla and Vue "canvas only" behaviour.
  */
-export function ReactDemo({ example, onReady }: ReactDemoProps): ReactNode {
+export function ReactDemo({ example, onReady, ref }: ReactDemoProps): ReactNode {
   const chartRef = useRef<OrgChartHandle>(null)
+
+  // Whether the minimap is currently on for THIS mounted chart. Starts at the
+  // example's own declared default; the playground toolbar's minimap toggle
+  // flips it via the imperative `setMinimap` handle below, which only sets
+  // this piece of state — `options` below picks up the new value on the next
+  // render, and `OrgChart`'s own effect (see OrgChart.tsx: `instance.update(...)`
+  // whenever `options` changes) does the rest. No core change, no remount.
+  const [minimapOn, setMinimapOn] = useState(() => minimapDefaultOn(example))
 
   const options: Options = useMemo<Options>(
     () => ({
@@ -141,13 +156,16 @@ export function ReactDemo({ example, onReady }: ReactDemoProps): ReactNode {
       nodeSize: DEFAULT_NODE_SIZE,
       label: (item) => String(item.name ?? ''),
       ...example.options,
+      minimap: minimapOptionFor(example, minimapOn),
     }),
-    [example],
+    [example, minimapOn],
   )
 
   const handleReady = useCallback(() => {
     if (chartRef.current?.api) onReady?.(chartRef.current.api)
   }, [onReady])
+
+  useImperativeHandle(ref, () => ({ setMinimap: setMinimapOn }), [])
 
   if (example.content === 'none') {
     return <OrgChart ref={chartRef} className="chart-host" options={options} onReady={handleReady} />

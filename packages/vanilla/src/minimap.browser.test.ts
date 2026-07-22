@@ -187,6 +187,96 @@ describe('minimap', () => {
     chart.destroy()
   })
 
+  it('clamps the viewport rectangle to the minimap bounds when panned past the tree edge', async () => {
+    const el = host()
+    const chart = createOrgChart(el, {
+      data: buildOrg(300),
+      nodeSize: { w: 120, h: 48 },
+      worker: false,
+      minimap: true,
+    })
+    await nextFrame()
+    await nextFrame()
+
+    const minimapRoot = el.querySelector<HTMLElement>('.orgchart-minimap')!
+    // The viewport-rectangle overlay is the minimap's only other child
+    // (see createMinimap: canvas appended first, this div second).
+    const viewportEl = minimapRoot.children[1] as HTMLElement
+    const rect = minimapRoot.getBoundingClientRect()
+
+    minimapRoot.dispatchEvent(
+      new PointerEvent('pointerdown', {
+        clientX: rect.left + rect.width * 0.9,
+        clientY: rect.top + rect.height * 0.9,
+        pointerId: 3,
+        bubbles: true,
+      }),
+    )
+    // Dragging far outside the minimap's own DOM rect -- still delivered
+    // because pointerdown captured the pointer -- pans the camera to a world
+    // point wildly outside the tree's bounds, which is exactly the "panned
+    // past the edge" case the drawn rectangle must not spill out from under.
+    minimapRoot.dispatchEvent(
+      new PointerEvent('pointermove', {
+        clientX: rect.left - rect.width * 25,
+        clientY: rect.top - rect.height * 25,
+        pointerId: 3,
+        bubbles: true,
+      }),
+    )
+    minimapRoot.dispatchEvent(new PointerEvent('pointerup', { pointerId: 3, bubbles: true }))
+    await nextFrame()
+
+    const x = parseFloat(viewportEl.style.transform.match(/translate\(([-\d.]+)px/)?.[1] ?? 'NaN')
+    const y = parseFloat(viewportEl.style.transform.match(/,\s*([-\d.]+)px\)/)?.[1] ?? 'NaN')
+    const w = parseFloat(viewportEl.style.width)
+    const h = parseFloat(viewportEl.style.height)
+
+    expect(x).toBeGreaterThanOrEqual(0)
+    expect(y).toBeGreaterThanOrEqual(0)
+    expect(w).toBeGreaterThanOrEqual(0)
+    expect(h).toBeGreaterThanOrEqual(0)
+    expect(x + w).toBeLessThanOrEqual(200 + 0.01) // default minimap width
+    expect(y + h).toBeLessThanOrEqual(140 + 0.01) // default minimap height
+    chart.destroy()
+  })
+
+  it('covers (approximately) the whole minimap once the camera is zoomed out past the whole tree', async () => {
+    const el = host()
+    // A tiny tree: the configured zoom floor (0.05, well below what's needed
+    // to fit four nodes on an 800x600 host) is reached before the "don't zoom
+    // out further than fit needs" floor in recomputeLimits ever binds, so
+    // zoomTo can actually push the viewport far larger than the tree bounds
+    // through the public API, no internal reach-in required.
+    const chart = createOrgChart(el, {
+      data: SMALL_DATA,
+      nodeSize: { w: 120, h: 48 },
+      worker: false,
+      minimap: true,
+    })
+    await nextFrame()
+    await nextFrame()
+
+    const minimapRoot = el.querySelector<HTMLElement>('.orgchart-minimap')!
+    const viewportEl = minimapRoot.children[1] as HTMLElement
+
+    chart.api.zoomTo(0.05)
+    for (let i = 0; i < 15; i++) await nextFrame()
+
+    const x = parseFloat(viewportEl.style.transform.match(/translate\(([-\d.]+)px/)?.[1] ?? 'NaN')
+    const y = parseFloat(viewportEl.style.transform.match(/,\s*([-\d.]+)px\)/)?.[1] ?? 'NaN')
+    const w = parseFloat(viewportEl.style.width)
+    const h = parseFloat(viewportEl.style.height)
+
+    // "You can see everything" reads as the clamped rectangle covering the
+    // full minimap -- not an inverted or zero-size box.
+    expect(x).toBeCloseTo(0, 0)
+    expect(y).toBeCloseTo(0, 0)
+    expect(w).toBeGreaterThan(200 * 0.9)
+    expect(h).toBeGreaterThan(140 * 0.9)
+    chart.destroy()
+  })
+
   it('destroy() removes the minimap element', async () => {
     const el = host()
     const chart = createOrgChart(el, {

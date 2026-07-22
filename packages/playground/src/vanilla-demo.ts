@@ -73,10 +73,20 @@ function renderAvatar(element: HTMLElement, context: NodeContext): void {
 }
 
 /**
- * Round initials monogram with a department-coloured ring, name below it
- * (not inside it) — data-driven styling (the ring colour reads `department`,
- * same as the status card) plus `cursor: pointer` since the whole node is
- * the toggle (toggleOnNodeClick: true, no button — there's no room for one).
+ * Round initials monogram with a department-coloured ring and the name below
+ * it — no card box at all, just the circle and the name floating directly on
+ * the canvas (the canvas's own node box is made transparent for this example
+ * via `theme.nodeFill`/`nodeStroke`, see data.ts). `cursor: pointer` because
+ * the whole node is also a toggle (toggleOnNodeClick: true).
+ *
+ * The +/- toggle sits below the name, in normal flex flow rather than
+ * absolutely tucked into a corner: that is where this node's OUTGOING
+ * connector to its own children attaches (bottom-centre of the node box, see
+ * canvas2d.ts), so the button visually sits right at the junction the line
+ * arrives at. Reuses `syncToggleButton`, so it only appears for nodes that
+ * actually have children — its presence alone is what tells a viewer "there
+ * is more below" without them having to click to find out; a leaf renders no
+ * toggle at all.
  */
 function renderMonogram(element: HTMLElement, context: NodeContext): void {
   let card = element.firstElementChild as HTMLDivElement | null
@@ -95,6 +105,7 @@ function renderMonogram(element: HTMLElement, context: NodeContext): void {
   card.style.setProperty('--accent', DEPARTMENT_COLOR[department])
   card.querySelector<HTMLDivElement>('.monogram-circle')!.textContent = initials(String(item.name ?? ''))
   card.querySelector('.monogram-name')!.textContent = String(item.name ?? '')
+  syncToggleButton(card, context)
 }
 
 /** Department-coloured accent + department and headcount badges. */
