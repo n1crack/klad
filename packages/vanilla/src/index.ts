@@ -763,6 +763,23 @@ export function createOrgChart(host: HTMLElement, options: Options): OrgChartIns
     requestAnimationFrame(async (now) => {
       frameRequested = false
       if (destroyed) return
+      // An ALREADY-ACTIVE anchor advances BEFORE the render it belongs to,
+      // not after it. Both the engine's node tween and this anchor are pure
+      // functions of `now`, so solving the camera for `now` first is what
+      // makes the frame internally coherent: the canvas is then painted with
+      // the camera that pins the toggled node exactly where the same frame's
+      // interpolated box puts it. Applying it after `render()` instead — as
+      // this used to — left every frame drawn with the PREVIOUS frame's
+      // camera against THIS frame's positions, i.e. a one-frame lag against a
+      // curve whose speed peaks mid-transition. That reads as the pinned node
+      // (typically the root) sliding off its spot along the growth-axis
+      // cross direction and swinging back as the curve decelerates — the
+      // owner's "toggling the root sloshes left/right" report. The anchor
+      // ESTABLISHED by this frame's own relayout still has to be resolved
+      // after `render()` (its `toCentre` needs the layout that render just
+      // produced); at `t = 0` it has nothing to advance yet, so there is no
+      // lag to inherit.
+      if (cameraAnchor !== null) applyCameraAnchor(now)
       // The engine's expand/collapse transition is a pure function of time and
       // takes its clock from here, the same discipline `viewport.ts` follows.
       drawn = await chartHost.render(now)
@@ -815,10 +832,14 @@ export function createOrgChart(host: HTMLElement, options: Options): OrgChartIns
                 opening: anchor.opening,
                 startedAt: now,
               }
+        // Only the frame that ESTABLISHES an anchor applies it here; every
+        // later frame advances it before `render()` instead (see the call at
+        // the top of this callback, and its docblock, for why). At `t = 0`
+        // this is a no-op on the camera in the common case — the anchor is
+        // built from where the node already is — so running it after the
+        // render costs the frame nothing.
+        applyCameraAnchor(now)
       }
-      // Applies every frame the anchor is active, not just the one it was
-      // (re)established on — see `CameraAnchor`'s docblock.
-      applyCameraAnchor(now)
       if (minimap !== null) {
         // Identity check, not "every frame": `computeSilhouette` walks every
         // node, so it only runs when `boxes` is actually a NEW array, i.e. a

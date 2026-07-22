@@ -744,6 +744,79 @@ describe('createOrgChart', () => {
     chart.destroy()
   })
 
+  // Regression: the two tests above sample the pinned node only at the START
+  // and the END of the transition, where a one-frame camera lag is invisible
+  // (the anchor curve is flat at both ends). The camera anchor used to be
+  // applied AFTER `chartHost.render(now)`, so every frame in between was
+  // painted with the PREVIOUS frame's camera against THIS frame's node
+  // positions — a lag against a curve whose speed peaks in the middle, which
+  // reads as the pinned node sliding off its spot and swinging back. Only a
+  // MID-transition sample catches it, and only against what the canvas
+  // actually painted (the DOM overlay was never affected: it is positioned
+  // after the anchor runs, so it stayed pinned while the canvas underneath it
+  // did not).
+  it('keeps the toggled node pinned on the canvas at every frame of the transition, not just its ends', async () => {
+    // `ring: false` so the one-shot confirmation ring — which is drawn around
+    // the root and grows outward — cannot widen the scanned span.
+    const chart = make({ collapsedByDefault: true, ring: false })
+    // Long enough for the ResizeObserver-driven `setViewport` to have landed:
+    // sizing the canvas resets its bitmap, so a pixel read taken between that
+    // and the next paint sees an empty surface.
+    await settle()
+    await nextFrame()
+
+    const canvas = document.querySelector('canvas') as HTMLCanvasElement
+    const ctx = canvas.getContext('2d')!
+    const dpr = canvas.width / canvas.getBoundingClientRect().width
+
+    // Centre of the root's drawn span on one scanline through it. In `tb`
+    // (the default) the root is the only thing on its own row — its children
+    // appear strictly below it, and its connectors leave from its bottom edge
+    // — so the leftmost and rightmost non-transparent pixels on that row are
+    // the root's own left and right edges.
+    const drawnRootCentreX = (rowY: number): number | null => {
+      const row = ctx.getImageData(0, Math.round(rowY * dpr), canvas.width, 1).data
+      let min = -1
+      let max = -1
+      for (let x = 0; x < canvas.width; x++) {
+        if (row[x * 4 + 3]! === 0) continue
+        if (min === -1) min = x
+        max = x
+      }
+      return min === -1 ? null : (min + max) / 2 / dpr
+    }
+
+    const centre = chart.api.getState().rootScreenCentre
+    const before = drawnRootCentreX(centre.y)
+    expect(before).not.toBeNull()
+
+    chart.api.expand('a')
+    let worst = 0
+    let samples = 0
+    // ~30 frames at 60fps covers the whole 450ms transition, sampling right
+    // through its fast middle.
+    for (let i = 0; i < 30; i++) {
+      await nextFrame()
+      const now = drawnRootCentreX(centre.y)
+      if (now === null) continue
+      samples++
+      worst = Math.max(worst, Math.abs(now - before!))
+    }
+    // Guards the assertion below against passing vacuously: a scanline that
+    // found nothing on every frame would leave `worst` at 0.
+    expect(samples).toBeGreaterThan(10)
+
+    // The correct answer is EXACTLY zero, and is what this measures locally:
+    // the node tween and the camera anchor are solved from the same `now` on
+    // the same curve, so they cancel to the last decimal and the scanned
+    // span never shifts by even one pixel. The tolerance is one pixel purely
+    // for antialiasing/rounding differences across platforms — a regression
+    // to the old ordering is worth ~12px here, an order of magnitude clear
+    // of it.
+    expect(worst).toBeLessThan(1)
+    chart.destroy()
+  })
+
   it('does not auto-pan on toggle when autoPanOnToggle is false', async () => {
     const chart = make({ collapsedByDefault: true, autoPanOnToggle: false })
     await nextFrame()
