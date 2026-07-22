@@ -1,8 +1,11 @@
 import { createApp } from 'vue'
+import { createElement } from 'react'
+import { createRoot, type Root } from 'react-dom/client'
 import type { OrgChartApi, OrgChartInstance } from '@n1crack/orgchart'
 import { EXAMPLES, type Example } from './data.js'
 import { mountVanilla } from './vanilla-demo.js'
 import VueDemo from './VueDemo.vue'
+import { ReactDemo } from './ReactDemo.js'
 import './style.css'
 
 type Stack = 'vanilla' | 'vue' | 'react'
@@ -88,17 +91,6 @@ function findExample(id: string): Example {
   return EXAMPLES.find((example) => example.id === id) ?? EXAMPLES[0]!
 }
 
-function showReactPlaceholder(): void {
-  const panel = document.createElement('div')
-  panel.className = 'placeholder-panel'
-  const heading = document.createElement('h2')
-  heading.textContent = 'React adapter'
-  const body = document.createElement('p')
-  body.textContent = 'Not implemented yet — this stack is reserved for a later task.'
-  panel.append(heading, body)
-  surface.append(panel)
-}
-
 function show(stack: Stack, exampleId: string): void {
   // Tear the previous demo down properly before mounting the next one: the
   // vanilla chart via chart.destroy(), the Vue one via app.unmount() —
@@ -125,7 +117,16 @@ function show(stack: Stack, exampleId: string): void {
     app.mount(surface)
     teardown = () => app.unmount()
   } else {
-    showReactPlaceholder()
+    const root: Root = createRoot(surface)
+    root.render(
+      createElement(ReactDemo, {
+        example,
+        onReady: (api: OrgChartApi) => {
+          currentApi = api
+        },
+      }),
+    )
+    teardown = () => root.unmount()
   }
 }
 
