@@ -54,7 +54,12 @@ const DEFAULT_HEIGHT = 140
  * flickering single-cell dots. `padding: 6` keeps the silhouette off the
  * minimap's own border.
  */
-const SILHOUETTE_OPTIONS: Partial<SilhouetteOptions> = { padding: 6, blur: 2, saturateAt: 6 }
+// saturateAt is how many boxes must cover a grid cell for it to read as fully
+// opaque. In a tidy tree siblings do NOT overlap, so most cells are covered by a
+// single box — a high value (6 was the first guess) then leaves the whole
+// silhouette near-transparent, which is why it was hard to see at all. Low, so a
+// single covered cell already reads as solid, is right for tree shapes.
+const SILHOUETTE_OPTIONS: Partial<SilhouetteOptions> = { padding: 6, blur: 2, saturateAt: 1.5 }
 
 /** RGB for the silhouette fill — a neutral slate, legible on light or dark hosts. */
 const SILHOUETTE_RGB: readonly [number, number, number] = [71, 85, 105]
