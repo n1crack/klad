@@ -51,10 +51,66 @@ body {
   height: 100%;
 }
 
+/* Laid out like the documentation site's own header — brand on the left, a
+   single action on the right — so moving between the two does not feel like
+   moving between two products. */
 .app-header {
-  padding: 0.85rem 1.25rem 0.6rem;
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 1rem;
+  padding: 0.7rem 1.25rem;
   background: var(--surface);
   border-bottom: 1px solid var(--border);
+}
+
+.app-brand {
+  display: flex;
+  align-items: center;
+  gap: 0.7rem;
+  min-width: 0;
+}
+
+.app-mark {
+  flex: none;
+  width: 30px;
+  height: 30px;
+  display: block;
+}
+
+.app-mark svg {
+  width: 100%;
+  height: 100%;
+  display: block;
+}
+
+/* The way back. Quiet until pointed at: it is an exit, not the reason anyone
+   opened this page. */
+.app-back {
+  flex: none;
+  display: inline-flex;
+  align-items: center;
+  gap: 0.35rem;
+  font-size: 0.82rem;
+  font-weight: 600;
+  text-decoration: none;
+  color: var(--text-muted);
+  padding: 0.36rem 0.7rem;
+  border-radius: var(--radius-sm);
+  border: 1px solid transparent;
+  transition: color 120ms ease, background 120ms ease, border-color 120ms ease;
+}
+
+.app-back:hover {
+  color: var(--accent);
+  border-color: var(--border);
+  background: color-mix(in srgb, var(--accent) 8%, var(--surface) 92%);
+}
+
+.app-back:focus-visible {
+  outline: none;
+  border-color: var(--accent);
+  box-shadow: 0 0 0 3px color-mix(in srgb, var(--accent) 30%, transparent);
 }
 
 .app-title {

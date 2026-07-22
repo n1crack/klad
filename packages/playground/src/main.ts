@@ -33,8 +33,39 @@ root.innerHTML = ''
 
 // --- shell: a slim header bar above everything, then a sidebar + chart-area layout ---
 
+/**
+ * The mark, inline rather than as an `<img src>`: this app is served both on
+ * its own and from under the documentation site's base path, and an inlined
+ * SVG cannot get that path wrong.
+ */
+const MARK = `<svg viewBox="0 0 48 48" aria-hidden="true" focusable="false">
+  <defs>
+    <linearGradient id="pg-face" x1="0" y1="0" x2="0.6" y2="1">
+      <stop offset="0" stop-color="#3b82f6" /><stop offset="1" stop-color="#60a5fa" />
+    </linearGradient>
+    <linearGradient id="pg-leaf" x1="0" y1="0" x2="0.6" y2="1">
+      <stop offset="0" stop-color="#60a5fa" /><stop offset="1" stop-color="#93c5fd" />
+    </linearGradient>
+  </defs>
+  <g fill="none" stroke="#94a3b8" stroke-width="3" stroke-linecap="round">
+    <path d="M24 18v5" /><path d="M11 30v-7h26v7" />
+  </g>
+  <rect x="15" y="9" width="22" height="11" rx="3.5" fill="#1e40af" />
+  <rect x="13" y="6" width="22" height="11" rx="3.5" fill="url(#pg-face)" />
+  <rect x="6" y="32" width="15" height="10" rx="3" fill="#2563eb" />
+  <rect x="4" y="30" width="15" height="10" rx="3" fill="url(#pg-leaf)" />
+  <rect x="31" y="32" width="15" height="10" rx="3" fill="#2563eb" />
+  <rect x="29" y="30" width="15" height="10" rx="3" fill="url(#pg-leaf)" />
+</svg>`
+
 const header = document.createElement('header')
 header.className = 'app-header'
+
+const brand = document.createElement('div')
+brand.className = 'app-brand'
+const markEl = document.createElement('span')
+markEl.className = 'app-mark'
+markEl.innerHTML = MARK
 const appTitle = document.createElement('div')
 appTitle.className = 'app-title'
 const appName = document.createElement('span')
@@ -44,7 +75,29 @@ const appTagline = document.createElement('span')
 appTagline.className = 'app-tagline'
 appTagline.textContent = 'One dataset, three framework adapters, one canvas underneath'
 appTitle.append(appName, appTagline)
-header.append(appTitle)
+brand.append(markEl, appTitle)
+
+/**
+ * Back to the docs. Resolved one level up from wherever this app is served —
+ * embedded at `<docs base>/playground/`, the parent IS the documentation
+ * home — rather than hard-coded, so the link is right under the docs, under a
+ * custom domain, and when the app is run on its own.
+ */
+const here = new URL('.', window.location.href).pathname
+const parent = new URL('..', window.location.href).pathname
+
+header.append(brand)
+
+// Only when there is somewhere to go back TO. Served on its own — `pnpm dev`,
+// or deployed at a root — the parent is this same page, and an exit that
+// reloads what you are already looking at is worse than no exit at all.
+if (parent !== here) {
+  const backLink = document.createElement('a')
+  backLink.className = 'app-back'
+  backLink.href = parent
+  backLink.innerHTML = '<span aria-hidden="true">←</span> Docs'
+  header.append(backLink)
+}
 
 /** A labelled group of related controls — the sidebar's unit of visual hierarchy. */
 function sidebarGroup(caption: string, ...children: HTMLElement[]): HTMLDivElement {

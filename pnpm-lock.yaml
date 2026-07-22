@@ -46,6 +46,9 @@ importers:
 
   packages/docs:
     devDependencies:
+      '@n1crack/orgchart-playground':
+        specifier: workspace:*
+        version: link:../playground
       vitepress:
         specifier: ^1.6.4
         version: 1.6.4(@algolia/client-search@5.56.0)(@types/node@22.20.1)(lightningcss@1.33.0)(postcss@8.5.20)(typescript@5.9.2)

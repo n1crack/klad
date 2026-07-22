@@ -88,6 +88,12 @@ export default defineConfig({
     nav: [
       { text: 'Guide', link: '/guide/getting-started' },
       { text: 'API', link: '/api/options' },
+      // Root-relative WITHOUT the base: VitePress prefixes `base` onto any
+      // nav link starting with `/`, so writing it in here produces
+      // `/orgchart/orgchart/playground/`. `target` keeps it a plain
+      // navigation — the playground is a separate Vite app copied in under
+      // `public/`, not one of VitePress's own routes.
+      { text: 'Playground', link: '/playground/', target: '_self' },
       { text: 'Roadmap', link: '/roadmap' },
       { text: 'Licence', link: '/licence' },
     ],
