@@ -1,23 +1,33 @@
 import { createChartHost, type ChartHost } from '@n1crack/orgchart-core/host'
 import {
+  applyOrientation,
   centreOn,
+  createCanvas2DRenderer,
+  createTextMeasurer,
   DEFAULT_LOD,
   easeInOutCubic,
   fit as fitCamera,
   interpolate,
+  layout,
   normalize,
   overlayEnabled,
   pan,
+  pruneToVisible,
   resolveTheme,
   screenToWorld,
+  toSVG as coreToSVG,
   toWireTree,
   zoomAt,
   type Bounds,
   type Camera,
+  type ExportData,
+  type Frame,
   type LodThresholds,
   type NodeData,
   type Orientation,
+  type RenderSurface,
   type Size,
+  type SvgExportOptions,
   type Theme,
   type Tree,
   type Warning,
@@ -25,6 +35,7 @@ import {
 } from '@n1crack/orgchart-core'
 import { createA11yTree, type A11yTree } from './a11y.js'
 import { attachInput } from './input.js'
+import { createMinimap, type Minimap, type MinimapOptions } from './minimap.js'
 import { createOverlay } from './overlay.js'
 
 export interface NodeContext {
@@ -45,6 +56,16 @@ export interface Options {
   lodThresholds?: LodThresholds
   collapsedByDefault?: boolean | ((item: NodeData) => boolean)
   theme?: Partial<Theme>
+  /**
+   * A filled silhouette of the occupied area plus a draggable viewport
+   * rectangle (design doc §11.5) — not a shrunken chart: at minimap scale
+   * individual boxes fall below a pixel and connectors vanish, so what's
+   * useful is the shape of the tree, not a miniature redraw of it. Painted
+   * once per relayout, never per frame; clicking or dragging inside it pans
+   * the camera. `true` uses the default 200x140 size, bottom-right. Default
+   * `false`.
+   */
+  minimap?: boolean | MinimapOptions
   zoomLimits?: ZoomLimits
   worker?: boolean
   renderNode?: (element: HTMLElement, context: NodeContext) => void
@@ -113,6 +134,15 @@ export interface SearchResult {
   path: string[]
 }
 
+/** Re-exported so a caller never has to reach past this package into core. */
+export type ExportOpts = SvgExportOptions
+
+export interface ToBlobOptions {
+  format: 'png' | 'jpeg'
+  /** Multiplies the canvas backing-store resolution — see `toBlob`'s docblock. Default 1. */
+  scale?: number
+}
+
 export interface ChartState {
   nodeCount: number
   visibleCount: number
@@ -158,6 +188,23 @@ export interface OrgChartApi {
   expandTo(id: string): void
   search(query: string | ((item: NodeData) => boolean)): SearchResult[]
   highlight(ids: string[] | null): void
+  /**
+   * Serializes the whole VISIBLE tree (collapsed branches excluded, same rule
+   * as everywhere else) to a standalone SVG document string — vector,
+   * resolution-independent, real selectable `<text>`. Never reads a canvas
+   * pixel; see `render/svg.ts` in core.
+   */
+  toSVG(opts?: ExportOpts): string
+  /**
+   * Redraws the whole visible tree to an offscreen canvas at `scale` DPI and
+   * returns the encoded image as a `Blob` — a correct document at whatever
+   * size was asked for, not a screenshot of wherever the camera happened to
+   * be. See `toBlob`'s docblock in index.ts for why this never rasterizes
+   * the SVG string.
+   */
+  toBlob(opts: ToBlobOptions): Promise<Blob>
+  /** Writes the SVG export into a hidden iframe and prints it. */
+  print(): void
   getState(): ChartState
 }
 
@@ -173,6 +220,26 @@ const DEFAULT_LIMITS: ZoomLimits = { minK: 0.05, maxK: 4 }
 
 /** Screen-space breathing room left around the chart by `fit()`. */
 const FIT_PADDING = 32
+
+/**
+ * World-unit margin around the exported bounds, shared by `toSVG` (as
+ * `render/svg.ts`'s own default) and `toBlob` (applied by hand below, since
+ * `Frame`/`createCanvas2DRenderer` has no padding concept of its own) — kept
+ * equal so the two export forms frame the chart the same way.
+ */
+const EXPORT_PADDING = 16
+
+// Reused across every `toBlob` call rather than allocated per call: a "whole
+// visible tree" frame never has ghosts or an active ring (those are
+// transition-in-progress concepts that don't apply to a static export
+// snapshot), so these are always empty/inert. Explicitly annotated with the
+// bare (`ArrayBufferLike`-backed) typed-array form per the brief: under
+// TS 5.9 a bare `new Float64Array(0)` infers the narrower `Float64Array<ArrayBuffer>`,
+// which `Frame`'s fields (typed against the wider form) don't accept without
+// this annotation.
+const EMPTY_GHOST_BOXES: Float64Array = new Float64Array(0)
+const EMPTY_GHOST_ALPHA: Float32Array = new Float32Array(0)
+const INERT_RING_BOX: Float64Array = new Float64Array(4)
 
 export function createOrgChart(host: HTMLElement, options: Options): OrgChartInstance {
   const theme = resolveTheme(options.theme)
@@ -232,6 +299,16 @@ export function createOrgChart(host: HTMLElement, options: Options): OrgChartIns
   let bounds: Bounds = { minX: 0, minY: 0, maxX: 0, maxY: 0 }
   let frameRequested = false
   let destroyed = false
+
+  let minimap: Minimap | null = null
+  // Identity check, not a dirty flag some mutation sets: `chartHost.boxes` is
+  // a fresh array only on an actual relayout (see engine.ts's `layout()`),
+  // so comparing references is exactly "did the layout change" — the same
+  // trick already used for `visibleToSource` below. Reset to `null` whenever
+  // the minimap is (re)created so the very next frame always paints it, even
+  // if the layout array reference happens not to have changed since it was
+  // last read.
+  let lastMinimapBoxes: Float64Array | null = null
 
   const stateListeners = new Set<(state: ChartState) => void>()
   const eventListeners = new Map<string, Set<(payload: never) => void>>()
@@ -326,6 +403,85 @@ export function createOrgChart(host: HTMLElement, options: Options): OrgChartIns
       y: boxes[i * 4 + 1]!,
       w: boxes[i * 4 + 2]!,
       h: boxes[i * 4 + 3]!,
+    }
+  }
+
+  /**
+   * Recreates (or tears down) the minimap widget to match the current
+   * `minimap` option. Called on construction and on every `update()`, since
+   * either can change the config. Cheap to call even when nothing changed:
+   * the widget itself is only a couple of small DOM nodes.
+   */
+  const setupMinimap = (): void => {
+    minimap?.destroy()
+    minimap = null
+    const opt = currentOptions.minimap
+    if (opt === undefined || opt === false) return
+    minimap = createMinimap(host, opt === true ? {} : opt, {
+      onPan(worldX, worldY) {
+        const rect = host.getBoundingClientRect()
+        if (rect.width <= 0 || rect.height <= 0) return
+        cancelCameraAnimation()
+        setCameraInstant(
+          centreOn(
+            camera,
+            { minX: worldX, minY: worldY, maxX: worldX, maxY: worldY },
+            { width: rect.width, height: rect.height },
+          ),
+        )
+      },
+    })
+    // Force the next frame to paint it, even if `boxes`' reference happens to
+    // be unchanged since the last time it was read (e.g. the minimap was just
+    // switched on with no relayout in between).
+    lastMinimapBoxes = null
+  }
+
+  /**
+   * Builds a fresh `ExportData` snapshot for `toSVG`/`toBlob`/`print`, by
+   * independently re-running the same pure pipeline `ChartEngine.getExportData()`
+   * uses internally (`pruneToVisible` -> `layout` -> `applyOrientation`) against
+   * the CURRENT `tree`/`open`/sizing state, rather than reaching into the
+   * engine directly.
+   *
+   * This is a deliberate workaround, not a shortcut: `ChartHost` (see
+   * `@n1crack/orgchart-core/host`) does not expose `getExportData()`, and in
+   * worker mode the live `ChartEngine` lives inside the worker and is not
+   * reachable from here at all — only `boxes`/`bounds`/`visibleToSource` are
+   * mirrored back across the protocol, not the pruned `parent`/`labels`
+   * arrays export needs. Recomputing here, from data this layer already
+   * holds, works identically on both the worker and main-thread paths and is
+   * always fresh (never a stale mirrored buffer from before the latest
+   * `setOpen`/`update`) — see this function's callers' docblocks for why that
+   * freshness matters. The cost is one extra synchronous layout pass at
+   * export time, which is fine: export is a deliberate, infrequent user
+   * action, not a per-frame path.
+   */
+  const buildExportData = (): ExportData => {
+    const visible = pruneToVisible(tree, open)
+    const n = visible.tree.count
+    const sizes: Float64Array = new Float64Array(n * 2)
+    const labels: string[] = Array.from({ length: n })
+    for (let i = 0; i < n; i++) {
+      const src = visible.toSource[i]!
+      const item = itemFor(src)
+      const size = sizeOf(item)
+      sizes[i * 2] = size.w
+      sizes[i * 2 + 1] = size.h
+      labels[i] = labelOf(item)
+    }
+    const spacingX = currentOptions.spacing?.x ?? 16
+    const spacingY = currentOptions.spacing?.y ?? 48
+    const result = layout(visible.tree, sizes, { spacingX, spacingY })
+    const orientation = currentOptions.orientation ?? 'tb'
+    const rtl = currentOptions.rtl ?? false
+    const exportBounds = applyOrientation(result.boxes, result.bounds, orientation, rtl)
+    return {
+      boxes: result.boxes,
+      parent: visible.tree.parent,
+      labels,
+      bounds: exportBounds,
+      horizontal: orientation === 'lr' || orientation === 'rl',
     }
   }
 
@@ -466,6 +622,18 @@ export function createOrgChart(host: HTMLElement, options: Options): OrgChartIns
         const index = pendingAutoPanIndex
         pendingAutoPanIndex = null
         autoPanToRegion(index)
+      }
+      if (minimap !== null) {
+        // Identity check, not "every frame": `computeSilhouette` walks every
+        // node, so it only runs when `boxes` is actually a NEW array, i.e. a
+        // real relayout happened — see `lastMinimapBoxes`'s docblock.
+        if (boxes !== lastMinimapBoxes) {
+          lastMinimapBoxes = boxes
+          minimap.onLayout(boxes, bounds)
+        }
+        // Cheap by contrast: two point transforms and a CSS transform write.
+        const rect = host.getBoundingClientRect()
+        minimap.onCamera(camera, { width: rect.width, height: rect.height })
       }
       refreshA11y()
       if (overlay !== null) {
@@ -1001,6 +1169,102 @@ export function createOrgChart(host: HTMLElement, options: Options): OrgChartIns
       // be felt.
       scheduleFrame()
     },
+    toSVG(opts) {
+      return coreToSVG(buildExportData(), opts)
+    },
+    // `Frame`/`createCanvas2DRenderer` are core's, but the canvas that backs
+    // this — an OffscreenCanvas that never touches `host` or the visible
+    // chart — is unavoidably DOM-bound, which is exactly why this method
+    // lives here and not in core.
+    async toBlob(opts) {
+      if (typeof OffscreenCanvas === 'undefined') {
+        throw new Error('OrgChart: toBlob() requires OffscreenCanvas, unavailable in this environment')
+      }
+      const scale = opts.scale ?? 1
+      const data = buildExportData()
+      const cssWidth = Math.max(1, data.bounds.maxX - data.bounds.minX) + EXPORT_PADDING * 2
+      const cssHeight = Math.max(1, data.bounds.maxY - data.bounds.minY) + EXPORT_PADDING * 2
+
+      const surface = new OffscreenCanvas(
+        Math.max(1, Math.round(cssWidth * scale)),
+        Math.max(1, Math.round(cssHeight * scale)),
+      )
+      // Cast through `unknown`, exactly like `host.ts`'s own main-thread
+      // fallback does for a real `HTMLCanvasElement`: the DOM lib's
+      // `roundRect`/`measureText` overloads are narrower than
+      // `RenderContext2D`'s structural declaration, which fails strict
+      // parameter-type assignability even though every call this renderer
+      // makes is valid at runtime.
+      const renderer = createCanvas2DRenderer(surface as unknown as RenderSurface, theme, (font) => {
+        const probe = new OffscreenCanvas(1, 1).getContext('2d')
+        if (probe === null) throw new Error('OrgChart: 2D canvas context unavailable')
+        probe.font = font
+        return createTextMeasurer({ measureWidth: (t) => probe.measureText(t).width })
+      })
+      renderer.resize(cssWidth, cssHeight, scale)
+
+      const n = data.parent.length
+      // Every node, every edge, no culling — see this method's contract in
+      // `OrgChartApi`. `edges`/`visible` share the same full index range:
+      // `canvas2d.ts`'s edge loop already skips roots (`parent[i] === -1`)
+      // on its own, so passing root indices through here costs nothing.
+      const allIndices: Uint32Array = Uint32Array.from({ length: n }, (_, i) => i)
+      const frame: Frame = {
+        boxes: data.boxes,
+        parent: data.parent,
+        visible: allIndices,
+        visibleCount: n,
+        edges: allIndices,
+        edgeCount: n,
+        labels: data.labels,
+        camera: { x: EXPORT_PADDING - data.bounds.minX, y: EXPORT_PADDING - data.bounds.minY, k: 1 },
+        dpr: scale,
+        tier: 'full',
+        horizontal: data.horizontal,
+        highlight: null,
+        dragIndex: -1,
+        revealAlpha: null,
+        ghostBoxes: EMPTY_GHOST_BOXES,
+        ghostAlpha: EMPTY_GHOST_ALPHA,
+        ghostCount: 0,
+        ringActive: false,
+        ringBox: INERT_RING_BOX,
+        ringProgress: 0,
+      }
+      renderer.draw(frame)
+      return surface.convertToBlob({ type: opts.format === 'jpeg' ? 'image/jpeg' : 'image/png' })
+    },
+    print() {
+      const svg = coreToSVG(buildExportData())
+      const doc = `<!DOCTYPE html><html><head><title>Org Chart</title><style>html,body{margin:0;padding:0}</style></head><body>${svg}</body></html>`
+      const iframe = document.createElement('iframe')
+      iframe.setAttribute('aria-hidden', 'true')
+      iframe.style.position = 'fixed'
+      iframe.style.right = '0'
+      iframe.style.bottom = '0'
+      iframe.style.width = '0'
+      iframe.style.height = '0'
+      iframe.style.border = '0'
+      const cleanup = (): void => {
+        iframe.remove()
+      }
+      iframe.addEventListener(
+        'load',
+        () => {
+          const win = iframe.contentWindow
+          if (win === null) {
+            cleanup()
+            return
+          }
+          win.addEventListener('afterprint', cleanup, { once: true })
+          win.focus()
+          win.print()
+        },
+        { once: true },
+      )
+      document.body.appendChild(iframe)
+      iframe.srcdoc = doc
+    },
     getState,
   }
 
@@ -1035,6 +1299,7 @@ export function createOrgChart(host: HTMLElement, options: Options): OrgChartIns
   syncAnimate()
   initOpen()
   applyData()
+  setupMinimap()
   resize()
   queueMicrotask(() => emit('ready'))
 
@@ -1047,6 +1312,7 @@ export function createOrgChart(host: HTMLElement, options: Options): OrgChartIns
       detachInput()
       overlay?.destroy()
       a11y?.destroy()
+      minimap?.destroy()
       chartHost.destroy()
       canvas.remove()
       overlayRoot.remove()
@@ -1064,6 +1330,7 @@ export function createOrgChart(host: HTMLElement, options: Options): OrgChartIns
       pendingAutoPanIndex = null
       pendingFullFit = false
       applyData()
+      setupMinimap()
       scheduleFrame()
     },
     subscribe(callback) {
@@ -1081,6 +1348,7 @@ export function createOrgChart(host: HTMLElement, options: Options): OrgChartIns
 
 export { createOverlay } from './overlay.js'
 export type { OverlayItem } from './overlay.js'
+export type { MinimapOptions, MinimapPosition } from './minimap.js'
 
 // Re-exported so a consumer never has to reach past this package into the core to
 // name the shapes it already receives.
