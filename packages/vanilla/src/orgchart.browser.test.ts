@@ -642,6 +642,71 @@ describe('createOrgChart', () => {
     chart.destroy()
   })
 
+  // Regression: the DOM overlay used to position every card from the FINAL
+  // (settled) layout even while the engine's canvas was still animating the
+  // staged expand/collapse transition, so a card would snap straight to
+  // where it will end up instead of gliding there with the canvas — see
+  // `index.ts`'s `interpolatedBoxOfSource`.
+  it('tracks a sibling card to the interpolated box mid-transition, not the final one, when an expand reflows it', async () => {
+    // 'p' needs TWO children, not one: a single-child chain never widens its
+    // own subtree (the child is exactly as wide as the parent), so 'b' would
+    // never actually need to reflow — the very reflow this test exists to
+    // observe. Two children side by side make revealing them roughly double
+    // 'p's subtree width, which is what pushes 'b' over.
+    const NESTED = [
+      { id: 'a' },
+      { id: 'p', parentId: 'a' },
+      { id: 'q1', parentId: 'p' },
+      { id: 'q2', parentId: 'p' },
+      { id: 'b', parentId: 'a' },
+    ]
+    const chart = make({
+      data: NESTED,
+      renderNode: (el: HTMLElement, ctx: { id: string }) => {
+        el.dataset.id = ctx.id
+        el.textContent = ctx.id
+      },
+      // Isolate the box-tween check from the separate camera-anchor feature
+      // (covered by its own tests above): the camera must not move here.
+      autoPanOnToggle: false,
+    })
+    chart.api.zoomTo(1)
+    await settle()
+    await nextFrame()
+
+    // Collapse 'p' (hiding 'q') first and let it fully settle, so the
+    // subsequent expand is the one and only transition under test.
+    chart.api.collapse('p')
+    await settleTransition()
+    await nextFrame()
+
+    const readB = (): { x: number; y: number } => {
+      const el = document.querySelector('[data-id="b"]') as HTMLElement
+      const m = /translate3d\(([-\d.]+)px,\s*([-\d.]+)px/.exec(el.style.transform)!
+      return { x: parseFloat(m[1]!), y: parseFloat(m[2]!) }
+    }
+
+    const before = readB()
+
+    chart.api.expand('p') // 'b' must reflow to make room for the revealed 'q'
+    await nextFrame() // as close to t=0 of the transition as a real rAF loop gets
+    const atStart = readB()
+    // The bug this fixes: 'b's card jumping straight to its settled,
+    // post-reflow position the instant the transition starts, instead of
+    // still reading close to its PRE-toggle position at t~0.
+    expect(Math.abs(atStart.x - before.x)).toBeLessThan(5)
+
+    await settleTransition()
+    await nextFrame()
+    const atEnd = readB()
+    // Sanity: 'b' genuinely does move once the transition finishes —
+    // otherwise the "still near start" assertion above would be trivially
+    // true regardless of which layout the overlay reads from.
+    expect(Math.abs(atEnd.x - before.x)).toBeGreaterThan(10)
+
+    chart.destroy()
+  })
+
   it('fits the whole chart after expandAll', async () => {
     const chart = make({ collapsedByDefault: true })
     await nextFrame()

@@ -36,6 +36,18 @@ export interface ChartHost {
    * frames while EITHER this or `transitioning` is true, since the ring
    * outlives the layout transition by design. */
   readonly ringActive: boolean
+  /**
+   * Mirrors `ChartEngine.lastDrawnBoxes` on either path: interpolated boxes
+   * for exactly the source indices in the `Uint32Array` `render()` most
+   * recently resolved with, in the same order — `null` whenever no
+   * transition is running. A caller (the DOM overlay, the camera anchor)
+   * that wants "where this node visually IS this frame" rather than "where
+   * it will end up" reads this instead of `boxes`, falling back to
+   * `boxes`/`visibleToSource` when it's `null`. In worker mode this is
+   * populated from each `frame` message's own `lastDrawnBoxes` field —
+   * bounded by the drawn/visible count, never total node count.
+   */
+  readonly lastDrawnBoxes: Float64Array | null
 }
 
 /**
@@ -84,6 +96,9 @@ export function createChartHost(
   // has to be tracked separately from `workerTransitioning` rather than
   // folded into it.
   let workerRingActive = false
+  // Mirrors `engine.lastDrawnBoxes` for worker mode, updated from each
+  // `frame` message's own field of the same name.
+  let workerLastDrawnBoxes: Float64Array | null = null
 
   const post = (message: MainToWorker, transfer: Transferable[] = []): void => {
     if (worker === null) return
@@ -101,6 +116,7 @@ export function createChartHost(
           framesReceived++
           workerTransitioning = message.transitioning
           workerRingActive = message.ringActive
+          workerLastDrawnBoxes = message.lastDrawnBoxes
           if (pendingFrame !== null && framesReceived >= pendingFrame.target) {
             pendingFrame.resolve(message.visible)
             pendingFrame = null
@@ -224,6 +240,9 @@ export function createChartHost(
     },
     get ringActive() {
       return engine !== null ? engine.ringActive : workerRingActive
+    },
+    get lastDrawnBoxes() {
+      return engine !== null ? engine.lastDrawnBoxes : workerLastDrawnBoxes
     },
   }
 }

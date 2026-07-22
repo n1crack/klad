@@ -925,6 +925,103 @@ describe('ChartEngine expand/collapse transition', () => {
     engine.render(1450) // done
     expect(renderer.frames.at(-1)!.revealAlpha).toBeNull()
   })
+
+  it('renderBoxes aliases boxes when idle and diverges from it mid-transition', () => {
+    const renderer = fakeRenderer()
+    const { engine, tree } = seed(renderer)
+    engine.setAnimate(true)
+    engine.setViewport(800, 600, 1)
+    engine.setCamera({ x: 0, y: 0, k: 1 })
+    engine.setOpen(tree.idToIndex.get('b')!, false) // start closed: 'c' hidden
+    engine.render(1000)
+    // Idle: the exact same array, not merely equal contents — zero extra
+    // cost outside a transition.
+    expect(engine.transitioning).toBe(false)
+    expect(engine.renderBoxes).toBe(engine.boxes)
+
+    engine.setOpen(tree.idToIndex.get('b')!, true) // reveal 'c': siblings must reflow to make room
+    engine.render(1000) // t=0 of the transition
+    expect(engine.transitioning).toBe(true)
+    // Mid-transition it's a genuinely different array...
+    expect(engine.renderBoxes).not.toBe(engine.boxes)
+    // ...and at least one surviving node's CURRENT (renderBoxes) position
+    // really does differ from where `boxes` says it will settle — not just
+    // a different array with coincidentally identical contents.
+    let anyDiffers = false
+    for (let i = 0; i < engine.visibleToSource.length && !anyDiffers; i++) {
+      const o = i * 4
+      anyDiffers =
+        engine.renderBoxes[o] !== engine.boxes[o] ||
+        engine.renderBoxes[o + 1] !== engine.boxes[o + 1] ||
+        engine.renderBoxes[o + 2] !== engine.boxes[o + 2] ||
+        engine.renderBoxes[o + 3] !== engine.boxes[o + 3]
+    }
+    expect(anyDiffers).toBe(true)
+
+    engine.render(1450) // past the total duration: transition ends
+    expect(engine.transitioning).toBe(false)
+    expect(engine.renderBoxes).toBe(engine.boxes)
+  })
+
+  it('hit-testing keeps resolving against the final layout while renderBoxes has already diverged', () => {
+    const renderer = fakeRenderer()
+    const { engine, tree } = seed(renderer)
+    engine.setAnimate(true)
+    engine.setViewport(800, 600, 1)
+    engine.setCamera({ x: 0, y: 0, k: 1 })
+    engine.setOpen(tree.idToIndex.get('b')!, false)
+    engine.render(1000)
+
+    engine.setOpen(tree.idToIndex.get('b')!, true)
+    engine.render(1000) // t=0: renderBoxes has already diverged from boxes (see test above)
+    expect(engine.transitioning).toBe(true)
+    expect(engine.renderBoxes).not.toBe(engine.boxes)
+
+    const dIndex = tree.idToIndex.get('d')!
+    const dPruned = Array.from(engine.visibleToSource).indexOf(dIndex)
+    const cx = engine.boxes[dPruned * 4]! + engine.boxes[dPruned * 4 + 2]! / 2
+    const cy = engine.boxes[dPruned * 4 + 1]! + engine.boxes[dPruned * 4 + 3]! / 2
+    // Hit-testing at 'd's FINAL centre still resolves to 'd', even though
+    // renderBoxes (and the canvas) may currently be drawing it somewhere else.
+    expect(engine.hitTest(cx, cy)).toBe(dIndex)
+  })
+
+  it('lastDrawnBoxes is null while idle and mirrors renderBoxes for exactly the nodes render() just returned', () => {
+    const renderer = fakeRenderer()
+    const { engine, tree } = seed(renderer)
+    engine.setAnimate(true)
+    engine.setViewport(800, 600, 1)
+    engine.setCamera({ x: 0, y: 0, k: 1 })
+    engine.render(1000)
+    expect(engine.transitioning).toBe(false)
+    expect(engine.lastDrawnBoxes).toBeNull()
+
+    engine.setOpen(tree.idToIndex.get('b')!, false)
+    const drawn = engine.render(1000) // t=0
+    expect(engine.transitioning).toBe(true)
+    const lastDrawnBoxes = engine.lastDrawnBoxes
+    expect(lastDrawnBoxes).not.toBeNull()
+    expect(lastDrawnBoxes!.length).toBe(drawn.length * 4)
+
+    // Aligned 1:1 with `drawn`: the i-th entry's box must match `renderBoxes`
+    // at that SAME source index's pruned position.
+    const prunedBySource = new Map<number, number>()
+    for (let i = 0; i < engine.visibleToSource.length; i++) prunedBySource.set(engine.visibleToSource[i]!, i)
+    expect(drawn.length).toBeGreaterThan(0)
+    for (let i = 0; i < drawn.length; i++) {
+      const pruned = prunedBySource.get(drawn[i]!)!
+      const po = pruned * 4
+      const o = i * 4
+      expect(lastDrawnBoxes![o]).toBeCloseTo(engine.renderBoxes[po]!, 10)
+      expect(lastDrawnBoxes![o + 1]).toBeCloseTo(engine.renderBoxes[po + 1]!, 10)
+      expect(lastDrawnBoxes![o + 2]).toBeCloseTo(engine.renderBoxes[po + 2]!, 10)
+      expect(lastDrawnBoxes![o + 3]).toBeCloseTo(engine.renderBoxes[po + 3]!, 10)
+    }
+
+    engine.render(1450) // done
+    expect(engine.transitioning).toBe(false)
+    expect(engine.lastDrawnBoxes).toBeNull()
+  })
 })
 
 // One-shot expand/collapse confirmation ring: fires once on the toggled
