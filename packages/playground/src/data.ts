@@ -1,6 +1,34 @@
 import type { Options } from '@n1crack/orgchart'
 
 /**
+ * Whether `example`'s own declared options already turn the minimap on —
+ * the initial state the playground's minimap-toggle button should reflect
+ * (and reset to) whenever a new example/stack is mounted.
+ */
+export function minimapDefaultOn(example: Example): boolean {
+  const configured = example.options.minimap
+  return configured !== undefined && configured !== false
+}
+
+/**
+ * The minimap config to use when the toggle is switched ON: the example's
+ * own config (`true`, or a positioned `MinimapOptions`) if it declared one,
+ * else a plain `true` — so the toggle works even on examples that don't
+ * otherwise ask for a minimap, restoring the original config (position and
+ * all) rather than a generic default when an example that DOES declare one
+ * is switched back on.
+ */
+function minimapOnConfig(example: Example): NonNullable<Options['minimap']> {
+  const configured = example.options.minimap
+  return configured === undefined || configured === false ? true : configured
+}
+
+/** The effective `minimap` option for `on`/`off`, given `example`'s own config. */
+export function minimapOptionFor(example: Example, on: boolean): NonNullable<Options['minimap']> {
+  return on ? minimapOnConfig(example) : false
+}
+
+/**
  * `NodeData` itself is not re-exported from `@n1crack/orgchart`'s public
  * surface (only the interfaces that reference it are). Deriving the item
  * type from `Options['data'][number]` gets the same structural type —
@@ -197,9 +225,14 @@ export const EXAMPLES: Example[] = [
     id: 'avatar-circle',
     name: 'Avatar circle',
     description:
-      'A round initials monogram with a department-coloured ring, name below rather than beside it — taller than it is wide (nodeSize: 96×104), with no room for its own toggle button. toggleOnNodeClick: true instead: tap a node with reports to expand or collapse it (cursor: pointer signals that).',
+      'Just a floating circle and a name — no card box. The connector meets the node at the bottom, under the name, where a +/- toggle sits right at that junction (shown only on nodes with reports; a leaf shows none). nodeSize: 96×128 to fit the added toggle row. toggleOnNodeClick: true still works too: tap the circle itself to expand or collapse. The canvas\'s own node box is made transparent via theme.nodeFill/nodeStroke so nothing but the circle, name and toggle ever paints, and label is suppressed so the canvas does not also draw the name as plain text underneath.',
     data: SHARED_DATA,
-    options: { nodeSize: { w: 96, h: 104 }, toggleOnNodeClick: true },
+    options: {
+      nodeSize: { w: 96, h: 128 },
+      toggleOnNodeClick: true,
+      label: () => '',
+      theme: { nodeFill: 'transparent', nodeStroke: 'transparent' },
+    },
     content: 'monogram',
   },
   {

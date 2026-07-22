@@ -79,6 +79,38 @@ function paintSilhouette(ctx: CanvasRenderingContext2D, silhouette: Silhouette):
   ctx.putImageData(imageData, 0, 0)
 }
 
+/**
+ * Clamps the viewport rectangle's DRAWN edges to the minimap's own
+ * `[0, width] x [0, height]` box. Purely a display concern: the rectangle
+ * coming out of `viewportRectInMinimap` can legitimately extend beyond the
+ * minimap entirely — zoomed out past the whole tree, or panned off its edge
+ * — this only stops what gets painted from spilling past the widget's own
+ * border. `transform` (and therefore `minimapToWorld`) is never touched, so
+ * click-to-navigate keeps mapping a click to the true world point under the
+ * pointer regardless of where the rectangle itself got clamped to.
+ *
+ * Each edge is clamped independently before the width/height are derived
+ * from the clamped edges (not the other way around), which is what makes a
+ * viewport far larger than the whole minimap collapse to exactly
+ * `{ x: 0, y: 0, w: width, h: height }` — "you can see everything" — rather
+ * than an inverted or negative-size box: `clamp` is monotonic, so a clamped
+ * max edge can never land before a clamped min edge.
+ */
+function clampViewportRect(
+  rect: Bounds,
+  width: number,
+  height: number,
+): { x: number; y: number; w: number; h: number } {
+  const clamp = (value: number, max: number): number => Math.min(Math.max(value, 0), max)
+
+  const minX = clamp(Math.min(rect.minX, rect.maxX), width)
+  const minY = clamp(Math.min(rect.minY, rect.maxY), height)
+  const maxX = clamp(Math.max(rect.minX, rect.maxX), width)
+  const maxY = clamp(Math.max(rect.minY, rect.maxY), height)
+
+  return { x: minX, y: minY, w: maxX - minX, h: maxY - minY }
+}
+
 function positionRoot(el: HTMLElement, position: MinimapPosition): void {
   el.style.top = position.startsWith('top') ? '8px' : 'auto'
   el.style.bottom = position.startsWith('bottom') ? '8px' : 'auto'
@@ -118,7 +150,11 @@ export function createMinimap(
   root.style.borderRadius = '4px'
   root.style.overflow = 'hidden'
   root.style.cursor = 'pointer'
-  root.style.boxShadow = '0 1px 4px rgba(0, 0, 0, 0.2)'
+  // Softened by eye against the playground: the previous `0 1px 4px / 0.2`
+  // read as a hard-edged hole punched in the chart underneath it. A smaller
+  // blur radius and much lower alpha let the widget read as a quiet raised
+  // plate instead of a shadow the eye trips over.
+  root.style.boxShadow = '0 1px 2px rgba(0, 0, 0, 0.08)'
   root.style.touchAction = 'none'
   positionRoot(root, position)
 
@@ -203,10 +239,7 @@ export function createMinimap(
     onCamera(camera, viewport) {
       if (transform === null) return
       const rect = viewportRectInMinimap(transform, camera, viewport)
-      const x = Math.min(rect.minX, rect.maxX)
-      const y = Math.min(rect.minY, rect.maxY)
-      const w = Math.abs(rect.maxX - rect.minX)
-      const h = Math.abs(rect.maxY - rect.minY)
+      const { x, y, w, h } = clampViewportRect(rect, width, height)
       viewportEl.style.transform = `translate(${x}px, ${y}px)`
       viewportEl.style.width = `${w}px`
       viewportEl.style.height = `${h}px`

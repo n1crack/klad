@@ -2,7 +2,7 @@
 import { OrgChart } from '@n1crack/orgchart-vue'
 import type { NodeContext, Options, OrgChartApi } from '@n1crack/orgchart-vue'
 import { computed, ref } from 'vue'
-import { DEPARTMENT_COLOR, initials, type Department, type Example } from './data.js'
+import { DEPARTMENT_COLOR, initials, minimapDefaultOn, minimapOptionFor, type Department, type Example } from './data.js'
 
 const props = defineProps<{ example: Example }>()
 const emit = defineEmits<{ ready: [OrgChartApi] }>()
@@ -13,16 +13,32 @@ const DEFAULT_NODE_SIZE = { w: 180, h: 64 }
 
 type Item = NodeContext['item']
 
+// Whether the minimap is currently on for THIS mounted chart. Starts at the
+// example's own declared default; the playground toolbar's minimap toggle
+// flips it via `setMinimap` (exposed below), which only changes this ref —
+// the `options` computed below picks up the new value and OrgChart.vue's own
+// `watch(() => props.options, ...)` does the rest (calls `chart.update()`),
+// exactly the same path `@n1crack/orgchart`'s own "toggled via update()" test
+// exercises. No core change, no remount.
+const minimapOn = ref(minimapDefaultOn(props.example))
+
 const options = computed<Options>(() => ({
   data: props.example.data,
   nodeSize: DEFAULT_NODE_SIZE,
   label: (item) => String(item.name ?? ''),
   ...props.example.options,
+  minimap: minimapOptionFor(props.example, minimapOn.value),
 }))
 
 function handleReady(): void {
   if (chartRef.value?.api) emit('ready', chartRef.value.api)
 }
+
+function setMinimap(on: boolean): void {
+  minimapOn.value = on
+}
+
+defineExpose({ setMinimap })
 
 // Shared by the avatar/status/photo templates below, mirroring the vanilla
 // demo's renderAvatar/renderStatus/renderPhoto so both stacks land on the
@@ -73,6 +89,9 @@ function headcountOf(item: Item): number {
       >
         <div class="monogram-circle">{{ initials(String(item.name ?? '')) }}</div>
         <span class="monogram-name">{{ String(item.name ?? '') }}</span>
+        <button v-if="hasChildren" type="button" class="toggle-btn" @click="toggle">
+          {{ open ? '−' : '+' }}
+        </button>
       </div>
 
       <div
