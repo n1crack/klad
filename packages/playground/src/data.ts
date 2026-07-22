@@ -118,8 +118,51 @@ export function initials(name: string): string {
   return (parts[0]![0]! + parts[parts.length - 1]![0]!).toUpperCase()
 }
 
-/** Builds a branching org chart of roughly `target` nodes. */
-export function buildOrg(target: number): NodeItem[] {
+/**
+ * How many direct reports a manager gets, given the running node counter, its
+ * own id, and its depth (the root is depth 0). Plugged into {@link buildOrg}
+ * so different examples can ask for different tree shapes out of the same
+ * generator.
+ */
+type FanOut = (counter: number, parentId: string, depth: number) => number
+
+/**
+ * Fan-out varies per manager. A uniform six-wide tree is pathologically wide —
+ * 200 nodes comes out ~30,000px across — and looks nothing like a real chart.
+ * Averages 3 children (2, 3 or 4), which is what every example except Large
+ * uses — a wide-ish tree that stays shallow, appropriate at a few hundred
+ * nodes where you only ever see a vertical slice of it anyway.
+ */
+const wideFanOut: FanOut = (counter, parentId) => 2 + ((counter * 7 + parentId.length) % 3)
+
+/**
+ * Fan-out for the Large example. The naive fix — just lower the average
+ * branching factor everywhere, e.g. always 2 — turns out not to work: with
+ * every manager guaranteed at least one report, *any* branching factor above
+ * 1 still compounds every level, so by the time the 20,000-node cap is hit,
+ * almost the entire budget still lands on the last level or two (measured:
+ * average-2 branching gives a tree about 18 levels deep whose widest level
+ * is still ~7,000 nodes — a silhouette ratio of ~1000:1, barely better than
+ * the original ~3700:1 and still well under a pixel tall in the minimap's
+ * 200x140 box). Getting an actually-readable silhouette means keeping the
+ * tree's widest level small for its *entire* remaining depth, not just
+ * arriving there more slowly.
+ *
+ * So this splits growth into two regimes instead: the first `CROWN_DEPTH`
+ * levels branch exactly like every other example (`wideFanOut`, 2-4 reports)
+ * — a normal-looking top of the chart — and every level below that gives each
+ * manager exactly one report: a long single-file reporting chain, holding the
+ * tree's width fixed at whatever the crown produced (a couple hundred nodes)
+ * for roughly its next 120 levels. At 20,000 nodes that comes out about 127
+ * levels deep with a peak width around 160 nodes — a silhouette ratio near
+ * 4:1 (versus the old ~3700:1), tall enough in the minimap to read as a real
+ * vertical shape rather than a hairline. See `largeData()` below.
+ */
+const CROWN_DEPTH = 5
+const narrowFanOut: FanOut = (counter, parentId, depth) => (depth < CROWN_DEPTH ? wideFanOut(counter, parentId, depth) : 1)
+
+/** Builds a branching org chart of roughly `target` nodes, using `fanOut` to decide reports-per-manager. */
+export function buildOrg(target: number, fanOut: FanOut = wideFanOut): NodeItem[] {
   const data: NodeItem[] = []
   const departmentById = new Map<string, Department>()
   const childCount = new Map<string, number>()
@@ -139,12 +182,11 @@ export function buildOrg(target: number): NodeItem[] {
   push('ceo', undefined, 'CEO', 'Chief Executive', 'Executive')
   let frontier = ['ceo']
   let counter = 0
+  let depth = 0
   while (data.length < target) {
     const next: string[] = []
     for (const parentId of frontier) {
-      // Fan-out varies per manager. A uniform six-wide tree is pathologically wide —
-      // 200 nodes comes out ~30,000px across — and looks nothing like a real chart.
-      const reports = 2 + ((counter * 7 + parentId.length) % 3)
+      const reports = fanOut(counter, parentId, depth)
       for (let i = 0; i < reports && data.length < target; i++) {
         const id = `n${counter++}`
         const department =
@@ -154,6 +196,7 @@ export function buildOrg(target: number): NodeItem[] {
       }
     }
     frontier = next
+    depth++
   }
 
   // Second pass: headcount (direct reports) is only known once every child has
@@ -209,7 +252,7 @@ const SIZE_VARIANTS = [
 
 let largeDataCache: NodeItem[] | null = null
 function largeData(): NodeItem[] {
-  largeDataCache ??= buildOrg(20_000)
+  largeDataCache ??= buildOrg(20_000, narrowFanOut)
   return largeDataCache
 }
 
@@ -218,7 +261,7 @@ export const EXAMPLES: Example[] = [
     id: 'basic',
     name: 'Basic',
     description:
-      "28 nodes, every option left at its default (plus minimap: true) — the reference example. At this scale the minimap's silhouette actually reads as a tree, and the viewport rectangle covers a real fraction of it — contrast that with Large, below, where the tree is 700x wider than it is tall.",
+      "28 nodes, every option left at its default (plus minimap: true) — the reference example. At this scale the minimap's silhouette actually reads as a tree, and the viewport rectangle covers a real fraction of it — contrast that with Large, below, which is deep and narrow rather than wide.",
     data: SHARED_DATA,
     options: { minimap: true },
     content: 'card',
@@ -317,7 +360,7 @@ export const EXAMPLES: Example[] = [
     id: 'large',
     name: 'Large (20k)',
     description:
-      '20,000 nodes with the minimap on. Zoom in and out to watch the LOD tiers switch (thresholds at k = 0.25 and k = 0.6), and use the silhouette in the corner to see where you are in the whole tree.',
+      "20,000 nodes with the minimap on: a normal-looking crown for the first few levels, then long single-file reporting chains, so the tree reads as tall and narrow (~127 levels deep) rather than the near-flat band a uniformly branching tree of this size would be. Zoom in and out to watch the LOD tiers switch (thresholds at k = 0.25 and k = 0.6), and use the silhouette in the corner to see where you are in the whole tree.",
     // Getter, not a plain property: the 20k-node tree is built on first read
     // of `.data`, i.e. only once this example is actually selected.
     get data() {
