@@ -38,3 +38,7 @@ dist/
 # SDD process scratch (briefs, reports, review packages)
 .superpowers/
 .claude/worktrees/
+
+# vitest browser-mode screenshot output
+.vitest-attachments/
+**/__screenshots__/
