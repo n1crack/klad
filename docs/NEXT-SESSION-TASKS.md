@@ -73,9 +73,32 @@ already carrying the intended `dist` paths). To actually publish:
 - **`tree.ts` bounds-check duplicated 3x** → small `inRange` helper. Cosmetic.
 - **`.gitignore` duplicate entries** (bare + slash form). Cosmetic.
 
-## Fixed on 2026-07-22 (all owner-verified in the playground)
+## Landed on 2026-07-22
 
-Six defects, each with a regression test that fails without its fix:
+### 1.0 features (owner-verified in the playground)
+
+- **Per-node counts** — `computeSubtreeStats` derives direct children, total
+  descendants and subtree height in one O(count) pass per tree, so a card reads
+  them as array lookups. On `api.stats(id)` and in every `renderNode` context;
+  both adapters forward it unchanged.
+- **Go to a node** — `focus` now waits for the layout its own `expandTo`
+  produced, so the case it exists for ("everything closed, go to X") works at
+  all; it stayed synchronous when nothing needed expanding. `focus(id, { ring:
+  true })` flashes on ARRIVAL. `api.pathTo(id)` gives the root-to-node chain.
+- **`api.refresh()`** — re-reads every node's `nodeSize`/`label` and relayouts,
+  keeping expand/collapse, camera and highlight. `nodeSize` is declared, never
+  measured, so a card that changes its own height had no way to say so and
+  `update()` would have reset the tree.
+- **Highlighted path edges** — an edge paints in `edgeHighlightStroke` when
+  both endpoints are lit, which for a root-to-node chain is exactly the route.
+  Second stroke pass, skipped entirely when nothing is highlighted.
+- **Playground** — five new examples: subtree counts, a card with a dropdown, a
+  sliding accordion that resizes its node, a custom-button toolbar, and an
+  external combo box that goes to any node from a fully collapsed chart. Plus
+  an "Accent" control driving ring/highlight/route colour together and a line-
+  width slider.
+
+### Six defects, each with a regression test that fails without its fix
 
 - **Toggle camera anchor applied after the render it belonged to** — every frame was
   painted with the previous frame's camera against this frame's positions, so the
