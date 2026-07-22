@@ -108,6 +108,28 @@ export interface ChartEngine {
    * the visible/drawn set, never by total node count.
    */
   readonly lastDrawnBoxes: Float64Array | null
+  /**
+   * The per-node REVEAL ALPHA for exactly the SOURCE indices in the
+   * `Uint32Array` `render()` most recently returned, in the SAME order (one
+   * `Float32` each) — `null` whenever nothing on screen is fading, which
+   * covers the whole steady state and every collapse (a collapse fades
+   * GHOSTS, which have no entry in the drawn set at all).
+   *
+   * This is the same number `render()` just painted each node's fill and
+   * label with, and it exists for the same reason `lastDrawnBoxes` does: a
+   * host drawing its own DOM layer over the canvas — the vanilla layer's
+   * pooled overlay — has to match what the canvas did, or the two disagree.
+   * They did: an expand's phase 1 deliberately holds newly revealed children
+   * at alpha 0 while their room is being made (see the staged-choreography
+   * docblock below), and a host that ignored this painted those children's
+   * CARDS at full opacity for that whole phase, at a box that is still a
+   * zero-size point on the parent's exit edge.
+   *
+   * Cost is O(the count `render()` just returned) — bounded by the drawn
+   * set, never by total node count — and only paid on the frames where
+   * something is actually fading.
+   */
+  readonly lastDrawnAlpha: Float32Array | null
   readonly bounds: Bounds
   /** Pruned index -> source index. */
   readonly visibleToSource: Int32Array
@@ -1061,6 +1083,10 @@ export function createChartEngine(renderer: Renderer): ChartEngine {
   // proportional to the visible/drawn set. See `worker/protocol.ts`'s
   // `frame` message and `worker/host.ts`'s mirroring of this getter.
   let lastDrawnBoxes: Float64Array | null = null
+  // Companion to `lastDrawnBoxes`, same alignment and same per-frame
+  // allocation discipline, for the reveal alpha — see
+  // `ChartEngine.lastDrawnAlpha`.
+  let lastDrawnAlpha: Float32Array | null = null
 
   // --- one-shot toggle ring state ---
   // `setOpen` arms a CANDIDATE here — but only when its caller-supplied
@@ -1462,6 +1488,13 @@ export function createChartEngine(renderer: Renderer): ChartEngine {
     // `cullBuffer` a moment ago).
     const drawn = new Uint32Array(nodeCount)
     const drawnBoxes: Float64Array | null = transition === null ? null : new Float64Array(nodeCount * 4)
+    // `revealAlpha` is already aligned 1:1 with `cullBuffer` (the loop that
+    // filled it walked this same buffer), i.e. with `drawn` — so this is a
+    // straight copy out of a reused, grown-not-shrunk scratch buffer into an
+    // exactly-sized one a caller may hold on to, exactly like `drawnBoxes`
+    // above. `null` whenever nothing is fading, so the steady state and
+    // every collapse allocate nothing here.
+    const drawnAlpha: Float32Array | null = revealAlpha === null ? null : new Float32Array(nodeCount)
     for (let i = 0; i < nodeCount; i++) {
       const idx = cullBuffer[i]!
       drawn[i] = visibleToSource[idx]!
@@ -1473,8 +1506,10 @@ export function createChartEngine(renderer: Renderer): ChartEngine {
         drawnBoxes[dst + 2] = renderBoxes[src + 2]!
         drawnBoxes[dst + 3] = renderBoxes[src + 3]!
       }
+      if (drawnAlpha !== null) drawnAlpha[i] = revealAlpha![i]!
     }
     lastDrawnBoxes = drawnBoxes
+    lastDrawnAlpha = drawnAlpha
     return drawn
   }
 
@@ -1601,6 +1636,9 @@ export function createChartEngine(renderer: Renderer): ChartEngine {
     },
     get lastDrawnBoxes() {
       return lastDrawnBoxes
+    },
+    get lastDrawnAlpha() {
+      return lastDrawnAlpha
     },
     get bounds() {
       return bounds

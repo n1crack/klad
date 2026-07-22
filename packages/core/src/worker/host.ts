@@ -6,7 +6,7 @@ import type { Renderer, RenderSurface } from '../render/renderer.js'
 import type { Theme } from '../render/theme.js'
 import type { Camera } from '../viewport.js'
 import type { Bounds } from '../types.js'
-import type { EngineOptions, MainToWorker, WireTree, WorkerToMain } from './protocol.js'
+import type { EngineOptions, MainToWorkerMessage, WireTree, WorkerToMain } from './protocol.js'
 
 export interface ChartHost {
   setData(tree: WireTree, sizes: Float64Array, labels: string[], open: Uint8Array): void
@@ -57,6 +57,15 @@ export interface ChartHost {
    * bounded by the drawn/visible count, never total node count.
    */
   readonly lastDrawnBoxes: Float64Array | null
+  /**
+   * Mirrors `ChartEngine.lastDrawnAlpha` on either path: the reveal alpha for
+   * exactly those same source indices, in the same order — `null` whenever
+   * nothing on screen is fading. A caller drawing its own DOM layer over the
+   * canvas reads this so its elements honour the same fade the canvas just
+   * painted with; `null` means "everything drawn is fully opaque". In worker
+   * mode this comes from each `frame` message's own field of the same name.
+   */
+  readonly lastDrawnAlpha: Float32Array | null
 }
 
 /**
@@ -102,7 +111,6 @@ export function createChartHost(
   let sentCount = 0
   let framesReceived = 0
   let pendingFrame: { target: number; resolve: (drawn: Uint32Array) => void } | null = null
-  let lastCamera: Camera = { x: 0, y: 0, k: 1 }
   // Mirrors the in-process `engine.transitioning` for worker mode, updated
   // from each `frame` message's `transitioning` flag.
   let workerTransitioning = false
@@ -113,11 +121,25 @@ export function createChartHost(
   // Mirrors `engine.lastDrawnBoxes` for worker mode, updated from each
   // `frame` message's own field of the same name.
   let workerLastDrawnBoxes: Float64Array | null = null
+  // Same mirroring for `engine.lastDrawnAlpha`.
+  let workerLastDrawnAlpha: Float32Array | null = null
 
-  const post = (message: MainToWorker, transfer: Transferable[] = []): void => {
+  /**
+   * Stamps every message with the main thread's clock — see `MainToWorker`'s
+   * docblock in protocol.ts: the worker renders after each message and must
+   * render against THIS clock, never one of its own. `now` defaults to "right
+   * now" for the state-changing messages, which have no frame time of their
+   * own; only `render()` passes its caller's `requestAnimationFrame`
+   * timestamp explicitly.
+   */
+  const post = (
+    message: MainToWorkerMessage,
+    transfer: Transferable[] = [],
+    now: number = performance.now(),
+  ): void => {
     if (worker === null) return
     sentCount++
-    worker.postMessage(message, transfer)
+    worker.postMessage({ ...message, now }, transfer)
   }
 
   if (preferWorker) {
@@ -131,6 +153,7 @@ export function createChartHost(
           workerTransitioning = message.transitioning
           workerRingActive = message.ringActive
           workerLastDrawnBoxes = message.lastDrawnBoxes
+          workerLastDrawnAlpha = message.lastDrawnAlpha
           if (pendingFrame !== null && framesReceived >= pendingFrame.target) {
             pendingFrame.resolve(message.visible)
             pendingFrame = null
@@ -189,7 +212,6 @@ export function createChartHost(
       post({ t: 'open', index, open, ring })
     },
     setCamera(camera) {
-      lastCamera = camera
       engine?.setCamera(camera)
       post({ t: 'camera', camera })
     },
@@ -215,17 +237,17 @@ export function createChartHost(
     },
 
     render(now) {
-      // In-process: thread `now` straight through, same caller-drives-time
-      // contract as `ChartEngine.render`. Worker mode does NOT thread `now`
-      // across the postMessage boundary — a dedicated Worker's
-      // `performance.now()` shares the main thread's time origin (see
-      // chart.worker.ts), so the small postMessage-latency skew between the
-      // two is negligible against a ~420ms transition, and not worth a
-      // protocol field.
+      // Both paths thread `now` through, same caller-drives-time contract as
+      // `ChartEngine.render`: in-process straight into the engine, in worker
+      // mode as the `render` message's clock stamp (see `post` above). The
+      // worker used to be sent a re-issued `camera` message purely as a
+      // "please draw" trigger and left to read its own clock — see
+      // `MainToWorker` in protocol.ts for why that was wrong outright, not
+      // merely imprecise.
       if (engine !== null) return Promise.resolve(engine.render(now))
       return new Promise<Uint32Array>((resolve) => {
         pendingFrame = { target: sentCount + 1, resolve }
-        post({ t: 'camera', camera: lastCamera })
+        post({ t: 'render' }, [], now)
       })
     },
 
@@ -259,6 +281,9 @@ export function createChartHost(
     },
     get ringActive() {
       return engine !== null ? engine.ringActive : workerRingActive
+    },
+    get lastDrawnAlpha() {
+      return engine !== null ? engine.lastDrawnAlpha : workerLastDrawnAlpha
     },
     get lastDrawnBoxes() {
       return engine !== null ? engine.lastDrawnBoxes : workerLastDrawnBoxes

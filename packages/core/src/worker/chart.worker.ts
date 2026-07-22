@@ -63,17 +63,21 @@ self.onmessage = (event: MessageEvent<MainToWorker>): void => {
       case 'animate':
         engine?.setAnimate(message.enabled)
         break
+      case 'render':
+        // Nothing to apply — a bare "draw now" trigger, and the `now` every
+        // message carries is consumed by the render below.
+        break
     }
 
     if (engine === null) return
 
-    // Every message can change what is on screen, so redraw and report.
-    // No `now` passed to `render()`: a dedicated Worker's `performance.now()`
-    // shares the same time origin as the main thread that spawned it, so the
-    // engine's own default (its own `performance.now()`) already lines up
-    // with the main thread's `requestAnimationFrame` clock — nothing needs
-    // threading across the postMessage boundary for this to stay correct.
-    const drawn = engine.render()
+    // Every message can change what is on screen, so redraw and report —
+    // always against the MAIN THREAD's clock, which every message carries.
+    // This worker never reads a clock of its own: its `performance.now()`
+    // counts from a different origin entirely (see `MainToWorker` in
+    // protocol.ts), so mixing the two would compute transition progress that
+    // is wrong by seconds, not milliseconds.
+    const drawn = engine.render(message.now)
     // `null` while idle (see `ChartEngine.lastDrawnBoxes`'s docblock) — so a
     // steady-state frame (the common case) transfers nothing beyond `drawn`
     // itself, exactly like before this feature existed. Transferred, not
@@ -81,8 +85,13 @@ self.onmessage = (event: MessageEvent<MainToWorker>): void => {
     // count, so this never re-introduces the O(total nodes) per-frame cost
     // the 50k budget forbids.
     const lastDrawnBoxes = engine.lastDrawnBoxes
+    // Same reasoning again for the reveal alpha, and `null` on strictly more
+    // frames than `lastDrawnBoxes` is (only an expand with something actually
+    // fading on screen produces one), so the common case is untouched.
+    const lastDrawnAlpha = engine.lastDrawnAlpha
     const transfer: Transferable[] = [drawn.buffer]
     if (lastDrawnBoxes !== null) transfer.push(lastDrawnBoxes.buffer)
+    if (lastDrawnAlpha !== null) transfer.push(lastDrawnAlpha.buffer)
     post(
       {
         t: 'frame',
@@ -90,6 +99,7 @@ self.onmessage = (event: MessageEvent<MainToWorker>): void => {
         transitioning: engine.transitioning,
         ringActive: engine.ringActive,
         lastDrawnBoxes,
+        lastDrawnAlpha,
       },
       transfer,
     )

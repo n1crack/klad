@@ -362,6 +362,22 @@ export function createOrgChart(host: HTMLElement, options: Options): OrgChartIns
    */
   let renderBoxBySource: Map<number, { x: number; y: number; w: number; h: number }> | null = null
 
+  /**
+   * Source index -> this frame's REVEAL ALPHA, rebuilt every frame from
+   * `chartHost.lastDrawnAlpha` exactly the way `renderBoxBySource` is
+   * rebuilt from `lastDrawnBoxes` — `null` whenever nothing on screen is
+   * fading, which is the whole steady state and every collapse, in which
+   * case every node is fully opaque.
+   *
+   * The overlay needs this because an expand is STAGED (see engine.ts): its
+   * first phase makes room while the newly revealed children stay hidden at
+   * alpha 0, and only the second reveals them. Without it the canvas honours
+   * that and the DOM cards do not, so a revealed child's card sits at full
+   * opacity on a zero-size box at its parent's edge for the whole first
+   * phase — small bubbles hanging off the parent until the reveal starts.
+   */
+  let renderAlphaBySource: Map<number, number> | null = null
+
   let minimap: Minimap | null = null
   // Identity check, not a dirty flag some mutation sets: `chartHost.boxes` is
   // a fresh array only on an actual relayout (see engine.ts's `layout()`),
@@ -491,6 +507,10 @@ export function createOrgChart(host: HTMLElement, options: Options): OrgChartIns
     return interpolated ?? boxOfSource(source)
   }
 
+  /** This frame's reveal alpha for a node, `1` (fully opaque) for anything
+   * not currently fading — see `renderAlphaBySource`. */
+  const alphaOfSource = (source: number): number => renderAlphaBySource?.get(source) ?? 1
+
   /**
    * Rebuilds `renderBoxBySource` from whatever `chartHost.lastDrawnBoxes` says
    * right now, keyed against the CURRENT `drawn` (the two are always aligned
@@ -500,6 +520,18 @@ export function createOrgChart(host: HTMLElement, options: Options): OrgChartIns
    * by a click) always sees the most recently drawn frame's geometry.
    */
   const refreshRenderBoxBySource = (): void => {
+    // Independent of `lastDrawnBoxes`: it is `null` on strictly more frames
+    // (only an expand with something actually fading on screen produces one),
+    // so this is resolved on its own rather than inside the early return
+    // below.
+    const lastDrawnAlpha = chartHost.lastDrawnAlpha
+    if (lastDrawnAlpha === null) renderAlphaBySource = null
+    else {
+      const alphas = new Map<number, number>()
+      for (let i = 0; i < drawn.length; i++) alphas.set(drawn[i]!, lastDrawnAlpha[i]!)
+      renderAlphaBySource = alphas
+    }
+
     const lastDrawnBoxes = chartHost.lastDrawnBoxes
     if (lastDrawnBoxes === null) {
       renderBoxBySource = null
@@ -859,9 +891,10 @@ export function createOrgChart(host: HTMLElement, options: Options): OrgChartIns
             Array.from(drawn, (index) => ({ index, id: tree.indexToId[index]! })),
             interpolatedBoxOfSource,
             camera,
+            alphaOfSource,
           )
         } else {
-          overlay.update([], interpolatedBoxOfSource, camera)
+          overlay.update([], interpolatedBoxOfSource, camera, alphaOfSource)
         }
       }
       publish()

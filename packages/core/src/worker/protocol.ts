@@ -65,11 +65,24 @@ export interface EngineOptions {
   lod: LodThresholds
 }
 
-export type MainToWorker =
+/**
+ * Every main-thread message, before the clock envelope below is added. Split
+ * out from `MainToWorker` itself purely so `host.ts` can build a message
+ * without restating the timestamp at each call site.
+ */
+export type MainToWorkerMessage =
   | { t: 'init'; canvas: unknown; dpr: number; width: number; height: number; theme: unknown }
   | { t: 'data'; tree: WireTree; sizes: Float64Array; labels: string[]; open: Uint8Array }
   | { t: 'options'; options: Partial<EngineOptions> }
   | { t: 'camera'; camera: Camera }
+  /**
+   * "Draw a frame." Carries no payload of its own — everything it needs is
+   * the `now` every message carries (see `MainToWorker` below). Exists
+   * because a host driving an animation has to be able to ask for a frame at
+   * a specific instant without also restating some piece of state; the old
+   * code re-sent a `camera` message purely as a "please draw" trigger.
+   */
+  | { t: 'render' }
   /** `ring` mirrors `ChartEngine.setOpen`'s third argument — see its
    * docblock in engine.ts. Sent as a definite `boolean` (never omitted)
    * because `ChartHost.setOpen` resolves the caller's optional argument to a
@@ -88,6 +101,32 @@ export type MainToWorker =
    * typed array, so there is nothing worth transferring here.
    */
   | { t: 'theme'; theme: unknown }
+
+/**
+ * Every message the worker receives, stamped with the MAIN THREAD's clock at
+ * the moment it was sent. The worker renders after each one, and renders with
+ * this timestamp — it never reads a clock of its own.
+ *
+ * This is not a micro-optimisation, it is a correctness requirement, for two
+ * independent reasons:
+ *
+ *  - A dedicated Worker does NOT share the document's time origin: its
+ *    `performance.now()` counts from when the WORKER was created, so it runs
+ *    behind the main thread's by however long the page had been alive at that
+ *    point. An engine whose transition was started from one clock and then
+ *    advanced with the other doesn't drift a little; it computes a progress
+ *    that is wrong by seconds and finishes the transition on the spot.
+ *  - Even with a shared origin, a clock read in the worker is read when the
+ *    message is DEQUEUED, not when the frame it belongs to began. That skew —
+ *    postMessage latency plus whatever else is queued — varies frame to
+ *    frame, so the toggle camera anchor (which solves the camera on the main
+ *    thread to pin a node at where its tween puts it at `now`) would be
+ *    holding the camera for time T while the canvas painted the node at
+ *    T + skew: a pinned node that jitters sideways for the whole transition.
+ *
+ * Stamped centrally by `host.ts`'s `post`, so no call site has to remember.
+ */
+export type MainToWorker = MainToWorkerMessage & { now: number }
 
 export type WorkerToMain =
   | { t: 'layout'; boxes: Float64Array; bounds: Bounds; visibleToSource: Int32Array }
@@ -113,5 +152,12 @@ export type WorkerToMain =
       transitioning: boolean
       ringActive: boolean
       lastDrawnBoxes: Float64Array | null
+      /** Mirrors `ChartEngine.lastDrawnAlpha` exactly: the reveal alpha for
+       * exactly the source indices in `visible`, same order, `null` whenever
+       * nothing on screen is fading. Bounded by `visible.length` like
+       * `lastDrawnBoxes`, and transferred the same way when present — this is
+       * what lets the main-thread host's DOM overlay honour the same fade the
+       * worker's canvas just painted with. */
+      lastDrawnAlpha: Float32Array | null
     }
   | { t: 'error'; message: string }

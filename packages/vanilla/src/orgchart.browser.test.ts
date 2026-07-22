@@ -897,6 +897,50 @@ describe('createOrgChart', () => {
     chart.destroy()
   })
 
+  // Regression: an expand is a STAGED transition — phase 1 makes room while
+  // the children stay hidden, phase 2 reveals them (see engine.ts). The canvas
+  // implements "stay hidden" with `revealAlpha`, which is 0 for the whole of
+  // phase 1. The DOM overlay applied no opacity at all, so a revealed child's
+  // CARD was painted at full strength for those ~190ms, at a box that is still
+  // a zero-size point on its parent's exit edge — the card's own content
+  // overflowing that 0x0 element, which reads as small bubbles popping out of
+  // the parent and sitting there until the reveal finally starts.
+  it('keeps a revealed card invisible until its reveal phase actually starts', async () => {
+    const chart = make({
+      collapsedByDefault: true,
+      ring: false,
+      renderNode: (el: HTMLElement, ctx: { id: string }) => {
+        el.dataset.id = ctx.id
+        el.textContent = ctx.id
+      },
+    })
+    await settle()
+    await nextFrame()
+
+    chart.api.expand('a')
+    const opacities: number[] = []
+    // ~6 frames is ~100ms — comfortably inside phase 1, which runs until 42%
+    // of the 450ms transition (see PHASE_TWO_START_FRACTION).
+    for (let i = 0; i < 6; i++) {
+      await nextFrame()
+      const el = document.querySelector('[data-id="b"]') as HTMLElement | null
+      if (el === null) continue
+      opacities.push(Number(getComputedStyle(el).opacity))
+    }
+    // The card must be in the DOM (it is in the drawn set) but invisible.
+    expect(opacities.length).toBeGreaterThan(3)
+    expect(Math.max(...opacities)).toBeLessThan(0.05)
+
+    // ...and fully opaque once the transition has finished, so the assertion
+    // above cannot be satisfied by simply never showing the card.
+    await settleTransition()
+    await nextFrame()
+    const settled = document.querySelector('[data-id="b"]') as HTMLElement
+    expect(Number(getComputedStyle(settled).opacity)).toBe(1)
+
+    chart.destroy()
+  })
+
   it('fits the whole chart after expandAll', async () => {
     const chart = make({ collapsedByDefault: true })
     await nextFrame()

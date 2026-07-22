@@ -46,11 +46,20 @@ export function createOverlay(container: HTMLElement, callbacks: OverlayCallback
     /**
      * `items` are the nodes to show; `boxes` and `sourceToBox` locate them.
      * Pass an empty list to clear the overlay without tearing the pool down.
+     *
+     * `alphaOf` reports the canvas's own per-node reveal alpha (1 for
+     * anything not fading). A card MUST honour it: an expand holds newly
+     * revealed nodes at alpha 0 for its whole first phase while their room is
+     * being made, at a box that is still a zero-size point on the parent's
+     * edge, so a card ignoring it paints its content — unclipped, since the
+     * element it overflows is 0x0 — as a bubble hanging off the parent until
+     * the reveal finally starts.
      */
     update(
       items: readonly OverlayItem[],
       boxOf: (index: number) => { x: number; y: number; w: number; h: number } | null,
       camera: Camera,
+      alphaOf: (index: number) => number,
     ): void {
       activeCount = 0
       for (const item of items) {
@@ -61,6 +70,13 @@ export function createOverlay(container: HTMLElement, callbacks: OverlayCallback
         element.style.width = `${box.w}px`
         element.style.height = `${box.h}px`
         element.style.transform = `translate3d(${screen.x}px, ${screen.y}px, 0) scale(${camera.k})`
+        // Cleared to '' rather than '1' at full opacity so a card that is not
+        // fading carries no inline opacity at all — the steady state leaves
+        // the element exactly as it was before this feature existed, and a
+        // host styling `.orgchart-overlay-node` opacity itself is not
+        // overridden by an inline rule on every frame.
+        const alpha = alphaOf(item.index)
+        element.style.opacity = alpha >= 1 ? '' : String(alpha)
         callbacks.render(element, item)
         activeCount++
       }
