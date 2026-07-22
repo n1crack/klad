@@ -348,4 +348,14 @@ run `pnpm --filter @n1crack/orgchart-playground dev` to try them live.
 
 ## License
 
-MIT, © Yusuf Özdemir. See [LICENSE](LICENSE).
+Dual-licensed, © Yusuf Özdemir.
+
+- **[GNU AGPL v3 or later](LICENSE)** — the default. Free to use, modify and
+  distribute on the AGPL's terms, which require the complete source of your
+  version to be available to anyone you convey it to, including over a network.
+- **[Commercial licence](LICENSE-COMMERCIAL.md)** — for shipping it inside a
+  closed-source product or a hosted service without that obligation, or where
+  an AGPL dependency is not an option. Email **yusuf@ozdemir.be**.
+
+[LICENSE-COMMERCIAL.md](LICENSE-COMMERCIAL.md) walks through which one applies
+to you.

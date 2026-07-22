@@ -46,6 +46,11 @@ already carrying the intended `dist` paths). To actually publish:
 - `tsdown` build per publishable package (core, vanilla, vue, react) → `dist` (ESM only).
   SFC `.d.ts` for Vue via `vue-tsc`.
 - `changesets` for versioning + changelog.
+- Copy `LICENSE` and `LICENSE-COMMERCIAL.md` into each publishable
+  package as part of the build. Their `files` arrays already list them, and npm
+  silently skips a listed file that isn't there — so without the copy step the
+  tarballs ship with no licence at all, which is exactly the wrong thing for a
+  dual-licensed package.
 - Wire `build` into turbo; the packages' `publishConfig.exports` already point at `dist`.
 - One final release of the OLD `vue3-org-chart` npm package pointing at the new
   `@n1crack/orgchart-*` (README only) — optional.

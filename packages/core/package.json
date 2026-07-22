@@ -2,7 +2,7 @@
   "name": "@n1crack/orgchart-core",
   "version": "1.0.0-alpha.0",
   "type": "module",
-  "license": "MIT",
+  "license": "AGPL-3.0-or-later",
   "sideEffects": false,
   "//": "exports point at source during development so the workspace resolves without a build step; publishConfig.exports replaces them with the built dist paths at publish time. The ./host subpath is separate on purpose: host.ts is the one DOM-bound module in this package, and keeping it out of the main entry is what lets the entry stay importable inside a Web Worker.",
   "exports": {
@@ -27,7 +27,7 @@
       }
     }
   },
-  "files": ["dist"],
+  "files": ["dist", "LICENSE", "LICENSE-COMMERCIAL.md"],
   "scripts": {
     "test": "vitest run",
     "test:watch": "vitest",

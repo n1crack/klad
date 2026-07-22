@@ -2,7 +2,7 @@
   "name": "@n1crack/orgchart-react",
   "version": "1.0.0-alpha.0",
   "type": "module",
-  "license": "MIT",
+  "license": "AGPL-3.0-or-later",
   "sideEffects": false,
   "//": "exports point at source during development so the workspace resolves without a build step; publishConfig.exports replaces them with the built dist paths at publish time.",
   "exports": {
@@ -19,7 +19,7 @@
       }
     }
   },
-  "files": ["dist"],
+  "files": ["dist", "LICENSE", "LICENSE-COMMERCIAL.md"],
   "dependencies": {
     "@n1crack/orgchart": "workspace:*"
   },
