@@ -206,6 +206,22 @@ body {
   outline-offset: 3px;
 }
 
+/* "Shape fill"'s enable checkbox, sitting alongside its colour picker in the
+   same `.field-range-row` — sized to match the row's other controls rather
+   than the browser's tiny default checkbox. */
+.checkbox-input {
+  width: 1.15rem;
+  height: 1.15rem;
+  accent-color: var(--accent);
+  cursor: pointer;
+  flex: none;
+}
+
+.checkbox-input:focus-visible {
+  outline: 2px solid var(--accent);
+  outline-offset: 2px;
+}
+
 .field-range-value {
   min-width: 2.2ch;
   text-align: right;

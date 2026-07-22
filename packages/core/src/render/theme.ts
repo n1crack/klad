@@ -1,6 +1,24 @@
 /** Drawing tokens for the canvas layers. Colours are any CSS colour string. */
 export interface Theme {
   nodeFill: string
+  /**
+   * Fill for the `block` LOD tier (the smallest/most-zoomed-out tier — shapes
+   * only, no text; see `render/lod.ts`) — deliberately SEPARATE from
+   * `nodeFill` rather than reusing it, so the far-zoom "just the tree's
+   * connector skeleton" view can be styled (or left invisible) independently
+   * of the readable-zoom node colour. Defaults to `'transparent'`: at that
+   * tier, by default, only the connectors (`edgeStroke`) are visible, not
+   * solid boxes — zoomed all the way out, a chart with thousands of solid
+   * `nodeFill` boxes reads as a wall of colour, not a tree shape; leaving
+   * `block` tier see-through shows the STRUCTURE instead, with the option to
+   * opt back into a colour by setting this. The renderer (`canvas2d.ts`)
+   * treats the exact string `'transparent'` as a signal to skip the fill
+   * call entirely, not merely as a colour that happens to paint nothing — a
+   * real (if wasted) `ctx.fill()` per on-screen node is exactly the kind of
+   * per-node cost the 50k budget can't absorb at the tier BUSIEST with nodes
+   * on screen at once.
+   */
+  blockFill: string
   nodeStroke: string
   nodeStrokeWidth: number
   cornerRadius: number
@@ -59,6 +77,7 @@ export interface Theme {
 // from this object into a fresh one, so freezing it changes nothing else.
 export const DEFAULT_THEME: Readonly<Theme> = Object.freeze({
   nodeFill: '#ffffff',
+  blockFill: 'transparent',
   nodeStroke: '#d4d4d8',
   nodeStrokeWidth: 1,
   cornerRadius: 6,

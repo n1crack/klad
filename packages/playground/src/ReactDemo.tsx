@@ -136,6 +136,9 @@ export interface ReactDemoHandle {
   setMinimapPosition(position: MinimapPosition): void
   setEdgeRadius(radius: number): void
   setNodeFill(nodeFill: string): void
+  setBlockFill(blockFill: string): void
+  setRingStroke(ringStroke: string): void
+  setRingEnabled(enabled: boolean): void
 }
 
 export interface ReactDemoProps {
@@ -224,6 +227,18 @@ export function ReactDemo({ example, onReady, ref }: ReactDemoProps): ReactNode 
       },
       setNodeFill: (nodeFill: string) => {
         chartRef.current?.api?.setTheme({ nodeFill })
+      },
+      setBlockFill: (blockFill: string) => {
+        chartRef.current?.api?.setTheme({ blockFill })
+      },
+      setRingStroke: (ringStroke: string) => {
+        chartRef.current?.api?.setTheme({ ringStroke })
+      },
+      // `OrgChartApi.setRing` — NOT a theme token, so it goes through its own
+      // method rather than `setTheme`; see `Options.ring`'s docblock in
+      // packages/vanilla/src/index.ts.
+      setRingEnabled: (enabled: boolean) => {
+        chartRef.current?.api?.setRing(enabled)
       },
     }),
     [example],

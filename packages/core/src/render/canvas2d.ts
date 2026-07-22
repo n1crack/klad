@@ -164,8 +164,27 @@ export function createCanvas2DRenderer(
     // filled rectangle. Stroking costs one extra `ctx.stroke()` per ghost,
     // same as a real node, and ghosts are already bounded to those near the
     // viewport, so this stays within the per-frame budget.
+    // `block`-tier fill: a SEPARATE, independently adjustable colour from
+    // `nodeFill` (see `theme.blockFill`'s docblock), defaulting to
+    // `'transparent'` so the far-zoom shape-only tier shows the connector
+    // skeleton without solid boxes by default. The exact string
+    // `'transparent'` is treated as "skip the fill call" rather than "fill
+    // with a colour that happens to be invisible" — a real `ctx.fill()` per
+    // on-screen node at the tier busiest with nodes on screen at once is
+    // exactly the kind of per-node cost the 50k budget can't absorb for a
+    // no-op paint.
+    const blockFillSkipped = frame.tier === 'block' && theme.blockFill === 'transparent'
+    const unlitFill = frame.tier === 'block' ? theme.blockFill : theme.nodeFill
+
     if (frame.ghostCount > 0) {
       for (let g = 0; g < frame.ghostCount; g++) {
+        if (blockFillSkipped) {
+          // Nothing to fill and (at this tier) nothing to stroke either — a
+          // ghost has no highlight/drag state to paint some other colour
+          // for, so there is genuinely nothing left to draw here.
+          calls.nodes++
+          continue
+        }
         const o = g * 4
         const x = frame.ghostBoxes[o]! * k + camera.x
         const y = frame.ghostBoxes[o + 1]! * k + camera.y
@@ -175,7 +194,7 @@ export function createCanvas2DRenderer(
         ctx.beginPath()
         if (radius > 0) ctx.roundRect(x, y, w, h, radius)
         else ctx.rect(x, y, w, h)
-        ctx.fillStyle = theme.nodeFill
+        ctx.fillStyle = unlitFill
         ctx.fill()
         if (frame.tier !== 'block') {
           ctx.strokeStyle = theme.nodeStroke
@@ -203,10 +222,20 @@ export function createCanvas2DRenderer(
       if (i === frame.dragIndex) ctx.globalAlpha = theme.dragGhostAlpha
       else if (revealAlpha < 1) ctx.globalAlpha = revealAlpha
 
+      // A highlighted node stays visible regardless of `blockFill` — the
+      // highlight is a deliberate, explicit signal (search/focus), not the
+      // ambient node colour the block tier's default transparency is about
+      // hiding — so only an UNLIT node at the block tier can be skipped.
+      if (!lit && blockFillSkipped) {
+        calls.nodes++
+        if (i === frame.dragIndex || revealAlpha < 1) ctx.globalAlpha = 1
+        continue
+      }
+
       ctx.beginPath()
       if (radius > 0) ctx.roundRect(x, y, w, h, radius)
       else ctx.rect(x, y, w, h)
-      ctx.fillStyle = lit ? theme.highlightFill : theme.nodeFill
+      ctx.fillStyle = lit ? theme.highlightFill : unlitFill
       ctx.fill()
       if (frame.tier !== 'block') {
         ctx.strokeStyle = lit ? theme.highlightStroke : theme.nodeStroke

@@ -154,6 +154,99 @@ describe('createCanvas2DRenderer', () => {
     ).not.toThrow()
   })
 
+  // `theme.blockFill` — the `block` tier's own, independently adjustable
+  // fill, defaulting to `'transparent'` (see theme.ts's docblock) so the
+  // far-zoom shape-only tier shows the tree's connector skeleton rather than
+  // a wall of solid `nodeFill` boxes by default.
+  describe('block-tier fill (theme.blockFill)', () => {
+    it('draws nothing for a node at the block tier under the DEFAULT theme (blockFill: transparent)', () => {
+      const canvas = makeCanvas()
+      const renderer = createCanvas2DRenderer(canvas, DEFAULT_THEME, measurerFor)
+      renderer.resize(400, 300, 1)
+      renderer.draw(frame({ tier: 'block' }))
+      // Node 0 spans screen x 10..110, y 10..60 (see the `frame()` docblock
+      // above) — its centre must be untouched: no fill, no stroke (the
+      // latter already skipped at `block` regardless of `blockFill`).
+      expect(pixelAt(canvas, 60, 35)[3]).toBe(0)
+    })
+
+    it('fills a node at the block tier once blockFill is set to an opaque colour', () => {
+      const canvas = makeCanvas()
+      const renderer = createCanvas2DRenderer(
+        canvas,
+        { ...DEFAULT_THEME, blockFill: '#ff00ff' },
+        measurerFor,
+      )
+      renderer.resize(400, 300, 1)
+      renderer.draw(frame({ tier: 'block' }))
+      const pixel = pixelAt(canvas, 60, 35)
+      expect(pixel[3]).toBeGreaterThan(0) // opaque: something was painted
+      expect(pixel[0]).toBeGreaterThan(200) // red channel of #ff00ff
+      expect(pixel[1]).toBeLessThan(50) // green channel
+      expect(pixel[2]).toBeGreaterThan(200) // blue channel
+    })
+
+    it('never fills a REMOVED (ghost) node at the block tier when blockFill is transparent', () => {
+      const canvas = makeCanvas()
+      const renderer = createCanvas2DRenderer(canvas, DEFAULT_THEME, measurerFor)
+      renderer.resize(400, 300, 1)
+      renderer.draw(
+        frame({
+          tier: 'block',
+          visibleCount: 0,
+          visible: new Uint32Array(0),
+          edgeCount: 0,
+          ghostBoxes: Float64Array.from([0, 0, 100, 50]),
+          ghostAlpha: Float32Array.from([1]),
+          ghostCount: 1,
+        }),
+      )
+      expect(pixelAt(canvas, 60, 35)[3]).toBe(0)
+    })
+
+    it('still uses nodeFill (not blockFill) at the label tier', () => {
+      const canvas = makeCanvas()
+      const renderer = createCanvas2DRenderer(
+        canvas,
+        { ...DEFAULT_THEME, nodeFill: '#00ff00', blockFill: '#ff00ff' },
+        measurerFor,
+      )
+      renderer.resize(400, 300, 1)
+      renderer.draw(frame({ tier: 'label' }))
+      const pixel = pixelAt(canvas, 60, 35)
+      expect(pixel[0]).toBeLessThan(50) // red channel of #00ff00, not #ff00ff
+      expect(pixel[1]).toBeGreaterThan(200) // green channel of #00ff00
+    })
+
+    it('still uses nodeFill (not blockFill) at the full tier', () => {
+      const canvas = makeCanvas()
+      const renderer = createCanvas2DRenderer(
+        canvas,
+        { ...DEFAULT_THEME, nodeFill: '#00ff00', blockFill: '#ff00ff' },
+        measurerFor,
+      )
+      renderer.resize(400, 300, 1)
+      renderer.draw(frame({ tier: 'full' }))
+      const pixel = pixelAt(canvas, 60, 35)
+      expect(pixel[0]).toBeLessThan(50)
+      expect(pixel[1]).toBeGreaterThan(200)
+    })
+
+    it('still shows a highlighted node at the block tier even when blockFill is transparent', () => {
+      const canvas = makeCanvas()
+      const renderer = createCanvas2DRenderer(canvas, DEFAULT_THEME, measurerFor)
+      renderer.resize(400, 300, 1)
+      renderer.draw(frame({ tier: 'block', highlight: Uint8Array.from([1, 0]) }))
+      // Node 0 is highlighted — it must still paint `highlightFill`, the
+      // deliberate exception `theme.blockFill`'s "skip the fill" rule
+      // carves out (see canvas2d.ts's node-drawing loop).
+      expect(pixelAt(canvas, 60, 35)[3]).toBeGreaterThan(0)
+      // Node 1 (unhighlighted; screen x 10..110, y 110..160) stays untouched,
+      // same as the plain case above.
+      expect(pixelAt(canvas, 60, 135)[3]).toBe(0)
+    })
+  })
+
   it('tints a highlighted node differently from an unhighlighted one', () => {
     const plain = makeCanvas()
     const plainRenderer = createCanvas2DRenderer(plain, DEFAULT_THEME, measurerFor)

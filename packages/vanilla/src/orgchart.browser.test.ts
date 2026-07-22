@@ -150,6 +150,79 @@ describe('createOrgChart', () => {
     chart.destroy()
   })
 
+  /** Spies on the canvas 2D context's `strokeStyle` SETTER, same technique as
+   * the `setTheme` test above's `fillStyle` spy — the ring is drawn with
+   * `ctx.strokeStyle = theme.ringStroke`, so watching every value ever
+   * assigned there is the same signal a human eye would use to notice the
+   * flash, without reaching into engine internals this layer doesn't expose. */
+  function spyOnStrokeStyle(): unknown[] {
+    const canvas = document.querySelector('canvas')!
+    const ctx = canvas.getContext('2d')!
+    const proto = Object.getPrototypeOf(ctx) as object
+    const descriptor = Object.getOwnPropertyDescriptor(proto, 'strokeStyle')!
+    const strokeStyles: unknown[] = []
+    Object.defineProperty(ctx, 'strokeStyle', {
+      configurable: true,
+      get() {
+        return descriptor.get!.call(ctx)
+      },
+      set(v: unknown) {
+        strokeStyles.push(v)
+        descriptor.set!.call(ctx, v)
+      },
+    })
+    return strokeStyles
+  }
+
+  it('flashes the confirmation ring on a single-node toggle by default', async () => {
+    const chart = make()
+    await nextFrame()
+    const strokeStyles = spyOnStrokeStyle()
+
+    chart.api.collapse('b') // single-node toggle: the exact case the ring exists for
+    await nextFrame()
+    await nextFrame()
+    await nextFrame()
+
+    expect(strokeStyles).toContain('#f59e0b') // DEFAULT_THEME.ringStroke
+    chart.destroy()
+  })
+
+  it('suppresses the confirmation ring when `ring: false`, without touching the layout transition', async () => {
+    const chart = make({ ring: false })
+    await nextFrame()
+    const strokeStyles = spyOnStrokeStyle()
+
+    chart.api.collapse('b')
+    await nextFrame()
+    await nextFrame()
+    await nextFrame()
+
+    // The default ring colour is never assigned as a strokeStyle: no ring
+    // drawn on this toggle, or any other, for as long as the option is off.
+    expect(strokeStyles).not.toContain('#f59e0b')
+    // The layout transition itself is untouched by `ring: false` — only the
+    // ring is suppressed, per `Options.ring`'s contract.
+    await settleTransition()
+    expect(chart.api.getState().visibleCount).toBe(3)
+    chart.destroy()
+  })
+
+  it('recolours the ring live through setTheme, without relaying out', async () => {
+    const chart = make()
+    await nextFrame()
+    const strokeStyles = spyOnStrokeStyle()
+
+    chart.api.setTheme({ ringStroke: '#00ff00' })
+    chart.api.collapse('c')
+    await nextFrame()
+    await nextFrame()
+
+    expect(strokeStyles).toContain('#00ff00')
+    expect(strokeStyles).not.toContain('#f59e0b')
+    chart.destroy()
+  })
+
   it('expands the ancestor chain when focusing a hidden node', async () => {
     const chart = make({ collapsedByDefault: true })
     await nextFrame()
