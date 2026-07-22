@@ -373,6 +373,49 @@ describe('minimap', () => {
     chart.destroy()
   })
 
+  // Collapsing shrinks the laid-out bounds — collapsing the root shrinks them
+  // to a single node. Fitting those bounds to the widget on every relayout
+  // made that one node fill the entire minimap: the scale lurched on every
+  // toggle and nothing stayed where it was. The frame is held steady instead,
+  // and only refitted when a layout genuinely no longer fits inside it.
+  it('holds its scale across a toggle instead of refitting to the collapsed bounds', async () => {
+    const el = host()
+    const chart = createOrgChart(el, {
+      data: buildOrg(300),
+      nodeSize: { w: 120, h: 48 },
+      worker: false,
+      minimap: true,
+      // The viewport rectangle's size is `visible world size * scale`, so with
+      // the camera's zoom held fixed it is a direct read-out of the minimap's
+      // own scale. The toggle anchor only ever pans, never zooms.
+      ring: false,
+    })
+    await new Promise((r) => setTimeout(r, 260))
+    await nextFrame()
+
+    const minimapRoot = el.querySelector<HTMLElement>('.orgchart-minimap')!
+    const viewportEl = minimapRoot.querySelector('div') as HTMLElement
+    const rectWidth = (): number => parseFloat(viewportEl.style.width)
+
+    const before = rectWidth()
+    const zoomBefore = chart.api.getState().camera.k
+    expect(before).toBeGreaterThan(0)
+
+    chart.api.collapse('root')
+    await new Promise((r) => setTimeout(r, 700))
+    await nextFrame()
+    await nextFrame()
+
+    // Sanity: the toggle really did collapse the tree, and really did leave
+    // the camera's zoom alone — otherwise the rectangle's size would be free
+    // to change for a reason that has nothing to do with the minimap.
+    expect(chart.api.getState().visibleCount).toBe(1)
+    expect(chart.api.getState().camera.k).toBeCloseTo(zoomBefore, 5)
+    expect(rectWidth()).toBeCloseTo(before, 3)
+
+    chart.destroy()
+  })
+
   it('destroy() removes the minimap element', async () => {
     const el = host()
     const chart = createOrgChart(el, {

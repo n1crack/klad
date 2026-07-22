@@ -109,6 +109,23 @@ export interface SilhouetteOptions {
    * Default 3.
    */
   saturateAt: number
+  /**
+   * Rasterise against THIS world->minimap map instead of fitting `bounds` to
+   * the widget. Optional, and absent by default — omit it and the silhouette
+   * fits itself, which is right the first time a tree is drawn.
+   *
+   * It exists because refitting on every relayout makes the minimap's scale a
+   * function of what is currently expanded: collapsing a root shrinks
+   * `bounds` to one node, which then fills the entire widget. The minimap
+   * stops being a map you can read positions off and becomes a zoom that
+   * lurches on every toggle. A host that wants a stable frame keeps the
+   * transform it already has and passes it back here, refitting only when the
+   * content genuinely no longer fits — see `packages/vanilla`'s minimap.
+   *
+   * Not part of `DEFAULT_SILHOUETTE_OPTIONS`: "no override" is the absence of
+   * this field, not a value it could hold.
+   */
+  transform?: MinimapTransform
 }
 
 export const DEFAULT_SILHOUETTE_OPTIONS: SilhouetteOptions = { padding: 0, blur: 1, saturateAt: 3 }
@@ -164,7 +181,7 @@ export function computeSilhouette(
 
   const gw = Math.max(1, Math.round(size.width))
   const gh = Math.max(1, Math.round(size.height))
-  const transform = computeMinimapTransform(bounds, { width: gw, height: gh }, padding)
+  const transform = options.transform ?? computeMinimapTransform(bounds, { width: gw, height: gh }, padding)
 
   // 2D difference array over grid CORNERS (one wider/taller than the grid
   // itself), so a rectangular box update never has to touch more than 4

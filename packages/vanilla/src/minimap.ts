@@ -2,6 +2,7 @@ import {
   computeSilhouette,
   minimapToWorld,
   viewportRectInMinimap,
+  worldToMinimap,
   type Bounds,
   type Camera,
   type MinimapTransform,
@@ -186,6 +187,29 @@ export function createMinimap(
 
   let transform: MinimapTransform | null = null
 
+  /**
+   * True when `bounds` lies entirely inside the widget under `t` — i.e. the
+   * existing frame can still show the whole tree, so there is no reason to
+   * refit it.
+   *
+   * A small tolerance absorbs the rounding that a round trip through the
+   * transform's own arithmetic introduces; without it a layout that fits
+   * exactly (the very layout the transform was fitted to) can read as
+   * overflowing by a fraction of a pixel and trigger a pointless refit.
+   */
+  const fitsUnder = (t: MinimapTransform, bounds: Bounds): boolean => {
+    const padding = SILHOUETTE_OPTIONS.padding ?? 0
+    const topLeft = worldToMinimap(t, bounds.minX, bounds.minY)
+    const bottomRight = worldToMinimap(t, bounds.maxX, bounds.maxY)
+    const slack = 0.5
+    return (
+      topLeft.x >= padding - slack &&
+      topLeft.y >= padding - slack &&
+      bottomRight.x <= width - padding + slack &&
+      bottomRight.y <= height - padding + slack
+    )
+  }
+
   const pointToWorld = (event: PointerEvent): { x: number; y: number } | null => {
     if (transform === null) return null
     const rect = root.getBoundingClientRect()
@@ -232,7 +256,25 @@ export function createMinimap(
 
   return {
     onLayout(boxes, bounds) {
-      const silhouette = computeSilhouette(boxes, bounds, { width, height }, SILHOUETTE_OPTIONS)
+      // Keep the frame we already have whenever the new layout still fits in
+      // it, and refit only when it genuinely doesn't. Refitting on every
+      // relayout — which is what fitting `bounds` unconditionally amounts to
+      // — makes the minimap's scale a function of what happens to be expanded
+      // right now: collapsing the root shrinks `bounds` to a single node and
+      // that one node then fills the whole widget. The scale lurches on every
+      // toggle and nothing on the minimap stays where it was, so it reads as
+      // a zoom rather than a map.
+      //
+      // Holding the transform steady instead means collapsing simply removes
+      // mass from a frame that doesn't move, and the viewport rectangle keeps
+      // the same size for the same camera. Expanding past the frame's edge
+      // still refits, because at that point the alternative is drawing the
+      // tree outside the widget.
+      const reuse = transform !== null && fitsUnder(transform, bounds)
+      const silhouette = computeSilhouette(boxes, bounds, { width, height }, {
+        ...SILHOUETTE_OPTIONS,
+        ...(reuse ? { transform: transform! } : {}),
+      })
       transform = silhouette.transform
       paintSilhouette(ctx, silhouette)
     },
