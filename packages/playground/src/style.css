@@ -1041,3 +1041,39 @@ body {
   border-color: color-mix(in srgb, #f59e0b 55%, canvas 45%);
   background: color-mix(in srgb, #f59e0b 14%, canvas 86%);
 }
+
+/* ---------------------------------------------------------------------------
+ * "Go to node" panel — sits in the canvas's own corner rather than the
+ * sidebar, because it belongs to one example rather than to the playground.
+ * Top-left, opposite the minimap's default corner, so the two never collide.
+ * ------------------------------------------------------------------------ */
+.goto-panel {
+  position: absolute;
+  top: 0.6rem;
+  left: 0.6rem;
+  /* Above the chart's canvas and its overlay cards, below nothing else — the
+     panel is chrome over the drawing, not part of it. */
+  z-index: 5;
+  display: flex;
+  align-items: center;
+  gap: 0.45rem;
+  padding: 0.4rem 0.55rem;
+  border: 1px solid var(--border);
+  border-radius: var(--radius-md);
+  background: color-mix(in srgb, var(--surface) 92%, transparent);
+  box-shadow: var(--shadow-sm);
+  backdrop-filter: blur(6px);
+}
+
+.goto-panel label {
+  font-size: 0.72rem;
+  font-weight: 600;
+  letter-spacing: 0.01em;
+  color: var(--text-muted);
+  white-space: nowrap;
+}
+
+.goto-panel .select {
+  min-width: 11rem;
+  max-width: 15rem;
+}

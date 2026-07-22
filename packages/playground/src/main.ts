@@ -407,6 +407,12 @@ canvasBgField.append(canvasBgLabel, canvasBgRow)
 // chart. Picking a name expands whatever is in the way, paints the route from
 // the root, and flies there.
 //
+// It lives in the corner of the CANVAS rather than in the sidebar, because it
+// belongs to one example rather than to the playground: the sidebar's controls
+// all mean something on every example, and a field that is blank on all but
+// one of them reads as broken. Sitting on the surface it is also next to the
+// thing it drives, like the minimap in the opposite corner.
+//
 // Shown only for examples that ask for it (`Example.gotoControl`), and
 // repopulated on every mount, since the list is the example's own data.
 const gotoSelect = document.createElement('select')
@@ -416,8 +422,15 @@ const gotoLabel = document.createElement('label')
 gotoLabel.textContent = 'Go to node'
 gotoLabel.htmlFor = 'goto-select'
 const gotoField = document.createElement('div')
-gotoField.className = 'field'
+gotoField.className = 'goto-panel'
 gotoField.append(gotoLabel, gotoSelect)
+
+// The surface is the chart's own host: a pointer landing here would otherwise
+// bubble into it and start a pan, and a wheel would zoom the chart while the
+// menu is open. The select's own gestures stop at the panel.
+for (const type of ['pointerdown', 'wheel'] as const) {
+  gotoField.addEventListener(type, (event) => event.stopPropagation())
+}
 
 gotoSelect.onchange = () => {
   const id = gotoSelect.value
@@ -437,8 +450,13 @@ gotoSelect.onchange = () => {
  * that did not ask for it.
  */
 function syncGotoControl(example: Example): void {
-  gotoField.hidden = example.gotoControl !== true
-  if (!gotoField.hidden) {
+  gotoField.remove()
+  if (example.gotoControl === true) {
+    // Appended after `surface.innerHTML = ''` has run and before the chart
+    // mounts into it — the panel is absolutely positioned with its own
+    // stacking order, so DOM order relative to the canvas doesn't decide what
+    // is on top.
+    surface.append(gotoField)
     const depthOf = new Map<string, number>()
     gotoSelect.innerHTML = ''
     const placeholder = document.createElement('option')
@@ -463,7 +481,6 @@ function syncGotoControl(example: Example): void {
 
 const appearanceGroup = sidebarGroup(
   'Appearance',
-  gotoField,
   edgeRadiusField,
   edgeWidthField,
   nodeFillField,
