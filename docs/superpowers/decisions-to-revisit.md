@@ -197,3 +197,18 @@ indices and needs a loud signal when it computes a wrong one.
 ### 16. Task 3's final documentation pass was never re-reviewed
 Five Minor findings, all comment accuracy and test strength, fixed but not verified by a
 second pass. Nothing behavioural.
+
+---
+
+## Queued playground work (after the two in-flight agents land)
+
+Requested by the owner, held because both touch `packages/playground/src/main.ts`
+(the avatar agent owns it now) and the radius control needs the core agent's
+`edgeCornerRadius` to exist first:
+
+- **Refresh the playground design** — a proper look, not test-fixture styling. It is
+  the artefact people judge the library by.
+- **Edge corner radius control** — a slider/input wired to `edgeCornerRadius`, once the
+  core agent lands it.
+- **Minimap position control** — a picker for `top-left | top-right | bottom-left |
+  bottom-right`, wired to the `minimap` option.
