@@ -62,10 +62,13 @@ function renderAvatar(context: NodeContext): ReactNode {
   )
 }
 
-function renderChip(context: NodeContext): ReactNode {
+function renderMonogram(context: NodeContext): ReactNode {
+  const item = context.item
+  const style = { '--accent': departmentColor(item) } as CSSProperties
   return (
-    <div className="chip">
-      <span>{String(context.item.name ?? '')}</span>
+    <div className="monogram-card" style={style}>
+      <div className="monogram-circle">{initials(String(item.name ?? ''))}</div>
+      <span className="monogram-name">{String(item.name ?? '')}</span>
     </div>
   )
 }
@@ -110,7 +113,7 @@ function renderPhoto(context: NodeContext): ReactNode {
 const RENDERERS: Record<Exclude<Example['content'], 'none'>, (context: NodeContext) => ReactNode> = {
   card: renderCard,
   avatar: renderAvatar,
-  chip: renderChip,
+  monogram: renderMonogram,
   status: renderStatus,
   photo: renderPhoto,
 }

@@ -92,14 +92,15 @@ export function buildOrg(target: number): NodeItem[] {
  * example is still one registry entry — the two rendering paths just have to
  * agree on what each tag looks like.
  *
- * - 'card'   — the original name/title card (default look).
- * - 'avatar' — circular initials monogram + name + role.
- * - 'chip'   — small pill, name only, for density.
- * - 'status' — department-coloured accent + department/headcount badges.
- * - 'photo'  — squarer, image-dominant tile (CSS-gradient "photo" + initials).
- * - 'none'   — no overlay content at all: canvas-only, frameworkless cost.
+ * - 'card'     — the original name/title card (default look).
+ * - 'avatar'   — circular initials monogram + name + role.
+ * - 'monogram' — a round, department-ringed initials avatar with the name
+ *   below it (not beside it) — taller than it is wide, clickable.
+ * - 'status'   — department-coloured accent + department/headcount badges.
+ * - 'photo'    — squarer, image-dominant tile (CSS-gradient "photo" + initials).
+ * - 'none'     — no overlay content at all: canvas-only, frameworkless cost.
  */
-export type NodeContentKind = 'card' | 'avatar' | 'chip' | 'status' | 'photo' | 'none'
+export type NodeContentKind = 'card' | 'avatar' | 'monogram' | 'status' | 'photo' | 'none'
 
 export interface Example {
   id: string
@@ -137,9 +138,10 @@ export const EXAMPLES: Example[] = [
   {
     id: 'basic',
     name: 'Basic',
-    description: '28 nodes, every option left at its default. The reference example.',
+    description:
+      "28 nodes, every option left at its default (plus minimap: true) — the reference example. At this scale the minimap's silhouette actually reads as a tree, and the viewport rectangle covers a real fraction of it — contrast that with Large, below, where the tree is 700x wider than it is tall.",
     data: SHARED_DATA,
-    options: {},
+    options: { minimap: true },
     content: 'card',
   },
   {
@@ -186,27 +188,27 @@ export const EXAMPLES: Example[] = [
     id: 'avatar-card',
     name: 'Avatar card',
     description:
-      'Circular initials monogram plus name and role — the most common org chart look. nodeSize: 224×96, declared to fit exactly.',
+      'Circular initials monogram plus name and role — the most common org chart look. nodeSize: 224×96, declared to fit exactly. minimap: true — a wider node size shifts the silhouette proportions versus Basic.',
     data: SHARED_DATA,
-    options: { nodeSize: { w: 224, h: 96 } },
+    options: { nodeSize: { w: 224, h: 96 }, minimap: true },
     content: 'avatar',
   },
   {
-    id: 'compact-chip',
-    name: 'Compact chip',
+    id: 'avatar-circle',
+    name: 'Avatar circle',
     description:
-      "A small pill with just a name, at nodeSize: 112×32 — a fraction of the default card, with no room for its own toggle button. toggleOnNodeClick: true instead: tap a chip with reports to expand or collapse it.",
+      'A round initials monogram with a department-coloured ring, name below rather than beside it — taller than it is wide (nodeSize: 96×104), with no room for its own toggle button. toggleOnNodeClick: true instead: tap a node with reports to expand or collapse it (cursor: pointer signals that).',
     data: SHARED_DATA,
-    options: { nodeSize: { w: 112, h: 32 }, toggleOnNodeClick: true },
-    content: 'chip',
+    options: { nodeSize: { w: 96, h: 104 }, toggleOnNodeClick: true },
+    content: 'monogram',
   },
   {
     id: 'status-card',
     name: 'Status card',
     description:
-      'Department-coloured accent plus a headcount badge — a second dimension of meaning riding along with the hierarchy. No room left for a toggle button at this density, so toggleOnNodeClick: true is on instead: tap the card to expand or collapse it. nodeSize: 208×88.',
+      'Department-coloured accent plus a headcount badge — a second dimension of meaning riding along with the hierarchy. No room left for a toggle button at this density, so toggleOnNodeClick: true is on instead: tap the card to expand or collapse it. nodeSize: 208×88. minimap: true, top-left this time — position is per-instance.',
     data: SHARED_DATA,
-    options: { nodeSize: { w: 208, h: 88 }, toggleOnNodeClick: true },
+    options: { nodeSize: { w: 208, h: 88 }, toggleOnNodeClick: true, minimap: { position: 'top-left' } },
     content: 'status',
   },
   {

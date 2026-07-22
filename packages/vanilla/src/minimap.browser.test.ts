@@ -146,6 +146,47 @@ describe('minimap', () => {
     chart.destroy()
   })
 
+  it('repaints the silhouette only on relayout, never on a camera-only frame', async () => {
+    // Regression guard for the design invariant (spec §11.5): the silhouette
+    // is rasterised once per relayout and blitted via putImageData; a pure
+    // camera change (pan/zoom/tween) must reposition the viewport rectangle
+    // with a CSS transform only, never repaint the silhouette. If this test
+    // ever fails, something is doing per-frame work that should be per-relayout.
+    const el = host()
+    const chart = createOrgChart(el, {
+      data: buildOrg(2_000),
+      nodeSize: { w: 120, h: 48 },
+      worker: false,
+      minimap: true,
+    })
+    await nextFrame()
+    await nextFrame()
+
+    const canvases = el.querySelectorAll('canvas')
+    const minimapCanvas = canvases[1] as HTMLCanvasElement
+    const ctx = minimapCanvas.getContext('2d')!
+    let putImageDataCalls = 0
+    type PutImageDataArgs =
+      | [ImageData, number, number]
+      | [ImageData, number, number, number, number, number, number]
+    const original = ctx.putImageData.bind(ctx)
+    ctx.putImageData = ((...args: PutImageDataArgs) => {
+      putImageDataCalls++
+      ;(original as (...a: PutImageDataArgs) => void)(...args)
+    }) as typeof ctx.putImageData
+
+    const before = chart.api.getState().camera
+    // zoomTo animates over several frames (a tween), which is exactly the
+    // "many camera-only frames in a row" case a per-frame bug would show up in.
+    chart.api.zoomTo(2)
+    for (let i = 0; i < 15; i++) await nextFrame()
+    const after = chart.api.getState().camera
+
+    expect(after.k).not.toBe(before.k) // the tween actually ran
+    expect(putImageDataCalls).toBe(0) // yet the silhouette was never repainted
+    chart.destroy()
+  })
+
   it('destroy() removes the minimap element', async () => {
     const el = host()
     const chart = createOrgChart(el, {

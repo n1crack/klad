@@ -72,16 +72,29 @@ function renderAvatar(element: HTMLElement, context: NodeContext): void {
   syncToggleButton(card, context)
 }
 
-/** Small pill, name only — density over information. No toggle button: there's no room for one. */
-function renderChip(element: HTMLElement, context: NodeContext): void {
-  let chip = element.firstElementChild as HTMLDivElement | null
-  if (chip === null) {
-    chip = document.createElement('div')
-    chip.className = 'chip'
-    chip.append(document.createElement('span'))
-    element.append(chip)
+/**
+ * Round initials monogram with a department-coloured ring, name below it
+ * (not inside it) — data-driven styling (the ring colour reads `department`,
+ * same as the status card) plus `cursor: pointer` since the whole node is
+ * the toggle (toggleOnNodeClick: true, no button — there's no room for one).
+ */
+function renderMonogram(element: HTMLElement, context: NodeContext): void {
+  let card = element.firstElementChild as HTMLDivElement | null
+  if (card === null) {
+    card = document.createElement('div')
+    card.className = 'monogram-card'
+    const circle = document.createElement('div')
+    circle.className = 'monogram-circle'
+    const label = document.createElement('span')
+    label.className = 'monogram-name'
+    card.append(circle, label)
+    element.append(card)
   }
-  chip.querySelector('span')!.textContent = String(context.item.name ?? '')
+  const item = context.item
+  const department = (item.department as Department | undefined) ?? 'Executive'
+  card.style.setProperty('--accent', DEPARTMENT_COLOR[department])
+  card.querySelector<HTMLDivElement>('.monogram-circle')!.textContent = initials(String(item.name ?? ''))
+  card.querySelector('.monogram-name')!.textContent = String(item.name ?? '')
 }
 
 /** Department-coloured accent + department and headcount badges. */
@@ -150,7 +163,7 @@ function renderPhoto(element: HTMLElement, context: NodeContext): void {
 const RENDERERS: Record<NodeContentKind, RenderNode | null> = {
   card: renderCard,
   avatar: renderAvatar,
-  chip: renderChip,
+  monogram: renderMonogram,
   status: renderStatus,
   photo: renderPhoto,
   none: null,

@@ -66,8 +66,13 @@ function headcountOf(item: Item): number {
         </button>
       </div>
 
-      <div v-else-if="example.content === 'chip'" class="chip">
-        <span>{{ String(item.name ?? '') }}</span>
+      <div
+        v-else-if="example.content === 'monogram'"
+        class="monogram-card"
+        :style="{ '--accent': departmentColor(item) }"
+      >
+        <div class="monogram-circle">{{ initials(String(item.name ?? '')) }}</div>
+        <span class="monogram-name">{{ String(item.name ?? '') }}</span>
       </div>
 
       <div

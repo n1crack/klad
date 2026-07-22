@@ -188,25 +188,59 @@ body {
   text-overflow: ellipsis;
 }
 
-/* Compact chip: name only, at density. */
-.chip {
+/*
+ * Avatar circle: round initials monogram with a department-coloured ring,
+ * name below it rather than beside it, so the node reads taller than it is
+ * wide. `cursor: pointer` on the whole card because the node itself is the
+ * toggle (toggleOnNodeClick: true on this example) — there's no separate
+ * button to carry that affordance instead.
+ */
+.monogram-card {
+  --accent: #64748b;
   box-sizing: border-box;
   width: 100%;
   height: 100%;
   display: flex;
+  flex-direction: column;
   align-items: center;
-  justify-content: center;
-  padding: 0 0.65rem;
-  border-radius: 999px;
-  border: 1px solid color-mix(in srgb, canvastext 25%, canvas 75%);
-  background: color-mix(in srgb, canvas 92%, canvastext 8%);
-  box-shadow: 0 1px 2px color-mix(in srgb, canvastext 12%, transparent);
+  justify-content: flex-start;
+  gap: 0.4rem;
+  padding: 0.6rem 0.4rem 0.5rem;
+  cursor: pointer;
+  font-family: inherit;
   overflow: hidden;
+  /* Same reason every other card sets a background: the canvas beneath this
+     overlay still draws its own plain-text label for the node (see
+     render/canvas2d.ts) — an opaque background is what keeps that from
+     showing through around the circle instead of behind it. */
+  background: color-mix(in srgb, canvas 92%, canvastext 8%);
+  border: 1px solid color-mix(in srgb, canvastext 25%, canvas 75%);
+  border-radius: 10px;
+  box-shadow: 0 1px 3px color-mix(in srgb, canvastext 15%, transparent);
 }
 
-.chip span {
+.monogram-circle {
+  box-sizing: border-box;
+  flex: 0 0 auto;
+  width: 56px;
+  height: 56px;
+  border-radius: 50%;
+  border: 3px solid var(--accent);
+  background: color-mix(in srgb, canvas 88%, canvastext 12%);
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  color: var(--accent);
+  font-weight: 700;
+  font-size: 0.85rem;
+  letter-spacing: 0.02em;
+}
+
+.monogram-name {
+  max-width: 100%;
   font-size: 0.78rem;
   font-weight: 600;
+  text-align: center;
   white-space: nowrap;
   overflow: hidden;
   text-overflow: ellipsis;
@@ -330,6 +364,38 @@ body {
   white-space: nowrap;
   overflow: hidden;
   text-overflow: ellipsis;
+}
+
+/*
+ * Minimap contrast, strengthened at this call site. The library sets its own
+ * inline background/border on `.orgchart-minimap` (near-white at low opacity,
+ * a very faint border) — reasonable in isolation, but easy to lose against a
+ * light page background, especially once the surrounding chart is also mostly
+ * white. `!important` is deliberate: it overrides the widget's own inline
+ * styles, which otherwise win on specificity over a plain class rule.
+ *
+ * This raises the CHROME's contrast (border, backing plate, drop shadow) —
+ * it does not and cannot touch the silhouette's own per-pixel alpha, which is
+ * computed inside the library (packages/vanilla/src/minimap.ts's
+ * SILHOUETTE_OPTIONS) and not exposed through the `minimap` option. Measured
+ * against this playground's own example data, that silhouette tops out
+ * around 25% opacity even on the busiest examples — a real limitation, not
+ * one a CSS override at the host can fix; see the playground's polish report
+ * for the numbers.
+ */
+.orgchart-minimap {
+  background: color-mix(in srgb, canvas 97%, canvastext 3%) !important;
+  border: 2px solid color-mix(in srgb, canvastext 55%, canvas 45%) !important;
+  box-shadow:
+    0 2px 10px color-mix(in srgb, canvastext 35%, transparent),
+    0 0 0 1px color-mix(in srgb, canvastext 12%, canvas 88%) !important;
+}
+
+/* The viewport-rectangle overlay — the library's only other child element in
+   here, a plain positioned `<div>` with no class of its own. A touch thicker
+   so it stays legible even on the smallest minimap size an example asks for. */
+.orgchart-minimap > div {
+  border-width: 2px !important;
 }
 
 /* Sits over the image instead of the caption band, so it never crowds the name/title text. */
