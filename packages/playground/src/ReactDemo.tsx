@@ -1,7 +1,18 @@
 /** @jsxImportSource react */
 import { useCallback, useImperativeHandle, useMemo, useRef, useState, type CSSProperties, type ReactNode, type Ref } from 'react'
 import { OrgChart, type NodeContext, type OrgChartApi, type OrgChartHandle, type Options } from '@n1crack/orgchart-react'
-import { DEPARTMENT_COLOR, initials, minimapDefaultOn, minimapOptionFor, type Department, type Example } from './data.js'
+import {
+  DEPARTMENT_COLOR,
+  EDGE_RADIUS_DEFAULT,
+  initials,
+  minimapDefaultOn,
+  minimapDefaultPosition,
+  minimapOptionFor,
+  themeFor,
+  type Department,
+  type Example,
+  type MinimapPosition,
+} from './data.js'
 
 const DEFAULT_NODE_SIZE = { w: 180, h: 64 }
 
@@ -119,9 +130,11 @@ const RENDERERS: Record<Exclude<Example['content'], 'none'>, (context: NodeConte
   photo: renderPhoto,
 }
 
-/** Imperative handle main.ts uses to flip the minimap for the mounted React chart. */
+/** Imperative handle main.ts uses to drive the mounted React chart's live controls. */
 export interface ReactDemoHandle {
   setMinimap(on: boolean): void
+  setMinimapPosition(position: MinimapPosition): void
+  setEdgeRadius(radius: number): void
 }
 
 export interface ReactDemoProps {
@@ -142,13 +155,51 @@ export interface ReactDemoProps {
 export function ReactDemo({ example, onReady, ref }: ReactDemoProps): ReactNode {
   const chartRef = useRef<OrgChartHandle>(null)
 
-  // Whether the minimap is currently on for THIS mounted chart. Starts at the
-  // example's own declared default; the playground toolbar's minimap toggle
-  // flips it via the imperative `setMinimap` handle below, which only sets
-  // this piece of state — `options` below picks up the new value on the next
-  // render, and `OrgChart`'s own effect (see OrgChart.tsx: `instance.update(...)`
-  // whenever `options` changes) does the rest. No core change, no remount.
-  const [minimapOn, setMinimapOn] = useState(() => minimapDefaultOn(example))
+  /**
+   * Whether the minimap is on, and which corner it's in, for THIS mounted
+   * chart. Deliberately `useRef`, not `useState`: they still feed `options`
+   * below (so a later remount — see `edgeRadius` — starts the fresh chart
+   * with the current values baked in), but mutating a ref does not trigger a
+   * re-render, and reading `.current` inside `useMemo` does not add it as a
+   * tracked dependency.
+   *
+   * If these were state instead — as they were in an earlier version of this
+   * file, caught by hand rather than by a type error — then changing either
+   * one would re-render with a new `options` object (a new dependency-array
+   * entry), which the effect in OrgChart.tsx (`instance.update(options.data,
+   * ...)`, watching `options` by identity) would treat as a prop change and
+   * respond to with `instance.update()`, which calls `initOpen()` and resets
+   * every node's open/closed state. That is exactly the reset
+   * `setMinimap`/`setMinimapPosition` below call the API directly to avoid —
+   * so the state that decides what to bake into the next remount has to stay
+   * out of React's render cycle entirely. Confirmed with Playwright: collapse
+   * a node, click the minimap toggle, watch the collapsed node come back.
+   */
+  const minimapOnRef = useRef(minimapDefaultOn(example))
+  const minimapPositionRef = useRef<MinimapPosition>(minimapDefaultPosition(example))
+
+  /**
+   * `edgeCornerRadius` lives under `theme`, and theme is resolved exactly
+   * once at chart construction (`resolveTheme(options.theme)` in
+   * `packages/vanilla/src/index.ts`) — `instance.update()`, which is all the
+   * effect below ever calls, merges its `partial` into `currentOptions` but
+   * never re-resolves or re-applies theme. Routing a theme change through
+   * the normal render-triggered `options` path would therefore be a silent
+   * no-op: the effect would run `instance.update()` and nothing would be
+   * redrawn differently. This one IS real state (unlike the two refs above)
+   * because changing it is meant to force exactly the re-render + prop
+   * change those two have to avoid: `key={edgeRadius}` on `<OrgChart>` below
+   * turns that into a full remount — React unmounts the whole `<OrgChart>`
+   * instance and mounts a fresh one, whose own mount effect calls
+   * `createOrgChart` with the new theme baked in from scratch (picking up
+   * the current `minimapOnRef`/`minimapPositionRef` values too, since
+   * `options` reads them at that moment). A real `setTheme` API (mirroring
+   * `setMinimap`) would let this go through the cheap, state-preserving path
+   * instead; see the playground's polish report. This remount does lose
+   * camera position and expand/collapse state on every drag tick, unlike
+   * `setMinimap`/`setMinimapPosition`.
+   */
+  const [edgeRadius, setEdgeRadiusState] = useState(EDGE_RADIUS_DEFAULT)
 
   const options: Options = useMemo<Options>(
     () => ({
@@ -156,9 +207,10 @@ export function ReactDemo({ example, onReady, ref }: ReactDemoProps): ReactNode 
       nodeSize: DEFAULT_NODE_SIZE,
       label: (item) => String(item.name ?? ''),
       ...example.options,
-      minimap: minimapOptionFor(example, minimapOn),
+      theme: themeFor(example, edgeRadius),
+      minimap: minimapOptionFor(example, minimapOnRef.current, minimapPositionRef.current),
     }),
-    [example, minimapOn],
+    [example, edgeRadius],
   )
 
   const handleReady = useCallback(() => {
@@ -169,22 +221,35 @@ export function ReactDemo({ example, onReady, ref }: ReactDemoProps): ReactNode 
     ref,
     () => ({
       setMinimap: (on: boolean) => {
-        setMinimapOn(on)
+        minimapOnRef.current = on
         // Straight through the API rather than via the options-prop update, so
         // toggling the minimap does not reset the tree's expand/collapse state.
-        chartRef.current?.api?.setMinimap(minimapOptionFor(example, on))
+        // See the comment on `minimapOnRef` above for why it is a ref, not
+        // state, which is what makes this safe rather than merely apparently so.
+        chartRef.current?.api?.setMinimap(minimapOptionFor(example, on, minimapPositionRef.current))
+      },
+      setMinimapPosition: (position: MinimapPosition) => {
+        minimapPositionRef.current = position
+        chartRef.current?.api?.setMinimap(minimapOptionFor(example, minimapOnRef.current, position))
+      },
+      setEdgeRadius: (radius: number) => {
+        // Updating state is enough: `key={edgeRadius}` on `<OrgChart>` below
+        // does the rest by forcing a remount — see the comment on `edgeRadius`
+        // above for why a plain options-prop update (`instance.update()`)
+        // would not.
+        setEdgeRadiusState(radius)
       },
     }),
     [example],
   )
 
   if (example.content === 'none') {
-    return <OrgChart ref={chartRef} className="chart-host" options={options} onReady={handleReady} />
+    return <OrgChart key={edgeRadius} ref={chartRef} className="chart-host" options={options} onReady={handleReady} />
   }
 
   const render = RENDERERS[example.content]
   return (
-    <OrgChart ref={chartRef} className="chart-host" options={options} onReady={handleReady}>
+    <OrgChart key={edgeRadius} ref={chartRef} className="chart-host" options={options} onReady={handleReady}>
       {render}
     </OrgChart>
   )

@@ -1,5 +1,17 @@
-import { createOrgChart, type Options } from '@n1crack/orgchart'
-import { DEPARTMENT_COLOR, initials, type Department, type Example, type NodeContentKind } from './data.js'
+import { createOrgChart, type Options, type OrgChartApi } from '@n1crack/orgchart'
+import {
+  DEPARTMENT_COLOR,
+  EDGE_RADIUS_DEFAULT,
+  initials,
+  minimapDefaultOn,
+  minimapDefaultPosition,
+  minimapOptionFor,
+  themeFor,
+  type Department,
+  type Example,
+  type MinimapPosition,
+  type NodeContentKind,
+} from './data.js'
 
 const DEFAULT_NODE_SIZE = { w: 180, h: 64 }
 
@@ -180,14 +192,80 @@ const RENDERERS: Record<NodeContentKind, RenderNode | null> = {
   none: null,
 }
 
-export function mountVanilla(host: HTMLElement, example: Example) {
+/** Imperative handle main.ts uses to drive the mounted vanilla chart's live controls. */
+export interface VanillaDemoHandle {
+  readonly api: OrgChartApi
+  destroy(): void
+  setMinimap(on: boolean): void
+  setMinimapPosition(position: MinimapPosition): void
+  setEdgeRadius(radius: number): void
+}
+
+/**
+ * The vanilla stack's playground demo. Unlike VueDemo.vue/ReactDemo.tsx —
+ * which get `chart.update()` for free from a reactive `options` object their
+ * framework already watches — this stack has no such mechanism of its own,
+ * so `buildOptions` is called by hand every time one of the live controls
+ * (minimap on/off, minimap corner, edge radius) changes, closing over
+ * whichever of those three values is current.
+ *
+ * `setEdgeRadius` in particular cannot go through `chart.update()`: theme is
+ * resolved exactly once, at construction (`resolveTheme(options.theme)` in
+ * `packages/vanilla/src/index.ts`), and handed straight to the canvas
+ * renderer and the (possibly worker-hosted) chart host — `update()` merges
+ * its `partial` into `currentOptions` but never re-resolves or re-applies
+ * theme, so a theme change routed through it is silently a no-op, not merely
+ * one that resets tree state. The only way to change a theme token
+ * post-construction today is to tear the chart down and build a new one,
+ * which is what this does — see the playground's polish report for what a
+ * `setTheme` API would save (this remount also drops camera position and
+ * expand/collapse state, unlike `setMinimap`).
+ */
+export function mountVanilla(
+  host: HTMLElement,
+  example: Example,
+  onApiChange: (api: OrgChartApi) => void,
+): VanillaDemoHandle {
   const renderNode = RENDERERS[example.content]
-  const options: Options = {
-    data: example.data,
-    nodeSize: DEFAULT_NODE_SIZE,
-    label: (item) => String(item.name ?? ''),
-    ...example.options,
-    ...(renderNode !== null ? { renderNode } : {}),
+  let minimapOn = minimapDefaultOn(example)
+  let minimapPosition = minimapDefaultPosition(example)
+  let edgeCornerRadius = EDGE_RADIUS_DEFAULT
+
+  function buildOptions(): Options {
+    return {
+      data: example.data,
+      nodeSize: DEFAULT_NODE_SIZE,
+      label: (item) => String(item.name ?? ''),
+      ...example.options,
+      theme: themeFor(example, edgeCornerRadius),
+      minimap: minimapOptionFor(example, minimapOn, minimapPosition),
+      ...(renderNode !== null ? { renderNode } : {}),
+    }
   }
-  return createOrgChart(host, options)
+
+  let chart = createOrgChart(host, buildOptions())
+  onApiChange(chart.api)
+
+  return {
+    get api() {
+      return chart.api
+    },
+    destroy: () => chart.destroy(),
+    setMinimap(on) {
+      minimapOn = on
+      // Straight through the API rather than `chart.update()`, so toggling
+      // the minimap never resets the tree's expand/collapse state.
+      chart.api.setMinimap(minimapOptionFor(example, minimapOn, minimapPosition))
+    },
+    setMinimapPosition(position) {
+      minimapPosition = position
+      chart.api.setMinimap(minimapOptionFor(example, minimapOn, minimapPosition))
+    },
+    setEdgeRadius(radius) {
+      edgeCornerRadius = radius
+      chart.destroy()
+      chart = createOrgChart(host, buildOptions())
+      onApiChange(chart.api)
+    },
+  }
 }

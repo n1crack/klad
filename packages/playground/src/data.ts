@@ -1,4 +1,6 @@
-import type { Options } from '@n1crack/orgchart'
+import type { MinimapPosition, Options } from '@n1crack/orgchart'
+
+export type { MinimapPosition } from '@n1crack/orgchart'
 
 /**
  * Whether `example`'s own declared options already turn the minimap on —
@@ -8,6 +10,19 @@ import type { Options } from '@n1crack/orgchart'
 export function minimapDefaultOn(example: Example): boolean {
   const configured = example.options.minimap
   return configured !== undefined && configured !== false
+}
+
+/**
+ * The corner `example`'s own declared minimap config already asks for —
+ * the initial state the playground's position dropdown should reflect (and
+ * reset to) whenever a new example/stack is mounted. Falls back to
+ * `'bottom-right'`, the library's own default, for every example that
+ * doesn't otherwise care (i.e. all of them except Status card, which
+ * demonstrates `position: 'top-left'` as a per-instance setting).
+ */
+export function minimapDefaultPosition(example: Example): MinimapPosition {
+  const configured = example.options.minimap
+  return typeof configured === 'object' && configured.position !== undefined ? configured.position : 'bottom-right'
 }
 
 /**
@@ -23,10 +38,46 @@ function minimapOnConfig(example: Example): NonNullable<Options['minimap']> {
   return configured === undefined || configured === false ? true : configured
 }
 
-/** The effective `minimap` option for `on`/`off`, given `example`'s own config. */
-export function minimapOptionFor(example: Example, on: boolean): NonNullable<Options['minimap']> {
-  return on ? minimapOnConfig(example) : false
+/**
+ * The effective `minimap` option for `on`/`off` and the chosen corner, given
+ * `example`'s own config. `position` always wins over whatever the example
+ * itself declared — it is the playground's own dropdown control, and the
+ * point of the control is that the viewer can move the widget regardless of
+ * what an individual example happened to configure.
+ */
+export function minimapOptionFor(
+  example: Example,
+  on: boolean,
+  position: MinimapPosition,
+): NonNullable<Options['minimap']> {
+  if (!on) return false
+  const configured = minimapOnConfig(example)
+  return typeof configured === 'object' ? { ...configured, position } : { position }
 }
+
+/** Slider bounds and default for the "Edge radius" control — see `themeFor`. */
+export const EDGE_RADIUS_MIN = 0
+export const EDGE_RADIUS_MAX = 24
+export const EDGE_RADIUS_DEFAULT = 0
+
+/**
+ * The effective `theme` for `example`, with `edgeCornerRadius` set from the
+ * playground's own slider. Merged over the example's own declared theme
+ * (rather than replacing it) so examples that already set theme tokens for
+ * their own reasons — Avatar circle's transparent node box, for instance —
+ * keep them; the slider only ever adds or overrides the one token it owns.
+ */
+export function themeFor(example: Example, edgeCornerRadius: number): NonNullable<Options['theme']> {
+  return { ...example.options.theme, edgeCornerRadius }
+}
+
+/** Options for the minimap-corner `<select>`, in on-screen order. */
+export const MINIMAP_POSITIONS: { value: MinimapPosition; label: string }[] = [
+  { value: 'top-left', label: 'Top left' },
+  { value: 'top-right', label: 'Top right' },
+  { value: 'bottom-left', label: 'Bottom left' },
+  { value: 'bottom-right', label: 'Bottom right' },
+]
 
 /**
  * `NodeData` itself is not re-exported from `@n1crack/orgchart`'s public
@@ -225,10 +276,10 @@ export const EXAMPLES: Example[] = [
     id: 'avatar-circle',
     name: 'Avatar circle',
     description:
-      'Just a floating circle and a name — no card box. The connector meets the node at the bottom, under the name, where a +/- toggle sits right at that junction (shown only on nodes with reports; a leaf shows none). nodeSize: 96×128 to fit the added toggle row. toggleOnNodeClick: true still works too: tap the circle itself to expand or collapse. The canvas\'s own node box is made transparent via theme.nodeFill/nodeStroke so nothing but the circle, name and toggle ever paints, and label is suppressed so the canvas does not also draw the name as plain text underneath.',
+      'Just a floating circle and a name — no card box. The connector meets the node at the bottom, under the name, where a +/- toggle sits tight against that junction (shown only on nodes with reports; a leaf shows none). nodeSize: 96×108, snug around the circle, name and toggle with almost no slack. toggleOnNodeClick: true still works too: tap the circle itself to expand or collapse. The canvas\'s own node box is made transparent via theme.nodeFill/nodeStroke so nothing but the circle, name and toggle ever paints, and label is suppressed so the canvas does not also draw the name as plain text underneath.',
     data: SHARED_DATA,
     options: {
-      nodeSize: { w: 96, h: 128 },
+      nodeSize: { w: 96, h: 108 },
       toggleOnNodeClick: true,
       label: () => '',
       theme: { nodeFill: 'transparent', nodeStroke: 'transparent' },

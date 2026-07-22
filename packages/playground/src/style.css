@@ -1,6 +1,39 @@
+/*
+ * Design tokens for the playground SHELL (header, toolbar, description card,
+ * surface frame) — not the node cards below, which are deliberate per-example
+ * looks and keep their own `color-mix(in srgb, canvas/canvastext, …)` values
+ * unchanged. `canvas`/`canvastext` are the two system colours that flip with
+ * the OS's light/dark preference on their own (that's what `color-scheme:
+ * light dark` below switches on); building the shell's tokens out of them
+ * gets `prefers-color-scheme: dark` support for the price of one extra media
+ * query — just for `--accent`, whose fixed blue needs a lighter shade to stay
+ * readable against a dark surface. Everything else adapts for free.
+ */
 :root {
   color-scheme: light dark;
   font-family: system-ui, -apple-system, 'Segoe UI', sans-serif;
+
+  --accent: #2563eb;
+  --accent-contrast: #ffffff;
+  --surface: canvas;
+  --surface-raised: color-mix(in srgb, canvas 97%, canvastext 3%);
+  --surface-sunken: color-mix(in srgb, canvas 94%, canvastext 6%);
+  --border: color-mix(in srgb, canvastext 14%, canvas 86%);
+  --border-strong: color-mix(in srgb, canvastext 32%, canvas 68%);
+  --text-muted: color-mix(in srgb, canvastext 62%, canvas 38%);
+  --radius-sm: 6px;
+  --radius-md: 10px;
+  --shadow-sm: 0 1px 2px color-mix(in srgb, canvastext 12%, transparent);
+}
+
+@media (prefers-color-scheme: dark) {
+  :root {
+    /* blue-600 reads dim on a dark surface; blue-400 keeps the same role
+       (links, focus rings, the export buttons, the pressed-minimap state)
+       readable without touching anything else. */
+    --accent: #60a5fa;
+    --accent-contrast: #0b1220;
+  }
 }
 
 body {
@@ -8,6 +41,8 @@ body {
   display: flex;
   flex-direction: column;
   height: 100vh;
+  color: canvastext;
+  background: var(--surface);
 }
 
 #app {
@@ -16,57 +51,232 @@ body {
   height: 100%;
 }
 
+.app-header {
+  padding: 0.85rem 1.25rem 0.6rem;
+  background: var(--surface);
+  border-bottom: 1px solid var(--border);
+}
+
+.app-title {
+  display: flex;
+  align-items: baseline;
+  flex-wrap: wrap;
+  gap: 0.6rem;
+}
+
+.app-name {
+  font-size: 1.05rem;
+  font-weight: 700;
+  letter-spacing: -0.01em;
+}
+
+.app-tagline {
+  font-size: 0.8rem;
+  color: var(--text-muted);
+}
+
 .toolbar {
   display: flex;
   flex-wrap: wrap;
-  align-items: center;
-  gap: 0.75rem;
-  padding: 0.75rem 1rem;
-  border-bottom: 1px solid #8884;
-  background: color-mix(in srgb, canvas 96%, canvastext 4%);
+  align-items: stretch;
+  gap: 0.9rem 1.35rem;
+  padding: 0.75rem 1.25rem;
+  background: var(--surface-raised);
+  border-bottom: 1px solid var(--border);
 }
 
-.toolbar label {
-  font-weight: 600;
-  font-size: 0.85rem;
-}
-
-.toolbar select {
-  font-size: 0.9rem;
-  padding: 0.25rem 0.5rem;
-}
-
-.controls {
+.toolbar-group {
   display: flex;
+  flex-direction: column;
   gap: 0.4rem;
+  padding-right: 1.35rem;
+  border-right: 1px solid var(--border);
+}
+
+.toolbar-group:last-of-type {
+  border-right: none;
+  padding-right: 0;
+}
+
+/* The Export group is visually distinct (see `.btn-export`) and reads best
+   pinned to the far side of the bar, away from the controls that shape what
+   the chart looks like. */
+.toolbar-group-end {
   margin-left: auto;
 }
 
-.controls button {
-  font-size: 0.85rem;
-  padding: 0.3rem 0.7rem;
+.toolbar-group-caption {
+  font-size: 0.68rem;
+  font-weight: 700;
+  text-transform: uppercase;
+  letter-spacing: 0.07em;
+  color: var(--text-muted);
+}
+
+.toolbar-group-body {
+  display: flex;
+  align-items: center;
+  flex-wrap: wrap;
+  gap: 0.5rem;
+}
+
+.field {
+  display: flex;
+  flex-direction: column;
+  gap: 0.3rem;
+}
+
+.field label {
+  font-size: 0.75rem;
+  font-weight: 600;
+  color: var(--text-muted);
+}
+
+.field-compact {
+  min-width: 0;
+}
+
+.field-range {
+  min-width: 190px;
+}
+
+.field-range-row {
+  display: flex;
+  align-items: center;
+  gap: 0.65rem;
+}
+
+.field-range-row input[type='range'] {
+  flex: 1;
+  accent-color: var(--accent);
   cursor: pointer;
+}
+
+.field-range-row input[type='range']:focus-visible {
+  outline: 2px solid var(--accent);
+  outline-offset: 3px;
+}
+
+.field-range-value {
+  min-width: 2.2ch;
+  text-align: right;
+  font-variant-numeric: tabular-nums;
+  font-size: 0.85rem;
+  font-weight: 700;
+  color: canvastext;
+}
+
+.select,
+.btn {
+  font: inherit;
+  font-size: 0.85rem;
+}
+
+.select {
+  padding: 0.4rem 0.6rem;
+  border-radius: var(--radius-sm);
+  border: 1px solid var(--border-strong);
+  background: var(--surface);
+  color: canvastext;
+  cursor: pointer;
+  transition: border-color 120ms ease, box-shadow 120ms ease;
+}
+
+.select:hover {
+  border-color: var(--accent);
+}
+
+.select:focus-visible {
+  outline: none;
+  border-color: var(--accent);
+  box-shadow: 0 0 0 3px color-mix(in srgb, var(--accent) 30%, transparent);
+}
+
+.btn {
+  padding: 0.42rem 0.75rem;
+  border-radius: var(--radius-sm);
+  border: 1px solid var(--border-strong);
+  background: var(--surface);
+  color: canvastext;
+  font-weight: 600;
+  cursor: pointer;
+  transition: background 120ms ease, border-color 120ms ease, box-shadow 120ms ease, transform 80ms ease;
+}
+
+.btn:hover {
+  background: color-mix(in srgb, var(--accent) 10%, var(--surface) 90%);
+  border-color: var(--accent);
+}
+
+.btn:active {
+  transform: translateY(1px);
+}
+
+.btn:focus-visible {
+  outline: none;
+  border-color: var(--accent);
+  box-shadow: 0 0 0 3px color-mix(in srgb, var(--accent) 35%, transparent);
 }
 
 /* The minimap toggle carries its on/off state as `aria-pressed`, styled here
    so its look, not just its label text, says which state it's in. */
-.controls button[aria-pressed='true'] {
-  background: color-mix(in srgb, canvastext 12%, canvas 88%);
-  border-color: color-mix(in srgb, canvastext 45%, canvas 55%);
-  font-weight: 600;
+.btn-toggle[aria-pressed='true'] {
+  background: color-mix(in srgb, var(--accent) 16%, var(--surface) 84%);
+  border-color: var(--accent);
+  color: var(--accent);
+}
+
+/* Export sits apart from the rest of the toolbar (see `.toolbar-group-end`)
+   and is filled with the accent colour so it reads as the bar's one
+   "produce an artefact" action, distinct from the controls that only change
+   what's on screen. */
+.btn-export {
+  background: var(--accent);
+  border-color: var(--accent);
+  color: var(--accent-contrast);
+}
+
+.btn-export:hover {
+  background: color-mix(in srgb, var(--accent) 88%, canvastext 12%);
+  border-color: color-mix(in srgb, var(--accent) 88%, canvastext 12%);
 }
 
 .example-description {
-  padding: 0.4rem 1rem;
+  margin: 0.9rem 1.25rem 0;
+  padding: 0.6rem 1rem;
+  border-radius: var(--radius-md);
+  background: var(--surface-sunken);
+  border: 1px solid var(--border);
+  display: flex;
+  flex-direction: column;
+  gap: 0.15rem;
+}
+
+.example-description-eyebrow {
+  font-size: 0.68rem;
+  font-weight: 700;
+  text-transform: uppercase;
+  letter-spacing: 0.07em;
+  color: var(--accent);
+}
+
+.example-description p {
+  margin: 0;
   font-size: 0.85rem;
-  color: color-mix(in srgb, canvastext 70%, canvas 30%);
-  border-bottom: 1px solid #8884;
+  line-height: 1.5;
+  color: var(--text-muted);
 }
 
 .surface {
   position: relative;
   flex: 1;
   min-height: 0;
+  margin: 0.9rem 1.25rem 1.25rem;
+  border-radius: var(--radius-md);
+  border: 1px solid var(--border);
+  background: var(--surface-sunken);
+  box-shadow: var(--shadow-sm);
+  overflow: hidden;
 }
 
 .chart-host {
@@ -215,8 +425,18 @@ body {
   flex-direction: column;
   align-items: center;
   justify-content: flex-start;
-  gap: 0.3rem;
-  padding: 0.35rem 0.4rem 0.3rem;
+  /* Tight on purpose: `justify-content: flex-start` packs the circle, name
+     and toggle at the TOP of the box, so any slack left over between the
+     content's actual height and the declared `nodeSize.h` lands as empty
+     space at the BOTTOM — between the toggle and the node box's own lower
+     edge, which is exactly where the outgoing connector attaches (see the
+     `.toggle-btn` override below). A loose gap/padding here used to read as
+     the toggle floating disconnected from its line; this gap/padding pair is
+     sized so the three items' total height comes out close to nodeSize.h
+     (96x108, down from 96x128 — see data.ts), leaving only a couple of
+     pixels of slack rather than over twenty. */
+  gap: 0.18rem;
+  padding: 0.3rem 0.4rem 0.2rem;
   cursor: pointer;
   font-family: inherit;
   overflow: hidden;
@@ -249,6 +469,7 @@ body {
 .monogram-name {
   max-width: 100%;
   font-size: 0.78rem;
+  line-height: 1;
   font-weight: 600;
   text-align: center;
   white-space: nowrap;
