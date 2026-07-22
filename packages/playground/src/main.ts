@@ -10,6 +10,7 @@ import {
   MINIMAP_POSITIONS,
   minimapDefaultOn,
   minimapDefaultPosition,
+  NODE_FILL_DEFAULT,
   type Example,
   type MinimapPosition,
 } from './data.js'
@@ -154,13 +155,17 @@ minimapPositionSelect.onchange = () => {
 
 const minimapGroup = sidebarGroup('Minimap', minimapButton, minimapPositionField)
 
-// --- "Edge radius" group: rounds the connector elbows live via the chart's theme ---
-// theme.edgeCornerRadius has no dedicated runtime setter on OrgChartApi (unlike
-// setMinimap) — see the setEdgeRadius implementations in vanilla-demo.ts,
-// VueDemo.vue and ReactDemo.tsx, and the playground polish report, for why
-// this one goes through `update()`/a reactive options change instead, and
-// what a `setTheme`-style method would save.
+// --- "Appearance" group: theme-driven controls (edge radius, node fill) plus
+// the canvas background — grouped together since all three change how the
+// chart looks, not what it shows. Edge radius and node fill are both real
+// `theme` tokens, applied live through `api.setTheme(...)` (no remount, no
+// tree-state reset — see vanilla-demo.ts/VueDemo.vue/ReactDemo.tsx's own
+// `setEdgeRadius`/`setNodeFill`). The canvas background isn't a theme token
+// at all (see the comment above `applyCanvasBg` below) — it's chrome, a host
+// CSS override — so it stays a separate mechanism even though it lives in
+// the same sidebar group.
 let currentSetEdgeRadius: ((radius: number) => void) | null = null
+let currentSetNodeFill: ((nodeFill: string) => void) | null = null
 
 const edgeRadiusField = document.createElement('div')
 edgeRadiusField.className = 'field field-range'
@@ -188,9 +193,40 @@ edgeRadiusRange.oninput = () => {
   currentSetEdgeRadius?.(radius)
 }
 
-const edgeRadiusGroup = sidebarGroup('Edge radius', edgeRadiusField)
+// "Node fill" — the owner's ask: when the canvas is zoomed out small, nodes
+// are drawn by the canvas itself as filled boxes using `theme.nodeFill` (see
+// packages/core/src/render/canvas2d.ts), so this is the control that
+// recolours them. Also affects the same boxes at any zoom (they're always
+// canvas-drawn underneath), and any overlay card whose own CSS happens to
+// read `theme.nodeFill` — the built-in demo cards in this playground don't
+// (their background comes from `.card`'s own CSS, not the chart's theme), so
+// dragging this only visibly recolours the canvas-drawn boxes here, most
+// obviously once zoomed out past the overlay threshold.
+const nodeFillInput = document.createElement('input')
+nodeFillInput.type = 'color'
+nodeFillInput.id = 'node-fill-input'
+nodeFillInput.className = 'color-input'
+nodeFillInput.value = NODE_FILL_DEFAULT
+const nodeFillLabel = document.createElement('label')
+nodeFillLabel.textContent = 'Node fill'
+nodeFillLabel.htmlFor = 'node-fill-input'
+const nodeFillValue = document.createElement('output')
+nodeFillValue.className = 'field-range-value'
+nodeFillValue.setAttribute('for', 'node-fill-input')
+nodeFillValue.textContent = NODE_FILL_DEFAULT.toUpperCase()
+const nodeFillRow = document.createElement('div')
+nodeFillRow.className = 'field-range-row'
+nodeFillRow.append(nodeFillInput, nodeFillValue)
+const nodeFillField = document.createElement('div')
+nodeFillField.className = 'field'
+nodeFillField.append(nodeFillLabel, nodeFillRow)
 
-// --- "Canvas" group: the colour behind the chart ---
+nodeFillInput.oninput = () => {
+  const hex = nodeFillInput.value
+  nodeFillValue.textContent = hex.toUpperCase()
+  currentSetNodeFill?.(hex)
+}
+
 // The canvas itself only ever `clearRect`s (see packages/core/src/render/canvas2d.ts)
 // — it never paints a background of its own, so whatever colour shows behind the
 // nodes and connectors is just the host element's CSS background showing through
@@ -218,7 +254,7 @@ const canvasBgField = document.createElement('div')
 canvasBgField.className = 'field'
 canvasBgField.append(canvasBgLabel, canvasBgRow)
 
-const canvasGroup = sidebarGroup('Canvas', canvasBgField)
+const appearanceGroup = sidebarGroup('Appearance', edgeRadiusField, nodeFillField, canvasBgField)
 
 function applyCanvasBg(hex: string): void {
   surface.style.backgroundColor = hex
@@ -286,7 +322,7 @@ const sidebar = document.createElement('aside')
 sidebar.className = 'sidebar'
 const sidebarBody = document.createElement('div')
 sidebarBody.className = 'sidebar-body'
-sidebarBody.append(demoGroup, viewGroup, minimapGroup, edgeRadiusGroup, canvasGroup, exportGroup)
+sidebarBody.append(demoGroup, viewGroup, minimapGroup, appearanceGroup, exportGroup)
 sidebar.append(sidebarBody)
 
 const description = document.createElement('div')
@@ -338,6 +374,7 @@ function show(stack: Stack, exampleId: string): void {
   currentSetMinimap = null
   currentSetMinimapPosition = null
   currentSetEdgeRadius = null
+  currentSetNodeFill = null
   surface.innerHTML = ''
 
   const example = findExample(exampleId)
@@ -353,6 +390,13 @@ function show(stack: Stack, exampleId: string): void {
   minimapPositionSelect.value = minimapDefaultPosition(example)
   edgeRadiusRange.value = String(EDGE_RADIUS_DEFAULT)
   edgeRadiusValue.textContent = String(EDGE_RADIUS_DEFAULT)
+  // Same reset as edge radius: the swatch goes back to the library default
+  // rather than whatever an example's OWN theme happens to declare (e.g.
+  // Avatar/Monogram's transparent node box) — this control never applies
+  // anything until a viewer actually drags it, so there's nothing to
+  // reconcile the swatch against; see `NODE_FILL_DEFAULT`'s docblock.
+  nodeFillInput.value = NODE_FILL_DEFAULT
+  nodeFillValue.textContent = NODE_FILL_DEFAULT.toUpperCase()
 
   if (stack === 'vanilla') {
     const chart: VanillaDemoHandle = mountVanilla(surface, example, (api) => {
@@ -361,6 +405,7 @@ function show(stack: Stack, exampleId: string): void {
     currentSetMinimap = (on) => chart.setMinimap(on)
     currentSetMinimapPosition = (position) => chart.setMinimapPosition(position)
     currentSetEdgeRadius = (radius) => chart.setEdgeRadius(radius)
+    currentSetNodeFill = (nodeFill) => chart.setNodeFill(nodeFill)
     teardown = () => chart.destroy()
   } else if (stack === 'vue') {
     const app = createApp(VueDemo, {
@@ -369,17 +414,19 @@ function show(stack: Stack, exampleId: string): void {
         currentApi = api
       },
     })
-    // VueDemo exposes `setMinimap`/`setMinimapPosition`/`setEdgeRadius` via
-    // `defineExpose`; `app.mount()` returns exactly that exposed public
-    // instance for the root component.
+    // VueDemo exposes `setMinimap`/`setMinimapPosition`/`setEdgeRadius`/
+    // `setNodeFill` via `defineExpose`; `app.mount()` returns exactly that
+    // exposed public instance for the root component.
     const instance = app.mount(surface) as unknown as {
       setMinimap: (on: boolean) => void
       setMinimapPosition: (position: MinimapPosition) => void
       setEdgeRadius: (radius: number) => void
+      setNodeFill: (nodeFill: string) => void
     }
     currentSetMinimap = (on) => instance.setMinimap(on)
     currentSetMinimapPosition = (position) => instance.setMinimapPosition(position)
     currentSetEdgeRadius = (radius) => instance.setEdgeRadius(radius)
+    currentSetNodeFill = (nodeFill) => instance.setNodeFill(nodeFill)
     teardown = () => app.unmount()
   } else {
     const root: Root = createRoot(surface)
@@ -396,6 +443,7 @@ function show(stack: Stack, exampleId: string): void {
     currentSetMinimap = (on) => reactHandle.current?.setMinimap(on)
     currentSetMinimapPosition = (position) => reactHandle.current?.setMinimapPosition(position)
     currentSetEdgeRadius = (radius) => reactHandle.current?.setEdgeRadius(radius)
+    currentSetNodeFill = (nodeFill) => reactHandle.current?.setNodeFill(nodeFill)
     teardown = () => root.unmount()
   }
 }

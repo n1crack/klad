@@ -16,6 +16,7 @@ function fakeRenderer(): Renderer {
   return {
     resize: vi.fn(),
     draw: vi.fn(),
+    setTheme: vi.fn(),
     stats: { lastDrawCalls: { edgeStrokes: 0, nodes: 0, labels: 0 } },
   }
 }

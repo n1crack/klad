@@ -85,14 +85,24 @@ function assignDefined<T, K extends keyof T>(target: T, key: K, value: T[K] | un
 }
 
 /**
- * Merges `partial` over the defaults. Keys explicitly set to `undefined` are
- * skipped rather than overwriting a default with `undefined` — `exactOptionalPropertyTypes`
- * blocks that at the TS boundary, but a JS consumer or an `as` cast can still
- * produce `{ nodeStroke: undefined }`, and that should leave the default in
- * place rather than erasing it.
+ * Merges `partial` over `base` (defaults to `DEFAULT_THEME`). Keys explicitly
+ * set to `undefined` are skipped rather than overwriting `base`'s own value
+ * with `undefined` — `exactOptionalPropertyTypes` blocks that at the TS
+ * boundary, but a JS consumer or an `as` cast can still produce
+ * `{ nodeStroke: undefined }`, and that should leave `base`'s value in place
+ * rather than erasing it.
+ *
+ * The `base` parameter is what lets a runtime theme update (see
+ * `OrgChartApi.setTheme` in packages/vanilla) merge a partial over the
+ * chart's CURRENT (already-resolved) theme rather than always back over the
+ * built-in defaults — a second `resolveTheme({ nodeFill }, currentTheme)`
+ * call keeps every token an earlier `setTheme` call already set, changing
+ * only the one this call names. Defaulting to `DEFAULT_THEME` keeps every
+ * existing single-argument call site (construction-time resolution) exactly
+ * as it was.
  */
-export function resolveTheme(partial?: Partial<Theme>): Theme {
-  const theme: Theme = { ...DEFAULT_THEME }
+export function resolveTheme(partial?: Partial<Theme>, base: Theme = DEFAULT_THEME): Theme {
+  const theme: Theme = { ...base }
   if (partial !== undefined) {
     for (const key of Object.keys(partial) as (keyof Theme)[]) {
       assignDefined(theme, key, partial[key])

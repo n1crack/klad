@@ -199,27 +199,25 @@ export interface VanillaDemoHandle {
   setMinimap(on: boolean): void
   setMinimapPosition(position: MinimapPosition): void
   setEdgeRadius(radius: number): void
+  setNodeFill(nodeFill: string): void
 }
 
 /**
  * The vanilla stack's playground demo. Unlike VueDemo.vue/ReactDemo.tsx —
  * which get `chart.update()` for free from a reactive `options` object their
  * framework already watches — this stack has no such mechanism of its own,
- * so `buildOptions` is called by hand every time one of the live controls
- * (minimap on/off, minimap corner, edge radius) changes, closing over
- * whichever of those three values is current.
+ * so `buildOptions` is called by hand every time the minimap on/off or
+ * minimap corner control changes, closing over whichever of those two
+ * values is current.
  *
- * `setEdgeRadius` in particular cannot go through `chart.update()`: theme is
- * resolved exactly once, at construction (`resolveTheme(options.theme)` in
- * `packages/vanilla/src/index.ts`), and handed straight to the canvas
- * renderer and the (possibly worker-hosted) chart host — `update()` merges
- * its `partial` into `currentOptions` but never re-resolves or re-applies
- * theme, so a theme change routed through it is silently a no-op, not merely
- * one that resets tree state. The only way to change a theme token
- * post-construction today is to tear the chart down and build a new one,
- * which is what this does — see the playground's polish report for what a
- * `setTheme` API would save (this remount also drops camera position and
- * expand/collapse state, unlike `setMinimap`).
+ * `setEdgeRadius`/`setNodeFill` go straight through `chart.api.setTheme`
+ * instead — `OrgChartApi.setTheme` (packages/vanilla/src/index.ts) merges a
+ * partial theme over whatever the chart is already showing, re-resolves it,
+ * and repaints, all without touching tree/layout state. Before that method
+ * existed, the only way to change a theme token post-construction was to
+ * tear the chart down and build a new one (see this file's git history) —
+ * which also reset camera position and expand/collapse state on every drag
+ * tick, unlike `setMinimap`. `setTheme` fixes both problems at once.
  */
 export function mountVanilla(
   host: HTMLElement,
@@ -229,7 +227,6 @@ export function mountVanilla(
   const renderNode = RENDERERS[example.content]
   let minimapOn = minimapDefaultOn(example)
   let minimapPosition = minimapDefaultPosition(example)
-  let edgeCornerRadius = EDGE_RADIUS_DEFAULT
 
   function buildOptions(): Options {
     return {
@@ -237,13 +234,13 @@ export function mountVanilla(
       nodeSize: DEFAULT_NODE_SIZE,
       label: (item) => String(item.name ?? ''),
       ...example.options,
-      theme: themeFor(example, edgeCornerRadius),
+      theme: themeFor(example, EDGE_RADIUS_DEFAULT),
       minimap: minimapOptionFor(example, minimapOn, minimapPosition),
       ...(renderNode !== null ? { renderNode } : {}),
     }
   }
 
-  let chart = createOrgChart(host, buildOptions())
+  const chart = createOrgChart(host, buildOptions())
   onApiChange(chart.api)
 
   return {
@@ -262,10 +259,10 @@ export function mountVanilla(
       chart.api.setMinimap(minimapOptionFor(example, minimapOn, minimapPosition))
     },
     setEdgeRadius(radius) {
-      edgeCornerRadius = radius
-      chart.destroy()
-      chart = createOrgChart(host, buildOptions())
-      onApiChange(chart.api)
+      chart.api.setTheme({ edgeCornerRadius: radius })
+    },
+    setNodeFill(nodeFill) {
+      chart.api.setTheme({ nodeFill })
     },
   }
 }

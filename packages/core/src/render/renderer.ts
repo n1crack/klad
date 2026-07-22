@@ -1,5 +1,6 @@
 import type { Camera } from '../viewport.js'
 import type { LodTier } from './lod.js'
+import type { Theme } from './theme.js'
 
 /**
  * The slice of the canvas 2D API this renderer uses, declared structurally.
@@ -148,5 +149,13 @@ export interface Renderer {
   /** `width`/`height` are CSS pixels; the backing store is scaled by `dpr`. */
   resize(width: number, height: number, dpr: number): void
   draw(frame: Frame): void
+  /**
+   * Swaps the theme this renderer paints with, effective from the next
+   * `draw()` call. Paint-only: the renderer never derives layout or hit-test
+   * geometry from theme tokens (that stays entirely in the engine's `Frame`),
+   * so this cannot trigger a relayout or re-cull — it just changes which
+   * colours/radii the very next frame's fills/strokes use.
+   */
+  setTheme(theme: Theme): void
   readonly stats: { lastDrawCalls: DrawCallStats }
 }

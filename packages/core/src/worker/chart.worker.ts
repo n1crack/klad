@@ -2,11 +2,16 @@
 import { createChartEngine, type ChartEngine } from '../engine.js'
 import { createCanvas2DRenderer } from '../render/canvas2d.js'
 import { createTextMeasurer } from '../text/measure.js'
-import type { RenderSurface } from '../render/renderer.js'
+import type { Renderer, RenderSurface } from '../render/renderer.js'
 import type { Theme } from '../render/theme.js'
 import type { MainToWorker, WorkerToMain } from './protocol.js'
 
 let engine: ChartEngine | null = null
+// Hoisted alongside `engine` (rather than staying a `const` local to the
+// `'init'` case) so the `'theme'` case below can reach it — the renderer is
+// the only thing a theme change actually touches; `engine` itself never
+// reads a theme (see engine.ts — layout and hit-testing are theme-agnostic).
+let renderer: Renderer | null = null
 
 const post = (message: WorkerToMain, transfer: Transferable[] = []): void => {
   ;(self as unknown as { postMessage(m: WorkerToMain, t: Transferable[]): void }).postMessage(
@@ -22,7 +27,7 @@ self.onmessage = (event: MessageEvent<MainToWorker>): void => {
       case 'init': {
         const surface = message.canvas as RenderSurface
         const theme = message.theme as Theme
-        const renderer = createCanvas2DRenderer(surface, theme, (font) => {
+        renderer = createCanvas2DRenderer(surface, theme, (font) => {
           const probe = new OffscreenCanvas(1, 1).getContext('2d')!
           probe.font = font
           return createTextMeasurer({ measureWidth: (t) => probe.measureText(t).width })
@@ -31,6 +36,9 @@ self.onmessage = (event: MessageEvent<MainToWorker>): void => {
         engine.setViewport(message.width, message.height, message.dpr)
         break
       }
+      case 'theme':
+        renderer?.setTheme(message.theme as Theme)
+        break
       case 'data':
         engine?.setData(message.tree, message.sizes, message.labels, message.open)
         break

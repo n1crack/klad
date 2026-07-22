@@ -362,19 +362,90 @@ function emphasisRaw(overall: number, opening: boolean): number {
   return opening ? phaseTwoProgress(overall) : phaseOneProgress(overall)
 }
 
+/**
+ * Fraction of the OVERALL transition duration by which a collapsed ghost
+ * must be fully transparent — deliberately its OWN, shorter window,
+ * independent of `PHASE_ONE_FRACTION` (the ~58% of the transition phase 1
+ * itself occupies). A ghost whose alpha merely rides `emphasisRaw` stays
+ * part-visible for that entire first phase (up to ~260ms here), which reads
+ * as a lingering blank `nodeFill` box trailing the collapse rather than a
+ * card dissolving away — the owner's exact complaint (worse the more the
+ * canvas background contrasts with `nodeFill`, e.g. a dark background
+ * behind a white default fill). Front-loading the fade into roughly the
+ * first third of the transition's total life still shows a brief hint of
+ * the card shrinking, then lets it vanish well before phase 2 (gap-closing)
+ * even starts at `PHASE_TWO_START_FRACTION` (~42%) — "gone", not "trailing".
+ */
+const GHOST_FADE_FRACTION = 0.35
+
+/** Raw (un-eased) progress through the ghost's own fade window. Clamped:
+ * stays at 1 for the remainder of the transition once the window closes. */
+function ghostFadeRaw(overall: number): number {
+  return clamp01(overall / GHOST_FADE_FRACTION)
+}
+
 interface TweenEntry {
+  /** For a surviving (`revealed: false`) entry: its own OLD box, the start
+   * point of its old->new reposition tween (unchanged meaning). For a
+   * REVEALED entry: its own NEW (final) box, used ONLY as the fallback
+   * growth-start point when `anchor` is `-1` — i.e. "no ancestor to grow
+   * from" reduces to "start already at the final box", a fade-in with no
+   * visible motion. Whenever `anchor` is NOT `-1`, this field is unused: the
+   * real growth-start point is read live from the anchor instead (see
+   * `anchor`'s docblock) and the growth END point is always `boxAt(boxes,
+   * idx)`, computed fresh in `render()`, not stored here. */
   box: Box
   /** True for a node newly revealed by this transition (no prior position of
    * its own) — drives the fade-in; false for a node that already existed and
    * is merely moving. */
   revealed: boolean
+  /**
+   * REVEALED entries only (meaningless, always `-1`, on a `revealed: false`
+   * entry): pruned index, in the tree this `Transition` was built against, of
+   * the nearest surviving ancestor to grow from — or `-1` if the whole
+   * ancestor chain up to a root is ALSO newly revealed by this same
+   * transition (rare; falls back to the entry's own `box`, i.e. no visible
+   * growth, just a fade-in in place).
+   *
+   * Deliberately an INDEX, not a `Box` baked in once here: the anchor is
+   * itself a surviving node, which can be mid-reposition (sliding to make
+   * room, or recentring over a changed child set) for the very same
+   * transition — see the module docblock's "STAGED choreography" and the
+   * owner's report that reveals/ghosts were growing from / shrinking to the
+   * anchor's STALE pre-toggle position while the anchor itself visibly slid
+   * somewhere else. Reading `renderBoxes[anchor]` fresh every frame in
+   * `render()` (via `applyTween`, which is idempotent so calling it again for
+   * an index already handled this frame is harmless) instead gets the
+   * anchor's own live reposition tween, so a reveal grows from — and a ghost
+   * shrinks into — wherever the anchor actually is at that instant.
+   */
+  anchor: number
 }
 
 interface Ghost {
   /** SOURCE index — ghosts have no pruned index in the new tree. */
   source: number
   from: Box
-  to: Box
+  /**
+   * Pruned index, in the tree this `Ghost` was minted against, of the
+   * nearest surviving ancestor to shrink/fade toward, or `-1` if none was
+   * found (falls back to `from`, i.e. the ghost fades in place without
+   * shrinking). Read live via `renderBoxes` every frame in `render()` — see
+   * `TweenEntry.anchor`'s docblock for why this is an index, not a `Box`
+   * snapshot.
+   */
+  anchor: number
+  /**
+   * SOURCE index of that same ancestor, or `-1` — stable across relayouts,
+   * unlike `anchor` itself (a pruned index is only valid within the
+   * relayout that produced it). What lets a ghost that survives into a
+   * SECOND transition (still fading when another toggle lands before this
+   * one finishes — see `buildTransition`'s carry-over loop) re-resolve
+   * `anchor` as a valid pruned index in the tree that new transition was
+   * built against, rather than reusing a pruned index that may now point at
+   * an unrelated node or nothing at all.
+   */
+  anchorSource: number
 }
 
 /** Common shape of anything `progressOf` can time: a start timestamp and a
@@ -423,12 +494,18 @@ interface TransitionEasing {
   /** Drives the position (grow-from-parent / shrink-to-parent) tween of
    * revealed entries and ghosts — the "reveal" / "shrink away" job. */
   emphasisPos: number
-  /** Drives the alpha fade of revealed entries and ghosts. A separate curve
-   * from `emphasisPos` for the same reason the old single-phase code kept
-   * position and alpha separate: `easeOutCubic`'s fast-start fade still
+  /** Drives the alpha fade-IN of revealed entries (an expand). A separate
+   * curve from `emphasisPos` for the same reason the old single-phase code
+   * kept position and alpha separate: `easeOutCubic`'s fast-start fade still
    * reads right for a fade, but a symmetric ease-in-out is still right for
-   * the accompanying move — see the module docblock above. */
+   * the accompanying move — see the module docblock above. NOT used for
+   * ghosts — see `ghostAlpha` below. */
   emphasisAlpha: number
+  /** Drives the alpha fade-OUT of ghosts (a collapse's removed nodes). Its
+   * own curve, on its own (shorter) window — see `ghostFadeRaw` — rather
+   * than reusing `emphasisAlpha`/`emp`, so a ghost reads as dissolving away
+   * quickly rather than lingering as a blank box through all of phase 1. */
+  ghostAlpha: number
 }
 
 function easingFor(transition: Transition, now: number): TransitionEasing {
@@ -439,6 +516,7 @@ function easingFor(transition: Transition, now: number): TransitionEasing {
     repositionPos: easeInOutCubic(rep),
     emphasisPos: easeInOutCubic(emp),
     emphasisAlpha: easeOutCubic(emp),
+    ghostAlpha: 1 - easeOutCubic(ghostFadeRaw(overall)),
   }
 }
 
@@ -541,24 +619,37 @@ function buildTransition(
   if (prevTransition !== null) {
     for (const ghost of prevTransition.ghosts) {
       if (!prevPositionBySource.has(ghost.source)) {
-        prevPositionBySource.set(ghost.source, lerpBox(ghost.from, ghost.to, prevEasing!.emphasisPos))
+        // `ghost.anchor` was a pruned index in THAT transition's tree — which
+        // is exactly this function's "old"/prev tree, i.e. `prevVisibleToSource`
+        // — so the anchor's SOURCE (`ghost.anchorSource`) already has a live,
+        // as-of-`now` position in `prevPositionBySource` from the per-source
+        // loop just above (every source in `prevVisibleToSource` is set
+        // there before this ghost pass runs). Reading it by source, not by
+        // re-deriving `ghost.anchor`'s box some other way, is what keeps this
+        // a still-fading ghost tracking its anchor's OWN live reposition
+        // tween — same "live anchor, not a stale snapshot" fix as
+        // `render()`'s ghost-drawing loop.
+        const to =
+          ghost.anchor === -1 ? ghost.from : (prevPositionBySource.get(ghost.anchorSource) ?? ghost.from)
+        prevPositionBySource.set(ghost.source, lerpBox(ghost.from, to, prevEasing!.emphasisPos))
       }
     }
   }
 
-  // 2. Surviving (tweened) and newly-revealed nodes. `resolveReveal` walks
-  // the NEW tree's parent chain looking for the nearest ancestor with a
+  // 2. Surviving (tweened) and newly-revealed nodes. `resolveRevealAnchor`
+  // walks the NEW tree's parent chain looking for the nearest ancestor with a
   // prior position, memoizing every pruned index it passes through so a
   // multi-level reveal (expanding a grandparent) costs O(1) amortized per
-  // node instead of O(depth) per node.
+  // node instead of O(depth) per node. It returns that ancestor's PRUNED
+  // INDEX, not a baked box — see `TweenEntry.anchor`'s docblock for why.
   const fromBySource = new Map<number, TweenEntry>()
-  const revealCache = new Map<number, Box>()
-  const resolveReveal = (i: number): Box => {
+  const revealCache = new Map<number, number>()
+  const resolveRevealAnchor = (i: number): number => {
     const cached = revealCache.get(i)
     if (cached !== undefined) return cached
     const path: number[] = []
     let p = prunedParent[i]!
-    let result: Box | null = null
+    let result = -1
     while (p !== -1) {
       const viaCache = revealCache.get(p)
       if (viaCache !== undefined) {
@@ -566,37 +657,36 @@ function buildTransition(
         break
       }
       const psrc = visibleToSource[p]!
-      const prev = prevPositionBySource.get(psrc)
-      if (prev !== undefined) {
-        result = prev
+      if (prevPositionBySource.has(psrc)) {
+        result = p
         break
       }
       path.push(p)
       p = prunedParent[p]!
     }
-    const box = result ?? boxAt(boxes, i)
-    for (const idx of path) revealCache.set(idx, box)
-    revealCache.set(i, box)
-    return box
+    for (const idx of path) revealCache.set(idx, result)
+    revealCache.set(i, result)
+    return result
   }
 
   for (let i = 0; i < visibleToSource.length; i++) {
     const src = visibleToSource[i]!
     const prev = prevPositionBySource.get(src)
-    if (prev !== undefined) fromBySource.set(src, { box: prev, revealed: false })
-    else fromBySource.set(src, { box: resolveReveal(i), revealed: true })
+    if (prev !== undefined) fromBySource.set(src, { box: prev, revealed: false, anchor: -1 })
+    else fromBySource.set(src, { box: boxAt(boxes, i), revealed: true, anchor: resolveRevealAnchor(i) })
   }
 
   // 3. Removed nodes become ghosts, collapsing toward the nearest ancestor
-  // that survived into the new tree. `resolveAncestor` walks the OLD tree's
-  // parent chain (the new tree has no entry for a removed node to walk
-  // from) with the same memoization trick as `resolveReveal`.
+  // that survived into the new tree. `resolveGhostAnchor` walks the OLD
+  // tree's parent chain (the new tree has no entry for a removed node to
+  // walk from) with the same memoization trick as `resolveRevealAnchor`, and
+  // likewise returns a PRUNED INDEX rather than a baked box.
   const ghosts: Ghost[] = []
-  const ancestorCache = new Map<number, Box | null>()
-  const resolveAncestor = (oldIdx: number): Box | null => {
+  const ancestorCache = new Map<number, number>()
+  const resolveGhostAnchor = (oldIdx: number): number => {
     const path: number[] = []
     let idx = prevParent[oldIdx]!
-    let result: Box | null = null
+    let result = -1
     while (idx !== -1) {
       const src = prevVisibleToSource[idx]!
       const cached = ancestorCache.get(src)
@@ -606,7 +696,7 @@ function buildTransition(
       }
       const newIdx = prunedFromSource[src]!
       if (newIdx !== -1) {
-        result = boxAt(boxes, newIdx)
+        result = newIdx
         break
       }
       path.push(idx)
@@ -620,18 +710,50 @@ function buildTransition(
     const src = prevVisibleToSource[i]!
     if (prunedFromSource[src] !== -1) continue // survives into the new tree
     const from = prevPositionBySource.get(src)!
-    ghosts.push({ source: src, from, to: resolveAncestor(i) ?? from })
+    const anchor = resolveGhostAnchor(i)
+    ghosts.push({ source: src, from, anchor, anchorSource: anchor === -1 ? -1 : visibleToSource[anchor]! })
   }
   // Ghosts already mid-fade from a PRIOR transition, still absent from the
   // new tree, keep fading from wherever they currently are — their source is
   // never also in `prevVisibleToSource` (a node is either still pruned-tree
   // or already a ghost, never both), so this cannot double-add one.
+  //
+  // `anchor` cannot simply be carried over: a pruned index is only valid in
+  // the tree it was resolved against, and this is a NEW relayout with its own
+  // pruned index space — last transition's `anchor` may now name an unrelated
+  // node, or nothing. `anchorSource` (a SOURCE index, stable across relayouts)
+  // is what survives the trip: re-resolving it against `prunedFromSource`
+  // (this relayout's source -> new-pruned-index map) gives a valid anchor in
+  // THIS tree, or `-1` if that ancestor has itself since been pruned out (the
+  // ghost then just fades in place, same degrade-gracefully fallback as
+  // "no ancestor found" elsewhere in this function).
   if (prevTransition !== null) {
     for (const ghost of prevTransition.ghosts) {
       if (prunedFromSource[ghost.source] !== -1) continue // reappeared; handled as a reveal above
       const from = prevPositionBySource.get(ghost.source)!
-      ghosts.push({ source: ghost.source, from, to: ghost.to })
+      const anchor = ghost.anchorSource === -1 ? -1 : prunedFromSource[ghost.anchorSource]!
+      ghosts.push({
+        source: ghost.source,
+        from,
+        anchor,
+        anchorSource: anchor === -1 ? -1 : ghost.anchorSource,
+      })
     }
+  }
+
+  // The ghost-quadtree query box has to bound every position a ghost could
+  // occupy for the rest of the transition — `from` (fixed) union the
+  // ANCHOR's own full old->new range (since the anchor, a surviving node,
+  // can itself be mid-reposition for the same transition; the ghost tracks
+  // wherever the anchor currently is, live — see `Ghost.anchor`'s
+  // docblock), not just a single static "to" point the way a baked anchor
+  // box used to make this simple. `anchorRange` reads the anchor's OLD box
+  // from `fromBySource` (already populated by step 2, above) and its NEW box
+  // straight from `boxes` — both O(1), no tree walk.
+  const anchorRange = (anchor: number): [Box, Box] | null => {
+    if (anchor === -1) return null
+    const entry = fromBySource.get(visibleToSource[anchor]!)!
+    return [entry.box, boxAt(boxes, anchor)]
   }
 
   let ghostQuad: QuadTree | null = null
@@ -643,10 +765,13 @@ function buildTransition(
     let maxY = -Infinity
     for (let g = 0; g < ghosts.length; g++) {
       const ghost = ghosts[g]!
-      const x0 = Math.min(ghost.from.x, ghost.to.x)
-      const y0 = Math.min(ghost.from.y, ghost.to.y)
-      const x1 = Math.max(ghost.from.x + ghost.from.w, ghost.to.x + ghost.to.w)
-      const y1 = Math.max(ghost.from.y + ghost.from.h, ghost.to.y + ghost.to.h)
+      const range = anchorRange(ghost.anchor)
+      const toA = range === null ? ghost.from : range[0]
+      const toB = range === null ? ghost.from : range[1]
+      const x0 = Math.min(ghost.from.x, toA.x, toB.x)
+      const y0 = Math.min(ghost.from.y, toA.y, toB.y)
+      const x1 = Math.max(ghost.from.x + ghost.from.w, toA.x + toA.w, toB.x + toB.w)
+      const y1 = Math.max(ghost.from.y + ghost.from.h, toA.y + toA.h, toB.y + toB.h)
       unionBoxes[g * 4] = x0
       unionBoxes[g * 4 + 1] = y0
       unionBoxes[g * 4 + 2] = x1 - x0
@@ -926,11 +1051,33 @@ export function createChartEngine(renderer: Renderer): ChartEngine {
         // physical phase (1 or 2) each job lands in.
         const easing = easingFor(transition, now)
 
+        // A revealed entry's growth-start point is read live from its
+        // ANCHOR (the nearest surviving ancestor) rather than a box baked in
+        // once at `buildTransition` time — the anchor can itself be
+        // mid-reposition this same transition (sliding to make room, or
+        // recentring over a changed child set), so a static snapshot would
+        // grow the reveal from where the anchor WAS at the moment of the
+        // toggle, not where it visibly IS this frame. Recursing into
+        // `applyTween(entry.anchor)` first brings the anchor's OWN
+        // `renderBoxes` entry up to date for this frame before it's read —
+        // safe (never unbounded): the anchor is always a `revealed: false`
+        // entry (see `resolveRevealAnchor`/`resolveGhostAnchor`), so that
+        // recursive call always takes the non-revealed branch below and
+        // returns without recursing further, one level deep regardless of
+        // how far up the tree the anchor sits.
         const applyTween = (idx: number): void => {
           const entry = transition!.fromBySource.get(visibleToSource[idx]!)
           if (entry === undefined) return
-          const t = entry.revealed ? easing.emphasisPos : easing.repositionPos
-          writeBox(renderBoxes, idx, lerpBox(entry.box, boxAt(boxes, idx), t))
+          if (!entry.revealed) {
+            writeBox(renderBoxes, idx, lerpBox(entry.box, boxAt(boxes, idx), easing.repositionPos))
+            return
+          }
+          let from = entry.box
+          if (entry.anchor !== -1) {
+            applyTween(entry.anchor)
+            from = boxAt(renderBoxes, entry.anchor)
+          }
+          writeBox(renderBoxes, idx, lerpBox(from, boxAt(boxes, idx), easing.emphasisPos))
         }
         // Every drawn NODE needs its own box tweened, plus its parent's (so
         // a connector reaching up to that parent, drawn from the same
@@ -971,9 +1118,10 @@ export function createChartEngine(renderer: Renderer): ChartEngine {
         if (transition.ghostQuad !== null && viewport.width > 0 && viewport.height > 0) {
           // Unwidened, same as the node/edge queries above: a ghost's own
           // query box (built once in `buildTransition`) is already the union
-          // of its `from` and `to` positions, so it fully bounds every
-          // position the ghost could occupy for the rest of the
-          // transition — no additional margin is needed to catch it here.
+          // of its `from` and its ANCHOR's full old->new range, so it fully
+          // bounds every position the ghost could occupy for the rest of
+          // the transition — no additional margin is needed to catch it
+          // here (see `buildTransition`'s `anchorRange`).
           const rect = visibleRect(camera, { width: viewport.width, height: viewport.height })
           const total = transition.ghosts.length
           if (ghostCullBuffer.length < total) ghostCullBuffer = new Uint32Array(total)
@@ -982,8 +1130,20 @@ export function createChartEngine(renderer: Renderer): ChartEngine {
           if (ghostDrawAlpha.length < gcount) ghostDrawAlpha = new Float32Array(gcount)
           for (let g = 0; g < gcount; g++) {
             const ghost = transition.ghosts[ghostCullBuffer[g]!]!
-            writeBox(ghostDrawBoxes, g, lerpBox(ghost.from, ghost.to, easing.emphasisPos))
-            ghostDrawAlpha[g] = 1 - easing.emphasisAlpha
+            // Shrinks toward the anchor's LIVE (reposition-tweened) box, not
+            // a stale snapshot of where it was at the moment of the
+            // collapse — same live-anchor reasoning as `applyTween`'s
+            // revealed-entry branch above; `applyTween` here just brings
+            // the anchor's own `renderBoxes` entry up to date for this frame
+            // (idempotent, and the anchor is always `revealed: false`, so
+            // this never recurses further).
+            let to = ghost.from
+            if (ghost.anchor !== -1) {
+              applyTween(ghost.anchor)
+              to = boxAt(renderBoxes, ghost.anchor)
+            }
+            writeBox(ghostDrawBoxes, g, lerpBox(ghost.from, to, easing.emphasisPos))
+            ghostDrawAlpha[g] = easing.ghostAlpha
           }
           ghostCount = gcount
         }

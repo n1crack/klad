@@ -40,6 +40,7 @@ function fakeRenderer(): Renderer & { frames: Frame[] } {
       })
     },
     stats: { lastDrawCalls: { edgeStrokes: 0, nodes: 0, labels: 0 } },
+    setTheme: vi.fn(),
   }
 }
 
@@ -813,6 +814,119 @@ describe('ChartEngine expand/collapse transition', () => {
     engine.render(1450) // past the total duration
     const done = renderer.frames.at(-1)!
     expect(done.ghostCount).toBe(0)
+  })
+
+  it('fades a ghost to near-zero alpha well before the midpoint of the collapse, not lingering as a blank box', () => {
+    // The owner's complaint: a collapsed subtree's ghosts read as trailing
+    // white boxes rather than dissolving away. The fix front-loads the fade
+    // into its own window (see engine.ts's `GHOST_FADE_FRACTION`), well
+    // inside phase 1 and well before the transition's own midpoint.
+    const renderer = fakeRenderer()
+    const { engine, tree } = seed(renderer)
+    engine.setAnimate(true)
+    engine.setViewport(800, 600, 1)
+    engine.setCamera({ x: 0, y: 0, k: 1 })
+    engine.render(1000) // all open
+
+    engine.setOpen(tree.idToIndex.get('b')!, false) // removes 'c'
+    engine.render(1000) // t=0: just started, still ~opaque (asserted elsewhere)
+
+    // 450ms is the transition's total duration (TRANSITION_DURATION_MS) —
+    // same constant the sibling ghost test above pins by hand. The midpoint
+    // is 225ms in.
+    engine.render(1000 + 225)
+    const atMidpoint = renderer.frames.at(-1)!
+    expect(atMidpoint.ghostCount).toBe(1)
+    expect(atMidpoint.ghostAlpha[0]).toBeLessThan(0.05) // already gone well before the midpoint
+
+    // And even at 80ms — under a fifth of the way through the whole
+    // transition — it's already faded well past halfway, not merely
+    // starting to trend down: front-loaded, not lingering.
+    engine.render(1000 + 80)
+    const early = renderer.frames.at(-1)!
+    expect(early.ghostCount).toBe(1)
+    expect(early.ghostAlpha[0]).toBeLessThan(0.3)
+  })
+
+  it('grows a revealed node from its anchor\'s LIVE position, not the anchor\'s fixed pre-toggle box', () => {
+    // 'p' needs TWO children, not one — see the analogous sibling-reflow test
+    // in packages/vanilla's orgchart.browser.test.ts for why: a single-child
+    // chain never widens its own subtree, so 'p' itself never needs to
+    // recentre. Two children side by side make 'p' noticeably wider once
+    // revealed, which is exactly what pushes 'p's OWN box, not just its
+    // sibling's, away from its pre-toggle position.
+    const NESTED: NodeData[] = [
+      { id: 'a' },
+      { id: 'p', parentId: 'a' },
+      { id: 'q1', parentId: 'p' },
+      { id: 'q2', parentId: 'p' },
+      { id: 'b', parentId: 'a' },
+    ]
+    const renderer = fakeRenderer()
+    const engine = createChartEngine(renderer)
+    const tree = normalize(NESTED)
+    engine.setAnimate(true)
+    engine.setViewport(800, 600, 1)
+    engine.setCamera({ x: 0, y: 0, k: 1 })
+    const open = new Uint8Array(tree.count).fill(1)
+    open[tree.idToIndex.get('p')!] = 0 // start collapsed: 'q1'/'q2' hidden
+    engine.setData(toWireTree(tree), sizesFor(tree.count), ['a', 'p', 'q1', 'q2', 'b'], open)
+    engine.render(1000) // settle the collapsed layout — no transition, the first layout
+
+    // Reads 'p's/'q1's AUTHORITATIVE (final, settled) box — unaffected by
+    // any in-progress transition, which only interpolates the DRAWN frame,
+    // never `engine.boxes` itself.
+    const finalBoxOf = (id: string): { x: number; y: number } => {
+      const src = tree.idToIndex.get(id)!
+      const idx = Array.from(engine.visibleToSource).indexOf(src)
+      expect(idx).toBeGreaterThanOrEqual(0)
+      const o = idx * 4
+      return { x: engine.boxes[o]!, y: engine.boxes[o + 1]! }
+    }
+    // Reads 'id's DRAWN (interpolated) box off the most recent frame —
+    // where it actually is on screen at that instant, unlike `finalBoxOf`.
+    const drawnBoxOf = (id: string): { x: number; y: number } => {
+      const src = tree.idToIndex.get(id)!
+      const idx = Array.from(engine.visibleToSource).indexOf(src)
+      expect(idx).toBeGreaterThanOrEqual(0)
+      const frame = renderer.frames.at(-1)!
+      const o = idx * 4
+      return { x: frame.boxes[o]!, y: frame.boxes[o + 1]! }
+    }
+
+    const pBefore = finalBoxOf('p') // 'p's box while still collapsed
+
+    engine.setOpen(tree.idToIndex.get('p')!, true) // reveals q1/q2, recentring 'p'
+    engine.render(2000) // t=0 of the new transition
+    const pAfter = finalBoxOf('p') // 'p's NEW (final, post-relayout) box
+
+    // Sanity: the scenario this test exists to exercise. If 'p' didn't
+    // actually move between the two layouts, the discriminating assertion
+    // below would pass no matter which anchor box `render()` used.
+    expect(Math.abs(pAfter.x - pBefore.x)).toBeGreaterThan(5)
+
+    // Overall progress 0.5 (225ms of the 450ms total): for an EXPAND,
+    // `repositionRaw` (driving 'p's own reposition tween) is `phaseOneProgress`,
+    // ~99% done by this point (phase 1 spans roughly the first 58%) — 'p' is
+    // nearly at `pAfter`. `emphasisRaw` (driving 'q1's reveal) is
+    // `phaseTwoProgress`, only ~1% in (phase 2 starts around 42%) — 'q1' has
+    // barely left its growth-start point. So 'q1's rendered box right now
+    // should sit almost exactly on 'p's LIVE box (~pAfter), not on 'p's
+    // stale pre-toggle box (pBefore) — and the two are far enough apart
+    // (asserted above) that the bug this test guards against — growing from
+    // a fixed snapshot instead of the anchor's current position — would be
+    // unmistakable here.
+    engine.render(2000 + 225)
+    const pLive = drawnBoxOf('p')
+    const q1Rendered = drawnBoxOf('q1')
+
+    const distanceFromLiveAnchor = Math.abs(q1Rendered.x - pLive.x)
+    const distanceFromStaleAnchor = Math.abs(q1Rendered.x - pBefore.x)
+    expect(distanceFromLiveAnchor).toBeLessThan(distanceFromStaleAnchor)
+    // 'q1' should be reading as still close to wherever 'p' actually is,
+    // not merely "closer to live than to stale by some margin" while still
+    // far from both.
+    expect(distanceFromLiveAnchor).toBeLessThan(Math.abs(pAfter.x - pBefore.x) / 2)
   })
 
   it('a second toggle mid-transition retargets from the current position instead of snapping', () => {
