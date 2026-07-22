@@ -63,6 +63,9 @@ self.onmessage = (event: MessageEvent<MainToWorker>): void => {
       case 'animate':
         engine?.setAnimate(message.enabled)
         break
+      case 'ring':
+        engine?.flashRing(message.index)
+        break
       case 'render':
         // Nothing to apply — a bare "draw now" trigger, and the `now` every
         // message carries is consumed by the render below.

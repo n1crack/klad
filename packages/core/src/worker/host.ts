@@ -13,6 +13,9 @@ export interface ChartHost {
   setOptions(partial: Partial<EngineOptions>): void
   /** See `ChartEngine.setOpen`'s docblock — `ring` defaults to `true` here too. */
   setOpen(index: number, open: boolean, ring?: boolean): void
+  /** Arms the confirmation ring on `index` without a toggle — see
+   * `ChartEngine.flashRing`. */
+  flashRing(index: number): void
   setCamera(camera: Camera): void
   setViewport(width: number, height: number, dpr: number): void
   setHighlight(ids: Uint32Array | null): void
@@ -222,6 +225,10 @@ export function createChartHost(
     setOpen(index, open, ring = true) {
       engine?.setOpen(index, open, ring)
       post({ t: 'open', index, open, ring })
+    },
+    flashRing(index) {
+      engine?.flashRing(index)
+      post({ t: 'ring', index })
     },
     setCamera(camera) {
       engine?.setCamera(camera)

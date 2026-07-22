@@ -89,6 +89,9 @@ export type MainToWorkerMessage =
    * concrete value before this message is ever built, so the wire type
    * doesn't need to repeat the "defaults to true" nuance. */
   | { t: 'open'; index: number; open: boolean; ring: boolean }
+  /** Arms the confirmation ring on `index` without touching open state — see
+   * `ChartEngine.flashRing`. */
+  | { t: 'ring'; index: number }
   | { t: 'resize'; width: number; height: number; dpr: number }
   | { t: 'highlight'; ids: Uint32Array | null }
   | { t: 'drag'; index: number }

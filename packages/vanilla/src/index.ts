@@ -225,7 +225,24 @@ export interface OrgChartApi {
   zoomOut(): void
   fit(): void
   reset(): void
-  focus(id: string): void
+  /**
+   * Puts `id` on screen, opening every collapsed ancestor on the way so it
+   * has somewhere to be — the "go to node X" command, which has to work from
+   * a fully collapsed chart.
+   *
+   * The camera move waits for the frame that actually has the post-expand
+   * layout. It cannot be computed synchronously: expanding the ancestors
+   * dirties the layout, and until it is rebuilt a node that was hidden has no
+   * box at all — which is why this used to do nothing whatsoever when the
+   * target was collapsed away, the exact case it exists for.
+   *
+   * `ring` flashes the one-shot confirmation ring on arrival, an "you are
+   * here" marker for a caller that jumped somewhere the user did not click.
+   * Off by default: a caller stepping through search results in a loop wants
+   * the camera moved, not a flash per step. Honoured only when animation is
+   * enabled, like every other ring.
+   */
+  focus(id: string, opts?: { ring?: boolean }): void
   expand(id: string, deep?: boolean): void
   collapse(id: string, deep?: boolean): void
   expandAll(): void
@@ -239,6 +256,13 @@ export interface OrgChartApi {
    * summary line) rather than a card.
    */
   stats(id: string): NodeStats | null
+  /**
+   * The chain of ids from the root down to `id`, inclusive of both — what to
+   * paint to show the way to a node (`highlight(api.pathTo(id) ?? [])`), or
+   * to render as a breadcrumb. `null` for an id this chart doesn't have; a
+   * root returns just itself.
+   */
+  pathTo(id: string): string[] | null
   highlight(ids: string[] | null): void
   /**
    * Serializes the whole VISIBLE tree (collapsed branches excluded, same rule
@@ -831,6 +855,14 @@ export function createOrgChart(host: HTMLElement, options: Options): OrgChartIns
    */
   let pendingFullFit = false
 
+  /**
+   * Set by `focus()`, consumed by the first frame that has the layout its
+   * `expandTo` produced — see `OrgChartApi.focus` for why the move cannot
+   * happen synchronously. Holds a SOURCE index, valid until the data is
+   * replaced (`update()` clears it alongside the other pending camera work).
+   */
+  let pendingFocus: { source: number; ring: boolean } | null = null
+
   const refreshA11y = (): void => {
     if (!a11yDirty) return
     a11yDirty = false
@@ -932,6 +964,13 @@ export function createOrgChart(host: HTMLElement, options: Options): OrgChartIns
         // render costs the frame nothing.
         applyCameraAnchor(now)
       }
+      // Retried rather than dropped while the node still has no box: a
+      // request made against a layout that has not been rebuilt yet waits
+      // for the frame that has one, which is the failure this deferral
+      // exists to fix in the first place.
+      if (pendingFocus !== null && moveToSource(pendingFocus.source, pendingFocus.ring)) {
+        pendingFocus = null
+      }
       if (minimap !== null) {
         // Identity check, not "every frame": `computeSilhouette` walks every
         // node, so it only runs when `boxes` is actually a NEW array, i.e. a
@@ -1005,6 +1044,32 @@ export function createOrgChart(host: HTMLElement, options: Options): OrgChartIns
       // happened to be at that moment, rather than letting it finish fading.
       if (chartHost.transitioning || chartHost.ringActive) scheduleFrame()
     })
+  }
+
+  /**
+   * Centres the camera on a node and, if asked, flashes the confirmation ring
+   * on it. Returns `false` — having done nothing — when the node has no box
+   * in the CURRENT layout, i.e. it is collapsed away and the caller must wait
+   * for the relayout that reveals it (see `OrgChartApi.focus`).
+   */
+  const moveToSource = (source: number, ring: boolean): boolean => {
+    const box = boxOfSource(source)
+    if (box === null) return false
+    const rect = host.getBoundingClientRect()
+    animateTo({
+      x: rect.width / 2 - (box.x + box.w / 2) * camera.k,
+      y: rect.height / 2 - (box.y + box.h / 2) * camera.k,
+      k: camera.k,
+    })
+    // After `animateTo`, which cancels camera animations — the ring is the
+    // engine's own state rather than a camera animation, so it is not among
+    // what that clears, but ordering them this way keeps that independence
+    // obvious rather than incidental.
+    if (ring && currentOptions.ring !== false) {
+      chartHost.flashRing(source)
+      scheduleFrame()
+    }
+    return true
   }
 
   /** Applies a camera value immediately: no easing, no animation bookkeeping. */
@@ -1394,18 +1459,20 @@ export function createOrgChart(host: HTMLElement, options: Options): OrgChartIns
     reset() {
       api.fit()
     },
-    focus(id) {
-      api.expandTo(id)
+    focus(id, opts) {
       const index = tree.idToIndex.get(id)
       if (index === undefined) return
-      const box = boxOfSource(index)
-      if (box === null) return
-      const rect = host.getBoundingClientRect()
-      animateTo({
-        x: rect.width / 2 - (box.x + box.w / 2) * camera.k,
-        y: rect.height / 2 - (box.y + box.h / 2) * camera.k,
-        k: camera.k,
-      })
+      const ring = opts?.ring === true
+      api.expandTo(id)
+      // Already on screen — which is every focus that expanded nothing, since
+      // `expandTo` no-ops when the ancestors are open already — so its box is
+      // current and the move can happen now. Worth the branch: deferring
+      // unconditionally would delay the common case (search results,
+      // focus-follows-keyboard) by a frame for no reason.
+      if (!moveToSource(index, ring)) {
+        pendingFocus = { source: index, ring }
+        scheduleFrame()
+      }
     },
     expand(id, deep = false) {
       const index = tree.idToIndex.get(id)
@@ -1518,6 +1585,17 @@ export function createOrgChart(host: HTMLElement, options: Options): OrgChartIns
     stats(id) {
       const index = tree.idToIndex.get(id)
       return index === undefined ? null : statsOf(index)
+    },
+    pathTo(id) {
+      const index = tree.idToIndex.get(id)
+      if (index === undefined) return null
+      const path = [id]
+      let node = tree.parent[index]!
+      while (node !== -1) {
+        path.unshift(tree.indexToId[node]!)
+        node = tree.parent[node]!
+      }
+      return path
     },
     highlight(ids) {
       if (ids === null) {
@@ -1720,6 +1798,7 @@ export function createOrgChart(host: HTMLElement, options: Options): OrgChartIns
       pendingAnchor = null
       cameraAnchor = null
       pendingFullFit = false
+      pendingFocus = null
       applyData()
       setupMinimap()
       scheduleFrame()

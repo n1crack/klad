@@ -39,6 +39,18 @@ export interface ChartEngine {
    * has to guess.
    */
   setOpen(index: number, open: boolean, ring?: boolean): void
+  /**
+   * Arms the one-shot confirmation ring on `index` WITHOUT a toggle — the
+   * "you have arrived" half of a host's go-to-node command, where nothing
+   * about the tree's open state necessarily changed (the node may well have
+   * been visible all along).
+   *
+   * Same one-at-a-time cap as `setOpen`'s ring: a second call before the
+   * next frame replaces the candidate rather than queueing a second flash.
+   * Ignored when animation is off, exactly like the toggle ring, since a
+   * reduced-motion host asked for no flashes.
+   */
+  flashRing(index: number): void
   setCamera(camera: Camera): void
   setViewport(width: number, height: number, dpr: number): void
   setHighlight(sourceIds: Uint32Array | null): void
@@ -1193,26 +1205,27 @@ export function createChartEngine(renderer: Renderer): ChartEngine {
     }
     pendingTransition = false
 
-    // Resolve the ring candidate `setOpen` armed, exactly like
-    // `pendingTransition` above: only when THIS relayout was actually
-    // toggle-triggered (`pendingRingSource` is only ever set inside
-    // `setOpen`, and only when its caller asked for a ring) does this touch
-    // `ring` at all — a `setData`/`setOptions` relayout leaves an in-progress
-    // ring from an earlier toggle alone, since it isn't the concern this
-    // bookkeeping exists for. Gated on `animate` too: a reduced-motion host
-    // gets no flash.
+    layoutDirty = false
+  }
+
+  const render = (now: number = performance.now()): Uint32Array => {
+    if (layoutDirty) relayout(now)
+
+    // Resolve whatever armed the ring — a `setOpen` that asked for one, or a
+    // bare `flashRing`. Deliberately here rather than inside `relayout`,
+    // where it used to live: a `flashRing` call changes no layout, so a
+    // relayout-only resolution would leave it armed until some unrelated
+    // change happened to trigger one, and the flash would then appear
+    // attached to that instead. Resolving per frame also means the ring's
+    // clock is the frame's `now`, the same one the transition and the host's
+    // camera anchor are measured against. Gated on `animate`: a
+    // reduced-motion host gets no flash.
     if (pendingRingSource !== -1) {
       ring = animate
         ? { source: pendingRingSource, startedAt: now, duration: RING_DURATION_MS }
         : null
       pendingRingSource = -1
     }
-
-    layoutDirty = false
-  }
-
-  const render = (now: number = performance.now()): Uint32Array => {
-    if (layoutDirty) relayout(now)
 
     const n = visibleToSource.length
     // Feeds `exitBox` below (the reveal/ghost "emerge from the parent's exit
@@ -1611,6 +1624,10 @@ export function createChartEngine(renderer: Renderer): ChartEngine {
       // be live at a time"), as a side effect of this same assignment rather
       // than a second mechanism.
       if (wantsRing) pendingRingSource = index
+    },
+    flashRing(index) {
+      if (index < 0 || index >= open.length) return
+      pendingRingSource = index
     },
     setCamera(next) {
       // Called every frame; keep this a plain spread of three numbers so it

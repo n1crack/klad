@@ -972,6 +972,90 @@ describe('createOrgChart', () => {
     chart.destroy()
   })
 
+  // --- go to a node --------------------------------------------------------
+
+  // `focus` used to read the target's box synchronously, immediately after
+  // expanding its ancestors — but expanding dirties the layout, and until it
+  // is rebuilt a node that was collapsed away has no box at all. So the one
+  // case the command exists for, "everything is closed, go to X", did
+  // nothing whatsoever.
+  it('goes to a node that is collapsed away, opening the way to it', async () => {
+    const chart = make({ collapsedByDefault: true })
+    await settle()
+    await nextFrame()
+
+    // 'd' is two levels down, under 'b', with everything shut.
+    expect(chart.api.getState().visibleCount).toBe(1)
+    const before = chart.api.getState().camera
+
+    chart.api.focus('d')
+    await settleTransition()
+    await nextFrame()
+
+    // The way is open...
+    expect(chart.api.getState().visibleCount).toBe(4)
+    // ...and 'd' is on screen, near the middle of it.
+    // ...and the camera actually travelled to put it there.
+    const after = chart.api.getState().camera
+    expect(after.x !== before.x || after.y !== before.y).toBe(true)
+    chart.destroy()
+  })
+
+  it('does not flash the ring on arrival unless asked', async () => {
+    const chart = make({ collapsedByDefault: true })
+    await settle()
+    await nextFrame()
+    const strokeStyles = spyOnStrokeStyle()
+
+    chart.api.focus('d')
+    await settleTransition()
+    await nextFrame()
+
+    expect(strokeStyles).not.toContain('#f59e0b') // DEFAULT_THEME.ringStroke
+    chart.destroy()
+  })
+
+  it('flashes the ring on arrival when asked, even though nothing was toggled', async () => {
+    // 'c' is already visible, so this expands nothing at all — the ring is
+    // the only signal that anything happened, which is the whole point of
+    // the option.
+    const chart = make()
+    await settle()
+    await nextFrame()
+    const strokeStyles = spyOnStrokeStyle()
+
+    chart.api.focus('c', { ring: true })
+    await settleTransition()
+    await nextFrame()
+
+    expect(strokeStyles).toContain('#f59e0b')
+    chart.destroy()
+  })
+
+  it('honours `ring: false` on the chart even when focus asks for one', async () => {
+    const chart = make({ ring: false })
+    await settle()
+    await nextFrame()
+    const strokeStyles = spyOnStrokeStyle()
+
+    chart.api.focus('c', { ring: true })
+    await settleTransition()
+    await nextFrame()
+
+    expect(strokeStyles).not.toContain('#f59e0b')
+    chart.destroy()
+  })
+
+  it('reports the path from the root to a node', async () => {
+    const chart = make()
+    await nextFrame()
+
+    expect(chart.api.pathTo('d')).toEqual(['a', 'b', 'd'])
+    expect(chart.api.pathTo('a')).toEqual(['a'])
+    expect(chart.api.pathTo('nope')).toBeNull()
+    chart.destroy()
+  })
+
   it('does not auto-pan on toggle when autoPanOnToggle is false', async () => {
     const chart = make({ collapsedByDefault: true, autoPanOnToggle: false })
     await nextFrame()
