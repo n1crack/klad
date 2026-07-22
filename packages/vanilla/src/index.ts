@@ -205,6 +205,12 @@ export interface OrgChartApi {
   toBlob(opts: ToBlobOptions): Promise<Blob>
   /** Writes the SVG export into a hidden iframe and prints it. */
   print(): void
+  /**
+   * Turns the minimap on or off after construction, without the tree-state
+   * reset that routing this through `update()` would cause. Passing an options
+   * object also repositions or resizes it.
+   */
+  setMinimap(minimap: boolean | MinimapOptions): void
   getState(): ChartState
 }
 
@@ -1264,6 +1270,11 @@ export function createOrgChart(host: HTMLElement, options: Options): OrgChartIns
       )
       document.body.appendChild(iframe)
       iframe.srcdoc = doc
+    },
+    setMinimap(minimap) {
+      currentOptions = { ...currentOptions, minimap }
+      setupMinimap()
+      scheduleFrame()
     },
     getState,
   }

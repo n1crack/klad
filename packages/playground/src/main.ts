@@ -76,20 +76,10 @@ addButton('Expand All', () => currentApi?.expandAll())
 addButton('Collapse All', () => currentApi?.collapseAll())
 
 // --- minimap toggle ---
-// `OrgChartApi` (the object every "currentApi?.xxx()" call above reaches
-// for) has no minimap method at all — the only place `minimap` can be
-// changed post-construction is `OrgChartInstance.update()`, which the
-// vanilla layer's own test suite confirms is a supported way to flip it
-// (packages/vanilla/src/minimap.browser.test.ts, "can be toggled on and off
-// via update()"). So this button drives `update()` (vanilla directly; Vue
-// and React indirectly, through their own `options`-prop watch/effect that
-// already calls `chart.update()` internally) rather than remounting the
-// chart — remounting would lose camera position too, on top of whatever
-// `update()` already resets. Note that `update()` always resets open/closed
-// state via `initOpen()`, as a side effect that has nothing to do with the
-// minimap; there's no way to change ONLY the minimap without also paying
-// that cost, since that would take a dedicated runtime method (something
-// like `api.setMinimap(enabled)`) that the vanilla API doesn't have.
+// Driven by `api.setMinimap(...)`, which flips the widget without the tree-state
+// reset that routing it through `update()` would cause (update() calls initOpen()
+// and would collapse everything back to the default). All three stacks call the
+// same API underneath.
 let currentSetMinimap: ((on: boolean) => void) | null = null
 let minimapOn = false
 
@@ -163,7 +153,7 @@ function show(stack: Stack, exampleId: string): void {
   if (stack === 'vanilla') {
     const chart: OrgChartInstance = mountVanilla(surface, example)
     currentApi = chart.api
-    currentSetMinimap = (on) => chart.update(example.data, { minimap: minimapOptionFor(example, on) })
+    currentSetMinimap = (on) => chart.api.setMinimap(minimapOptionFor(example, on))
     teardown = () => chart.destroy()
   } else if (stack === 'vue') {
     const app = createApp(VueDemo, {

@@ -165,7 +165,18 @@ export function ReactDemo({ example, onReady, ref }: ReactDemoProps): ReactNode 
     if (chartRef.current?.api) onReady?.(chartRef.current.api)
   }, [onReady])
 
-  useImperativeHandle(ref, () => ({ setMinimap: setMinimapOn }), [])
+  useImperativeHandle(
+    ref,
+    () => ({
+      setMinimap: (on: boolean) => {
+        setMinimapOn(on)
+        // Straight through the API rather than via the options-prop update, so
+        // toggling the minimap does not reset the tree's expand/collapse state.
+        chartRef.current?.api?.setMinimap(minimapOptionFor(example, on))
+      },
+    }),
+    [example],
+  )
 
   if (example.content === 'none') {
     return <OrgChart ref={chartRef} className="chart-host" options={options} onReady={handleReady} />

@@ -36,6 +36,10 @@ function handleReady(): void {
 
 function setMinimap(on: boolean): void {
   minimapOn.value = on
+  // Apply it straight through the API, not by letting the reactive `options`
+  // change flow into the adapter's `update()` — that would reset the tree's
+  // expand/collapse state as an unrelated side effect.
+  chartRef.value?.api?.setMinimap(minimapOptionFor(props.example, on))
 }
 
 defineExpose({ setMinimap })
