@@ -94,6 +94,19 @@
 
 .VPHero .VPImage {
   width: 100%;
-  max-width: 320px;
+  max-width: 580px;
   height: auto;
+  /* Art, not content: nothing here is worth selecting, and a stray drag that
+     starts a browser image-drag or leaves a blue selection box over the hero
+     is the kind of small wrongness that reads as an unfinished page. */
+  user-select: none;
+  -webkit-user-drag: none;
+  pointer-events: none;
+}
+
+/* The image is wider now, so the block it sits in needs the room. */
+@media (min-width: 960px) {
+  .VPHero .image-container {
+    transform: none;
+  }
 }

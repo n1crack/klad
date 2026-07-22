@@ -6,8 +6,8 @@ hero:
   text: 50,000 nodes. 60fps.
   tagline: Canvas in a worker. Your components only where they can be read.
   image:
-    src: /logo-hero.svg
-    alt: A parent node above three children, joined by elbow connectors
+    src: /hero.png
+    alt: An org chart of six cards in perspective, floating above their connectors
   actions:
     - theme: brand
       text: Get started

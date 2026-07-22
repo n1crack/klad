@@ -6,8 +6,8 @@
     "dev": "vitepress dev .",
     "build": "vitepress build .",
     "preview": "vitepress preview .",
-    "//og": "Regenerate the link-preview card after changing the mark or its wording. Checked in rather than built on deploy: a crawler needs it at a stable URL, and rebuilding it every time would churn a binary in git for no change.",
-    "og": "node scripts/build-og-image.mjs"
+    "//images": "Regenerate the hero and link-preview PNGs after changing the scene. Checked in rather than built on deploy: a crawler needs the card at a stable URL, and rebuilding every time would churn a binary in git for no change.",
+    "images": "node scripts/build-images.mjs"
   },
   "devDependencies": {
     "vitepress": "^1.6.4",
