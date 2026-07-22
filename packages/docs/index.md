@@ -3,32 +3,32 @@ layout: home
 
 hero:
   name: OrgChart
-  text: The whole org, at 60fps.
-  tagline: Fifty thousand people on a canvas in a Web Worker — with your own Vue, React or plain-DOM cards mounted only where they are big enough to read.
+  text: Canvas Org Chart
+  tagline: A fast, framework-agnostic org chart for very large trees
   image:
     src: /hero.png
     alt: An org chart of six cards in perspective, floating above their connectors
   actions:
     - theme: brand
-      text: Get started
+      text: Get Started
       link: /guide/getting-started
     - theme: alt
-      text: API
+      text: Reference
       link: /api/options
     - theme: alt
-      text: GitHub
+      text: View on GitHub
       link: https://github.com/n1crack/orgchart
 
 features:
-  - title: 50,000 nodes, about 50 elements
-    details: A node gets a DOM element once it is on screen and zoomed in far enough to read — never before. The rest is canvas, so the chart can be as big as the company is.
-  - title: Bring your own card
-    details: A Vue slot, a React render prop, or a plain function that gets an element. One DOM-free engine under all three, and a fourth binding is an afternoon's work.
-  - title: Expand without losing your place
-    details: Open a node and it holds its exact spot on screen, to the pixel, while the layout reflows around it. The camera keeps its zoom; the minimap keeps its frame.
+  - title: ⚡ Built for Large Trees
+    details: Renders 5,000–50,000 nodes at 60fps. Layout and drawing run on a canvas inside a Web Worker, so the main thread stays free. No DOM per node, ever.
+  - title: 🧩 Your Components on Top
+    details: A Vue slot, a React render prop, or plain DOM. Real components mount only for the nodes on screen and zoomed in far enough to read — about fifty at a time, pooled and reused.
+  - title: 🛠️ Developer-Friendly
+    details: TypeScript throughout, four orientations, RTL, minimap, SVG and PNG export, full keyboard navigation and a screen-reader tree. ESM only, with Vue 3 and React adapters.
 ---
 
-## Draw one
+## Quick Start
 
 ::: tabs key:stack
 
@@ -107,7 +107,7 @@ export function Chart() {
 Pan, zoom, click, keyboard navigation. `data` is flat — `{ id, parentId?, ...yours }` —
 so the array from your API is usually already the right shape.
 
-## The catch
+## One Thing to Know
 
 `nodeSize` is declared, not measured. Layout runs in a Web Worker, where there
 is no element to call `getBoundingClientRect()` on — that is what buys the

@@ -208,7 +208,7 @@ const browser = await chromium.launch()
     <div class="copy">
       <h1>OrgChart</h1>
       <div class="rule"></div>
-      <p>The whole org, at 60fps.</p>
+      <p>A fast org chart for very large trees</p>
     </div>
     <div class="art">${scene(true)}</div>
   `
