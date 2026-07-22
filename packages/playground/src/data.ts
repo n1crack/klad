@@ -75,15 +75,34 @@ export const EDGE_RADIUS_DEFAULT = 0
 export const NODE_FILL_DEFAULT = '#ffffff'
 
 /**
+ * The swatch value the "Shape fill" colour picker SEEDS with once a viewer
+ * turns it on — not the library's own `block`-tier default, which is
+ * `'transparent'` (`DEFAULT_THEME.blockFill` in
+ * packages/core/src/render/theme.ts), not a colour at all. The picker
+ * control (an `<input type="color">`) can't represent "no colour" itself, so
+ * it needs SOME starting hex value ready for the moment a viewer flips the
+ * "shape fill" checkbox on; this is that seed, distinct from `NODE_FILL_DEFAULT`
+ * so the two swatches are visually distinguishable at a glance.
+ */
+export const BLOCK_FILL_SEED = '#e2e8f0'
+
+/**
+ * The initial swatch value for the "Ring colour" control — the library's own
+ * default (`DEFAULT_THEME.ringStroke` in packages/core/src/render/theme.ts),
+ * same convention as `NODE_FILL_DEFAULT` above.
+ */
+export const RING_STROKE_DEFAULT = '#f59e0b'
+
+/**
  * The effective `theme` for `example`, with `edgeCornerRadius` set from the
  * playground's own slider. Merged over the example's own declared theme
  * (rather than replacing it) so examples that already set theme tokens for
  * their own reasons — Avatar circle's transparent node box, for instance —
  * keep them; the slider only ever adds or overrides the one token it owns.
  *
- * `nodeFill` deliberately has NO equivalent parameter here — see
- * `NODE_FILL_DEFAULT`'s docblock for why that control never touches
- * construction-time options at all, live-only via `api.setTheme`.
+ * `nodeFill`/`blockFill`/`ringStroke` deliberately have NO equivalent
+ * parameter here — see `NODE_FILL_DEFAULT`'s docblock for why those controls
+ * never touch construction-time options at all, live-only via `api.setTheme`.
  */
 export function themeFor(example: Example, edgeCornerRadius: number): NonNullable<Options['theme']> {
   return { ...example.options.theme, edgeCornerRadius }

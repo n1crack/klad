@@ -92,7 +92,32 @@ function setNodeFill(nodeFill: string): void {
   chartRef.value?.api?.setTheme({ nodeFill })
 }
 
-defineExpose({ setMinimap, setMinimapPosition, setEdgeRadius, setNodeFill })
+/** Same `setTheme` path — the `block`-tier shape-fill colour. */
+function setBlockFill(blockFill: string): void {
+  chartRef.value?.api?.setTheme({ blockFill })
+}
+
+/** Same `setTheme` path — the confirmation ring's colour. */
+function setRingStroke(ringStroke: string): void {
+  chartRef.value?.api?.setTheme({ ringStroke })
+}
+
+/** `OrgChartApi.setRing` — NOT a theme token, so it goes through its own
+ * method rather than `setTheme`; see `Options.ring`'s docblock in
+ * packages/vanilla/src/index.ts. */
+function setRingEnabled(enabled: boolean): void {
+  chartRef.value?.api?.setRing(enabled)
+}
+
+defineExpose({
+  setMinimap,
+  setMinimapPosition,
+  setEdgeRadius,
+  setNodeFill,
+  setBlockFill,
+  setRingStroke,
+  setRingEnabled,
+})
 
 // Shared by the avatar/status/photo templates below, mirroring the vanilla
 // demo's renderAvatar/renderStatus/renderPhoto so both stacks land on the

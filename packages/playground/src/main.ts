@@ -3,6 +3,7 @@ import { createElement } from 'react'
 import { createRoot, type Root } from 'react-dom/client'
 import type { OrgChartApi } from '@n1crack/orgchart'
 import {
+  BLOCK_FILL_SEED,
   EDGE_RADIUS_DEFAULT,
   EDGE_RADIUS_MAX,
   EDGE_RADIUS_MIN,
@@ -11,6 +12,7 @@ import {
   minimapDefaultOn,
   minimapDefaultPosition,
   NODE_FILL_DEFAULT,
+  RING_STROKE_DEFAULT,
   type Example,
   type MinimapPosition,
 } from './data.js'
@@ -166,6 +168,9 @@ const minimapGroup = sidebarGroup('Minimap', minimapButton, minimapPositionField
 // the same sidebar group.
 let currentSetEdgeRadius: ((radius: number) => void) | null = null
 let currentSetNodeFill: ((nodeFill: string) => void) | null = null
+let currentSetBlockFill: ((blockFill: string) => void) | null = null
+let currentSetRingStroke: ((ringStroke: string) => void) | null = null
+let currentSetRingEnabled: ((enabled: boolean) => void) | null = null
 
 const edgeRadiusField = document.createElement('div')
 edgeRadiusField.className = 'field field-range'
@@ -227,6 +232,107 @@ nodeFillInput.oninput = () => {
   currentSetNodeFill?.(hex)
 }
 
+// "Shape fill" — the `block` LOD tier's own fill (`theme.blockFill`, see
+// packages/core/src/render/theme.ts), independent of "Node fill" above.
+// Defaults to `'transparent'`: zoomed all the way out, past the text
+// threshold, a chart shows only its connector lines, not solid boxes — the
+// owner's ask. `<input type="color">` can't itself represent "no colour", so
+// this is a checkbox ("enable a shape fill at all") plus the picker it
+// gates: unchecked sends the literal string `'transparent'` through
+// `api.setTheme({ blockFill })` (see canvas2d.ts, which treats that exact
+// string as "skip the fill" rather than paint-with-an-invisible-colour);
+// checked sends whatever the swatch holds. The picker itself stays enabled
+// either way (dragging it while unchecked pre-arms a colour for the next
+// time the checkbox is ticked, rather than being inert), and starts on
+// `BLOCK_FILL_SEED`, a colour distinct from `NODE_FILL_DEFAULT` purely so the
+// two swatches read as different controls at a glance.
+const blockFillCheckbox = document.createElement('input')
+blockFillCheckbox.type = 'checkbox'
+blockFillCheckbox.id = 'block-fill-checkbox'
+blockFillCheckbox.className = 'checkbox-input'
+const blockFillInput = document.createElement('input')
+blockFillInput.type = 'color'
+blockFillInput.id = 'block-fill-input'
+blockFillInput.className = 'color-input'
+blockFillInput.value = BLOCK_FILL_SEED
+const blockFillLabel = document.createElement('label')
+blockFillLabel.textContent = 'Shape fill'
+blockFillLabel.htmlFor = 'block-fill-checkbox'
+const blockFillValue = document.createElement('output')
+blockFillValue.className = 'field-range-value'
+blockFillValue.setAttribute('for', 'block-fill-input')
+blockFillValue.textContent = 'Transparent'
+const blockFillRow = document.createElement('div')
+blockFillRow.className = 'field-range-row'
+blockFillRow.append(blockFillCheckbox, blockFillInput, blockFillValue)
+const blockFillField = document.createElement('div')
+blockFillField.className = 'field'
+blockFillField.append(blockFillLabel, blockFillRow)
+
+function applyBlockFill(): void {
+  if (blockFillCheckbox.checked) {
+    const hex = blockFillInput.value
+    blockFillValue.textContent = hex.toUpperCase()
+    currentSetBlockFill?.(hex)
+  } else {
+    blockFillValue.textContent = 'Transparent'
+    currentSetBlockFill?.('transparent')
+  }
+}
+
+blockFillCheckbox.onchange = applyBlockFill
+blockFillInput.oninput = applyBlockFill
+
+// "Ring colour" + "Ring" on/off — both drive the one-shot expand/collapse
+// confirmation flash (`theme.ringStroke` / `Options.ring`). The colour
+// picker is a real theme token, applied live through `api.setTheme(...)`,
+// same mechanism as "Node fill"/"Edge radius" above; the on/off toggle is
+// NOT a theme token (see `Options.ring`'s docblock in
+// packages/vanilla/src/index.ts) so it goes through the dedicated
+// `api.setRing(...)` method instead, mirroring the minimap on/off button's
+// `btn-toggle` styling below.
+const ringStrokeInput = document.createElement('input')
+ringStrokeInput.type = 'color'
+ringStrokeInput.id = 'ring-stroke-input'
+ringStrokeInput.className = 'color-input'
+ringStrokeInput.value = RING_STROKE_DEFAULT
+const ringStrokeLabel = document.createElement('label')
+ringStrokeLabel.textContent = 'Ring colour'
+ringStrokeLabel.htmlFor = 'ring-stroke-input'
+const ringStrokeValue = document.createElement('output')
+ringStrokeValue.className = 'field-range-value'
+ringStrokeValue.setAttribute('for', 'ring-stroke-input')
+ringStrokeValue.textContent = RING_STROKE_DEFAULT.toUpperCase()
+const ringStrokeRow = document.createElement('div')
+ringStrokeRow.className = 'field-range-row'
+ringStrokeRow.append(ringStrokeInput, ringStrokeValue)
+const ringStrokeField = document.createElement('div')
+ringStrokeField.className = 'field'
+ringStrokeField.append(ringStrokeLabel, ringStrokeRow)
+
+ringStrokeInput.oninput = () => {
+  const hex = ringStrokeInput.value
+  ringStrokeValue.textContent = hex.toUpperCase()
+  currentSetRingStroke?.(hex)
+}
+
+let ringEnabled = true
+const ringEnabledButton = document.createElement('button')
+ringEnabledButton.type = 'button'
+ringEnabledButton.className = 'btn btn-toggle'
+
+function updateRingEnabledButton(): void {
+  ringEnabledButton.textContent = `Ring: ${ringEnabled ? 'On' : 'Off'}`
+  ringEnabledButton.setAttribute('aria-pressed', String(ringEnabled))
+}
+
+ringEnabledButton.onclick = () => {
+  ringEnabled = !ringEnabled
+  currentSetRingEnabled?.(ringEnabled)
+  updateRingEnabledButton()
+}
+updateRingEnabledButton()
+
 // The canvas itself only ever `clearRect`s (see packages/core/src/render/canvas2d.ts)
 // — it never paints a background of its own, so whatever colour shows behind the
 // nodes and connectors is just the host element's CSS background showing through
@@ -254,7 +360,15 @@ const canvasBgField = document.createElement('div')
 canvasBgField.className = 'field'
 canvasBgField.append(canvasBgLabel, canvasBgRow)
 
-const appearanceGroup = sidebarGroup('Appearance', edgeRadiusField, nodeFillField, canvasBgField)
+const appearanceGroup = sidebarGroup(
+  'Appearance',
+  edgeRadiusField,
+  nodeFillField,
+  blockFillField,
+  ringStrokeField,
+  ringEnabledButton,
+  canvasBgField,
+)
 
 function applyCanvasBg(hex: string): void {
   surface.style.backgroundColor = hex
@@ -375,6 +489,9 @@ function show(stack: Stack, exampleId: string): void {
   currentSetMinimapPosition = null
   currentSetEdgeRadius = null
   currentSetNodeFill = null
+  currentSetBlockFill = null
+  currentSetRingStroke = null
+  currentSetRingEnabled = null
   surface.innerHTML = ''
 
   const example = findExample(exampleId)
@@ -397,6 +514,15 @@ function show(stack: Stack, exampleId: string): void {
   // reconcile the swatch against; see `NODE_FILL_DEFAULT`'s docblock.
   nodeFillInput.value = NODE_FILL_DEFAULT
   nodeFillValue.textContent = NODE_FILL_DEFAULT.toUpperCase()
+  // Same reset pattern: back to "no shape fill" (the library default) rather
+  // than carrying over the previous example/stack's state.
+  blockFillCheckbox.checked = false
+  blockFillInput.value = BLOCK_FILL_SEED
+  blockFillValue.textContent = 'Transparent'
+  ringStrokeInput.value = RING_STROKE_DEFAULT
+  ringStrokeValue.textContent = RING_STROKE_DEFAULT.toUpperCase()
+  ringEnabled = true
+  updateRingEnabledButton()
 
   if (stack === 'vanilla') {
     const chart: VanillaDemoHandle = mountVanilla(surface, example, (api) => {
@@ -406,6 +532,9 @@ function show(stack: Stack, exampleId: string): void {
     currentSetMinimapPosition = (position) => chart.setMinimapPosition(position)
     currentSetEdgeRadius = (radius) => chart.setEdgeRadius(radius)
     currentSetNodeFill = (nodeFill) => chart.setNodeFill(nodeFill)
+    currentSetBlockFill = (blockFill) => chart.setBlockFill(blockFill)
+    currentSetRingStroke = (ringStroke) => chart.setRingStroke(ringStroke)
+    currentSetRingEnabled = (enabled) => chart.setRingEnabled(enabled)
     teardown = () => chart.destroy()
   } else if (stack === 'vue') {
     const app = createApp(VueDemo, {
@@ -415,18 +544,25 @@ function show(stack: Stack, exampleId: string): void {
       },
     })
     // VueDemo exposes `setMinimap`/`setMinimapPosition`/`setEdgeRadius`/
-    // `setNodeFill` via `defineExpose`; `app.mount()` returns exactly that
-    // exposed public instance for the root component.
+    // `setNodeFill`/`setBlockFill`/`setRingStroke`/`setRingEnabled` via
+    // `defineExpose`; `app.mount()` returns exactly that exposed public
+    // instance for the root component.
     const instance = app.mount(surface) as unknown as {
       setMinimap: (on: boolean) => void
       setMinimapPosition: (position: MinimapPosition) => void
       setEdgeRadius: (radius: number) => void
       setNodeFill: (nodeFill: string) => void
+      setBlockFill: (blockFill: string) => void
+      setRingStroke: (ringStroke: string) => void
+      setRingEnabled: (enabled: boolean) => void
     }
     currentSetMinimap = (on) => instance.setMinimap(on)
     currentSetMinimapPosition = (position) => instance.setMinimapPosition(position)
     currentSetEdgeRadius = (radius) => instance.setEdgeRadius(radius)
     currentSetNodeFill = (nodeFill) => instance.setNodeFill(nodeFill)
+    currentSetBlockFill = (blockFill) => instance.setBlockFill(blockFill)
+    currentSetRingStroke = (ringStroke) => instance.setRingStroke(ringStroke)
+    currentSetRingEnabled = (enabled) => instance.setRingEnabled(enabled)
     teardown = () => app.unmount()
   } else {
     const root: Root = createRoot(surface)
@@ -444,6 +580,9 @@ function show(stack: Stack, exampleId: string): void {
     currentSetMinimapPosition = (position) => reactHandle.current?.setMinimapPosition(position)
     currentSetEdgeRadius = (radius) => reactHandle.current?.setEdgeRadius(radius)
     currentSetNodeFill = (nodeFill) => reactHandle.current?.setNodeFill(nodeFill)
+    currentSetBlockFill = (blockFill) => reactHandle.current?.setBlockFill(blockFill)
+    currentSetRingStroke = (ringStroke) => reactHandle.current?.setRingStroke(ringStroke)
+    currentSetRingEnabled = (enabled) => reactHandle.current?.setRingEnabled(enabled)
     teardown = () => root.unmount()
   }
 }

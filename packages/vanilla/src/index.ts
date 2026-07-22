@@ -95,6 +95,23 @@ export interface Options {
    */
   autoPanOnToggle?: boolean
   /**
+   * The one-shot confirmation ring (`theme.ringStroke`) that flashes on the
+   * node a single-node `expand`/`collapse` just acted on. Some consumers
+   * don't want it at all — a dense chart with frequent toggling can read the
+   * repeated flash as noise rather than confirmation. `false` suppresses it
+   * on every genuine single-toggle call site this layer has (`setOpenFlag`,
+   * and the FIRST node of a deep `expand`/`collapse`) by passing `false`
+   * through to `ChartHost.setOpen`'s own `ring` argument instead of this
+   * layer's usual hardcoded `true` — the SAME per-call mechanism
+   * `expandAll`/`collapseAll`/`expandTo` already use to opt individual calls
+   * out (see engine.ts's `setOpen` docblock), just driven by this option
+   * instead of "is this call the one the user acted on". Nothing else about
+   * the toggle changes: the layout transition, camera anchor, and every
+   * other effect of expanding/collapsing still run exactly as before —
+   * only the ring itself is suppressed. Defaults to `true`.
+   */
+  ring?: boolean
+  /**
    * When `true`, tapping a node with children expands or collapses it —
    * without this, a `renderNode` layout that has no room for its own toggle
    * button (a compact chip, a dense status card) has no way to be expanded
@@ -222,6 +239,15 @@ export interface OrgChartApi {
    * animating with the new theme's colours from that frame on.
    */
   setTheme(theme: Partial<Theme>): void
+  /**
+   * Turns the one-shot confirmation ring on or off after construction,
+   * without the tree-state reset routing this through `update()` would
+   * cause — same reasoning as `setMinimap`. Takes effect on the very next
+   * single-node `expand`/`collapse`; an already-flashing ring finishes its
+   * current fade rather than being cut off mid-flight. See `Options.ring`'s
+   * docblock for exactly which call sites this governs.
+   */
+  setRing(enabled: boolean): void
   getState(): ChartState
 }
 
@@ -1059,10 +1085,12 @@ export function createOrgChart(host: HTMLElement, options: Options): OrgChartIns
     }
     open[index] = value ? 1 : 0
     // A single-node toggle — the exact case the ring exists for — so `ring`
-    // is explicitly `true` here (matching the engine's default, but spelled
-    // out since every OTHER `chartHost.setOpen` call site in this file has
-    // to say `false` explicitly; see engine.ts's `setOpen` for the contract).
-    chartHost.setOpen(index, value, true)
+    // would be `true` here (matching the engine's default, and every OTHER
+    // `chartHost.setOpen` call site in this file has to say `false`
+    // explicitly; see engine.ts's `setOpen` for the contract) UNLESS this
+    // layer's own `ring` option turns the confirmation flash off entirely
+    // (see `Options.ring`'s docblock).
+    chartHost.setOpen(index, value, currentOptions.ring !== false)
     emit('toggle', { id: tree.indexToId[index]!, open: value })
     a11yDirty = true
     scheduleFrame()
@@ -1222,7 +1250,10 @@ export function createOrgChart(host: HTMLElement, options: Options): OrgChartIns
       // descendant happens to resolve last. See engine.ts's `setOpen` for why
       // this explicit per-call signal replaced a distinct-index heuristic
       // that could not tell "one deep toggle" apart from a real bulk burst.
-      let ring = true
+      // Starts at `false` outright when this layer's own `ring` option is
+      // off (see `Options.ring`'s docblock) — there is then no node in this
+      // deep toggle that should ever flash, not just the descendants.
+      let ring = currentOptions.ring !== false
       while (stack.length > 0) {
         const node = stack.pop()!
         open[node] = 1
@@ -1241,7 +1272,7 @@ export function createOrgChart(host: HTMLElement, options: Options): OrgChartIns
       if (!deep) return setOpenFlag(index, false)
       const stack = [index]
       // Same reasoning as `expand`'s deep branch above.
-      let ring = true
+      let ring = currentOptions.ring !== false
       while (stack.length > 0) {
         const node = stack.pop()!
         open[node] = 0
@@ -1437,6 +1468,15 @@ export function createOrgChart(host: HTMLElement, options: Options): OrgChartIns
       currentOptions = { ...currentOptions, theme }
       chartHost.setTheme(theme)
       scheduleFrame()
+    },
+    setRing(enabled) {
+      // Every genuine single-toggle call site reads `currentOptions.ring`
+      // live at the moment it toggles (see `setOpenFlag`/`expand`/`collapse`
+      // above) — mutating just this key, the same way `setMinimap` mutates
+      // just `minimap`, is enough; there is no separate engine-side state to
+      // push, since the ring is armed per-call through `ChartHost.setOpen`'s
+      // own `ring` argument, not a standing engine option.
+      currentOptions = { ...currentOptions, ring: enabled }
     },
     getState,
   }

@@ -182,6 +182,27 @@ const NO_LABELS: readonly string[] = []
  * builds the node quadtree — never touched by `render()`'s per-frame,
  * camera-only path.
  */
+/**
+ * The point where a connector LEAVES a box shaped `(x, y, w, h)` — the
+ * PARENT side of the elbow drawn between a parent and child, in the growth
+ * direction `horizontal` implies. MUST mirror canvas2d.ts's elbow-drawing
+ * formula exactly (`draw`'s `frame.horizontal` branch: `(px, py)`) — every
+ * caller of this function ends up describing where a connector visually
+ * attaches, whether for culling (`buildEdgeIndex`, below) or for the reveal/
+ * ghost "emerge from the parent" point (`render()`'s `applyTween`, over in
+ * `createChartEngine`) — a formula drifting out of step with the renderer's
+ * own elbow math would misplace either one. Takes raw `(x, y, w, h)` rather
+ * than a `Box` — `Box` isn't declared until further down this file, and
+ * `buildEdgeIndex` (the other caller) already works in raw `Float64Array`
+ * offsets to avoid an allocation per edge in its O(pruned count) build; see
+ * `exitPoint` below for the `Box`-typed convenience wrapper `render()` uses.
+ */
+function exitPointXY(x: number, y: number, w: number, h: number, horizontal: boolean): { x: number; y: number } {
+  return horizontal
+    ? { x: x + w, y: y + h / 2 } // right edge, vertical centre
+    : { x: x + w / 2, y: y + h } // bottom edge, horizontal centre
+}
+
 function buildEdgeIndex(
   boxes: Float64Array,
   parent: Int32Array,
@@ -201,21 +222,18 @@ function buildEdgeIndex(
     if (p === -1) continue
     const io = i * 4
     const po = p * 4
-    let px: number
-    let py: number
     let cx: number
     let cy: number
+    const exit = exitPointXY(boxes[po]!, boxes[po + 1]!, boxes[po + 2]!, boxes[po + 3]!, horizontal)
+    const px = exit.x
+    const py = exit.y
     if (horizontal) {
       // Growth axis is x: leave the parent's right edge, enter the child's
       // left edge. Matches canvas2d.ts's `horizontal` branch exactly.
-      px = boxes[po]! + boxes[po + 2]!
-      py = boxes[po + 1]! + boxes[po + 3]! / 2
       cx = boxes[io]!
       cy = boxes[io + 1]! + boxes[io + 3]! / 2
     } else {
       // Matches canvas2d.ts's non-`horizontal` branch exactly.
-      px = boxes[po]! + boxes[po + 2]! / 2
-      py = boxes[po + 1]! + boxes[po + 3]!
       cx = boxes[io]! + boxes[io + 2]! / 2
       cy = boxes[io + 1]!
     }
@@ -267,6 +285,18 @@ function boxAt(boxes: Float64Array, i: number): Box {
   return { x: boxes[o]!, y: boxes[o + 1]!, w: boxes[o + 2]!, h: boxes[o + 3]! }
 }
 
+/** `Box`-typed convenience wrapper over `exitPointXY` (see its docblock) —
+ * as a zero-size `Box` (`w`/`h` both 0), ready to hand straight to `lerpBox`
+ * as a reveal's growth-start point or a ghost's shrink-target point: a
+ * revealed child then visibly emerges from a single POINT at its parent's
+ * exit edge and grows to its own size while moving to its final box, rather
+ * than starting already sized like the whole parent box — see `render()`'s
+ * `applyTween` and the ghost-drawing loop, both in `createChartEngine`. */
+function exitBox(box: Box, horizontal: boolean): Box {
+  const p = exitPointXY(box.x, box.y, box.w, box.h, horizontal)
+  return { x: p.x, y: p.y, w: 0, h: 0 }
+}
+
 function writeBox(target: Float64Array, i: number, box: Box): void {
   const o = i * 4
   target[o] = box.x
@@ -282,6 +312,28 @@ function lerpBox(from: Box, to: Box, t: number): Box {
     w: from.w + (to.w - from.w) * t,
     h: from.h + (to.h - from.h) * t,
   }
+}
+
+/**
+ * The smallest axis-aligned box containing both `a` and `b`. Used to build a
+ * conservative cull bound for a node/edge that MOVES during a transition: a
+ * linear interpolation between two boxes (`lerpBox`, above) never leaves the
+ * union of its two endpoints — each of x, y, x+w, y+h is a monotonic linear
+ * function of `t`, so it stays within the range its own endpoints span — so
+ * this box safely bounds every position the tween could occupy for the whole
+ * transition, without needing to know `t` at cull time. See `Transition.nodeQuad`'s
+ * docblock for why that safety matters.
+ */
+function unionBox(a: Box, b: Box): Box {
+  const x0 = a.x < b.x ? a.x : b.x
+  const y0 = a.y < b.y ? a.y : b.y
+  const ax1 = a.x + a.w
+  const bx1 = b.x + b.w
+  const ay1 = a.y + a.h
+  const by1 = b.y + b.h
+  const x1 = ax1 > bx1 ? ax1 : bx1
+  const y1 = ay1 > by1 ? ay1 : by1
+  return { x: x0, y: y0, w: x1 - x0, h: y1 - y0 }
 }
 
 /**
@@ -464,6 +516,43 @@ interface Transition extends TimedAnimation {
    * the main quadtree, so a huge collapsed subtree only costs at cull time
    * for the ghosts actually near the viewport. */
   ghostQuad: QuadTree | null
+  /**
+   * Built once over every pruned node's own from/to union box (`unionBox`,
+   * `Ghost.anchor`-style anchor ranges for revealed entries) — queried
+   * INSTEAD OF the plain final-layout `quad` for as long as this transition
+   * is running, to fix a real bug: `render()`'s node cull used to query the
+   * FINAL layout directly, but a node's DRAWN (interpolated) position can be
+   * arbitrarily far from where it settles, especially the toggled node
+   * itself under a host's camera anchor (see `packages/vanilla`'s
+   * `applyCameraAnchor`) — the anchor holds that node's OWN on-screen spot
+   * fixed by solving the camera around wherever it currently interpolates
+   * TO, which means its FINAL box, read through that same live camera, sits
+   * exactly as far from centre-screen as it still has left to travel. Early
+   * in a transition that offset can push the final box fully outside the
+   * viewport, so a cull keyed to the final box would silently drop the node
+   * from `cullBuffer` for a frame or two — even though it's sitting in plain
+   * sight at its interpolated position — which reads as a flash: the
+   * survivor disappears, then reappears once the offset shrinks back to
+   * zero near the end. Querying the union-box quad instead means "is this
+   * node's box ANYWHERE it could be for the rest of this transition inside
+   * the viewport" rather than "is it there at the very end", so a node that
+   * is genuinely on screen right now is never excluded. Bounded the same way
+   * `ghostQuad` is: built once per relayout (O(pruned count), the same class
+   * of one-time cost `relayout()` already pays), queried every frame at
+   * near-viewport cost only.
+   */
+  nodeQuad: QuadTree | null
+  /**
+   * The connector analogue of `nodeQuad` — built over the union, per edge, of
+   * its parent's and child's `nodeQuad` boxes (a safe superset: both
+   * endpoints individually stay inside their own union box for the whole
+   * transition, so the elbow between them never leaves the union of the
+   * two). Indexed identically to the engine's own (module-scope) `edgeQuad`
+   * — same iteration order over `edgeChild` — so a query result translates
+   * through that SAME `edgeChild` array regardless of which of the two edge
+   * quads produced it.
+   */
+  edgeQuad: QuadTree | null
   /** True for an expand (the toggle that started this transition set a node
    * OPEN, revealing descendants), false for a collapse (it set one CLOSED,
    * removing them). Decides which physical phase — 1 or 2 — the reposition
@@ -592,6 +681,12 @@ function buildTransition(
   prunedParent: Int32Array,
   prunedFromSource: Int32Array,
   opening: boolean,
+  /** This relayout's own `edgeChild` (edge-array position -> pruned CHILD
+   * index) — needed to build `Transition.edgeQuad` in the SAME iteration
+   * order as the engine's own (module-scope) `edgeQuad`, so a query result
+   * from either one translates through this same array. See
+   * `Transition.edgeQuad`'s docblock. */
+  edgeChild: Int32Array,
 ): Transition {
   // 1. Wherever every old-layout node (and any still-fading ghost) visually
   // is RIGHT NOW, not where it started or where it will settle — this is
@@ -784,7 +879,80 @@ function buildTransition(
     ghostQuad = buildQuadTree(unionBoxes, { minX, minY, maxX, maxY })
   }
 
-  return { startedAt: now, duration: TRANSITION_DURATION_MS, fromBySource, ghosts, ghostQuad, opening }
+  // `nodeQuad`/`edgeQuad`: see `Transition.nodeQuad`'s docblock for why
+  // `render()` needs these instead of the plain final-layout quads while
+  // this transition is running. Two passes over the new pruned tree:
+  // survivors (`revealed: false`) first, since a revealed entry's anchor is
+  // ALWAYS a survivor (`TweenEntry.anchor`'s docblock) — the second pass
+  // reads the anchor's already-written union box directly, by pruned index,
+  // in O(1), no tree walk needed here (the walk already happened once, in
+  // `resolveRevealAnchor` above).
+  const prunedCount = visibleToSource.length
+  const nodeUnionBoxes = new Float64Array(prunedCount * 4)
+  for (let i = 0; i < prunedCount; i++) {
+    const entry = fromBySource.get(visibleToSource[i]!)!
+    if (entry.revealed) continue
+    writeBox(nodeUnionBoxes, i, unionBox(entry.box, boxAt(boxes, i)))
+  }
+  for (let i = 0; i < prunedCount; i++) {
+    const entry = fromBySource.get(visibleToSource[i]!)!
+    if (!entry.revealed) continue
+    const growthRange = entry.anchor === -1 ? entry.box : boxAt(nodeUnionBoxes, entry.anchor)
+    writeBox(nodeUnionBoxes, i, unionBox(entry.box, growthRange))
+  }
+
+  let nodeQuad: QuadTree | null = null
+  if (prunedCount > 0) {
+    let nMinX = Infinity
+    let nMinY = Infinity
+    let nMaxX = -Infinity
+    let nMaxY = -Infinity
+    for (let i = 0; i < prunedCount; i++) {
+      const o = i * 4
+      const x0 = nodeUnionBoxes[o]!
+      const y0 = nodeUnionBoxes[o + 1]!
+      const x1 = x0 + nodeUnionBoxes[o + 2]!
+      const y1 = y0 + nodeUnionBoxes[o + 3]!
+      if (x0 < nMinX) nMinX = x0
+      if (y0 < nMinY) nMinY = y0
+      if (x1 > nMaxX) nMaxX = x1
+      if (y1 > nMaxY) nMaxY = y1
+    }
+    nodeQuad = buildQuadTree(nodeUnionBoxes, { minX: nMinX, minY: nMinY, maxX: nMaxX, maxY: nMaxY })
+  }
+
+  // Edge analogue: each edge's cull box is the union of its parent's and
+  // child's OWN union box — a safe superset, since both endpoints
+  // individually stay inside their own union box for the whole transition
+  // (`unionBox`'s docblock), so the elbow between them never leaves the
+  // union of the two. Same `edgeChild` iteration order as the engine's own
+  // (module-scope) `edgeQuad`, so a query result from either quad translates
+  // through that same array.
+  let edgeQuad: QuadTree | null = null
+  const edgeCount = edgeChild.length
+  if (edgeCount > 0) {
+    const edgeUnionBoxes = new Float64Array(edgeCount * 4)
+    let eMinX = Infinity
+    let eMinY = Infinity
+    let eMaxX = -Infinity
+    let eMaxY = -Infinity
+    for (let e = 0; e < edgeCount; e++) {
+      const child = edgeChild[e]!
+      const parentIdx = prunedParent[child]!
+      const childBox = boxAt(nodeUnionBoxes, child)
+      const box = parentIdx === -1 ? childBox : unionBox(childBox, boxAt(nodeUnionBoxes, parentIdx))
+      writeBox(edgeUnionBoxes, e, box)
+      const x1 = box.x + box.w
+      const y1 = box.y + box.h
+      if (box.x < eMinX) eMinX = box.x
+      if (box.y < eMinY) eMinY = box.y
+      if (x1 > eMaxX) eMaxX = x1
+      if (y1 > eMaxY) eMaxY = y1
+    }
+    edgeQuad = buildQuadTree(edgeUnionBoxes, { minX: eMinX, minY: eMinY, maxX: eMaxX, maxY: eMaxY })
+  }
+
+  return { startedAt: now, duration: TRANSITION_DURATION_MS, fromBySource, ghosts, ghostQuad, nodeQuad, edgeQuad, opening }
 }
 
 /**
@@ -970,6 +1138,7 @@ export function createChartEngine(renderer: Renderer): ChartEngine {
         prunedParent,
         prunedFromSource,
         pendingTransitionOpening,
+        edgeChild,
       )
       renderBoxes = boxes.slice()
     } else {
@@ -1000,29 +1169,53 @@ export function createChartEngine(renderer: Renderer): ChartEngine {
     if (layoutDirty) relayout(now)
 
     const n = visibleToSource.length
+    // Feeds `exitBox` below (the reveal/ghost "emerge from the parent's exit
+    // edge" point) — same orientation test `relayout` uses to pick spacing
+    // axes, recomputed here rather than stored, since it's O(1) and `render`
+    // has no other reason to keep its own copy in step with `options`.
+    const horizontal = options.orientation === 'lr' || options.orientation === 'rl'
+
+    // Resolve whether this transition has actually finished as of `now`
+    // BEFORE culling: culling needs to know whether to query the
+    // transition-aware quads (built below) or the plain final-layout ones,
+    // and a transition that just crossed its finish line must use the
+    // latter — not the former, which nothing keeps updated once the
+    // transition itself is gone.
+    if (transition !== null && progressOf(transition, now) >= 1) {
+      // Done: fall back to the zero-overhead steady state.
+      transition = null
+      renderBoxes = boxes
+    }
+
     // `nodeCount`: the exact-viewport node query, drives fill/stroke/label
     // drawing and is what `render()` reports as "on screen".
-    // `edgeDrawCount`: the exact-viewport EDGE query (via `edgeQuad`, indexed
-    // over connector boxes, not node boxes — see `buildEdgeIndex`), drives
-    // connector drawing. Independent of `nodeCount`: a connector can cross
-    // the viewport while neither of its endpoints does, and a node's own box
-    // can graze the viewport somewhere its connector never reaches. Neither
-    // set is a subset of the other; the renderer is handed both.
+    // `edgeDrawCount`: the exact-viewport EDGE query, drives connector
+    // drawing. Independent of `nodeCount`: a connector can cross the
+    // viewport while neither of its endpoints does, and a node's own box can
+    // graze the viewport somewhere its connector never reaches. Neither set
+    // is a subset of the other; the renderer is handed both.
     //
-    // Both are computed against the FINAL layout (`boxes`), never an
-    // in-progress transition's interpolated positions — deliberately: a node
-    // sliding into or out of the viewport only because of the transition
-    // itself (as opposed to already being near it in the final layout) is a
-    // known, accepted gap, not something this cull is trying to solve. See
-    // the transition block below for what IS covered (the near-viewport
-    // case, which is what a real toggle produces almost all the time).
+    // While a transition is running, this queries `transition.nodeQuad`/
+    // `transition.edgeQuad` — built over each node's/edge's own old-box/
+    // new-box union, not the plain final layout — because a node's DRAWN
+    // (interpolated) position can be arbitrarily far from where it settles,
+    // most dramatically for the toggled node itself under a host's camera
+    // anchor (see `Transition.nodeQuad`'s docblock). Querying the final
+    // layout directly here was exactly the "toggled node flashes" bug: a
+    // survivor whose FINAL box had drifted outside the viewport, even though
+    // its INTERPOLATED one was sitting in plain sight, used to be silently
+    // excluded from `cullBuffer` for a frame or two. Outside a transition
+    // this aliases the plain `quad`/`edgeQuad` exactly, so there is no extra
+    // cost in the steady state.
     let nodeCount = 0
     let edgeDrawCount = 0
     if (n > 0 && viewport.width > 0 && viewport.height > 0) {
       const rect = visibleRect(camera, { width: viewport.width, height: viewport.height })
-      if (quad !== null) nodeCount = quad.query(rect, cullBuffer)
-      if (edgeQuad !== null) {
-        const written = edgeQuad.query(rect, edgeQueryBuffer)
+      const cullNodeQuad = transition !== null ? transition.nodeQuad : quad
+      const cullEdgeQuad = transition !== null ? transition.edgeQuad : edgeQuad
+      if (cullNodeQuad !== null) nodeCount = cullNodeQuad.query(rect, cullBuffer)
+      if (cullEdgeQuad !== null) {
+        const written = cullEdgeQuad.query(rect, edgeQueryBuffer)
         for (let i = 0; i < written; i++) edgeDrawBuffer[i] = edgeChild[edgeQueryBuffer[i]!]!
         edgeDrawCount = written
       }
@@ -1036,117 +1229,125 @@ export function createChartEngine(renderer: Renderer): ChartEngine {
     let ghostCount = 0
     let revealAlpha: Float32Array | null = null
     if (transition !== null) {
-      const progress = progressOf(transition, now)
-      if (progress >= 1) {
-        // Done: fall back to the zero-overhead steady state.
-        transition = null
-        renderBoxes = boxes
-      } else {
-        // Staged choreography: `repositionPos` (surviving nodes making room
-        // or closing the gap) and `emphasisPos`/`emphasisAlpha` (revealed
-        // nodes and ghosts growing/fading in or shrinking/fading out) are
-        // now DIFFERENT PHASES of the timeline, not just different curves
-        // applied to the same instant — see `easingFor`, `repositionRaw`, and
-        // `emphasisRaw` above for how `transition.opening` decides which
-        // physical phase (1 or 2) each job lands in.
-        const easing = easingFor(transition, now)
+      // `progress < 1` is guaranteed here — the `>= 1` case was already
+      // resolved above, before culling.
+      // Staged choreography: `repositionPos` (surviving nodes making room
+      // or closing the gap) and `emphasisPos`/`emphasisAlpha` (revealed
+      // nodes and ghosts growing/fading in or shrinking/fading out) are
+      // now DIFFERENT PHASES of the timeline, not just different curves
+      // applied to the same instant — see `easingFor`, `repositionRaw`, and
+      // `emphasisRaw` above for how `transition.opening` decides which
+      // physical phase (1 or 2) each job lands in.
+      const easing = easingFor(transition, now)
 
-        // A revealed entry's growth-start point is read live from its
-        // ANCHOR (the nearest surviving ancestor) rather than a box baked in
-        // once at `buildTransition` time — the anchor can itself be
-        // mid-reposition this same transition (sliding to make room, or
-        // recentring over a changed child set), so a static snapshot would
-        // grow the reveal from where the anchor WAS at the moment of the
-        // toggle, not where it visibly IS this frame. Recursing into
-        // `applyTween(entry.anchor)` first brings the anchor's OWN
-        // `renderBoxes` entry up to date for this frame before it's read —
-        // safe (never unbounded): the anchor is always a `revealed: false`
-        // entry (see `resolveRevealAnchor`/`resolveGhostAnchor`), so that
-        // recursive call always takes the non-revealed branch below and
-        // returns without recursing further, one level deep regardless of
-        // how far up the tree the anchor sits.
-        const applyTween = (idx: number): void => {
-          const entry = transition!.fromBySource.get(visibleToSource[idx]!)
-          if (entry === undefined) return
-          if (!entry.revealed) {
-            writeBox(renderBoxes, idx, lerpBox(entry.box, boxAt(boxes, idx), easing.repositionPos))
-            return
-          }
-          let from = entry.box
-          if (entry.anchor !== -1) {
-            applyTween(entry.anchor)
-            from = boxAt(renderBoxes, entry.anchor)
-          }
-          writeBox(renderBoxes, idx, lerpBox(from, boxAt(boxes, idx), easing.emphasisPos))
+      // A revealed entry's growth-start point is read live from its
+      // ANCHOR (the nearest surviving ancestor) rather than a box baked in
+      // once at `buildTransition` time — the anchor can itself be
+      // mid-reposition this same transition (sliding to make room, or
+      // recentring over a changed child set), so a static snapshot would
+      // grow the reveal from where the anchor WAS at the moment of the
+      // toggle, not where it visibly IS this frame. Recursing into
+      // `applyTween(entry.anchor)` first brings the anchor's OWN
+      // `renderBoxes` entry up to date for this frame before it's read —
+      // safe (never unbounded): the anchor is always a `revealed: false`
+      // entry (see `resolveRevealAnchor`/`resolveGhostAnchor`), so that
+      // recursive call always takes the non-revealed branch below and
+      // returns without recursing further, one level deep regardless of
+      // how far up the tree the anchor sits.
+      const applyTween = (idx: number): void => {
+        const entry = transition!.fromBySource.get(visibleToSource[idx]!)
+        if (entry === undefined) return
+        if (!entry.revealed) {
+          writeBox(renderBoxes, idx, lerpBox(entry.box, boxAt(boxes, idx), easing.repositionPos))
+          return
         }
-        // Every drawn NODE needs its own box tweened, plus its parent's (so
-        // a connector reaching up to that parent, drawn from the same
-        // `renderBoxes`, doesn't snap one end to the final layout).
+        let from = entry.box
+        if (entry.anchor !== -1) {
+          applyTween(entry.anchor)
+          // The anchor's EXIT point (bottom edge for tb/bt, trailing edge for
+          // lr/rl — wherever its connector actually leaves it), not its whole
+          // box: a revealed child emerges from that single point on its
+          // parent and grows to its own size while moving to its final box,
+          // rather than starting already sized and positioned like the
+          // entire parent — the owner's ask (previously it grew out of the
+          // anchor's box origin/centre, which read as ballooning out of the
+          // middle rather than dropping out of the bottom).
+          from = exitBox(boxAt(renderBoxes, entry.anchor), horizontal)
+        }
+        writeBox(renderBoxes, idx, lerpBox(from, boxAt(boxes, idx), easing.emphasisPos))
+      }
+      // Every drawn NODE needs its own box tweened, plus its parent's (so
+      // a connector reaching up to that parent, drawn from the same
+      // `renderBoxes`, doesn't snap one end to the final layout).
+      for (let s = 0; s < nodeCount; s++) {
+        const idx = cullBuffer[s]!
+        applyTween(idx)
+        const par = prunedParent[idx]!
+        if (par !== -1) applyTween(par)
+      }
+      // Every drawn CONNECTOR needs both its endpoints tweened too — this
+      // is what makes a connector crossing the viewport (independently of
+      // either endpoint's own visibility) follow the interpolated
+      // positions during a transition instead of snapping to the final
+      // layout while its nodes glide.
+      for (let s = 0; s < edgeDrawCount; s++) {
+        const idx = edgeDrawBuffer[s]!
+        applyTween(idx)
+        const par = prunedParent[idx]!
+        if (par !== -1) applyTween(par)
+      }
+
+      if (nodeCount > 0) {
+        if (revealAlphaBuffer.length < nodeCount) revealAlphaBuffer = new Float32Array(nodeCount)
+        let anyRevealed = false
         for (let s = 0; s < nodeCount; s++) {
-          const idx = cullBuffer[s]!
-          applyTween(idx)
-          const par = prunedParent[idx]!
-          if (par !== -1) applyTween(par)
-        }
-        // Every drawn CONNECTOR needs both its endpoints tweened too — this
-        // is what makes a connector crossing the viewport (independently of
-        // either endpoint's own visibility) follow the interpolated
-        // positions during a transition instead of snapping to the final
-        // layout while its nodes glide.
-        for (let s = 0; s < edgeDrawCount; s++) {
-          const idx = edgeDrawBuffer[s]!
-          applyTween(idx)
-          const par = prunedParent[idx]!
-          if (par !== -1) applyTween(par)
-        }
-
-        if (nodeCount > 0) {
-          if (revealAlphaBuffer.length < nodeCount) revealAlphaBuffer = new Float32Array(nodeCount)
-          let anyRevealed = false
-          for (let s = 0; s < nodeCount; s++) {
-            const entry = transition.fromBySource.get(visibleToSource[cullBuffer[s]!]!)
-            if (entry !== undefined && entry.revealed) {
-              revealAlphaBuffer[s] = easing.emphasisAlpha
-              anyRevealed = true
-            } else {
-              revealAlphaBuffer[s] = 1
-            }
+          const entry = transition.fromBySource.get(visibleToSource[cullBuffer[s]!]!)
+          if (entry !== undefined && entry.revealed) {
+            revealAlphaBuffer[s] = easing.emphasisAlpha
+            anyRevealed = true
+          } else {
+            revealAlphaBuffer[s] = 1
           }
-          if (anyRevealed) revealAlpha = revealAlphaBuffer
         }
+        if (anyRevealed) revealAlpha = revealAlphaBuffer
+      }
 
-        if (transition.ghostQuad !== null && viewport.width > 0 && viewport.height > 0) {
-          // Unwidened, same as the node/edge queries above: a ghost's own
-          // query box (built once in `buildTransition`) is already the union
-          // of its `from` and its ANCHOR's full old->new range, so it fully
-          // bounds every position the ghost could occupy for the rest of
-          // the transition — no additional margin is needed to catch it
-          // here (see `buildTransition`'s `anchorRange`).
-          const rect = visibleRect(camera, { width: viewport.width, height: viewport.height })
-          const total = transition.ghosts.length
-          if (ghostCullBuffer.length < total) ghostCullBuffer = new Uint32Array(total)
-          const gcount = transition.ghostQuad.query(rect, ghostCullBuffer)
-          if (ghostDrawBoxes.length < gcount * 4) ghostDrawBoxes = new Float64Array(gcount * 4)
-          if (ghostDrawAlpha.length < gcount) ghostDrawAlpha = new Float32Array(gcount)
-          for (let g = 0; g < gcount; g++) {
-            const ghost = transition.ghosts[ghostCullBuffer[g]!]!
-            // Shrinks toward the anchor's LIVE (reposition-tweened) box, not
-            // a stale snapshot of where it was at the moment of the
-            // collapse — same live-anchor reasoning as `applyTween`'s
-            // revealed-entry branch above; `applyTween` here just brings
-            // the anchor's own `renderBoxes` entry up to date for this frame
-            // (idempotent, and the anchor is always `revealed: false`, so
-            // this never recurses further).
-            let to = ghost.from
-            if (ghost.anchor !== -1) {
-              applyTween(ghost.anchor)
-              to = boxAt(renderBoxes, ghost.anchor)
-            }
-            writeBox(ghostDrawBoxes, g, lerpBox(ghost.from, to, easing.emphasisPos))
-            ghostDrawAlpha[g] = easing.ghostAlpha
+      if (transition.ghostQuad !== null && viewport.width > 0 && viewport.height > 0) {
+        // Unwidened, same as the node/edge queries above: a ghost's own
+        // query box (built once in `buildTransition`) is already the union
+        // of its `from` and its ANCHOR's full old->new range, so it fully
+        // bounds every position the ghost could occupy for the rest of
+        // the transition — no additional margin is needed to catch it
+        // here (see `buildTransition`'s `anchorRange`).
+        const rect = visibleRect(camera, { width: viewport.width, height: viewport.height })
+        const total = transition.ghosts.length
+        if (ghostCullBuffer.length < total) ghostCullBuffer = new Uint32Array(total)
+        const gcount = transition.ghostQuad.query(rect, ghostCullBuffer)
+        if (ghostDrawBoxes.length < gcount * 4) ghostDrawBoxes = new Float64Array(gcount * 4)
+        if (ghostDrawAlpha.length < gcount) ghostDrawAlpha = new Float32Array(gcount)
+        for (let g = 0; g < gcount; g++) {
+          const ghost = transition.ghosts[ghostCullBuffer[g]!]!
+          // Shrinks toward the anchor's LIVE (reposition-tweened) box, not
+          // a stale snapshot of where it was at the moment of the
+          // collapse — same live-anchor reasoning as `applyTween`'s
+          // revealed-entry branch above; `applyTween` here just brings
+          // the anchor's own `renderBoxes` entry up to date for this frame
+          // (idempotent, and the anchor is always `revealed: false`, so
+          // this never recurses further).
+          let to = ghost.from
+          if (ghost.anchor !== -1) {
+            applyTween(ghost.anchor)
+            // Symmetric with the reveal case above: a collapsing ghost
+            // shrinks toward the single EXIT point on its surviving
+            // ancestor, not the ancestor's whole box, so it visibly
+            // disappears back into the bottom/trailing edge it originally
+            // emerged from rather than shrinking into the ancestor's centre.
+            to = exitBox(boxAt(renderBoxes, ghost.anchor), horizontal)
           }
-          ghostCount = gcount
+          writeBox(ghostDrawBoxes, g, lerpBox(ghost.from, to, easing.emphasisPos))
+          ghostDrawAlpha[g] = easing.ghostAlpha
         }
+        ghostCount = gcount
       }
     }
     // --- end transition ---

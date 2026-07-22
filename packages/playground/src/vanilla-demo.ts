@@ -200,6 +200,9 @@ export interface VanillaDemoHandle {
   setMinimapPosition(position: MinimapPosition): void
   setEdgeRadius(radius: number): void
   setNodeFill(nodeFill: string): void
+  setBlockFill(blockFill: string): void
+  setRingStroke(ringStroke: string): void
+  setRingEnabled(enabled: boolean): void
 }
 
 /**
@@ -263,6 +266,15 @@ export function mountVanilla(
     },
     setNodeFill(nodeFill) {
       chart.api.setTheme({ nodeFill })
+    },
+    setBlockFill(blockFill) {
+      chart.api.setTheme({ blockFill })
+    },
+    setRingStroke(ringStroke) {
+      chart.api.setTheme({ ringStroke })
+    },
+    setRingEnabled(enabled) {
+      chart.api.setRing(enabled)
     },
   }
 }
