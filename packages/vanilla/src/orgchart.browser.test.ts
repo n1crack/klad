@@ -862,6 +862,40 @@ describe('createOrgChart', () => {
     chart.destroy()
   })
 
+  // A bare tap is not a camera gesture. Input calls `cancelAnimation` on
+  // `pointerdown`, before it can know whether a pan is coming, and that used
+  // to drop the toggle camera anchor outright — but the LAYOUT keeps
+  // animating either way, so the tree carried on to its final positions with
+  // nothing holding the toggled node. Tapping anywhere during a root collapse
+  // left the root somewhere else entirely, often off screen.
+  it('does not abandon the toggled node when the canvas is tapped mid-transition', async () => {
+    const chart = make({ ring: false })
+    await settle()
+    await nextFrame()
+
+    const before = chart.api.getState().rootScreenCentre
+
+    chart.api.collapse('a')
+    await nextFrame()
+    await nextFrame()
+
+    // A tap with no movement: down and up at the same point, nowhere near a
+    // node, so it changes no camera and toggles nothing.
+    const canvas = document.querySelector('canvas') as HTMLCanvasElement
+    const rect = canvas.getBoundingClientRect()
+    const at = { clientX: rect.left + 5, clientY: rect.top + rect.height - 5 }
+    canvas.dispatchEvent(new PointerEvent('pointerdown', { ...at, pointerId: 7, bubbles: true }))
+    canvas.dispatchEvent(new PointerEvent('pointerup', { ...at, pointerId: 7, bubbles: true }))
+
+    await settleTransition()
+    await nextFrame()
+
+    const after = chart.api.getState().rootScreenCentre
+    expect(after.x).toBeCloseTo(before.x, 0)
+    expect(after.y).toBeCloseTo(before.y, 0)
+    chart.destroy()
+  })
+
   it('does not auto-pan on toggle when autoPanOnToggle is false', async () => {
     const chart = make({ collapsedByDefault: true, autoPanOnToggle: false })
     await nextFrame()

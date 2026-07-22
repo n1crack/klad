@@ -1037,7 +1037,27 @@ export function createOrgChart(host: HTMLElement, options: Options): OrgChartIns
   let momentumVY = 0
   let momentumLastT = 0
 
-  const cancelCameraAnimation = (): void => {
+  /**
+   * `dropToggleAnchor` distinguishes the two things this cancels, which are
+   * not the same event:
+   *
+   *  - A `focus()` tween or a momentum coast is a camera animation the user
+   *    is interrupting. Merely TOUCHING the canvas should stop it dead —
+   *    that is the "the user's hand always wins immediately" rule.
+   *  - The toggle camera anchor is not a camera animation the user started.
+   *    It is what holds the node they just toggled still while the layout
+   *    moves underneath it, and the layout keeps moving whether the anchor
+   *    lives or not. Dropping it on a bare `pointerdown` — which is what this
+   *    used to do unconditionally — abandoned the node mid-transition: the
+   *    tree carried on to its final positions with nothing holding it, so a
+   *    tap anywhere during a root collapse left the root somewhere else
+   *    entirely, often off screen.
+   *
+   * So a real camera GESTURE (pan, wheel, pinch, or an API move) still drops
+   * the anchor — those all route through `setCameraInstant`/`animateTo`,
+   * which take the default — while a touch that changes no camera does not.
+   */
+  const cancelCameraAnimation = (dropToggleAnchor = true): void => {
     if (cameraAnimHandle !== null) {
       cancelAnimationFrame(cameraAnimHandle)
       cameraAnimHandle = null
@@ -1046,12 +1066,10 @@ export function createOrgChart(host: HTMLElement, options: Options): OrgChartIns
     tweenTo = null
     momentumVX = 0
     momentumVY = 0
-    // Same "the user's hand always wins immediately" rule extends to the
-    // toggle camera anchor: a `focus()`/`fit()`/manual pan or zoom while a
-    // toggle's anchor is still holding a node in place is deliberate action
-    // that should simply win, not fight the anchor on the next frame.
-    cameraAnchor = null
-    pendingAnchor = null
+    if (dropToggleAnchor) {
+      cameraAnchor = null
+      pendingAnchor = null
+    }
   }
 
   /** Used by pointer, wheel, and pinch input — see `cancelCameraAnimation`. */
@@ -1240,7 +1258,12 @@ export function createOrgChart(host: HTMLElement, options: Options): OrgChartIns
   const detachInput = attachInput(host, () => limits, {
     getCamera: () => camera,
     setCamera: setCameraInstant,
-    cancelAnimation: cancelCameraAnimation,
+    // Input calls this on `pointerdown`/wheel, before it knows whether a
+    // camera gesture is coming: stop a tween or coast, but leave the toggle
+    // anchor alone (see `cancelCameraAnimation`). Anything that actually
+    // moves the camera reports through `setCamera` above, which is
+    // `setCameraInstant` — and that drops the anchor.
+    cancelAnimation: () => cancelCameraAnimation(false),
     onTap(screenX, screenY, target) {
       const world = screenToWorld(camera, screenX, screenY)
       void chartHost.hitTest(world.x, world.y).then((index) => {
