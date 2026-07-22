@@ -248,3 +248,16 @@ The playground worked around both by remounting, but the real fix is on the API:
   so an exported SVG/PNG does not reflect a theme changed at runtime (e.g. edge radius).
   Decide whether export should default to the chart's current theme and only override when
   asked — probably yes.
+
+---
+
+## Queued: ring controls in the sidebar (owner, "sonra")
+
+After the current ghost-fade/setTheme/anchor agent lands:
+
+- **Ring colour picker** — sets `theme.ringStroke`, wired through the new `api.setTheme(...)`
+  the current agent is adding. Trivial once that exists.
+- **Ring flash on/off toggle** — some consumers will not want the confirmation ring at all.
+  Needs a small option to disable just the ring while keeping the layout transition and
+  other animations. Add the option to the vanilla `Options` (and thread to the engine's
+  ring logic), plus a sidebar toggle. Default on.
