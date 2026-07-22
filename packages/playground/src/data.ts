@@ -416,9 +416,13 @@ export const EXAMPLES: Example[] = [
     id: 'accordion',
     name: 'Accordion detail',
     description:
-      "A second, independent kind of open: the card's own detail pane, which has nothing to do with the chart's expand/collapse of children. The disclosure state lives on the node data rather than being inferred from the chart's, and the pane opens inside the box the layout already reserved — nodeSize is declared up front, so the node is sized for the open state (232×132).",
+      "A second, independent kind of open: the card's own detail pane, which has nothing to do with the chart's expand/collapse of children. The disclosure state lives on the node data, and the node GROWS with it — nodeSize is a function of that same flag, so opening a card makes it taller and the whole layout reflows around it. Sizes are declared, never measured off the DOM (layout runs in a worker), so the card asks the chart to re-read them via api.refresh(), which keeps expand/collapse, camera and highlight exactly where they were. 232×72 closed, 232×132 open.",
     data: SHARED_DATA,
-    options: { nodeSize: { w: 232, h: 132 } },
+    options: {
+      // A function of the node's own disclosure flag: the card is taller when
+      // its detail pane is open, and the layout reflows around it.
+      nodeSize: (item) => (item.detail === true ? { w: 232, h: 132 } : { w: 232, h: 72 }),
+    },
     content: 'accordion',
   },
   {

@@ -1056,6 +1056,67 @@ describe('createOrgChart', () => {
     chart.destroy()
   })
 
+  // --- refresh -------------------------------------------------------------
+
+  // `nodeSize` is declared, never measured — layout runs in a worker with no
+  // DOM — so a card that changes its own height has to say so. `update()` is
+  // the wrong tool: it replaces the data and resets the tree's open state,
+  // throwing away what the user was looking at.
+  it('re-reads node sizes without losing expand/collapse state, camera or highlight', async () => {
+    let tall = false
+    const chart = make({
+      nodeSize: () => (tall ? { w: 120, h: 96 } : { w: 120, h: 48 }),
+    })
+    await settle()
+    await nextFrame()
+
+    chart.api.collapse('b')
+    await settleTransition()
+    await nextFrame()
+    chart.api.highlight(['c'])
+    await nextFrame()
+
+    const before = {
+      bounds: chart.api.getState().bounds,
+      camera: { ...chart.api.getState().camera },
+      visibleCount: chart.api.getState().visibleCount,
+    }
+    expect(before.visibleCount).toBe(3) // 'd' is hidden under the collapsed 'b'
+
+    tall = true
+    chart.api.refresh()
+    await nextFrame()
+    await nextFrame()
+
+    const after = chart.api.getState()
+    // The layout really did re-measure...
+    expect(after.bounds.maxY - after.bounds.minY).toBeGreaterThan(
+      before.bounds.maxY - before.bounds.minY,
+    )
+    // ...without disturbing any of the state the user owns.
+    expect(after.visibleCount).toBe(before.visibleCount)
+    expect(after.camera).toEqual(before.camera)
+    chart.destroy()
+  })
+
+  it('does not re-announce data warnings on every refresh', async () => {
+    const warnings: unknown[] = []
+    // 'orphan' names a parent that isn't in the data — one warning, once.
+    const chart = make({ data: [{ id: 'a' }, { id: 'orphan', parentId: 'ghost' }] })
+    chart.on('warning', (w) => warnings.push(w))
+    await settle()
+    await nextFrame()
+    const initial = warnings.length
+    expect(initial).toBeGreaterThan(0)
+
+    chart.api.refresh()
+    await nextFrame()
+    await nextFrame()
+
+    expect(warnings.length).toBe(initial)
+    chart.destroy()
+  })
+
   it('does not auto-pan on toggle when autoPanOnToggle is false', async () => {
     const chart = make({ collapsedByDefault: true, autoPanOnToggle: false })
     await nextFrame()

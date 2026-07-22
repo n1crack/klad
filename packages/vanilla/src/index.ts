@@ -255,6 +255,21 @@ export interface OrgChartApi {
    * receives, for a caller driving its own UI (a sidebar, a breadcrumb, a
    * summary line) rather than a card.
    */
+  /**
+   * Re-reads `nodeSize` and `label` for every node and relayouts around the
+   * new measurements, keeping expand/collapse state, camera and highlight
+   * exactly as they are.
+   *
+   * `nodeSize` is declared, never measured — layout runs in a worker with no
+   * DOM (see the README) — so a card that changes its own height, an
+   * accordion opening or a badge appearing, has to say so. `update()` is the
+   * wrong tool for it: that replaces the data and resets the tree's open
+   * state, throwing away exactly what the user was looking at.
+   *
+   * The relayout snaps rather than animating: this is a re-measure, not a
+   * toggle, and there is no single node for a transition to be anchored on.
+   */
+  refresh(): void
   stats(id: string): NodeStats | null
   /**
    * The chain of ids from the root down to `id`, inclusive of both — what to
@@ -472,7 +487,15 @@ export function createOrgChart(host: HTMLElement, options: Options): OrgChartIns
 
   const labelOf = (item: NodeData): string => currentOptions.label?.(item) ?? ''
 
-  const applyData = (): void => {
+  /**
+   * Pushes the tree, every node's size and label, and the current open flags
+   * down to the engine, then relayouts.
+   *
+   * `emitWarnings` is false for a plain refresh: the warnings belong to
+   * `normalize`'s reading of the DATA, and re-announcing the same ones every
+   * time a caller re-measures would turn a one-time diagnostic into a stream.
+   */
+  const applyData = (emitWarnings = true): void => {
     const sizes = new Float64Array(tree.count * 2)
     const labels: string[] = Array.from({ length: tree.count })
     for (let i = 0; i < tree.count; i++) {
@@ -496,7 +519,7 @@ export function createOrgChart(host: HTMLElement, options: Options): OrgChartIns
     // a microtask defers emission until after the constructor returns (and after
     // any `on()` call the caller makes in the same synchronous tick), while still
     // running well before the next animation frame.
-    const warnings = tree.warnings
+    const warnings = emitWarnings ? tree.warnings : []
     if (warnings.length > 0) {
       queueMicrotask(() => {
         for (const warning of warnings) emit('warning', warning)
@@ -854,6 +877,13 @@ export function createOrgChart(host: HTMLElement, options: Options): OrgChartIns
    * before the next frame.
    */
   let pendingFullFit = false
+
+  /**
+   * The ids the caller last passed to `highlight`, so `refresh` can restore
+   * them — `setData` drops the engine's highlight, since it holds source
+   * indices that a real data swap would invalidate.
+   */
+  let highlightedIds: string[] | null = null
 
   /**
    * Set by `focus()`, consumed by the first frame that has the layout its
@@ -1597,7 +1627,16 @@ export function createOrgChart(host: HTMLElement, options: Options): OrgChartIns
       }
       return path
     },
+    refresh() {
+      applyData(false)
+      // `setData` clears highlight — it holds source indices, which a genuine
+      // data swap invalidates. A refresh is not a data swap, so what the
+      // caller had highlighted is put straight back.
+      if (highlightedIds !== null) api.highlight(highlightedIds)
+      scheduleFrame()
+    },
     highlight(ids) {
+      highlightedIds = ids
       if (ids === null) {
         chartHost.setHighlight(null)
       } else {

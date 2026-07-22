@@ -960,8 +960,14 @@ body {
   display: none;
 }
 
+/* The card fills whatever box the layout reserved for it, and that box now
+   changes with the disclosure (the example's `nodeSize` is a function of the
+   same flag), so the open pane just takes the space that appeared instead of
+   carrying a height of its own. */
 .accordion-body.is-open {
   display: block;
+  flex: 1 1 auto;
+  overflow: hidden;
 }
 
 /* ---------------------------------------------------------------------------

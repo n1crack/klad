@@ -339,10 +339,12 @@ function renderAccordion(element: HTMLElement, context: NodeContext): void {
   disclosure.onclick = (event) => {
     event.stopPropagation()
     item.detail = !open
-    // Nothing about the CHART changed — only this card's own state — so ask
-    // the demo for a repaint rather than waiting for a frame the chart has no
-    // reason to draw.
-    element.dispatchEvent(new CustomEvent('playground:repaint', { bubbles: true }))
+    // The node's own SIZE changes with the disclosure (see the example's
+    // `nodeSize` in data.ts), and sizes are declared rather than measured —
+    // layout runs in a worker with no DOM — so the chart has to be told to
+    // re-read them. `refresh` does exactly that and keeps expand/collapse,
+    // camera and highlight where they were, which `update()` would not.
+    element.dispatchEvent(new CustomEvent('playground:relayout', { bubbles: true }))
   }
 }
 
@@ -495,6 +497,17 @@ export function mountVanilla(
   }
 
   /**
+   * A card changed its own SIZE, which the layout has to be told about: sizes
+   * are declared through `nodeSize`, never measured off the DOM. `refresh`
+   * re-reads them and relayouts while keeping expand/collapse, camera and
+   * highlight — unlike `update()`, which replaces the data and resets the
+   * tree's open state.
+   */
+  const onRelayout = (): void => {
+    chart.api.refresh()
+  }
+
+  /**
    * The go-to-node command in one gesture: mark the way from the root, then
    * fly there and flash the ring on arrival. `pathTo` returns the root-to-node
    * id chain, which is exactly what `highlight` wants, and `focus` opens every
@@ -508,6 +521,7 @@ export function mountVanilla(
   }
 
   host.addEventListener('playground:repaint', onRepaint)
+  host.addEventListener('playground:relayout', onRelayout)
   host.addEventListener('playground:goto', onGoto)
 
   return {
@@ -516,6 +530,7 @@ export function mountVanilla(
     },
     destroy: () => {
       host.removeEventListener('playground:repaint', onRepaint)
+      host.removeEventListener('playground:relayout', onRelayout)
       host.removeEventListener('playground:goto', onGoto)
       chart.destroy()
     },
