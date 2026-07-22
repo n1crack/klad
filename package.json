@@ -9,6 +9,7 @@
   },
   "scripts": {
     "dev": "pnpm --filter @n1crack/orgchart-playground dev",
+    "docs": "pnpm --filter @n1crack/orgchart-docs dev",
     "build": "turbo run build",
     "test": "turbo run test",
     "typecheck": "turbo run typecheck",

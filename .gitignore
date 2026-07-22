@@ -49,3 +49,7 @@ dist/
 # root are the source of truth and these are refreshed on every build.
 packages/*/LICENSE
 packages/*/LICENSE-COMMERCIAL.md
+
+# VitePress build output and cache
+packages/docs/.vitepress/dist
+packages/docs/.vitepress/cache
