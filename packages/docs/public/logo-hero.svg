@@ -1,36 +1,38 @@
-<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 64 64" role="img" aria-label="OrgChart">
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 48 48" role="img" aria-label="OrgChart">
   <!--
-    The mark is the thing the library actually draws: a parent, an elbow bus,
-    three children. Not an abstract swoosh — a reader who has seen the chart
-    recognises it, and at 16px it still reads as a hierarchy rather than as a
-    generic shape.
+    A hierarchy read as a cascade rather than as a diagram: three nodes, each
+    smaller and lighter than the one it hangs from, stepping down and to the
+    right. Asymmetric on purpose — a centred parent with balanced children is
+    the shape every site-map glyph already has.
 
-    Two weights only. The nodes carry the colour; the connectors are the
-    quieter grey the chart itself uses for edges, so the mark has the same
-    figure/ground relationship as the product.
+    The gradients are shallow, one stop of lightness each. They give the
+    shapes a direction to be lit from without becoming the point of the mark.
+
+    Everything is filled blue rather than outlined, so it works on a light or
+    a dark page unchanged: this is loaded as an <img> and page CSS cannot
+    reach inside it.
   -->
-  <g fill="none" stroke="#94a3b8" stroke-width="3" stroke-linecap="round" stroke-linejoin="round">
-    <path d="M32 21v6" />
-    <path d="M10 33v4" />
-    <path d="M54 33v4" />
-    <path d="M32 27h20a2 2 0 0 1 2 2v4" />
-    <path d="M32 27H12a2 2 0 0 0-2 2v4" />
-    <path d="M32 27v10" />
+  <defs>
+    <linearGradient id="oc-a" x1="0" y1="0" x2="1" y2="1">
+      <stop offset="0" stop-color="#1d4ed8" />
+      <stop offset="1" stop-color="#3b82f6" />
+    </linearGradient>
+    <linearGradient id="oc-b" x1="0" y1="0" x2="1" y2="1">
+      <stop offset="0" stop-color="#3b82f6" />
+      <stop offset="1" stop-color="#60a5fa" />
+    </linearGradient>
+    <linearGradient id="oc-c" x1="0" y1="0" x2="1" y2="1">
+      <stop offset="0" stop-color="#60a5fa" />
+      <stop offset="1" stop-color="#93c5fd" />
+    </linearGradient>
+  </defs>
+
+  <g fill="none" stroke="#64748b" stroke-width="2" stroke-linecap="round">
+    <path d="M14 19v5.75a2.5 2.5 0 0 0 2.5 2.5H17" />
+    <path d="M25.5 33v4.25a2.5 2.5 0 0 0 2.5 2.5H28" />
   </g>
-  <rect x="19" y="7" width="26" height="14" rx="4" fill="#2563eb" />
-  <g fill="none" stroke="#94a3b8" stroke-width="2.5" stroke-linecap="round" stroke-linejoin="round">
-    <path d="M32 51v3" />
-    <path d="M25 54h14" />
-    <path d="M25 54v3" />
-    <path d="M39 54v3" />
-  </g>
-  <g fill="none" stroke="#2563eb" stroke-width="3">
-    <rect x="3.5" y="38.5" width="13" height="12" rx="3" />
-    <rect x="25.5" y="38.5" width="13" height="12" rx="3" />
-    <rect x="47.5" y="38.5" width="13" height="12" rx="3" />
-  </g>
-  <g fill="#bfdbfe" stroke="#3b82f6" stroke-width="2">
-    <rect x="20" y="57" width="10" height="5" rx="2" />
-    <rect x="34" y="57" width="10" height="5" rx="2" />
-  </g>
+
+  <rect x="4" y="6" width="20" height="13" rx="4.5" fill="url(#oc-a)" />
+  <rect x="17" y="21.5" width="17" height="11.5" rx="4" fill="url(#oc-b)" />
+  <rect x="28" y="35" width="14" height="9.5" rx="3.5" fill="url(#oc-c)" />
 </svg>
