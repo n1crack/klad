@@ -2,7 +2,7 @@
 
 Intent, not dated commitments.
 
-## 1.0 — now
+## 1.0 — released
 
 Everything documented on this site: the worker-backed canvas pipeline, tidy
 layout with four orientations and RTL, LOD tiers, the pooled overlay, the
@@ -10,7 +10,13 @@ staged expand/collapse transition with its camera anchor, minimap, SVG/PNG
 export, a full keyboard tree, per-node subtree counts, go-to-node with route
 highlighting, and the Vue and React bindings.
 
-What remains before the first npm release is publishing itself.
+```bash
+npm install @klad/core    # or @klad/vue, @klad/react
+```
+
+Published from CI on a GitHub Release, so every tarball carries a
+[provenance attestation](https://docs.npmjs.com/generating-provenance-statements)
+tying it to the commit and the workflow that built it.
 
 ## 1.1 — Drag-and-drop reparenting
 
