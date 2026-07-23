@@ -1,11 +1,10 @@
 <script setup lang="ts">
 import { Klados } from '@klados/vue'
-import type { NodeContext, Options, KladosApi } from '@klados/vue'
+import type { KladosApi, NodeContext, Options, Theme } from '@klados/vue'
 import { computed, ref } from 'vue'
 import {
   DEPARTMENT_COLOR,
   EDGE_RADIUS_DEFAULT,
-  highlightWidthFor,
   initials,
   minimapDefaultOn,
   minimapDefaultPosition,
@@ -47,6 +46,16 @@ type Item = NodeContext['item']
  */
 let minimapOn = minimapDefaultOn(props.example)
 let minimapPosition: MinimapPosition = minimapDefaultPosition(props.example)
+/** The viewer's own silhouette colour, or `null` while the mode's default applies. */
+let minimapSilhouette: string | null = null
+
+function minimapOption(): NonNullable<Options['minimap']> {
+  const base = minimapOptionFor(props.example, minimapOn, minimapPosition, currentMode)
+  // `typeof base !== 'object'` rather than `=== false`: the option's type
+  // allows a bare `true`, which has nowhere to carry a colour.
+  if (typeof base !== 'object' || minimapSilhouette === null) return base
+  return { ...base, silhouetteColour: minimapSilhouette }
+}
 
 /**
  * The light/dark mode this chart MOUNTED in, read once. Same reasoning as
@@ -67,7 +76,7 @@ const options = computed<Options>(() => ({
   label: (item) => String(item.name ?? ''),
   ...props.example.options,
   theme: themeFor(props.example, EDGE_RADIUS_DEFAULT, mountedMode),
-  minimap: minimapOptionFor(props.example, minimapOn, minimapPosition, mountedMode),
+  minimap: minimapOption(),
 }))
 
 function handleReady(): void {
@@ -81,58 +90,30 @@ function setMinimap(on: boolean): void {
   // expand/collapse state as an unrelated side effect. See the comment on
   // `minimapOn` above for why it is a plain variable, not a `ref`, which is
   // what makes this safe rather than merely apparently safe.
-  chartRef.value?.api?.setMinimap(minimapOptionFor(props.example, on, minimapPosition, currentMode))
+  chartRef.value?.api?.setMinimap(minimapOption())
 }
 
 function setMinimapPosition(position: MinimapPosition): void {
   minimapPosition = position
-  chartRef.value?.api?.setMinimap(minimapOptionFor(props.example, minimapOn, position, currentMode))
+  chartRef.value?.api?.setMinimap(minimapOption())
 }
 
 /**
- * `edgeCornerRadius` lives under `theme`, and used to require a full
- * `<Klados :key="...">` remount to change post-construction (theme was
- * resolved exactly once, at `createKlados`, and `chart.update()` never
- * re-resolved it). `KladosApi.setTheme` (packages/vanilla/src/index.ts)
- * fixes that: it merges a partial theme over whatever the chart is already
- * showing, re-resolves it, and repaints — paint-only, so this no longer
- * resets camera position or expand/collapse state the way the remount used
- * to on every drag tick.
+ * One door for every theme token the sidebar owns. `KladosApi.setTheme`
+ * (packages/vanilla/src/index.ts) merges a partial over whatever the chart is
+ * already showing and repaints — paint-only, so unlike the `<Klados :key>`
+ * remount this used to need, it keeps camera position and expand/collapse
+ * state exactly where they were.
  */
-function setEdgeRadius(radius: number): void {
-  chartRef.value?.api?.setTheme({ edgeCornerRadius: radius })
+function setTheme(partial: Partial<Theme>): void {
+  chartRef.value?.api?.setTheme(partial)
 }
 
-/** Same `setTheme` path as `setEdgeRadius` — see its comment. */
-function setNodeFill(nodeFill: string): void {
-  chartRef.value?.api?.setTheme({ nodeFill })
-}
-
-/** Same `setTheme` path — the `block`-tier shape-fill colour. */
-function setBlockFill(blockFill: string): void {
-  chartRef.value?.api?.setTheme({ blockFill })
-}
-
-/**
- * One colour for everything that says "this is the thing you asked about":
- * the confirmation ring, a highlighted node's outline, and the connectors
- * along a highlighted path. They are separate theme tokens because a consumer
- * may well want them apart, but a route drawn in one colour and confirmed in
- * another reads as two unrelated events rather than one answer, so the
- * playground drives them together.
- */
-function setAccent(accent: string): void {
-  chartRef.value?.api?.setTheme({
-    ringStroke: accent,
-    edgeHighlightStroke: accent,
-    highlightStroke: accent,
-  })
-}
-
-/** Same `setTheme` path — connector weight, with the highlighted route kept
- * proportionally heavier so it still reads as a route. */
-function setEdgeWidth(width: number): void {
-  chartRef.value?.api?.setTheme({ edgeWidth: width, edgeHighlightWidth: highlightWidthFor(width) })
+/** The minimap's silhouette — an option rather than a theme token, and the one
+ * part of the widget a host stylesheet cannot reach. */
+function setMinimapSilhouette(colour: string): void {
+  minimapSilhouette = colour
+  chartRef.value?.api?.setMinimap(minimapOption())
 }
 
 /** `KladosApi.setRing` — NOT a theme token, so it goes through its own
@@ -153,19 +134,14 @@ function setMode(mode: ThemeMode): void {
   // The silhouette is the one piece of the minimap a host stylesheet cannot
   // reach (see `silhouetteColour` in theme.ts), so it is re-applied through
   // the option — only while the widget is actually showing.
-  if (minimapOn) {
-    chartRef.value?.api?.setMinimap(minimapOptionFor(props.example, true, minimapPosition, mode))
-  }
+  if (minimapOn) chartRef.value?.api?.setMinimap(minimapOption())
 }
 
 defineExpose({
   setMinimap,
   setMinimapPosition,
-  setEdgeRadius,
-  setNodeFill,
-  setBlockFill,
-  setAccent,
-  setEdgeWidth,
+  setMinimapSilhouette,
+  setTheme,
   setRingEnabled,
   setMode,
 })

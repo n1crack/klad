@@ -1,34 +1,35 @@
 import { createApp } from 'vue'
 import { createElement } from 'react'
 import { createRoot, type Root } from 'react-dom/client'
-import type { KladosApi } from 'klados'
+import type { KladosApi, Theme } from 'klados'
 import {
   BLOCK_FILL_SEED,
-  EDGE_RADIUS_DEFAULT,
   EDGE_RADIUS_MAX,
   EDGE_RADIUS_MIN,
-  EDGE_WIDTH_DEFAULT,
   EDGE_WIDTH_MAX,
   EDGE_WIDTH_MIN,
   EDGE_WIDTH_STEP,
+  effectiveTheme,
   EXAMPLES,
+  highlightWidthFor,
   MINIMAP_POSITIONS,
   minimapDefaultOn,
   minimapDefaultPosition,
-  nodeFillDefault,
-  RING_STROKE_DEFAULT,
   type Example,
   type MinimapPosition,
 } from './data.js'
 import {
   applyTheme,
+  chartTokens,
   initialMode,
   rememberMode,
+  silhouetteColour,
   watchStoredTheme,
   watchSystemTheme,
   type ThemeMode,
 } from './theme.js'
 import { generateCode, type ConfigSnapshot, type Stack as CodeStack } from './codegen.js'
+import { highlight } from './highlight.js'
 import { mountVanilla, type VanillaDemoHandle } from './vanilla-demo.js'
 import VueDemo from './VueDemo.vue'
 import { ReactDemo, type ReactDemoHandle } from './ReactDemo.js'
@@ -291,23 +292,57 @@ minimapPositionSelect.onchange = () => {
   currentSetMinimapPosition?.(minimapPositionSelect.value as MinimapPosition)
 }
 
-const minimapGroup = sidebarGroup('Minimap', minimapButton, minimapPositionField)
+/**
+ * The silhouette's colour — an OPTION rather than a theme token (see
+ * `MinimapOptions.silhouetteColour`), because it is painted pixel by pixel
+ * into the widget's own canvas and so is the one part of the minimap a host
+ * stylesheet cannot reach. Left alone it follows light/dark on its own; once
+ * touched, it is the viewer's.
+ */
+const minimapSilhouetteInput = document.createElement('input')
+minimapSilhouetteInput.type = 'color'
+minimapSilhouetteInput.id = 'minimap-silhouette-input'
+minimapSilhouetteInput.className = 'color-input'
+const minimapSilhouetteValue = readout()
+minimapSilhouetteValue.setAttribute('for', minimapSilhouetteInput.id)
+let minimapSilhouetteOverridden = false
+minimapSilhouetteInput.oninput = () => {
+  minimapSilhouetteOverridden = true
+  minimapSilhouetteValue.textContent = minimapSilhouetteInput.value.toUpperCase()
+  currentSetMinimapSilhouette?.(minimapSilhouetteInput.value)
+}
 
-// --- "Appearance" group: theme-driven controls (edge radius, node fill) plus
-// the canvas background — grouped together since all three change how the
-// chart looks, not what it shows. Edge radius and node fill are both real
-// `theme` tokens, applied live through `api.setTheme(...)` (no remount, no
-// tree-state reset — see vanilla-demo.ts/VueDemo.vue/ReactDemo.tsx's own
-// `setEdgeRadius`/`setNodeFill`). The canvas background isn't a theme token
-// at all (see the comment above `applyCanvasBg` below) — it's chrome, a host
-// CSS override — so it stays a separate mechanism even though it lives in
-// the same sidebar group.
-let currentSetEdgeRadius: ((radius: number) => void) | null = null
-let currentSetNodeFill: ((nodeFill: string) => void) | null = null
-let currentSetBlockFill: ((blockFill: string) => void) | null = null
-let currentSetAccent: ((accent: string) => void) | null = null
-let currentSetEdgeWidth: ((width: number) => void) | null = null
+/** Points the swatch at the mode's default while the viewer has not overridden it. */
+function syncMinimapSilhouette(): void {
+  if (minimapSilhouetteOverridden) return
+  const colour = silhouetteColour(mode)
+  minimapSilhouetteInput.value = colour
+  minimapSilhouetteValue.textContent = colour.toUpperCase()
+}
+
+const minimapGroup = sidebarGroup(
+  'Minimap',
+  minimapButton,
+  minimapPositionField,
+  field('Silhouette', minimapSilhouetteInput, minimapSilhouetteValue),
+)
+
+// --- "Appearance": every theme token the sidebar owns ---
+//
+// One state object, one door. `themeState` is what the sidebar has applied on
+// top of the example's own theme, and every control writes a partial into it
+// through `applyThemeTokens`, which also pushes that partial into whichever
+// stack is mounted (`api.setTheme` merges, paint-only — no remount, no
+// tree-state reset). Two things fall out of that: adding a control is a line
+// in a table rather than a setter in four files, and the Code panel can print
+// exactly what the chart is showing by reading the same object.
+//
+// The canvas background is the one exception and stays separate: there is no
+// `theme.background` token at all — the canvas only ever `clearRect`s, so the
+// colour behind the nodes is the host element's own CSS (see `applyCanvasBg`).
+let currentSetTheme: ((partial: Partial<Theme>) => void) | null = null
 let currentSetRingEnabled: ((enabled: boolean) => void) | null = null
+let currentSetMinimapSilhouette: ((colour: string) => void) | null = null
 /**
  * Pushes a light/dark switch into whichever stack is mounted. Like every
  * other setter here it goes through `api.setTheme`, so flipping the theme
@@ -315,187 +350,288 @@ let currentSetRingEnabled: ((enabled: boolean) => void) | null = null
  */
 let currentSetMode: ((mode: ThemeMode) => void) | null = null
 
-const edgeRadiusField = document.createElement('div')
-edgeRadiusField.className = 'field field-range'
-const edgeRadiusLabel = document.createElement('label')
-edgeRadiusLabel.textContent = 'Edge radius'
-edgeRadiusLabel.htmlFor = 'edge-radius-range'
-const edgeRadiusRow = document.createElement('div')
-edgeRadiusRow.className = 'field-range-row'
-const edgeRadiusRange = document.createElement('input')
-edgeRadiusRange.type = 'range'
-edgeRadiusRange.id = 'edge-radius-range'
-edgeRadiusRange.min = String(EDGE_RADIUS_MIN)
-edgeRadiusRange.max = String(EDGE_RADIUS_MAX)
-edgeRadiusRange.value = String(EDGE_RADIUS_DEFAULT)
-const edgeRadiusValue = document.createElement('output')
-edgeRadiusValue.className = 'field-range-value'
-edgeRadiusValue.setAttribute('for', 'edge-radius-range')
-edgeRadiusValue.textContent = String(EDGE_RADIUS_DEFAULT)
-edgeRadiusRow.append(edgeRadiusRange, edgeRadiusValue)
-edgeRadiusField.append(edgeRadiusLabel, edgeRadiusRow)
+/** The tokens this sidebar has applied over the example's own theme. */
+let themeState: Partial<Theme> = {}
 
-edgeRadiusRange.oninput = () => {
-  const radius = Number(edgeRadiusRange.value)
-  edgeRadiusValue.textContent = String(radius)
-  currentSetEdgeRadius?.(radius)
+function applyThemeTokens(partial: Partial<Theme>): void {
+  Object.assign(themeState, partial)
+  currentSetTheme?.(partial)
 }
 
-// "Line width" — `theme.edgeWidth`, the weight of every connector. It also
-// drives `edgeHighlightWidth` through `highlightWidthFor`, so a highlighted
-// route stays proportionally heavier than the lines around it at any setting;
-// a route drawn at the same weight as everything else stops reading as a
-// route at all.
-const edgeWidthField = document.createElement('div')
-edgeWidthField.className = 'field field-range'
-const edgeWidthLabel = document.createElement('label')
-edgeWidthLabel.textContent = 'Line width'
-edgeWidthLabel.htmlFor = 'edge-width-range'
-const edgeWidthRow = document.createElement('div')
-edgeWidthRow.className = 'field-range-row'
-const edgeWidthRange = document.createElement('input')
-edgeWidthRange.type = 'range'
-edgeWidthRange.id = 'edge-width-range'
-edgeWidthRange.min = String(EDGE_WIDTH_MIN)
-edgeWidthRange.max = String(EDGE_WIDTH_MAX)
-edgeWidthRange.step = String(EDGE_WIDTH_STEP)
-edgeWidthRange.value = String(EDGE_WIDTH_DEFAULT)
-const edgeWidthValue = document.createElement('output')
-edgeWidthValue.className = 'field-range-value'
-edgeWidthValue.setAttribute('for', 'edge-width-range')
-edgeWidthValue.textContent = String(EDGE_WIDTH_DEFAULT)
-edgeWidthRow.append(edgeWidthRange, edgeWidthValue)
-edgeWidthField.append(edgeWidthLabel, edgeWidthRow)
-
-edgeWidthRange.oninput = () => {
-  const width = Number(edgeWidthRange.value)
-  edgeWidthValue.textContent = String(width)
-  currentSetEdgeWidth?.(width)
+/** A labelled row holding one control and its readout — the sidebar's unit. */
+function field(labelText: string, control: HTMLElement, readout?: HTMLElement): HTMLDivElement {
+  const wrapper = document.createElement('div')
+  wrapper.className = 'field'
+  const label = document.createElement('label')
+  label.textContent = labelText
+  if (control.id !== '') label.htmlFor = control.id
+  const row = document.createElement('div')
+  row.className = 'field-range-row'
+  row.append(control)
+  if (readout !== undefined) row.append(readout)
+  wrapper.append(label, row)
+  return wrapper
 }
 
-// "Node fill" — the owner's ask: when the canvas is zoomed out small, nodes
-// are drawn by the canvas itself as filled boxes using `theme.nodeFill` (see
-// packages/core/src/render/canvas2d.ts), so this is the control that
-// recolours them. Also affects the same boxes at any zoom (they're always
-// canvas-drawn underneath), and any overlay card whose own CSS happens to
-// read `theme.nodeFill` — the built-in demo cards in this playground don't
-// (their background comes from `.card`'s own CSS, not the chart's theme), so
-// dragging this only visibly recolours the canvas-drawn boxes here, most
-// obviously once zoomed out past the overlay threshold.
-const nodeFillInput = document.createElement('input')
-nodeFillInput.type = 'color'
-nodeFillInput.id = 'node-fill-input'
-nodeFillInput.className = 'color-input'
-nodeFillInput.value = nodeFillDefault(mode)
-const nodeFillLabel = document.createElement('label')
-nodeFillLabel.textContent = 'Node fill'
-nodeFillLabel.htmlFor = 'node-fill-input'
-const nodeFillValue = document.createElement('output')
-nodeFillValue.className = 'field-range-value'
-nodeFillValue.setAttribute('for', 'node-fill-input')
-nodeFillValue.textContent = nodeFillDefault(mode).toUpperCase()
-const nodeFillRow = document.createElement('div')
-nodeFillRow.className = 'field-range-row'
-nodeFillRow.append(nodeFillInput, nodeFillValue)
-const nodeFillField = document.createElement('div')
-nodeFillField.className = 'field'
-nodeFillField.append(nodeFillLabel, nodeFillRow)
-
-nodeFillInput.oninput = () => {
-  const hex = nodeFillInput.value
-  nodeFillValue.textContent = hex.toUpperCase()
-  currentSetNodeFill?.(hex)
+function readout(): HTMLOutputElement {
+  const out = document.createElement('output')
+  out.className = 'field-range-value'
+  return out
 }
 
-// "Shape fill" — the `block` LOD tier's own fill (`theme.blockFill`, see
-// packages/core/src/render/theme.ts), independent of "Node fill" above.
-// Defaults to `'transparent'`: zoomed all the way out, past the text
-// threshold, a chart shows only its connector lines, not solid boxes — the
-// owner's ask. `<input type="color">` can't itself represent "no colour", so
-// this is a checkbox ("enable a shape fill at all") plus the picker it
-// gates: unchecked sends the literal string `'transparent'` through
-// `api.setTheme({ blockFill })` (see canvas2d.ts, which treats that exact
-// string as "skip the fill" rather than paint-with-an-invisible-colour);
-// checked sends whatever the swatch holds. The picker itself stays enabled
-// either way (dragging it while unchecked pre-arms a colour for the next
-// time the checkbox is ticked, rather than being inert), and starts on
-// `BLOCK_FILL_SEED`, a colour distinct from the mode's own node fill purely so the
-// two swatches read as different controls at a glance.
-const blockFillCheckbox = document.createElement('input')
-blockFillCheckbox.type = 'checkbox'
-blockFillCheckbox.id = 'block-fill-checkbox'
-blockFillCheckbox.className = 'checkbox-input'
-const blockFillInput = document.createElement('input')
-blockFillInput.type = 'color'
-blockFillInput.id = 'block-fill-input'
-blockFillInput.className = 'color-input'
-blockFillInput.value = BLOCK_FILL_SEED
-const blockFillLabel = document.createElement('label')
-blockFillLabel.textContent = 'Shape fill'
-blockFillLabel.htmlFor = 'block-fill-checkbox'
-const blockFillValue = document.createElement('output')
-blockFillValue.className = 'field-range-value'
-blockFillValue.setAttribute('for', 'block-fill-input')
-blockFillValue.textContent = 'Transparent'
-const blockFillRow = document.createElement('div')
-blockFillRow.className = 'field-range-row'
-blockFillRow.append(blockFillCheckbox, blockFillInput, blockFillValue)
-const blockFillField = document.createElement('div')
-blockFillField.className = 'field'
-blockFillField.append(blockFillLabel, blockFillRow)
+/**
+ * A control bound to one theme token: it knows how to read its own current
+ * value out of a resolved theme (`read`) and how to turn its widget's value
+ * back into a partial theme (`write`). That pairing is what makes a reset —
+ * switching example, switching stack, flipping light/dark — a loop over the
+ * controls rather than a list of assignments that has to be kept in step with
+ * the list of controls.
+ */
+interface ThemeControl {
+  element: HTMLElement
+  /** Points the widget at what the chart is ACTUALLY showing right now. */
+  sync(theme: Theme): void
+}
 
-function applyBlockFill(): void {
-  if (blockFillCheckbox.checked) {
-    const hex = blockFillInput.value
-    blockFillValue.textContent = hex.toUpperCase()
-    currentSetBlockFill?.(hex)
-  } else {
-    blockFillValue.textContent = 'Transparent'
-    currentSetBlockFill?.('transparent')
+function colourControl(
+  labelText: string,
+  id: string,
+  read: (theme: Theme) => string,
+  write: (hex: string) => Partial<Theme>,
+): ThemeControl {
+  const input = document.createElement('input')
+  input.type = 'color'
+  input.id = id
+  input.className = 'color-input'
+  const out = readout()
+  out.setAttribute('for', id)
+  input.oninput = () => {
+    out.textContent = input.value.toUpperCase()
+    applyThemeTokens(write(input.value))
+  }
+  return {
+    element: field(labelText, input, out),
+    sync(theme) {
+      // A token an example deliberately set to `'transparent'` (the avatar
+      // circle's node box) has no hex to show. The swatch keeps whatever it
+      // had — it is a starting point for a viewer who wants to opt back IN to
+      // a colour, and nothing is applied until they actually touch it.
+      const value = read(theme)
+      if (/^#[0-9a-f]{6}$/i.test(value)) input.value = value
+      out.textContent = value.toUpperCase()
+    },
   }
 }
 
-blockFillCheckbox.onchange = applyBlockFill
-blockFillInput.oninput = applyBlockFill
-
-// "Accent" — one colour for everything that answers a question the viewer
-// asked: the one-shot confirmation ring, a highlighted node's outline, and
-// the connectors along a highlighted path. They are three separate theme
-// tokens, since a consumer may want them apart, but a route drawn in one
-// colour and confirmed in another reads as two unrelated events rather than
-// one answer — so this control drives all three together (see each demo's
-// `setAccent`). All three are real theme tokens, applied live through
-// `api.setTheme(...)`, the same mechanism as "Node fill"/"Edge radius" above.
-//
-// The "Ring" on/off beside it is NOT a theme token (see `Options.ring`'s
-// docblock in packages/vanilla/src/index.ts) so it goes through the dedicated
-// `api.setRing(...)` method instead, mirroring the minimap on/off button's
-// `btn-toggle` styling below.
-const ringStrokeInput = document.createElement('input')
-ringStrokeInput.type = 'color'
-ringStrokeInput.id = 'ring-stroke-input'
-ringStrokeInput.className = 'color-input'
-ringStrokeInput.value = RING_STROKE_DEFAULT
-const ringStrokeLabel = document.createElement('label')
-ringStrokeLabel.textContent = 'Accent'
-ringStrokeLabel.htmlFor = 'ring-stroke-input'
-const ringStrokeValue = document.createElement('output')
-ringStrokeValue.className = 'field-range-value'
-ringStrokeValue.setAttribute('for', 'ring-stroke-input')
-ringStrokeValue.textContent = RING_STROKE_DEFAULT.toUpperCase()
-const ringStrokeRow = document.createElement('div')
-ringStrokeRow.className = 'field-range-row'
-ringStrokeRow.append(ringStrokeInput, ringStrokeValue)
-const ringStrokeField = document.createElement('div')
-ringStrokeField.className = 'field'
-ringStrokeField.append(ringStrokeLabel, ringStrokeRow)
-
-ringStrokeInput.oninput = () => {
-  const hex = ringStrokeInput.value
-  ringStrokeValue.textContent = hex.toUpperCase()
-  currentSetAccent?.(hex)
+function rangeControl(
+  labelText: string,
+  id: string,
+  bounds: { min: number; max: number; step: number },
+  read: (theme: Theme) => number,
+  write: (value: number) => Partial<Theme>,
+): ThemeControl {
+  const input = document.createElement('input')
+  input.type = 'range'
+  input.id = id
+  input.min = String(bounds.min)
+  input.max = String(bounds.max)
+  input.step = String(bounds.step)
+  const out = readout()
+  out.setAttribute('for', id)
+  input.oninput = () => {
+    out.textContent = input.value
+    applyThemeTokens(write(Number(input.value)))
+  }
+  const wrapper = field(labelText, input, out)
+  wrapper.classList.add('field-range')
+  return {
+    element: wrapper,
+    sync(theme) {
+      const value = read(theme)
+      input.value = String(value)
+      out.textContent = String(value)
+    },
+  }
 }
 
+/**
+ * "Shape fill" — the `block` LOD tier's own fill (`theme.blockFill`),
+ * independent of the node fill above it. Defaults to `'transparent'`: zoomed
+ * all the way out, past the text threshold, a chart shows only its connector
+ * skeleton rather than a wall of solid boxes. `<input type="color">` cannot
+ * itself represent "no colour", so this is a checkbox — "a shape fill at all"
+ * — plus the swatch it gates. The swatch stays live either way, so dragging it
+ * while unchecked pre-arms a colour for the moment the box is ticked.
+ */
+function blockFillControl(): ThemeControl {
+  const checkbox = document.createElement('input')
+  checkbox.type = 'checkbox'
+  checkbox.id = 'block-fill-checkbox'
+  checkbox.className = 'checkbox-input'
+  const input = document.createElement('input')
+  input.type = 'color'
+  input.id = 'block-fill-input'
+  input.className = 'color-input'
+  input.value = BLOCK_FILL_SEED
+  const out = readout()
+  out.setAttribute('for', 'block-fill-input')
+
+  const apply = (): void => {
+    const value = checkbox.checked ? input.value : 'transparent'
+    out.textContent = checkbox.checked ? value.toUpperCase() : 'Transparent'
+    applyThemeTokens({ blockFill: value })
+  }
+  checkbox.onchange = apply
+  input.oninput = apply
+
+  const wrapper = document.createElement('div')
+  wrapper.className = 'field'
+  const label = document.createElement('label')
+  label.textContent = 'Shape fill'
+  label.htmlFor = checkbox.id
+  const row = document.createElement('div')
+  row.className = 'field-range-row'
+  row.append(checkbox, input, out)
+  wrapper.append(label, row)
+
+  return {
+    element: wrapper,
+    sync(theme) {
+      const value = theme.blockFill
+      const on = value !== 'transparent'
+      checkbox.checked = on
+      if (/^#[0-9a-f]{6}$/i.test(value)) input.value = value
+      out.textContent = on ? value.toUpperCase() : 'Transparent'
+    },
+  }
+}
+
+/**
+ * The label font is a full CSS shorthand (`'14px system-ui, …'`), which is the
+ * right shape for a token and the wrong shape for a slider. This drives the
+ * size out of it and puts it back, leaving the family alone.
+ */
+const LABEL_FAMILY = 'system-ui, -apple-system, Segoe UI, sans-serif'
+
+function labelSizeOf(font: string): number {
+  const match = /(\d+(?:\.\d+)?)px/.exec(font)
+  return match === null ? 14 : Number(match[1])
+}
+
+/**
+ * "Accent" — one colour for everything that answers a question the viewer just
+ * asked: the confirmation ring, a highlighted node's outline, and the
+ * connectors along a highlighted path. Three tokens, because a consumer may
+ * well want them apart, but a route drawn in one colour and confirmed in
+ * another reads as two unrelated events rather than one answer.
+ */
+const THEME_CONTROLS: { caption: string; controls: ThemeControl[] }[] = [
+  {
+    caption: 'Nodes',
+    controls: [
+      colourControl('Fill', 'node-fill-input', (theme) => theme.nodeFill, (nodeFill) => ({ nodeFill })),
+      colourControl('Border', 'node-stroke-input', (theme) => theme.nodeStroke, (nodeStroke) => ({ nodeStroke })),
+      rangeControl(
+        'Border width',
+        'node-stroke-width-range',
+        { min: 0, max: 4, step: 0.5 },
+        (theme) => theme.nodeStrokeWidth,
+        (nodeStrokeWidth) => ({ nodeStrokeWidth }),
+      ),
+      rangeControl(
+        'Corner radius',
+        'corner-radius-range',
+        { min: 0, max: 24, step: 1 },
+        (theme) => theme.cornerRadius,
+        (cornerRadius) => ({ cornerRadius }),
+      ),
+      blockFillControl(),
+    ],
+  },
+  {
+    caption: 'Connectors',
+    controls: [
+      colourControl('Colour', 'edge-stroke-input', (theme) => theme.edgeStroke, (edgeStroke) => ({ edgeStroke })),
+      rangeControl(
+        'Width',
+        'edge-width-range',
+        { min: EDGE_WIDTH_MIN, max: EDGE_WIDTH_MAX, step: EDGE_WIDTH_STEP },
+        (theme) => theme.edgeWidth,
+        // The highlighted route rides along: drawn at the same weight as
+        // everything else it stops reading as a route at all.
+        (edgeWidth) => ({ edgeWidth, edgeHighlightWidth: highlightWidthFor(edgeWidth) }),
+      ),
+      rangeControl(
+        'Elbow radius',
+        'edge-radius-range',
+        { min: EDGE_RADIUS_MIN, max: EDGE_RADIUS_MAX, step: 1 },
+        (theme) => theme.edgeCornerRadius,
+        (edgeCornerRadius) => ({ edgeCornerRadius }),
+      ),
+    ],
+  },
+  {
+    caption: 'Labels',
+    controls: [
+      colourControl('Colour', 'label-colour-input', (theme) => theme.labelColour, (labelColour) => ({ labelColour })),
+      rangeControl(
+        'Size',
+        'label-size-range',
+        { min: 9, max: 28, step: 1 },
+        (theme) => labelSizeOf(theme.labelFont),
+        (size) => ({ labelFont: `${size}px ${LABEL_FAMILY}` }),
+      ),
+      rangeControl(
+        'Padding',
+        'label-padding-range',
+        { min: 0, max: 32, step: 1 },
+        (theme) => theme.labelPadding,
+        (labelPadding) => ({ labelPadding }),
+      ),
+    ],
+  },
+  {
+    caption: 'Highlight',
+    controls: [
+      colourControl('Accent', 'accent-input', (theme) => theme.ringStroke, (accent) => ({
+        ringStroke: accent,
+        edgeHighlightStroke: accent,
+        highlightStroke: accent,
+      })),
+      colourControl('Lit fill', 'highlight-fill-input', (theme) => theme.highlightFill, (highlightFill) => ({
+        highlightFill,
+      })),
+      rangeControl(
+        'Ring width',
+        'ring-width-range',
+        { min: 0.5, max: 6, step: 0.5 },
+        (theme) => theme.ringStrokeWidth,
+        (ringStrokeWidth) => ({ ringStrokeWidth }),
+      ),
+      rangeControl(
+        'Ring spread',
+        'ring-offset-range',
+        { min: 0, max: 16, step: 1 },
+        (theme) => theme.ringMaxOffset,
+        (ringMaxOffset) => ({ ringMaxOffset }),
+      ),
+    ],
+  },
+]
+
+const ALL_THEME_CONTROLS = THEME_CONTROLS.flatMap((section) => section.controls)
+
+/** Points every control at the theme the chart is actually showing. */
+function syncThemeControls(example: Example): void {
+  const theme = effectiveTheme(example, mode, themeState)
+  for (const control of ALL_THEME_CONTROLS) control.sync(theme)
+}
+
+/**
+ * The "Ring" on/off is NOT a theme token (see `Options.ring`'s docblock in
+ * packages/vanilla/src/index.ts), so it goes through its own API method rather
+ * than `setTheme` — same as the minimap toggle below it.
+ */
 let ringEnabled = true
 const ringEnabledButton = document.createElement('button')
 ringEnabledButton.type = 'button'
@@ -617,15 +753,38 @@ function syncGotoControl(example: Example): void {
   gotoSelect.value = ''
 }
 
+/**
+ * A caption plus its own controls, INSIDE a panel. The rail already names the
+ * panel; these name the handful of tokens within it, so "Colour" can be called
+ * Colour under Connectors and Colour again under Labels without either being
+ * ambiguous. Before this, Appearance was eleven differently-named sliders in
+ * one flat column, and reading it meant reading all of it.
+ */
+function subGroup(caption: string, ...children: HTMLElement[]): HTMLDivElement {
+  const section = document.createElement('div')
+  section.className = 'sub-group'
+  const label = document.createElement('span')
+  label.className = 'sub-group-caption'
+  label.textContent = caption
+  const body = document.createElement('div')
+  body.className = 'sub-group-body'
+  body.append(...children)
+  section.append(label, body)
+  return section
+}
+
 const appearanceGroup = sidebarGroup(
   'Appearance',
-  edgeRadiusField,
-  edgeWidthField,
-  nodeFillField,
-  blockFillField,
-  ringStrokeField,
-  ringEnabledButton,
-  canvasBgField,
+  ...THEME_CONTROLS.map((section) =>
+    subGroup(
+      section.caption,
+      ...section.controls.map((control) => control.element),
+      // The ring's on/off is not a theme token, but it belongs beside the
+      // colours that describe the ring rather than in a group of its own.
+      ...(section.caption === 'Highlight' ? [ringEnabledButton] : []),
+    ),
+  ),
+  subGroup('Canvas', canvasBgField),
 )
 
 /**
@@ -734,6 +893,12 @@ const codeStackRow = document.createElement('div')
 codeStackRow.className = 'code-stacks'
 codeStackRow.setAttribute('role', 'tablist')
 
+// The block and its Copy button share a wrapper so the button can sit IN the
+// block's top-right corner rather than under it: a full-width button below a
+// snippet reads as the panel's primary action, which it is not — the snippet
+// is. This is the same place every code sample on the web puts it.
+const codeFrame = document.createElement('div')
+codeFrame.className = 'code-frame'
 const codeBlock = document.createElement('pre')
 codeBlock.className = 'code-block'
 const codeText = document.createElement('code')
@@ -741,11 +906,15 @@ codeBlock.append(codeText)
 
 const codeCopy = document.createElement('button')
 codeCopy.type = 'button'
-codeCopy.className = 'btn btn-export'
+codeCopy.className = 'code-copy'
 codeCopy.textContent = 'Copy'
+codeCopy.title = 'Copy the snippet'
+codeFrame.append(codeBlock, codeCopy)
 
 let copyResetHandle: number | null = null
 codeCopy.onclick = () => {
+  // `textContent`, not `innerHTML`: the block holds highlighting markup now,
+  // and what goes on the clipboard has to be the code, not the spans.
   void navigator.clipboard.writeText(codeText.textContent ?? '').then(
     () => flashCopy('Copied'),
     // A clipboard write can be refused outright (an insecure origin, a denied
@@ -783,7 +952,7 @@ for (const [value, label] of [
   codeStackRow.append(button)
 }
 
-const codeGroup = sidebarGroup('Code', codeStackRow, codeBlock, codeCopy)
+const codeGroup = sidebarGroup('Code', codeStackRow, codeFrame)
 
 /**
  * The live values of every control that ends up in the emitted options —
@@ -797,11 +966,11 @@ function snapshot(): ConfigSnapshot {
     mode,
     minimapOn,
     minimapPosition: minimapPositionSelect.value as MinimapPosition,
-    edgeRadius: Number(edgeRadiusRange.value),
-    edgeWidth: Number(edgeWidthRange.value),
-    nodeFill: nodeFillInput.value,
-    blockFill: blockFillCheckbox.checked ? blockFillInput.value : 'transparent',
-    accent: ringStrokeInput.value,
+    minimapSilhouette: minimapSilhouetteOverridden ? minimapSilhouetteInput.value : null,
+    // The tokens the sidebar has applied, not the whole resolved theme: a
+    // snippet restating every default is a worse answer than a short one, and
+    // the defaults are what the reader gets for free by omitting them.
+    theme: { ...themeState },
     ringEnabled,
     hasNodeContent: example.content !== 'none',
   }
@@ -814,7 +983,9 @@ function syncCode(): void {
     button.classList.toggle('is-on', on)
     button.setAttribute('aria-selected', String(on))
   }
-  codeText.textContent = generateCode(codeStack, snapshot())
+  // `innerHTML` with markup this app generated and escaped itself — see
+  // `highlight`, which HTML-escapes every token it emits.
+  codeText.innerHTML = highlight(generateCode(codeStack, snapshot()))
 }
 
 const sidebar = document.createElement('aside')
@@ -977,11 +1148,17 @@ function switchMode(next: ThemeMode, remember: boolean): void {
   if (remember) rememberMode(next)
   updateThemeButton()
   currentSetMode?.(next)
-  // The node-fill swatch shows a mode default, so it follows the mode. The
-  // background swatch does too — unless the viewer has picked one, in which
-  // case it is theirs and stays put.
-  nodeFillInput.value = nodeFillDefault(next)
-  nodeFillValue.textContent = nodeFillDefault(next).toUpperCase()
+  // A mode switch replaces the mode's own tokens underneath whatever the
+  // sidebar applied (see `modeThemeFor`), so anything the viewer had set that
+  // the mode also owns is gone — drop it from `themeState` too rather than
+  // let the Code panel keep claiming a colour the chart no longer draws.
+  for (const key of Object.keys(chartTokens(next)) as (keyof Theme)[]) {
+    delete themeState[key]
+  }
+  syncThemeControls(findExample(exampleSelect.value))
+  syncMinimapSilhouette()
+  // The background swatch follows the mode too — unless the viewer has picked
+  // one, in which case it is theirs and stays put.
   if (!canvasBgOverridden) seedCanvasBg()
   refreshCode()
 }
@@ -1011,11 +1188,8 @@ function show(stack: Stack, exampleId: string): void {
   currentApi = null
   currentSetMinimap = null
   currentSetMinimapPosition = null
-  currentSetEdgeRadius = null
-  currentSetNodeFill = null
-  currentSetBlockFill = null
-  currentSetAccent = null
-  currentSetEdgeWidth = null
+  currentSetMinimapSilhouette = null
+  currentSetTheme = null
   currentSetRingEnabled = null
   currentSetMode = null
   surface.innerHTML = ''
@@ -1033,24 +1207,13 @@ function show(stack: Stack, exampleId: string): void {
   minimapOn = minimapDefaultOn(example)
   updateMinimapButton()
   minimapPositionSelect.value = minimapDefaultPosition(example)
-  edgeRadiusRange.value = String(EDGE_RADIUS_DEFAULT)
-  edgeRadiusValue.textContent = String(EDGE_RADIUS_DEFAULT)
-  // Same reset as edge radius: the swatch goes back to the library default
-  // rather than whatever an example's OWN theme happens to declare (e.g.
-  // Avatar/Monogram's transparent node box) — this control never applies
-  // anything until a viewer actually drags it, so there's nothing to
-  // reconcile the swatch against; see `nodeFillDefault`'s docblock.
-  nodeFillInput.value = nodeFillDefault(mode)
-  nodeFillValue.textContent = nodeFillDefault(mode).toUpperCase()
-  // Same reset pattern: back to "no shape fill" (the library default) rather
-  // than carrying over the previous example/stack's state.
-  blockFillCheckbox.checked = false
-  blockFillInput.value = BLOCK_FILL_SEED
-  blockFillValue.textContent = 'Transparent'
-  ringStrokeInput.value = RING_STROKE_DEFAULT
-  ringStrokeValue.textContent = RING_STROKE_DEFAULT.toUpperCase()
-  edgeWidthRange.value = String(EDGE_WIDTH_DEFAULT)
-  edgeWidthValue.textContent = String(EDGE_WIDTH_DEFAULT)
+  // Nothing the sidebar applied carries across a remount: the new chart is
+  // mounted with the example's own theme, so `themeState` describes a chart
+  // that no longer exists. Cleared first, then every control is pointed at
+  // what the incoming example actually declares.
+  themeState = {}
+  syncThemeControls(example)
+  syncMinimapSilhouette()
   ringEnabled = true
   updateRingEnabledButton()
 
@@ -1060,11 +1223,8 @@ function show(stack: Stack, exampleId: string): void {
     })
     currentSetMinimap = (on) => chart.setMinimap(on)
     currentSetMinimapPosition = (position) => chart.setMinimapPosition(position)
-    currentSetEdgeRadius = (radius) => chart.setEdgeRadius(radius)
-    currentSetNodeFill = (nodeFill) => chart.setNodeFill(nodeFill)
-    currentSetBlockFill = (blockFill) => chart.setBlockFill(blockFill)
-    currentSetAccent = (accent) => chart.setAccent(accent)
-    currentSetEdgeWidth = (width) => chart.setEdgeWidth(width)
+    currentSetMinimapSilhouette = (colour) => chart.setMinimapSilhouette(colour)
+    currentSetTheme = (partial) => chart.setTheme(partial)
     currentSetRingEnabled = (enabled) => chart.setRingEnabled(enabled)
     currentSetMode = (next) => chart.setMode(next)
     teardown = () => chart.destroy()
@@ -1083,21 +1243,15 @@ function show(stack: Stack, exampleId: string): void {
     const instance = app.mount(surface) as unknown as {
       setMinimap: (on: boolean) => void
       setMinimapPosition: (position: MinimapPosition) => void
-      setEdgeRadius: (radius: number) => void
-      setNodeFill: (nodeFill: string) => void
-      setBlockFill: (blockFill: string) => void
-      setAccent: (accent: string) => void
-      setEdgeWidth: (width: number) => void
+      setMinimapSilhouette: (colour: string) => void
+      setTheme: (partial: Partial<Theme>) => void
       setRingEnabled: (enabled: boolean) => void
       setMode: (mode: ThemeMode) => void
     }
     currentSetMinimap = (on) => instance.setMinimap(on)
     currentSetMinimapPosition = (position) => instance.setMinimapPosition(position)
-    currentSetEdgeRadius = (radius) => instance.setEdgeRadius(radius)
-    currentSetNodeFill = (nodeFill) => instance.setNodeFill(nodeFill)
-    currentSetBlockFill = (blockFill) => instance.setBlockFill(blockFill)
-    currentSetAccent = (accent) => instance.setAccent(accent)
-    currentSetEdgeWidth = (width) => instance.setEdgeWidth(width)
+    currentSetMinimapSilhouette = (colour) => instance.setMinimapSilhouette(colour)
+    currentSetTheme = (partial) => instance.setTheme(partial)
     currentSetRingEnabled = (enabled) => instance.setRingEnabled(enabled)
     currentSetMode = (next) => instance.setMode(next)
     teardown = () => app.unmount()
@@ -1116,11 +1270,8 @@ function show(stack: Stack, exampleId: string): void {
     )
     currentSetMinimap = (on) => reactHandle.current?.setMinimap(on)
     currentSetMinimapPosition = (position) => reactHandle.current?.setMinimapPosition(position)
-    currentSetEdgeRadius = (radius) => reactHandle.current?.setEdgeRadius(radius)
-    currentSetNodeFill = (nodeFill) => reactHandle.current?.setNodeFill(nodeFill)
-    currentSetBlockFill = (blockFill) => reactHandle.current?.setBlockFill(blockFill)
-    currentSetAccent = (accent) => reactHandle.current?.setAccent(accent)
-    currentSetEdgeWidth = (width) => reactHandle.current?.setEdgeWidth(width)
+    currentSetMinimapSilhouette = (colour) => reactHandle.current?.setMinimapSilhouette(colour)
+    currentSetTheme = (partial) => reactHandle.current?.setTheme(partial)
     currentSetRingEnabled = (enabled) => reactHandle.current?.setRingEnabled(enabled)
     currentSetMode = (next) => reactHandle.current?.setMode(next)
     teardown = () => root.unmount()

@@ -405,6 +405,34 @@ body {
   padding-bottom: 0;
 }
 
+/* A caption + its controls INSIDE a panel — see `subGroup` in main.ts. */
+.sub-group {
+  display: flex;
+  flex-direction: column;
+  gap: 0.3rem;
+  width: 100%;
+}
+
+.sub-group + .sub-group {
+  margin-top: 0.55rem;
+  padding-top: 0.55rem;
+  border-top: 1px solid var(--border);
+}
+
+.sub-group-caption {
+  font-size: 0.6rem;
+  font-weight: 700;
+  text-transform: uppercase;
+  letter-spacing: 0.06em;
+  color: color-mix(in srgb, canvastext 45%, canvas 55%);
+}
+
+.sub-group-body {
+  display: flex;
+  flex-direction: column;
+  gap: 0.3rem;
+}
+
 .sidebar-group-caption {
   font-size: 0.62rem;
   font-weight: 700;
@@ -818,6 +846,102 @@ body {
  * scrolling document with the Copy button somewhere below the fold. Its own
  * scroll, with the button pinned under it.
  */
+/* The block and its Copy button, positioned together. */
+.code-frame {
+  position: relative;
+  display: flex;
+  min-height: 0;
+  width: 100%;
+}
+
+/*
+ * Quiet until wanted: a small button in the block's corner, at low contrast
+ * until the block is hovered or the button itself is focused. It used to be a
+ * full-width accent bar under the snippet, which read as the panel's primary
+ * action — the snippet is.
+ */
+.code-copy {
+  position: absolute;
+  top: 0.35rem;
+  right: 0.4rem;
+  z-index: 1;
+  font: inherit;
+  font-size: 0.66rem;
+  font-weight: 600;
+  padding: 0.16rem 0.45rem;
+  border-radius: var(--radius-sm);
+  border: 1px solid var(--border);
+  background: color-mix(in srgb, var(--surface) 88%, transparent);
+  color: var(--text-muted);
+  cursor: pointer;
+  opacity: 0.55;
+  backdrop-filter: blur(4px);
+  transition: opacity 120ms ease, color 120ms ease, border-color 120ms ease;
+}
+
+.code-frame:hover .code-copy,
+.code-copy:focus-visible {
+  opacity: 1;
+}
+
+.code-copy:hover {
+  color: var(--accent);
+  border-color: var(--accent);
+}
+
+.code-copy:focus-visible {
+  outline: none;
+  box-shadow: 0 0 0 3px color-mix(in srgb, var(--accent) 30%, transparent);
+}
+
+/*
+ * Syntax colours. Built from the accent and the page's own text colour rather
+ * than a borrowed editor palette, so the block reads as part of this app in
+ * both modes — and every one of them is a `color-mix` against `canvas`, which
+ * flips with the theme on its own.
+ */
+.tok-comment {
+  color: color-mix(in srgb, canvastext 45%, canvas 55%);
+  font-style: italic;
+}
+
+.tok-string {
+  color: #0f766e;
+}
+
+.tok-number {
+  color: #b45309;
+}
+
+.tok-keyword {
+  color: #7c3aed;
+  font-weight: 600;
+}
+
+.tok-tag {
+  color: #be185d;
+}
+
+.tok-key {
+  color: var(--accent);
+}
+
+:root[data-theme='dark'] .tok-string {
+  color: #5eead4;
+}
+
+:root[data-theme='dark'] .tok-number {
+  color: #fbbf24;
+}
+
+:root[data-theme='dark'] .tok-keyword {
+  color: #c4b5fd;
+}
+
+:root[data-theme='dark'] .tok-tag {
+  color: #f9a8d4;
+}
+
 /* The Code panel is the one that wants the sidebar's whole height: the snippet
    fills it and the Copy button sits under it, rather than the snippet stopping
    at some fraction of the viewport with dead space below. */

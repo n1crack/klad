@@ -1,10 +1,16 @@
 /** @jsxImportSource react */
 import { useCallback, useImperativeHandle, useMemo, useRef, type CSSProperties, type ReactNode, type Ref } from 'react'
-import { Klados, type NodeContext, type KladosApi, type KladosHandle, type Options } from '@klados/react'
+import {
+  Klados,
+  type KladosApi,
+  type KladosHandle,
+  type NodeContext,
+  type Options,
+  type Theme,
+} from '@klados/react'
 import {
   DEPARTMENT_COLOR,
   EDGE_RADIUS_DEFAULT,
-  highlightWidthFor,
   initials,
   minimapDefaultOn,
   minimapDefaultPosition,
@@ -149,11 +155,9 @@ const RENDERERS: Record<Exclude<Example['content'], 'none'>, (context: NodeConte
 export interface ReactDemoHandle {
   setMinimap(on: boolean): void
   setMinimapPosition(position: MinimapPosition): void
-  setEdgeRadius(radius: number): void
-  setNodeFill(nodeFill: string): void
-  setBlockFill(blockFill: string): void
-  setAccent(accent: string): void
-  setEdgeWidth(width: number): void
+  setMinimapSilhouette(colour: string): void
+  /** One door for every theme token the sidebar owns — see the vanilla demo. */
+  setTheme(partial: Partial<Theme>): void
   setRingEnabled(enabled: boolean): void
   setMode(mode: ThemeMode): void
 }
@@ -212,6 +216,20 @@ export function ReactDemo({ example, mode, onReady, ref }: ReactDemoProps): Reac
   /** The mode the chart is in NOW — `mountedModeRef` moved on by `setMode` below. */
   const modeRef = useRef<ThemeMode>(mode)
 
+  /** The viewer's own silhouette colour, or `null` while the mode's default applies. */
+  const silhouetteRef = useRef<string | null>(null)
+
+  const minimapOption = useCallback(
+    (): NonNullable<Options['minimap']> => {
+      const base = minimapOptionFor(example, minimapOnRef.current, minimapPositionRef.current, modeRef.current)
+      // `typeof base !== 'object'` rather than `=== false`: the option's type
+      // allows a bare `true`, which has nowhere to carry a colour.
+      if (typeof base !== 'object' || silhouetteRef.current === null) return base
+      return { ...base, silhouetteColour: silhouetteRef.current }
+    },
+    [example],
+  )
+
   const options: Options = useMemo<Options>(
     () => ({
       data: example.data,
@@ -237,48 +255,22 @@ export function ReactDemo({ example, mode, onReady, ref }: ReactDemoProps): Reac
         // toggling the minimap does not reset the tree's expand/collapse state.
         // See the comment on `minimapOnRef` above for why it is a ref, not
         // state, which is what makes this safe rather than merely apparently so.
-        chartRef.current?.api?.setMinimap(
-          minimapOptionFor(example, on, minimapPositionRef.current, modeRef.current),
-        )
+        chartRef.current?.api?.setMinimap(minimapOption())
       },
       setMinimapPosition: (position: MinimapPosition) => {
         minimapPositionRef.current = position
-        chartRef.current?.api?.setMinimap(
-          minimapOptionFor(example, minimapOnRef.current, position, modeRef.current),
-        )
+        chartRef.current?.api?.setMinimap(minimapOption())
       },
-      // `edgeCornerRadius`/`nodeFill` both live under `theme`, which used to
-      // require a full `key={...}` remount to change post-construction
-      // (theme was resolved exactly once, at `createKlados`, and
-      // `instance.update()` never re-resolved it). `KladosApi.setTheme`
-      // (packages/vanilla/src/index.ts) fixes that: it merges a partial
-      // theme over whatever the chart is already showing, re-resolves it,
-      // and repaints — paint-only, so this no longer resets camera position
-      // or expand/collapse state the way the remount used to on every drag
-      // tick.
-      setEdgeRadius: (radius: number) => {
-        chartRef.current?.api?.setTheme({ edgeCornerRadius: radius })
+      setMinimapSilhouette: (colour: string) => {
+        silhouetteRef.current = colour
+        chartRef.current?.api?.setMinimap(minimapOption())
       },
-      setNodeFill: (nodeFill: string) => {
-        chartRef.current?.api?.setTheme({ nodeFill })
-      },
-      setBlockFill: (blockFill: string) => {
-        chartRef.current?.api?.setTheme({ blockFill })
-      },
-      // One accent for the ring, a highlighted node's outline and a
-      // highlighted path's connectors — see the vanilla demo's `setAccent`.
-      setAccent: (accent: string) => {
-        chartRef.current?.api?.setTheme({
-          ringStroke: accent,
-          edgeHighlightStroke: accent,
-          highlightStroke: accent,
-        })
-      },
-      setEdgeWidth: (width: number) => {
-        chartRef.current?.api?.setTheme({
-          edgeWidth: width,
-          edgeHighlightWidth: highlightWidthFor(width),
-        })
+      // `KladosApi.setTheme` merges a partial over whatever the chart is
+      // already showing and repaints — paint-only, so unlike the `key={...}`
+      // remount this used to need, camera position and expand/collapse state
+      // stay exactly where they were.
+      setTheme: (partial: Partial<Theme>) => {
+        chartRef.current?.api?.setTheme(partial)
       },
       // `KladosApi.setRing` — NOT a theme token, so it goes through its own
       // method rather than `setTheme`; see `Options.ring`'s docblock in
@@ -296,14 +288,10 @@ export function ReactDemo({ example, mode, onReady, ref }: ReactDemoProps): Reac
         // The silhouette is the one piece of the minimap a host stylesheet
         // cannot reach (see `silhouetteColour` in theme.ts), so it is
         // re-applied through the option — only while the widget is showing.
-        if (minimapOnRef.current) {
-          chartRef.current?.api?.setMinimap(
-            minimapOptionFor(example, true, minimapPositionRef.current, next),
-          )
-        }
+        if (minimapOnRef.current) chartRef.current?.api?.setMinimap(minimapOption())
       },
     }),
-    [example],
+    [example, minimapOption],
   )
 
   if (example.content === 'none') {

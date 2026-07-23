@@ -1,4 +1,5 @@
-import { highlightWidthFor, minimapOptionFor, themeFor, type Example, type MinimapPosition } from './data.js'
+import type { Theme } from 'klados'
+import { minimapOptionFor, type Example, type MinimapPosition } from './data.js'
 import type { ThemeMode } from './theme.js'
 
 /**
@@ -23,29 +24,22 @@ export interface ConfigSnapshot {
   mode: ThemeMode
   minimapOn: boolean
   minimapPosition: MinimapPosition
-  edgeRadius: number
-  edgeWidth: number
-  nodeFill: string
-  /** `'transparent'` when the "Shape fill" checkbox is off — see main.ts. */
-  blockFill: string
-  accent: string
+  /** The viewer's own silhouette colour, or `null` while the mode's default applies. */
+  minimapSilhouette: string | null
+  /**
+   * The theme tokens the SIDEBAR has applied — not the resolved theme. A
+   * snippet restating every default is a worse answer than a short one, and a
+   * default is exactly what the reader gets by omitting the token.
+   */
+  theme: Partial<Theme>
   ringEnabled: boolean
   /** Whether the example renders node content at all (`content: 'none'` does not). */
   hasNodeContent: boolean
 }
 
-/** The `theme` object the snapshot's controls add up to. */
-function themeOf(snapshot: ConfigSnapshot): Record<string, unknown> {
-  return {
-    ...themeFor(snapshot.example, snapshot.edgeRadius, snapshot.mode),
-    nodeFill: snapshot.nodeFill,
-    blockFill: snapshot.blockFill,
-    edgeWidth: snapshot.edgeWidth,
-    edgeHighlightWidth: highlightWidthFor(snapshot.edgeWidth),
-    ringStroke: snapshot.accent,
-    edgeHighlightStroke: snapshot.accent,
-    highlightStroke: snapshot.accent,
-  }
+/** The `theme` to print: what the example declares, then what the sidebar applied over it. */
+function themeOf(snapshot: ConfigSnapshot): Partial<Theme> {
+  return { ...snapshot.example.options.theme, ...snapshot.theme }
 }
 
 /**
@@ -69,13 +63,17 @@ function optionsOf(snapshot: ConfigSnapshot): [key: string, value: unknown][] {
   if (declared.label === undefined) entries.push(['label', RAW("(item) => String(item.name ?? '')")])
 
   if (snapshot.minimapOn) {
+    const minimap = minimapOptionFor(example, true, snapshot.minimapPosition, snapshot.mode)
     entries.push([
       'minimap',
-      minimapOptionFor(example, true, snapshot.minimapPosition, snapshot.mode),
+      typeof minimap === 'object' && snapshot.minimapSilhouette !== null
+        ? { ...minimap, silhouetteColour: snapshot.minimapSilhouette }
+        : minimap,
     ])
   }
   if (!snapshot.ringEnabled) entries.push(['ring', false])
-  entries.push(['theme', themeOf(snapshot)])
+  const theme = themeOf(snapshot)
+  if (Object.keys(theme).length > 0) entries.push(['theme', theme])
   return entries
 }
 

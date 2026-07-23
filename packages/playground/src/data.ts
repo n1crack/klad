@@ -1,5 +1,5 @@
-import { DEFAULT_THEME, type MinimapPosition, type Options } from 'klados'
-import { chartTokens, silhouetteColour, type ThemeMode } from './theme.js'
+import { DEFAULT_THEME, type MinimapPosition, type Options, type Theme } from 'klados'
+import { baseTheme, chartTokens, silhouetteColour, type ThemeMode } from './theme.js'
 
 export type { MinimapPosition } from 'klados'
 
@@ -143,6 +143,17 @@ export function themeFor(
   mode: ThemeMode,
 ): NonNullable<Options['theme']> {
   return { ...chartTokens(mode), ...example.options.theme, edgeCornerRadius }
+}
+
+/**
+ * What the chart is ACTUALLY drawing with: the mode's palette, the example's
+ * own theme over it, then whatever the sidebar has applied on top. Every
+ * appearance control reads its current value out of this rather than
+ * remembering one of its own, so a control cannot drift out of step with the
+ * chart — switching example, stack or mode re-syncs all of them from one call.
+ */
+export function effectiveTheme(example: Example, mode: ThemeMode, applied: Partial<Theme>): Theme {
+  return { ...baseTheme(mode), ...example.options.theme, ...applied }
 }
 
 /**

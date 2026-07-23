@@ -134,6 +134,11 @@ export function silhouetteColour(mode: ThemeMode): string {
   return SILHOUETTE_COLOUR[mode]
 }
 
+/** The library palette `mode` is built on, whole rather than the diff. */
+export function baseTheme(mode: ThemeMode): Theme {
+  return mode === 'dark' ? DARK_THEME : DEFAULT_THEME
+}
+
 /** The canvas tokens for `mode` — see `CHART_TOKENS`. */
 export function chartTokens(mode: ThemeMode): Partial<Theme> {
   return CHART_TOKENS[mode]

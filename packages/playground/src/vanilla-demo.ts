@@ -1,8 +1,7 @@
-import { createKlados, type Options, type KladosApi } from 'klados'
+import { createKlados, type KladosApi, type Options, type Theme } from 'klados'
 import {
   DEPARTMENT_COLOR,
   EDGE_RADIUS_DEFAULT,
-  highlightWidthFor,
   initials,
   minimapDefaultOn,
   minimapDefaultPosition,
@@ -445,11 +444,15 @@ export interface VanillaDemoHandle {
   destroy(): void
   setMinimap(on: boolean): void
   setMinimapPosition(position: MinimapPosition): void
-  setEdgeRadius(radius: number): void
-  setNodeFill(nodeFill: string): void
-  setBlockFill(blockFill: string): void
-  setAccent(accent: string): void
-  setEdgeWidth(width: number): void
+  setMinimapSilhouette(colour: string): void
+  /**
+   * One door for every theme token the sidebar owns, rather than a method per
+   * control. `api.setTheme` already merges a partial over the live theme, so
+   * the demo has nothing to add on top of it — and a sidebar that grew a
+   * handful of new tokens (label colour, node stroke, ring width) would
+   * otherwise have grown the same handful of one-line methods in three files.
+   */
+  setTheme(partial: Partial<Theme>): void
   setRingEnabled(enabled: boolean): void
   setMode(mode: ThemeMode): void
 }
@@ -481,6 +484,20 @@ export function mountVanilla(
   let currentMode = mode
   let minimapOn = minimapDefaultOn(example)
   let minimapPosition = minimapDefaultPosition(example)
+  /**
+   * The viewer's own silhouette colour, or `null` while they have not picked
+   * one — in which case the mode's default applies and keeps applying, so
+   * flipping light/dark still recolours it. See `minimapOptionFor`.
+   */
+  let minimapSilhouette: string | null = null
+
+  function minimapOption(): NonNullable<Options['minimap']> {
+    const base = minimapOptionFor(example, minimapOn, minimapPosition, currentMode)
+    // `typeof base !== 'object'` rather than `=== false`: the option's type
+    // allows a bare `true`, which has nowhere to carry a colour.
+    if (typeof base !== 'object' || minimapSilhouette === null) return base
+    return { ...base, silhouetteColour: minimapSilhouette }
+  }
 
   function buildOptions(): Options {
     return {
@@ -489,7 +506,7 @@ export function mountVanilla(
       label: (item) => String(item.name ?? ''),
       ...example.options,
       theme: themeFor(example, EDGE_RADIUS_DEFAULT, currentMode),
-      minimap: minimapOptionFor(example, minimapOn, minimapPosition, currentMode),
+      minimap: minimapOption(),
       ...(renderNode !== null ? { renderNode } : {}),
     }
   }
@@ -589,30 +606,18 @@ export function mountVanilla(
       minimapOn = on
       // Straight through the API rather than `chart.update()`, so toggling
       // the minimap never resets the tree's expand/collapse state.
-      chart.api.setMinimap(minimapOptionFor(example, minimapOn, minimapPosition, currentMode))
+      chart.api.setMinimap(minimapOption())
     },
     setMinimapPosition(position) {
       minimapPosition = position
-      chart.api.setMinimap(minimapOptionFor(example, minimapOn, minimapPosition, currentMode))
+      chart.api.setMinimap(minimapOption())
     },
-    setEdgeRadius(radius) {
-      chart.api.setTheme({ edgeCornerRadius: radius })
+    setMinimapSilhouette(colour) {
+      minimapSilhouette = colour
+      chart.api.setMinimap(minimapOption())
     },
-    setNodeFill(nodeFill) {
-      chart.api.setTheme({ nodeFill })
-    },
-    setBlockFill(blockFill) {
-      chart.api.setTheme({ blockFill })
-    },
-    setAccent(accent) {
-      chart.api.setTheme({
-        ringStroke: accent,
-        edgeHighlightStroke: accent,
-        highlightStroke: accent,
-      })
-    },
-    setEdgeWidth(width) {
-      chart.api.setTheme({ edgeWidth: width, edgeHighlightWidth: highlightWidthFor(width) })
+    setTheme(partial) {
+      chart.api.setTheme(partial)
     },
     setRingEnabled(enabled) {
       chart.api.setRing(enabled)
@@ -634,7 +639,7 @@ export function mountVanilla(
       // be re-applied through the option — but only while the widget is
       // actually showing, since `setMinimap(false)` on an already-hidden
       // minimap would just rebuild nothing.
-      if (minimapOn) chart.api.setMinimap(minimapOptionFor(example, true, minimapPosition, next))
+      if (minimapOn) chart.api.setMinimap(minimapOption())
     },
   }
 }
