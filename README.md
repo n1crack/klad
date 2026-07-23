@@ -1,89 +1,149 @@
-## Vue3 Org Chart
+# Klad
 
-[![GitHub](https://img.shields.io/github/license/n1crack/vue3-org-chart)](https://github.com/n1crack/vue3-org-chart/blob/master/LICENSE) 
-[![npm](https://img.shields.io/npm/v/vue3-org-chart)](https://www.npmjs.com/package/vue3-org-chart)
+*κλάδος — Greek for “branch”.*
 
-### About
-Vue3 Org Chart is a simple and lightweight organization chart component for Vue3. It is highly customizable.
+A framework-agnostic org chart. The tree is laid out and drawn on a `<canvas>`
+inside a Web Worker; real framework components are mounted only for the handful
+of nodes actually on screen and zoomed in far enough to read.
 
-<img width="500" alt="image" src="https://github.com/n1crack/vue3-org-chart/assets/712404/b168b58c-dc63-4968-93f8-f3e76cc5ccae">
+**The number that matters:** 5,000–50,000 nodes at 60fps. A DOM-per-node chart
+cannot get there — 50,000 component instances plus as many connector elements
+exhaust memory and layout time long before. Nothing here creates DOM for a node
+unless that node is both visible and legible.
 
-### Demo
-Playground : [https://playcode.io/vue3orgchart](https://playcode.io/vue3orgchart)
+📖 **[Documentation](https://klad.ozdemir.be)** — guide, API
+reference, and a playground you can dial a chart in with. Run it locally with
+`pnpm docs`.
 
-Demo : [https://vue3orgchart.playcode.io](https://vue3orgchart.playcode.io)
+## Packages
 
-### Installation
+| Package | For |
+|---|---|
+| [`@klad/core`](packages/vanilla) | The frameworkless API. One function, `createKlad`. Use it directly, or read it as the reference for a new binding. |
+| [`@klad/vue`](packages/vue) | Vue 3: a `<Klad>` component with a `#node` scoped slot, plus `useKlad()`. |
+| [`@klad/react`](packages/react) | React: `<Klad>` with a render prop and a ref handle. |
+| [`@klad/engine`](packages/core) | Layout, viewport maths, spatial index, renderer, worker protocol. No DOM. Only needed to build a new binding. |
+
+Each depends on the layers beneath it, so installing one is enough — you never
+also install `@klad/core` to use the Vue adapter.
+
+## Install
 
 ```bash
-npm i vue3-org-chart
+npm install @klad/core   # frameworkless
+npm install @klad/vue    # Vue 3 (>=3.5 <4)
+npm install @klad/react  # React (>=18)
 ```
 
-### Usage
-JS entry point
-```js
-import { createApp } from 'vue'
-import App from './App.vue'
+## Quick start
 
-import { Vue3OrgChartPlugin } from 'vue3-org-chart'
-import 'vue3-org-chart/dist/style.css'
+```ts
+import { createKlad } from '@klad/core'
 
-const app = createApp(App)
+const chart = createKlad(document.getElementById('chart')!, {
+  data: [
+    { id: 'ceo', name: 'Jamie Fox', title: 'CEO' },
+    { id: 'cto', parentId: 'ceo', name: 'Amy Chen', title: 'CTO' },
+    { id: 'cfo', parentId: 'ceo', name: 'Priya Rao', title: 'CFO' },
+  ],
+  nodeSize: { w: 180, h: 64 },
+  label: (item) => String(item.name ?? ''),
+})
 
-app.use(Vue3OrgChartPlugin)
-
-app.mount('#app') 
+chart.on('nodeClick', ({ id, item }) => console.log('clicked', id, item))
+// later: chart.destroy()
 ```
 
-```javascript
-// alternatively, you can import the component directly
-// to use component, Vue3OrgChart instead of Vue3OrgChartPlugin
-<script setup>
-   import { Vue3OrgChart } from 'vue3-org-chart' 
-   import 'vue3-org-chart/dist/style.css' 
-   // ...
-</script>
+`data` is flat. Every item is `{ id, parentId?, ...your own fields }`; there is
+no nested-children shape, and an item whose `parentId` names nothing becomes a
+root with a `warning` event rather than an exception.
+
+The Vue and React versions of this, and everything else, are in the docs.
+
+## `nodeSize` is declared, not measured
+
+```ts
+nodeSize: Size | ((item: NodeData) => Size)   // Size = { w: number; h: number }
 ```
 
+Every DOM-based org chart can mount a node, read its
+`getBoundingClientRect()`, and lay out around whatever size it turned out to
+be. This one cannot, and that is not an oversight: layout runs inside a Web
+Worker, which has no DOM. There is no element to mount, nothing to measure.
 
-#### Vue Template
-for more detailed example, please check the [examples](examples) folder
-```vue 
-<div>
-    <vue3-org-chart json="YOUR_DATA_JSON_URL">
-        <template #node="{item, children, open, toggleChildren}">
-            <!-- Node Element / TEMPLATE START -->
-            <div>{{item.name}}</div>
-            <button v-if="children.length" @click="toggleChildren"> {{ open ? '-' : '+' }}</button>
-            <!-- Node Element / TEMPLATE END -->
-        </template>
-    </vue3-org-chart>
-</div>
+That single constraint is what the 50,000-node number is bought with. If your
+chart is a hundred nodes and every card is a different height decided by its
+own content, a DOM-based chart will serve you better.
+
+When a card genuinely does change height, `api.refresh()` re-reads every node's
+size and lays out again while keeping expand/collapse state, camera and
+highlight.
+
+## Accessibility
+
+Canvas is invisible to screen readers and keyboard focus, so the chart keeps a
+real, hidden DOM tree alongside it: `role="tree"` / `role="treeitem"` rows, one
+per node, with `aria-expanded` and `aria-level` in sync. Rows are hidden by
+clipping rather than `display: none`, which would also remove them from the
+accessibility tree, and use `content-visibility: auto` so a 50,000-node mirror
+stays cheap.
+
+| Key | Effect |
+|---|---|
+| `↑` / `↓` | Previous / next row in document order. |
+| `→` | Expands a collapsed node; on an already-expanded one, moves in to the first child. |
+| `←` | Collapses an expanded node; on a collapsed one or a leaf, moves out to the parent. |
+| `Enter` / `Space` | Toggle the focused row. |
+| `Home` / `End` | First / last row. |
+
+Moving focus pans the camera to the focused node, subject to `animate`.
+
+## Browser support
+
+Layout and rendering prefer a Web Worker, via `OffscreenCanvas` and
+`transferControlToOffscreen()`. If that fails for any reason — a CSP that
+blocks worker scripts, a browser without `OffscreenCanvas`, a canvas whose 2D
+context was already claimed — it falls back to the main thread with a
+`console.warn` explaining why. Nothing else changes: same options, same events,
+same API. `worker: false` forces the fallback yourself.
+
+Needs `Worker`, `OffscreenCanvas`, `ResizeObserver` and Canvas2D — all current
+evergreen browsers. Published as ESM only.
+
+## Development
+
+A pnpm workspace (`pnpm@10.13.1`, Node `>=22.12.0`).
+
+```bash
+pnpm install
+pnpm dev        # the playground: every example, live controls
+pnpm docs       # the documentation site
+pnpm test       # 442 tests across core/vanilla/vue/react, incl. real-browser mode
+pnpm typecheck
+pnpm lint
+pnpm build
 ```
 
-#### Styling
+`packages/playground` is a Vite app with every example: four orientations, RTL,
+variable node sizes, nine card treatments, subtree counts, a go-to-node combo
+box, and a 20,000-node stress test.
 
-You have full control over node elements, In addition to that there are some css variables for lines and container height or node spacing..
+## Roadmap
 
-```css 
-:root {
-    --vue3-org-chart-container-height: 70vh;
-    --vue3-org-chart-line-top: .5rem;
-    --vue3-org-chart-line-bottom: .5rem;
-    --vue3-org-chart-node-space-x:  .5rem;
-    --vue3-org-chart-line-color: blue;
-}
-```
+1.1 drag-and-drop reparenting · 1.2 cross-links · 1.3 alternative layouts ·
+1.4 animated links and custom edges · 1.5 child pagination · 1.6 nested sets.
+See [docs/ROADMAP.md](docs/ROADMAP.md).
 
-![image](https://github.com/n1crack/vue3-org-chart/assets/712404/9eb4df4b-2156-4797-be2f-c5074ff8c91b)
+## License
 
-### Collaboration
-If you want to contribute to the project, please feel free to fork the repository and submit your changes as a pull request. Ensure that the changes you submit are applicable for general use rather than specific to your project.
+Dual-licensed, © Yusuf Özdemir.
 
-### Dependencies
- - [Vue3](https://vuejs.org/)
- - [panzoom](https://github.com/anvaka/panzoom)  : Zoom/Pan Utility
+- **[GNU AGPL v3 or later](LICENSE)** — the default. Free to use, modify and
+  distribute on the AGPL's terms, which require the complete source of your
+  version to be available to anyone you convey it to, including over a network.
+- **[Commercial licence](LICENSE-COMMERCIAL.md)** — for shipping it inside a
+  closed-source product or a hosted service without that obligation, or where
+  an AGPL dependency is not an option. Email **yusuf@ozdemir.be**.
 
-
-### License
-Copyright (c) 2024 Yusuf ÖZDEMİR, released under [the MIT license](LICENSE)
+[LICENSE-COMMERCIAL.md](LICENSE-COMMERCIAL.md) walks through which one applies
+to you.

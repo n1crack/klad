@@ -1,0 +1,112 @@
+/*
+ * A restrained palette, deliberately.
+ *
+ * The default theme's violet, and the gradient it washes the hero title in,
+ * are the first thing a reader has seen on a hundred other sites this year.
+ * The same blue the playground already uses reads as one product rather than
+ * two, and a flat colour on the title lets the sentence under it — which is
+ * the actual pitch — be the loudest thing on the page.
+ */
+:root {
+  --vp-c-brand-1: #1d4ed8;
+  --vp-c-brand-2: #2563eb;
+  --vp-c-brand-3: #3b82f6;
+  --vp-c-brand-soft: rgba(37, 99, 235, 0.12);
+
+  /* Flat, not a gradient. */
+  --vp-home-hero-name-color: var(--vp-c-text-1);
+  --vp-home-hero-name-background: none;
+
+  --vp-button-brand-bg: var(--vp-c-brand-1);
+  --vp-button-brand-hover-bg: var(--vp-c-brand-2);
+  --vp-button-brand-active-bg: var(--vp-c-brand-1);
+}
+
+.dark {
+  /* Blue-600 goes dim against a dark surface; blue-400 keeps the same role
+     readable without becoming a different colour. */
+  --vp-c-brand-1: #7cabf7;
+  --vp-c-brand-2: #60a5fa;
+  --vp-c-brand-3: #3b82f6;
+  --vp-c-brand-soft: rgba(96, 165, 250, 0.16);
+}
+
+/* The headline is a claim with a number in it — it can carry the page on its
+   own, so it gets the tighter setting and the tagline stays out of its way. */
+.VPHero .name {
+  letter-spacing: -0.02em;
+}
+
+.VPHero .text {
+  max-width: 20ch;
+  letter-spacing: -0.02em;
+}
+
+.VPHero .tagline {
+  max-width: 46ch;
+  font-size: 1.05rem;
+}
+
+/* Feature cards read better as quiet panels than as raised tiles: the page is
+   text, and a grid of shadows competes with it. */
+.VPFeature {
+  border-color: var(--vp-c-divider);
+  box-shadow: none;
+}
+
+/* Tabs: the label row is navigation, not decoration. */
+.plugin-tabs {
+  border-radius: 8px;
+  border: 1px solid var(--vp-c-divider);
+  background: var(--vp-c-bg-soft);
+}
+
+.plugin-tabs--tab {
+  font-weight: 600;
+}
+
+/* ---------------------------------------------------------------------------
+ * The hero mark.
+ *
+ * The default theme puts a large blurred blob behind the hero image, in the
+ * brand colour at full strength — on a wordmark it reads as a glow, on a line
+ * drawing it reads as a stain seeping out from under it. This makes it a soft
+ * halo instead: wider than the mark, far weaker, and radial so it fades to
+ * nothing rather than ending at an edge.
+ * ------------------------------------------------------------------------ */
+.VPHero .image-container {
+  /* The theme's own transform tips the image; the mark is a diagram and reads
+     wrong at an angle. */
+  transform: none;
+}
+
+.VPHero .image-bg {
+  width: 116%;
+  height: 116%;
+  background: radial-gradient(closest-side, rgba(37, 99, 235, 0.3), rgba(37, 99, 235, 0) 70%);
+  filter: blur(40px);
+  opacity: 1;
+}
+
+.dark .VPHero .image-bg {
+  background: radial-gradient(closest-side, rgba(96, 165, 250, 0.34), rgba(96, 165, 250, 0) 70%);
+}
+
+.VPHero .VPImage {
+  width: 100%;
+  max-width: 580px;
+  height: auto;
+  /* Art, not content: nothing here is worth selecting, and a stray drag that
+     starts a browser image-drag or leaves a blue selection box over the hero
+     is the kind of small wrongness that reads as an unfinished page. */
+  user-select: none;
+  -webkit-user-drag: none;
+  pointer-events: none;
+}
+
+/* The image is wider now, so the block it sits in needs the room. */
+@media (min-width: 960px) {
+  .VPHero .image-container {
+    transform: none;
+  }
+}

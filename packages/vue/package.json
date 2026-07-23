@@ -1,0 +1,68 @@
+{
+  "name": "@klad/vue",
+  "version": "1.0.0-alpha.0",
+  "description": "Vue 3 adapter for Klad — a <Klad> component with a #node scoped slot.",
+  "keywords": [
+    "org-chart",
+    "orgchart",
+    "organization-chart",
+    "tree",
+    "hierarchy",
+    "canvas",
+    "klad",
+    "vue",
+    "vue3"
+  ],
+  "homepage": "https://klad.ozdemir.be",
+  "repository": {
+    "type": "git",
+    "url": "git+https://github.com/n1crack/klad.git",
+    "directory": "packages/vue"
+  },
+  "bugs": {
+    "url": "https://github.com/n1crack/klad/issues"
+  },
+  "author": "Yusuf Özdemir",
+  "type": "module",
+  "license": "AGPL-3.0-or-later",
+  "sideEffects": false,
+  "//": "exports point at source during development so the workspace resolves without a build step; publishConfig.exports replaces them with the built dist paths at publish time.",
+  "exports": {
+    ".": {
+      "types": "./src/index.ts",
+      "import": "./src/index.ts"
+    }
+  },
+  "publishConfig": {
+    "exports": {
+      ".": {
+        "types": "./dist/index.d.ts",
+        "import": "./dist/index.js"
+      }
+    }
+  },
+  "files": [
+    "dist",
+    "LICENSE",
+    "LICENSE-COMMERCIAL.md"
+  ],
+  "//dependencies": "orgchart-core is a DIRECT dependency, not merely a transitive one through orgchart: this package's own published .d.ts names types declared there (NodeData, and through it every event payload), so a consumer's TypeScript has to be able to resolve it. Under a strict node_modules layout a transitive dependency is not resolvable from here.",
+  "dependencies": {
+    "@klad/core": "workspace:*",
+    "@klad/engine": "workspace:*"
+  },
+  "peerDependencies": {
+    "vue": ">=3.5 <4"
+  },
+  "devDependencies": {
+    "@vitejs/plugin-vue": "^6.0.0",
+    "unplugin-vue": "^7.2.0",
+    "vue": "^3.5.0",
+    "vue-tsc": "^3.3.0"
+  },
+  "scripts": {
+    "build": "node ../../scripts/copy-license.mjs && tsdown",
+    "test": "vitest run",
+    "typecheck": "vue-tsc --noEmit -p tsconfig.json"
+  }
+}

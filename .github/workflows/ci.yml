@@ -1,0 +1,52 @@
+name: CI
+
+on:
+  push:
+    branches: [main, dev]
+  pull_request:
+
+# A second push to the same branch makes the first run's answer irrelevant, so
+# cancel it rather than pay for both. Never cancels on main: those runs are the
+# record of what was green when it merged.
+concurrency:
+  group: ci-${{ github.workflow }}-${{ github.ref }}
+  cancel-in-progress: ${{ github.ref != 'refs/heads/main' }}
+
+jobs:
+  verify:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: pnpm/action-setup@v4
+
+      - uses: actions/setup-node@v4
+        with:
+          # Reads `engines.node` and `packageManager` from the root manifest,
+          # so the version lives in one place rather than being restated here.
+          node-version-file: package.json
+          cache: pnpm
+
+      - run: pnpm install --frozen-lockfile
+
+      # The test suites run in a real Chromium (vitest browser mode): the
+      # things under test are a canvas, a pointer and a Web Worker, none of
+      # which a DOM shim can stand in for honestly.
+      - run: pnpm exec playwright install --with-deps chromium
+
+      - run: pnpm lint
+      - run: pnpm typecheck
+      - run: pnpm test
+      # Last, and not merely for speed: a build that fails after everything
+      # else passed is a packaging problem, and reading it in that order says
+      # so immediately.
+      - run: pnpm build
+
+      # What the tests cannot see: the shape of what actually gets published.
+      # `publint` reads each manifest against the built files (an `exports` map
+      # pointing at something that isn't there, a `types` condition in the
+      # wrong order, ESM/CJS mismatches); `attw` resolves the .d.ts the way a
+      # consumer's TypeScript will, under every module resolution mode. Both
+      # failure modes survive a green test suite and a green build, and both
+      # are only discoverable after publishing unless something checks here.
+      - run: pnpm check:packages

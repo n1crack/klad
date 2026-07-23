@@ -1,0 +1,10 @@
+{
+  "//": "Browser-mode tests and the one DOM-bound source module, host.ts. The main tsconfig deliberately has no DOM lib so that a stray window/document reference in worker-bound code fails to compile; giving the whole package lib.dom to satisfy these files would defeat that. Sources pulled in transitively here do see DOM types, but they are also checked without them by tsconfig.json, so the guard still fires.",
+  "extends": "../../tsconfig.base.json",
+  "compilerOptions": {
+    "noEmit": true,
+    "lib": ["ES2023", "DOM", "DOM.Iterable"],
+    "types": []
+  },
+  "include": ["src/**/*.browser.test.ts", "src/worker/host.ts"]
+}

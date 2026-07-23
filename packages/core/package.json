@@ -1,0 +1,63 @@
+{
+  "name": "@klad/engine",
+  "version": "1.0.0-alpha.0",
+  "description": "Layout, viewport maths, spatial index, canvas renderer and worker protocol for Klad. No DOM.",
+  "keywords": [
+    "org-chart",
+    "orgchart",
+    "organization-chart",
+    "tree",
+    "hierarchy",
+    "canvas",
+    "klad",
+    "layout",
+    "tidy-tree"
+  ],
+  "homepage": "https://klad.ozdemir.be",
+  "repository": {
+    "type": "git",
+    "url": "git+https://github.com/n1crack/klad.git",
+    "directory": "packages/core"
+  },
+  "bugs": {
+    "url": "https://github.com/n1crack/klad/issues"
+  },
+  "author": "Yusuf Özdemir",
+  "type": "module",
+  "license": "AGPL-3.0-or-later",
+  "sideEffects": false,
+  "//": "exports point at source during development so the workspace resolves without a build step; publishConfig.exports replaces them with the built dist paths at publish time. The ./host subpath is separate on purpose: host.ts is the one DOM-bound module in this package, and keeping it out of the main entry is what lets the entry stay importable inside a Web Worker.",
+  "exports": {
+    ".": {
+      "types": "./src/index.ts",
+      "import": "./src/index.ts"
+    },
+    "./host": {
+      "types": "./src/worker/host.ts",
+      "import": "./src/worker/host.ts"
+    }
+  },
+  "publishConfig": {
+    "exports": {
+      ".": {
+        "types": "./dist/index.d.ts",
+        "import": "./dist/index.js"
+      },
+      "./host": {
+        "types": "./dist/worker/host.d.ts",
+        "import": "./dist/worker/host.js"
+      }
+    }
+  },
+  "files": [
+    "dist",
+    "LICENSE",
+    "LICENSE-COMMERCIAL.md"
+  ],
+  "scripts": {
+    "build": "node ../../scripts/copy-license.mjs && tsdown",
+    "test": "vitest run",
+    "test:watch": "vitest",
+    "typecheck": "tsc --noEmit -p tsconfig.json && tsc --noEmit -p tsconfig.browser-test.json && tsc --noEmit -p tsconfig.worker.json"
+  }
+}

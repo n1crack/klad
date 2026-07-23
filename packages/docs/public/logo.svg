@@ -1,0 +1,36 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 48 48" role="img" aria-label="Klad">
+  <!--
+    The same slabs as the hero image, reduced to three. Each node is drawn
+    twice: a darker copy offset down-and-right is its extruded side, the
+    gradient face sits on top. That is the whole trick, and it is what keeps
+    the mark related to the picture on the home page instead of being a
+    separate idea in the same colour.
+
+    Three nodes, not six: the thickness costs two pixels on every shape, and
+    at 16px there is only room for the volume or the detail, not both.
+  -->
+  <defs>
+    <linearGradient id="oc-face" x1="0" y1="0" x2="0.6" y2="1">
+      <stop offset="0" stop-color="#3b82f6" />
+      <stop offset="1" stop-color="#60a5fa" />
+    </linearGradient>
+    <linearGradient id="oc-leaf" x1="0" y1="0" x2="0.6" y2="1">
+      <stop offset="0" stop-color="#60a5fa" />
+      <stop offset="1" stop-color="#93c5fd" />
+    </linearGradient>
+  </defs>
+
+  <g fill="none" stroke="#94a3b8" stroke-width="3" stroke-linecap="round">
+    <path d="M24 18v5" />
+    <path d="M11 30v-7h26v7" />
+  </g>
+
+  <rect x="15" y="9" width="22" height="11" rx="3.5" fill="#1e40af" />
+  <rect x="13" y="6" width="22" height="11" rx="3.5" fill="url(#oc-face)" />
+
+  <rect x="6" y="32" width="15" height="10" rx="3" fill="#2563eb" />
+  <rect x="4" y="30" width="15" height="10" rx="3" fill="url(#oc-leaf)" />
+
+  <rect x="31" y="32" width="15" height="10" rx="3" fill="#2563eb" />
+  <rect x="29" y="30" width="15" height="10" rx="3" fill="url(#oc-leaf)" />
+</svg>

@@ -1,0 +1,9 @@
+{
+  "//": "chart.worker.ts is the one file that needs the webworker lib (self, OffscreenCanvas, DedicatedWorkerGlobalScope) via its own `/// <reference lib=\"webworker\" />`. That reference contributes GLOBAL declarations to whatever program includes the file, and webworker's globals collide with lib.dom's (both declare `self`, `postMessage`, etc. with incompatible shapes) — so this file cannot share a program with anything that has DOM lib turned on, which rules out folding it into tsconfig.browser-test.json. It also cannot live in tsconfig.json: that program's lib is DOM-free by design, but plain compilerOptions.lib and a triple-slash lib reference are independent — the reference still adds webworker's globals on top, and the point of tsconfig.json's guard is that no extra globals are added there. So this file gets its own narrow program: base lib only (ES2023, no DOM), with chart.worker.ts supplying webworker via its own reference. Nothing else imports this file (it is only ever referenced by its literal, unresolved specifier string inside `new URL(...)` in host.ts), so it never needs to coexist with anything else in a program.",
+  "extends": "../../tsconfig.base.json",
+  "compilerOptions": {
+    "noEmit": true,
+    "types": []
+  },
+  "include": ["src/worker/chart.worker.ts"]
+}

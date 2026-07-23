@@ -1,0 +1,80 @@
+name: Release
+
+on:
+  push:
+    branches: [main]
+
+# Publishing is not something to do twice at once.
+concurrency:
+  group: release
+  cancel-in-progress: false
+
+permissions:
+  contents: write
+  pull-requests: write
+  # The publish credential itself. Each package names this repository and this
+  # workflow file as its trusted publisher on npm, so the registry accepts the
+  # workflow's own short-lived OIDC identity and there is no token to leak,
+  # rotate or accidentally scope too widely. It also carries the provenance
+  # attestation tying the tarball to this commit and this workflow.
+  #
+  # Two things this depends on, neither obvious from here:
+  #  - The workflow FILENAME is part of the trust configuration. Renaming this
+  #    file breaks publishing until npm is told the new name.
+  #  - The first version of a package cannot be published this way: npm has no
+  #    settings page for a package that does not exist yet, so trusted
+  #    publishing can only be configured after a manual first release. Ours
+  #    was `1.0.0-alpha.0`, published by hand.
+  id-token: write
+
+jobs:
+  release:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          # Changesets needs the history to work out what changed.
+          fetch-depth: 0
+
+      # Pinned to pnpm 10 by the root manifest's `packageManager`. Worth knowing
+      # before anyone bumps it: OIDC publishing works there and regressed in
+      # pnpm 11 (pnpm/pnpm#11513), where the token exchange 404s.
+      - uses: pnpm/action-setup@v4
+
+      - uses: actions/setup-node@v4
+        with:
+          node-version-file: package.json
+          cache: pnpm
+          registry-url: https://registry.npmjs.org
+
+      - run: pnpm install --frozen-lockfile
+
+      - run: pnpm exec playwright install --with-deps chromium
+
+      # Publishing something that does not pass its own tests is worse than
+      # not publishing: it cannot be taken back, only superseded.
+      - run: pnpm lint
+      - run: pnpm typecheck
+      - run: pnpm test
+      # A publish cannot be taken back, only superseded — so the packaging
+      # itself is verified here too, not just on CI. See ci.yml for what these
+      # catch that a build does not.
+      - run: pnpm build
+      - run: pnpm check:packages
+
+      # Two modes, decided by whether any changeset files are pending:
+      #  - pending  -> opens (or updates) a "Version Packages" PR that applies
+      #                them, bumps versions and rewrites the changelogs.
+      #  - none     -> the versions on main are already the intended ones, so
+      #                `publish` runs and pushes whatever is not on npm yet.
+      # Merging that PR is therefore the act that releases, and it is a normal
+      # reviewable diff rather than a button that does something unseen.
+      - uses: changesets/action@v1
+        with:
+          version: pnpm version-packages
+          publish: pnpm release
+          title: 'Release: version packages'
+          commit: 'chore: version packages'
+        env:
+          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+          NPM_CONFIG_PROVENANCE: true

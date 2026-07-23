@@ -1,0 +1,57 @@
+{
+  "name": "@klad/core",
+  "version": "1.0.0-alpha.0",
+  "description": "Klad — a canvas org chart for tens of thousands of nodes, with a DOM overlay for your own node content. Frameworkless.",
+  "keywords": [
+    "org-chart",
+    "orgchart",
+    "organization-chart",
+    "tree",
+    "hierarchy",
+    "canvas",
+    "klad",
+    "vanilla",
+    "typescript"
+  ],
+  "homepage": "https://klad.ozdemir.be",
+  "repository": {
+    "type": "git",
+    "url": "git+https://github.com/n1crack/klad.git",
+    "directory": "packages/vanilla"
+  },
+  "bugs": {
+    "url": "https://github.com/n1crack/klad/issues"
+  },
+  "author": "Yusuf Özdemir",
+  "type": "module",
+  "license": "AGPL-3.0-or-later",
+  "sideEffects": false,
+  "//": "exports point at source during development so the workspace resolves without a build step; publishConfig.exports replaces them with the built dist paths at publish time.",
+  "exports": {
+    ".": {
+      "types": "./src/index.ts",
+      "import": "./src/index.ts"
+    }
+  },
+  "publishConfig": {
+    "exports": {
+      ".": {
+        "types": "./dist/index.d.ts",
+        "import": "./dist/index.js"
+      }
+    }
+  },
+  "files": [
+    "dist",
+    "LICENSE",
+    "LICENSE-COMMERCIAL.md"
+  ],
+  "dependencies": {
+    "@klad/engine": "workspace:*"
+  },
+  "scripts": {
+    "build": "node ../../scripts/copy-license.mjs && tsdown",
+    "test": "vitest run",
+    "typecheck": "tsc --noEmit -p tsconfig.json"
+  }
+}

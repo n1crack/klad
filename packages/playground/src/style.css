@@ -1,0 +1,1726 @@
+/*
+ * Design tokens for the playground SHELL (header, sidebar, description card,
+ * surface frame) — not the node cards below, which are deliberate per-example
+ * looks and keep their own `color-mix(in srgb, canvas/canvastext, …)` values
+ * unchanged. `canvas`/`canvastext` are the two system colours that flip with
+ * the OS's light/dark preference on their own (that's what `color-scheme:
+ * light dark` below switches on); building the shell's tokens out of them
+ * gets `prefers-color-scheme: dark` support for the price of one extra media
+ * query — just for `--accent`, whose fixed blue needs a lighter shade to stay
+ * readable against a dark surface. Everything else adapts for free.
+ */
+:root {
+  color-scheme: light dark;
+  font-family: system-ui, -apple-system, 'Segoe UI', sans-serif;
+
+  --accent: #2563eb;
+  --accent-contrast: #ffffff;
+  /*
+   * The node tokens are the one part of this palette that is NOT free-floating
+   * CSS: theme.ts writes them onto `:root` (and hands the very same values to
+   * the chart through `api.setTheme`) so a card's background, border and
+   * corner radius are identical to what the canvas paints in the node box
+   * UNDERNEATH it. They disagree and the canvas's own box shows around the
+   * card — a pale halo at each corner in light mode, a white box behind every
+   * card in dark. The values here are the light-mode ones, so the shell looks
+   * right in the moment before the (deferred) module script runs.
+   */
+  --node-bg: #ffffff;
+  --node-border: #d4d4d8;
+  --node-radius: 6px;
+  --surface: canvas;
+  --surface-raised: color-mix(in srgb, canvas 97%, canvastext 3%);
+  --surface-sunken: color-mix(in srgb, canvas 94%, canvastext 6%);
+  --border: color-mix(in srgb, canvastext 14%, canvas 86%);
+  --border-strong: color-mix(in srgb, canvastext 32%, canvas 68%);
+  --text-muted: color-mix(in srgb, canvastext 62%, canvas 38%);
+  --radius-sm: 6px;
+  --radius-md: 10px;
+  /* Both of these are overwritten per mode by theme.ts (see `--node-bg`
+     above); a shadow mixed from `canvastext` would be a white HALO in dark
+     mode rather than a shadow. These are the light-mode values, for the paint
+     before the module script runs. */
+  --shadow-sm: 0 1px 2px rgba(15, 23, 42, 0.12);
+  --node-shadow: 0 1px 3px rgba(15, 23, 42, 0.14);
+}
+
+/*
+ * The pre-JS paint only. theme.ts writes the mode's own values for these four
+ * straight onto `:root` (an inline style, so it wins over this rule either
+ * way) as soon as it runs, and from then on the EXPLICIT choice decides —
+ * including a viewer who has picked light while their OS is in dark, which
+ * this media query on its own would get wrong.
+ */
+@media (prefers-color-scheme: dark) {
+  :root {
+    /* blue-600 reads dim on a dark surface; blue-400 keeps the same role
+       (links, focus rings, the export buttons, the pressed-minimap state)
+       readable without touching anything else. */
+    --accent: #60a5fa;
+    --accent-contrast: #0b1220;
+    --node-bg: #1b2029;
+    --node-border: #333c4b;
+  }
+}
+
+body {
+  margin: 0;
+  display: flex;
+  flex-direction: column;
+  /* `dvh` rather than `vh`: on a phone, `100vh` is the viewport with the
+     browser's own toolbars hidden, so the chart's bottom edge sits under them
+     until you scroll — which this layout deliberately does not let you do.
+     `vh` first, so a browser without `dvh` still gets a height. */
+  height: 100vh;
+  height: 100dvh;
+  color: canvastext;
+  /* The chart claims its own touch gestures (`touch-action: none` on the host,
+     see packages/vanilla/src/input.ts). This stops a pan that starts there and
+     travels past the chart's edge from turning into the page's own pull-to-
+     refresh or rubber-band scroll. */
+  overscroll-behavior: none;
+  background: var(--surface);
+}
+
+#app {
+  display: flex;
+  flex-direction: column;
+  height: 100%;
+}
+
+/* Laid out like the documentation site's own header — brand on the left, a
+   single action on the right — so moving between the two does not feel like
+   moving between two products. */
+.app-header {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 1rem;
+  padding: 0.7rem 1.25rem;
+  background: var(--surface);
+  border-bottom: 1px solid var(--border);
+}
+
+.app-brand {
+  display: flex;
+  align-items: center;
+  gap: 0.7rem;
+  min-width: 0;
+}
+
+.app-mark {
+  flex: none;
+  width: 30px;
+  height: 30px;
+  display: block;
+}
+
+.app-mark svg {
+  width: 100%;
+  height: 100%;
+  display: block;
+}
+
+/*
+ * The sidebar-as-drawer trigger. Present only where the sidebar is a drawer
+ * (see the `max-width: 720px` block below) — at every wider width the panel is
+ * simply there, and a button toggling something already visible is noise.
+ */
+.app-controls-toggle {
+  display: none;
+  flex: none;
+  align-items: center;
+  font: inherit;
+  font-size: 0.78rem;
+  font-weight: 600;
+  min-height: 2.1rem;
+  padding: 0.3rem 0.7rem;
+  border-radius: var(--radius-sm);
+  border: 1px solid var(--border-strong);
+  background: var(--surface);
+  color: canvastext;
+  cursor: pointer;
+}
+
+.app-controls-toggle[aria-expanded='true'] {
+  background: color-mix(in srgb, var(--accent) 16%, var(--surface) 84%);
+  border-color: var(--accent);
+  color: var(--accent);
+}
+
+.app-controls-toggle:focus-visible {
+  outline: none;
+  border-color: var(--accent);
+  box-shadow: 0 0 0 3px color-mix(in srgb, var(--accent) 30%, transparent);
+}
+
+/* Everything on the right-hand end of the header: the theme toggle, and the
+   way back to the docs when there is one. */
+.app-actions {
+  flex: none;
+  display: flex;
+  align-items: center;
+  gap: 0.4rem;
+}
+
+/*
+ * The light/dark toggle. Square and icon-only — it sits beside a text link and
+ * the two would compete if both were labelled — with its meaning carried by
+ * `title`/`aria-label` (see `updateThemeButton` in main.ts), both of which name
+ * the mode a click moves TO rather than the one you are in.
+ *
+ * 36px, which is also the smallest comfortable touch target: this is the one
+ * piece of chrome a phone visitor is most likely to reach for.
+ */
+.app-theme-toggle {
+  flex: none;
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  width: 36px;
+  height: 36px;
+  padding: 0;
+  border-radius: var(--radius-sm);
+  border: 1px solid transparent;
+  background: transparent;
+  color: var(--text-muted);
+  cursor: pointer;
+  transition: color 120ms ease, background 120ms ease, border-color 120ms ease;
+}
+
+.app-theme-toggle svg {
+  width: 18px;
+  height: 18px;
+  display: block;
+}
+
+.app-theme-toggle:hover {
+  color: var(--accent);
+  border-color: var(--border);
+  background: color-mix(in srgb, var(--accent) 8%, var(--surface) 92%);
+}
+
+.app-theme-toggle:focus-visible {
+  outline: none;
+  border-color: var(--accent);
+  box-shadow: 0 0 0 3px color-mix(in srgb, var(--accent) 30%, transparent);
+}
+
+/* The way back. Quiet until pointed at: it is an exit, not the reason anyone
+   opened this page. */
+.app-back {
+  flex: none;
+  display: inline-flex;
+  align-items: center;
+  gap: 0.35rem;
+  font-size: 0.82rem;
+  font-weight: 600;
+  text-decoration: none;
+  color: var(--text-muted);
+  padding: 0.36rem 0.7rem;
+  border-radius: var(--radius-sm);
+  border: 1px solid transparent;
+  transition: color 120ms ease, background 120ms ease, border-color 120ms ease;
+}
+
+.app-back:hover {
+  color: var(--accent);
+  border-color: var(--border);
+  background: color-mix(in srgb, var(--accent) 8%, var(--surface) 92%);
+}
+
+.app-back:focus-visible {
+  outline: none;
+  border-color: var(--accent);
+  box-shadow: 0 0 0 3px color-mix(in srgb, var(--accent) 30%, transparent);
+}
+
+.app-title {
+  display: flex;
+  align-items: baseline;
+  flex-wrap: wrap;
+  gap: 0.6rem;
+}
+
+.app-name {
+  font-size: 1.05rem;
+  font-weight: 700;
+  letter-spacing: -0.01em;
+}
+
+.app-tagline {
+  font-size: 0.8rem;
+  color: var(--text-muted);
+}
+
+/*
+ * `.layout` is the sidebar + chart-area row below the slim header: the
+ * sidebar gets a fixed width and its own scrollbar, `.content` takes
+ * whatever's left. `min-height: 0` here (and again on `.content`/`.surface`
+ * below) is load-bearing — without it, a flex child's default `min-height:
+ * auto` refuses to shrink below its content's height, and the row would grow
+ * taller than the viewport instead of the sidebar/surface scrolling within
+ * it, which is exactly the "host collapses to 0 height" failure mode the
+ * chart's own ResizeObserver-driven sizing is vulnerable to.
+ */
+.layout {
+  display: flex;
+  flex: 1;
+  min-height: 0;
+}
+
+/* Compact on purpose. This panel is a control surface, not reading material:
+   every row is a label and a widget the eye already knows, so the space
+   between them only costs scrolling. The chart is the thing worth looking at,
+   and the more of these controls are visible without scrolling, the less
+   often you leave it to reach one. */
+.sidebar {
+  flex: 0 0 auto;
+  display: flex;
+  background: var(--surface-raised);
+  border-right: 1px solid var(--border);
+  min-height: 0;
+}
+
+/* Closed: the rail alone, and the whole rest of the width goes to the chart. */
+.sidebar.is-collapsed .sidebar-body {
+  display: none;
+}
+
+/*
+ * The rail — one tab per panel, down the sidebar's outer edge, the shape an
+ * IDE uses for the same job. Two things it buys: the group names stop taking
+ * horizontal room from the controls they label, and only one group is open at
+ * a time, so finding a slider stops being a scroll.
+ */
+.rail {
+  flex: none;
+  width: 38px;
+  display: flex;
+  flex-direction: column;
+  align-items: stretch;
+  gap: 2px;
+  padding: 0.4rem 0;
+  border-right: 1px solid var(--border);
+  background: var(--surface-sunken);
+}
+
+/*
+ * `writing-mode` rather than a `rotate()` transform: the tab still takes part
+ * in normal layout (its height is its label's length, so the rail lays itself
+ * out), the text stays selectable and searchable, and a screen reader reads it
+ * as the text it is. `sideways-lr` reads bottom-to-top, which is the direction
+ * these labels run in every editor that does this; `vertical-rl` + `rotate` is
+ * the fallback for browsers without it, and reads top-to-bottom instead.
+ */
+.rail-tab {
+  flex: none;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  padding: 0.55rem 0;
+  border: none;
+  border-left: 2px solid transparent;
+  background: none;
+  font: inherit;
+  font-size: 0.68rem;
+  font-weight: 700;
+  letter-spacing: 0.08em;
+  text-transform: uppercase;
+  color: var(--text-muted);
+  cursor: pointer;
+  transition: color 120ms ease, background 120ms ease, border-color 120ms ease;
+}
+
+.rail-tab span {
+  writing-mode: vertical-rl;
+  transform: rotate(180deg);
+  white-space: nowrap;
+}
+
+@supports (writing-mode: sideways-lr) {
+  .rail-tab span {
+    writing-mode: sideways-lr;
+    transform: none;
+  }
+}
+
+.rail-tab:hover {
+  color: canvastext;
+  background: color-mix(in srgb, var(--accent) 8%, transparent);
+}
+
+.rail-tab.is-on {
+  color: var(--accent);
+  border-left-color: var(--accent);
+  background: var(--surface-raised);
+}
+
+.rail-tab:focus-visible {
+  outline: none;
+  box-shadow: inset 0 0 0 2px var(--accent);
+}
+
+.sidebar-body {
+  flex: 0 0 226px;
+  width: 226px;
+  display: flex;
+  flex-direction: column;
+  gap: 0.7rem;
+  padding: 0.7rem 0.75rem;
+  overflow-y: auto;
+}
+
+/* Wider for the Code panel — see `openPanel` in main.ts. Capped against the
+   viewport so it can never take the chart's whole width on a small laptop. */
+.sidebar.is-wide .sidebar-body {
+  flex-basis: min(380px, 40vw);
+  width: min(380px, 40vw);
+}
+
+/* One panel at a time, so the group's own border-as-separator has nothing to
+   separate it from. */
+.sidebar-body .sidebar-group {
+  border-bottom: none;
+  padding-bottom: 0;
+}
+
+/* `display: flex` below would otherwise beat the user agent's own
+   `[hidden] { display: none }`, and every panel would show at once — which is
+   exactly what happened the first time the rail was wired up. */
+.sidebar-group[hidden] {
+  display: none;
+}
+
+.sidebar-group {
+  display: flex;
+  flex-direction: column;
+  gap: 0.35rem;
+  padding-bottom: 0.7rem;
+  border-bottom: 1px solid var(--border);
+}
+
+.sidebar-group:last-of-type {
+  border-bottom: none;
+  padding-bottom: 0;
+}
+
+/* A caption + its controls INSIDE a panel — see `subGroup` in main.ts. */
+.sub-group {
+  display: flex;
+  flex-direction: column;
+  gap: 0.3rem;
+  width: 100%;
+}
+
+.sub-group + .sub-group {
+  margin-top: 0.55rem;
+  padding-top: 0.55rem;
+  border-top: 1px solid var(--border);
+}
+
+.sub-group-caption {
+  font-size: 0.6rem;
+  font-weight: 700;
+  text-transform: uppercase;
+  letter-spacing: 0.06em;
+  color: color-mix(in srgb, canvastext 45%, canvas 55%);
+}
+
+.sub-group-body {
+  display: flex;
+  flex-direction: column;
+  gap: 0.3rem;
+}
+
+.sidebar-group-caption {
+  font-size: 0.62rem;
+  font-weight: 700;
+  text-transform: uppercase;
+  letter-spacing: 0.07em;
+  color: var(--text-muted);
+}
+
+/* Buttons wrap two-or-so per row; `.field`s below always claim a full row — a
+   `<select>` or the colour picker reads better stacked at its own width than
+   squeezed in beside a sibling. */
+.sidebar-group-body {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 0.35rem;
+}
+
+.sidebar-group-body .btn {
+  flex: 1 1 auto;
+}
+
+.content {
+  flex: 1;
+  min-width: 0;
+  min-height: 0;
+  display: flex;
+  flex-direction: column;
+}
+
+/* Below this width the sidebar stops trying to sit alongside the chart —
+   there isn't room for both — and instead becomes a capped-height, scrollable
+   strip above it, same as it already is internally past its own content
+   height. */
+@media (max-width: 720px) {
+  .layout {
+    flex-direction: column;
+    /* The drawer is positioned against this. */
+    position: relative;
+  }
+
+  /*
+   * The sidebar becomes a drawer OVER the chart rather than a block above it.
+   * As a block it took nearly half a phone screen, leaving the chart — the
+   * thing the page exists to show — as a strip at the bottom; over the chart
+   * it costs nothing at all until the Controls button asks for it.
+   */
+  .sidebar {
+    position: absolute;
+    z-index: 10;
+    top: 0;
+    left: 0;
+    right: 0;
+    flex: none;
+    max-height: min(70vh, 30rem);
+    border-right: none;
+    border-bottom: 1px solid var(--border);
+    box-shadow: 0 10px 24px rgba(0, 0, 0, 0.28);
+    /* Off-screen rather than `display: none`: the panel keeps its layout, so
+       opening it slides instead of appearing, and its controls stay reachable
+       by script (they are the same elements at every width). */
+    transform: translateY(-102%);
+    visibility: hidden;
+    transition: transform 180ms ease, visibility 180ms;
+  }
+
+  .layout.is-controls-open .sidebar {
+    transform: none;
+    visibility: visible;
+  }
+
+  .app-controls-toggle {
+    display: inline-flex;
+  }
+
+  /* The rail keeps its shape inside the drawer — it is how you move between
+     groups there too — but the panel beside it takes whatever width is left
+     rather than the fixed 226px of the desktop column. */
+  .sidebar-body {
+    flex: 1 1 auto;
+    width: auto;
+    min-width: 0;
+  }
+
+  /* A closed panel inside an open drawer is a drawer showing nothing. */
+  .sidebar.is-collapsed .sidebar-body {
+    display: flex;
+  }
+
+  .code-block {
+    max-height: 40vh;
+  }
+
+
+  .sidebar-group-body .btn {
+    flex: 1 1 auto;
+  }
+
+  /* The chart is what a phone visitor came for, so the chrome around it gives
+     up its margins first: the description card and the surface keep their
+     shape but stop spending a quarter of a narrow screen on gutters. */
+  .example-description {
+    margin: 0.6rem 0.7rem 0;
+    padding: 0.5rem 0.7rem;
+    cursor: pointer;
+  }
+
+  /* Some of these descriptions run to seven lines on a phone, which is more
+     of the screen than the chart they describe was getting. Clamped to two,
+     with the whole card as the control that unclamps it — the text is worth
+     reading, just not before you have seen the thing it is about. */
+  .example-description p {
+    display: -webkit-box;
+    -webkit-box-orient: vertical;
+    -webkit-line-clamp: 2;
+    line-clamp: 2;
+    overflow: hidden;
+  }
+
+  .example-description.is-expanded p {
+    -webkit-line-clamp: none;
+    line-clamp: none;
+    overflow: visible;
+  }
+
+  .surface {
+    margin: 0.6rem 0.7rem 0.7rem;
+  }
+
+  .app-header {
+    padding: 0.55rem 0.7rem;
+  }
+
+  /* Two lines of header on a 360px screen leaves the chart barely any room,
+     and the tagline is the part a returning visitor already knows. */
+  .app-tagline {
+    display: none;
+  }
+
+  /* Full width, under its label, rather than a fixed 11rem that would push the
+     panel off the side of a narrow surface. */
+  .goto-panel {
+    right: 0.6rem;
+    flex-direction: column;
+    align-items: stretch;
+    gap: 0.25rem;
+  }
+
+  .goto-panel .select {
+    min-width: 0;
+    max-width: none;
+  }
+}
+
+/*
+ * The library honours `prefers-reduced-motion` for the chart's own animation;
+ * the shell's own transitions — the drawer's slide, hover/focus fades — should
+ * respect the same preference rather than be the one thing on the page that
+ * still moves.
+ */
+@media (prefers-reduced-motion: reduce) {
+  *,
+  *::before,
+  *::after {
+    transition-duration: 0.01ms !important;
+    animation-duration: 0.01ms !important;
+  }
+}
+
+/*
+ * Touch. A finger is not a mouse pointer: the same controls that read as
+ * comfortably small under a cursor are a coin-toss under a fingertip, and the
+ * ones ON the cards are the ones a viewer reaches for most. Only the target
+ * grows — type sizes, spacing and colours are left exactly as they are, so
+ * this stays one design rather than becoming a second, chunkier one.
+ */
+@media (pointer: coarse) {
+  .toggle-btn {
+    width: 1.9rem;
+    height: 1.9rem;
+    font-size: 1.05rem;
+  }
+
+  .action-btn {
+    width: 2.1rem;
+    height: 2.1rem;
+  }
+
+  .btn,
+  .select,
+  .dropdown-select,
+  .accordion-btn {
+    min-height: 2.1rem;
+  }
+
+  .color-input {
+    height: 2.1rem;
+  }
+
+  /* A range track thin enough to be a nuisance to grab is worse than one that
+     costs a couple of pixels of sidebar height. */
+  .field-range-row input[type='range'] {
+    height: 1.6rem;
+  }
+}
+
+.field {
+  display: flex;
+  flex-direction: column;
+  gap: 0.15rem;
+  flex: 1 1 100%;
+}
+
+.field label {
+  font-size: 0.7rem;
+  font-weight: 600;
+  color: var(--text-muted);
+}
+
+.field-range {
+  min-width: 0;
+}
+
+.field-range-row {
+  display: flex;
+  align-items: center;
+  gap: 0.45rem;
+}
+
+.field-range-row input[type='range'] {
+  flex: 1;
+  accent-color: var(--accent);
+  cursor: pointer;
+}
+
+.field-range-row input[type='range']:focus-visible {
+  outline: 2px solid var(--accent);
+  outline-offset: 3px;
+}
+
+/* "Shape fill"'s enable checkbox, sitting alongside its colour picker in the
+   same `.field-range-row` — sized to match the row's other controls rather
+   than the browser's tiny default checkbox. */
+.checkbox-input {
+  width: 1rem;
+  height: 1rem;
+  accent-color: var(--accent);
+  cursor: pointer;
+  flex: none;
+}
+
+.checkbox-input:focus-visible {
+  outline: 2px solid var(--accent);
+  outline-offset: 2px;
+}
+
+.field-range-value {
+  min-width: 2.2ch;
+  text-align: right;
+  font-variant-numeric: tabular-nums;
+  font-size: 0.76rem;
+  font-weight: 700;
+  color: canvastext;
+}
+
+.select,
+.btn {
+  font: inherit;
+  font-size: 0.78rem;
+}
+
+.select {
+  padding: 0.28rem 0.45rem;
+  border-radius: var(--radius-sm);
+  border: 1px solid var(--border-strong);
+  background: var(--surface);
+  color: canvastext;
+  cursor: pointer;
+  transition: border-color 120ms ease, box-shadow 120ms ease;
+}
+
+.select:hover {
+  border-color: var(--accent);
+}
+
+.select:focus-visible {
+  outline: none;
+  border-color: var(--accent);
+  box-shadow: 0 0 0 3px color-mix(in srgb, var(--accent) 30%, transparent);
+}
+
+.btn {
+  padding: 0.32rem 0.6rem;
+  border-radius: var(--radius-sm);
+  border: 1px solid var(--border-strong);
+  background: var(--surface);
+  color: canvastext;
+  font-weight: 600;
+  cursor: pointer;
+  transition: background 120ms ease, border-color 120ms ease, box-shadow 120ms ease, transform 80ms ease;
+}
+
+.btn:hover {
+  background: color-mix(in srgb, var(--accent) 10%, var(--surface) 90%);
+  border-color: var(--accent);
+}
+
+.btn:active {
+  transform: translateY(1px);
+}
+
+.btn:focus-visible {
+  outline: none;
+  border-color: var(--accent);
+  box-shadow: 0 0 0 3px color-mix(in srgb, var(--accent) 35%, transparent);
+}
+
+/* The minimap toggle carries its on/off state as `aria-pressed`, styled here
+   so its look, not just its label text, says which state it's in. */
+.btn-toggle[aria-pressed='true'] {
+  background: color-mix(in srgb, var(--accent) 16%, var(--surface) 84%);
+  border-color: var(--accent);
+  color: var(--accent);
+}
+
+/* Export sits in the sidebar's last group and is filled with the accent
+   colour so it reads as the sidebar's one "produce an artefact" action,
+   distinct from the controls that only change what's on screen. */
+.btn-export {
+  background: var(--accent);
+  border-color: var(--accent);
+  color: var(--accent-contrast);
+}
+
+.btn-export:hover {
+  background: color-mix(in srgb, var(--accent) 88%, canvastext 12%);
+  border-color: color-mix(in srgb, var(--accent) 88%, canvastext 12%);
+}
+
+/* Canvas background picker — same field/value rhythm as the edge-radius
+   slider (see `.field-range`/`.field-range-value` above), swapped to a
+   colour swatch instead of a numeric readout. Native `<input type="color">`
+   chrome varies a lot per browser, so this only normalises size, radius and
+   the same border/hover/focus tokens every other control uses; the swatch
+   itself is left to the browser. */
+.color-input {
+  width: 2.4rem;
+  height: 1.7rem;
+  padding: 0.15rem;
+  border-radius: var(--radius-sm);
+  border: 1px solid var(--border-strong);
+  background: var(--surface);
+  cursor: pointer;
+  transition: border-color 120ms ease, box-shadow 120ms ease;
+}
+
+.color-input:hover {
+  border-color: var(--accent);
+}
+
+.color-input:focus-visible {
+  outline: none;
+  border-color: var(--accent);
+  box-shadow: 0 0 0 3px color-mix(in srgb, var(--accent) 30%, transparent);
+}
+
+/* ---------------------------------------------------------------------------
+ * Code panel — the chart you dialled in, as options. Reported, not edited:
+ * everything in it is read-only text plus one button that copies it.
+ * ------------------------------------------------------------------------ */
+.code-stacks {
+  display: flex;
+  gap: 2px;
+  padding: 2px;
+  width: 100%;
+  border-radius: var(--radius-sm);
+  background: var(--surface-sunken);
+  border: 1px solid var(--border);
+}
+
+.code-stack {
+  flex: 1 1 0;
+  font: inherit;
+  font-size: 0.7rem;
+  font-weight: 600;
+  padding: 0.24rem 0.2rem;
+  border: none;
+  border-radius: calc(var(--radius-sm) - 2px);
+  background: none;
+  color: var(--text-muted);
+  cursor: pointer;
+}
+
+.code-stack:hover {
+  color: canvastext;
+}
+
+.code-stack.is-on {
+  background: var(--surface);
+  color: var(--accent);
+  box-shadow: var(--shadow-sm);
+}
+
+.code-stack:focus-visible {
+  outline: 2px solid var(--accent);
+  outline-offset: -2px;
+}
+
+/*
+ * A hard height rather than "as tall as the code": these snippets run to
+ * thirty-odd lines, and a panel that grows with them turns the sidebar into a
+ * scrolling document with the Copy button somewhere below the fold. Its own
+ * scroll, with the button pinned under it.
+ */
+/* The block and its Copy button, positioned together. */
+.code-frame {
+  position: relative;
+  display: flex;
+  min-height: 0;
+  width: 100%;
+}
+
+/*
+ * Quiet until wanted: a small button in the block's corner, at low contrast
+ * until the block is hovered or the button itself is focused. It used to be a
+ * full-width accent bar under the snippet, which read as the panel's primary
+ * action — the snippet is.
+ */
+.code-copy {
+  position: absolute;
+  top: 0.35rem;
+  right: 0.4rem;
+  z-index: 1;
+  font: inherit;
+  font-size: 0.66rem;
+  font-weight: 600;
+  padding: 0.16rem 0.45rem;
+  border-radius: var(--radius-sm);
+  border: 1px solid var(--border);
+  background: color-mix(in srgb, var(--surface) 88%, transparent);
+  color: var(--text-muted);
+  cursor: pointer;
+  opacity: 0.55;
+  backdrop-filter: blur(4px);
+  transition: opacity 120ms ease, color 120ms ease, border-color 120ms ease;
+}
+
+.code-frame:hover .code-copy,
+.code-copy:focus-visible {
+  opacity: 1;
+}
+
+.code-copy:hover {
+  color: var(--accent);
+  border-color: var(--accent);
+}
+
+.code-copy:focus-visible {
+  outline: none;
+  box-shadow: 0 0 0 3px color-mix(in srgb, var(--accent) 30%, transparent);
+}
+
+/*
+ * Syntax colours. Built from the accent and the page's own text colour rather
+ * than a borrowed editor palette, so the block reads as part of this app in
+ * both modes — and every one of them is a `color-mix` against `canvas`, which
+ * flips with the theme on its own.
+ */
+.tok-comment {
+  color: color-mix(in srgb, canvastext 45%, canvas 55%);
+  font-style: italic;
+}
+
+.tok-string {
+  color: #0f766e;
+}
+
+.tok-number {
+  color: #b45309;
+}
+
+.tok-keyword {
+  color: #7c3aed;
+  font-weight: 600;
+}
+
+.tok-tag {
+  color: #be185d;
+}
+
+.tok-key {
+  color: var(--accent);
+}
+
+:root[data-theme='dark'] .tok-string {
+  color: #5eead4;
+}
+
+:root[data-theme='dark'] .tok-number {
+  color: #fbbf24;
+}
+
+:root[data-theme='dark'] .tok-keyword {
+  color: #c4b5fd;
+}
+
+:root[data-theme='dark'] .tok-tag {
+  color: #f9a8d4;
+}
+
+/* The Code panel is the one that wants the sidebar's whole height: the snippet
+   fills it and the Copy button sits under it, rather than the snippet stopping
+   at some fraction of the viewport with dead space below. */
+#rail-panel-code,
+#rail-panel-code .sidebar-group-body {
+  flex: 1 1 auto;
+  min-height: 0;
+}
+
+#rail-panel-code .sidebar-group-body {
+  flex-direction: column;
+  flex-wrap: nowrap;
+}
+
+.code-block {
+  margin: 0;
+  width: 100%;
+  flex: 1 1 auto;
+  min-height: 8rem;
+  overflow: auto;
+  padding: 0.5rem 0.6rem;
+  border-radius: var(--radius-sm);
+  border: 1px solid var(--border);
+  background: var(--surface-sunken);
+  color: canvastext;
+  font-family: ui-monospace, SFMono-Regular, 'SF Mono', Menlo, Consolas, monospace;
+  font-size: 0.68rem;
+  line-height: 1.5;
+  tab-size: 2;
+  /* Wrapped, not clipped: a snippet you cannot read without scrolling
+     sideways in a 226px panel is a snippet you copy blind. */
+  white-space: pre-wrap;
+  word-break: break-word;
+  /* The one place in this app where selecting text is the point. */
+  user-select: text;
+}
+
+.example-description {
+  margin: 0.9rem 1.25rem 0;
+  padding: 0.6rem 1rem;
+  border-radius: var(--radius-md);
+  background: var(--surface-sunken);
+  border: 1px solid var(--border);
+  display: flex;
+  flex-direction: column;
+  gap: 0.15rem;
+}
+
+.example-description-eyebrow {
+  font-size: 0.68rem;
+  font-weight: 700;
+  text-transform: uppercase;
+  letter-spacing: 0.07em;
+  color: var(--accent);
+}
+
+.example-description p {
+  margin: 0;
+  font-size: 0.85rem;
+  line-height: 1.5;
+  color: var(--text-muted);
+}
+
+.surface {
+  position: relative;
+  flex: 1;
+  min-height: 0;
+  margin: 0.9rem 1.25rem 1.25rem;
+  border-radius: var(--radius-md);
+  border: 1px solid var(--border);
+  background: var(--surface-sunken);
+  box-shadow: var(--shadow-sm);
+  overflow: hidden;
+}
+
+.chart-host {
+  width: 100%;
+  height: 100%;
+}
+
+.placeholder-panel {
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  justify-content: center;
+  height: 100%;
+  gap: 0.5rem;
+  color: color-mix(in srgb, canvastext 70%, canvas 30%);
+  text-align: center;
+  padding: 2rem;
+}
+
+.placeholder-panel h2 {
+  margin: 0;
+}
+
+/* Node cards, rendered into the overlay by both demos. */
+.card {
+  box-sizing: border-box;
+  width: 100%;
+  height: 100%;
+  display: flex;
+  flex-direction: column;
+  justify-content: center;
+  gap: 0.15rem;
+  padding: 0.5rem 0.75rem;
+  border: 1px solid var(--node-border);
+  border-radius: var(--node-radius);
+  background: var(--node-bg);
+  box-shadow: var(--node-shadow);
+  font-family: inherit;
+  overflow: hidden;
+  position: relative;
+}
+
+.card strong {
+  font-size: 0.95rem;
+  font-weight: 700;
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+}
+
+.card small {
+  font-size: 0.8rem;
+  color: color-mix(in srgb, canvastext 60%, canvas 40%);
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+}
+
+/* Shared by every card variant that has room for an expand/collapse affordance. */
+.toggle-btn {
+  position: absolute;
+  bottom: 0.25rem;
+  right: 0.35rem;
+  width: 1.4rem;
+  height: 1.4rem;
+  line-height: 1;
+  border-radius: 50%;
+  border: 1px solid color-mix(in srgb, canvastext 30%, canvas 70%);
+  background: canvas;
+  color: canvastext;
+  cursor: pointer;
+  font-size: 0.9rem;
+}
+
+/* Avatar card: circular initials monogram + name + role. */
+.avatar-card {
+  box-sizing: border-box;
+  width: 100%;
+  height: 100%;
+  display: flex;
+  align-items: center;
+  gap: 0.65rem;
+  padding: 0.6rem 0.75rem;
+  border: 1px solid var(--node-border);
+  border-radius: var(--node-radius);
+  background: var(--node-bg);
+  box-shadow: var(--node-shadow);
+  font-family: inherit;
+  overflow: hidden;
+  position: relative;
+}
+
+.avatar-circle {
+  flex: 0 0 auto;
+  width: 44px;
+  height: 44px;
+  border-radius: 50%;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  color: #fff;
+  font-weight: 700;
+  font-size: 0.9rem;
+  letter-spacing: 0.02em;
+}
+
+.avatar-text {
+  min-width: 0;
+  display: flex;
+  flex-direction: column;
+  gap: 0.15rem;
+}
+
+.avatar-text strong {
+  font-size: 0.95rem;
+  font-weight: 700;
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+}
+
+.avatar-text small {
+  font-size: 0.8rem;
+  color: color-mix(in srgb, canvastext 60%, canvas 40%);
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+}
+
+/*
+ * Avatar circle: no card box at all — just the circle, the name below it,
+ * and (for nodes with reports) a +/- toggle below that. The canvas's own
+ * node box is made transparent for this example (theme.nodeFill/nodeStroke
+ * in data.ts), and `label` is suppressed there too, so nothing paints behind
+ * this overlay except the connector lines (those use theme.edgeStroke, an
+ * independent token — see render/canvas2d.ts). `cursor: pointer` on the
+ * whole card because the node itself is also a toggle (toggleOnNodeClick:
+ * true on this example) in addition to the explicit button below.
+ */
+.monogram-card {
+  --accent: #64748b;
+  box-sizing: border-box;
+  width: 100%;
+  height: 100%;
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  justify-content: flex-start;
+  /* Tight on purpose: `justify-content: flex-start` packs the circle, name
+     and toggle at the TOP of the box, so any slack left over between the
+     content's actual height and the declared `nodeSize.h` lands as empty
+     space at the BOTTOM — between the toggle and the node box's own lower
+     edge, which is exactly where the outgoing connector attaches (see the
+     `.toggle-btn` override below). A loose gap/padding here used to read as
+     the toggle floating disconnected from its line; this gap/padding pair is
+     sized so the three items' total height comes out close to nodeSize.h
+     (96x108, down from 96x128 — see data.ts), leaving only a couple of
+     pixels of slack rather than over twenty. */
+  gap: 0.18rem;
+  padding: 0.3rem 0.4rem 0.2rem;
+  cursor: pointer;
+  font-family: inherit;
+  overflow: hidden;
+  background: transparent;
+  border: none;
+  box-shadow: none;
+}
+
+.monogram-circle {
+  box-sizing: border-box;
+  flex: 0 0 auto;
+  width: 56px;
+  height: 56px;
+  border-radius: 50%;
+  border: 3px solid var(--accent);
+  background: color-mix(in srgb, canvas 88%, canvastext 12%);
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  color: var(--accent);
+  font-weight: 700;
+  font-size: 0.85rem;
+  letter-spacing: 0.02em;
+  /* No card background behind it any more (it floats directly on the
+     canvas) — a soft shadow keeps the circle reading as a distinct badge
+     rather than a flat patch of colour on the chart background. */
+  box-shadow: var(--node-shadow);
+}
+
+.monogram-name {
+  max-width: 100%;
+  font-size: 0.78rem;
+  line-height: 1;
+  font-weight: 600;
+  text-align: center;
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  /* Floating on the bare canvas now rather than an opaque card, so the
+     text needs its own legibility against whatever's behind it. */
+  text-shadow:
+    0 1px 2px color-mix(in srgb, canvas 70%, transparent),
+    0 0 4px color-mix(in srgb, canvas 70%, transparent);
+}
+
+/*
+ * The toggle sits in normal flow, below the name, instead of the other
+ * cards' absolutely-positioned corner button: that is where this node's
+ * OWN outgoing connector to its children attaches (bottom-centre of the
+ * node's box — see canvas2d.ts), so the button lands right at the junction
+ * the line arrives at. Only `position`/`margin` are overridden; size,
+ * border, background and cursor all come from the shared `.toggle-btn`
+ * rule, and `syncToggleButton`/the templates already show it only for
+ * nodes that have children, so its mere presence is the "this expands"
+ * affordance and its absence marks a leaf.
+ */
+.monogram-card .toggle-btn {
+  position: static;
+  margin: 0;
+  flex: 0 0 auto;
+}
+
+/* Status card: department-coloured accent + department/headcount badges. */
+.status-card {
+  --accent: #64748b;
+  box-sizing: border-box;
+  width: 100%;
+  height: 100%;
+  display: flex;
+  flex-direction: column;
+  justify-content: center;
+  gap: 0.2rem;
+  padding: 0.5rem 0.7rem 0.5rem 0.85rem;
+  border: 1px solid var(--node-border);
+  border-left: 4px solid var(--accent);
+  border-radius: var(--node-radius);
+  background: var(--node-bg);
+  box-shadow: var(--node-shadow);
+  overflow: hidden;
+  position: relative;
+}
+
+.status-card strong {
+  font-size: 0.9rem;
+  font-weight: 700;
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+}
+
+.status-card small {
+  font-size: 0.78rem;
+  color: color-mix(in srgb, canvastext 60%, canvas 40%);
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+}
+
+.status-badges {
+  display: flex;
+  gap: 0.3rem;
+  margin-top: 0.15rem;
+  overflow: hidden;
+}
+
+.badge {
+  font-size: 0.66rem;
+  font-weight: 600;
+  padding: 0.1rem 0.42rem;
+  border-radius: 999px;
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  flex: 0 1 auto;
+}
+
+.badge-dept {
+  background: color-mix(in srgb, var(--accent) 22%, canvas 78%);
+  color: var(--accent);
+}
+
+.badge-count {
+  background: color-mix(in srgb, canvastext 10%, canvas 90%);
+  color: color-mix(in srgb, canvastext 65%, canvas 35%);
+  flex: 0 0 auto;
+}
+
+/* Photo tile: squarer, image-dominant card. */
+.photo-tile {
+  box-sizing: border-box;
+  width: 100%;
+  height: 100%;
+  display: flex;
+  flex-direction: column;
+  border: 1px solid var(--node-border);
+  border-radius: var(--node-radius);
+  background: var(--node-bg);
+  box-shadow: var(--node-shadow);
+  overflow: hidden;
+  position: relative;
+}
+
+.photo-image {
+  flex: 1 1 auto;
+  min-height: 0;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+}
+
+.photo-image span {
+  color: #fff;
+  font-weight: 700;
+  font-size: 1.6rem;
+  letter-spacing: 0.03em;
+  text-shadow: 0 1px 2px rgba(0, 0, 0, 0.25);
+}
+
+.photo-caption {
+  flex: 0 0 auto;
+  padding: 0.35rem 0.55rem;
+  display: flex;
+  flex-direction: column;
+  gap: 0.1rem;
+}
+
+.photo-caption strong {
+  font-size: 0.82rem;
+  font-weight: 700;
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+}
+
+.photo-caption small {
+  font-size: 0.72rem;
+  color: color-mix(in srgb, canvastext 60%, canvas 40%);
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+}
+
+/*
+ * Minimap contrast, strengthened at this call site. The library sets its own
+ * inline background/border on `.klad-minimap` (near-white at low opacity,
+ * a very faint border) — reasonable in isolation, but easy to lose against a
+ * light page background, especially once the surrounding chart is also mostly
+ * white. `!important` is deliberate: it overrides the widget's own inline
+ * styles, which otherwise win on specificity over a plain class rule.
+ *
+ * This raises the CHROME's contrast (border, backing plate) — it does not
+ * and cannot touch the silhouette's own per-pixel alpha, which is computed
+ * inside the library (packages/vanilla/src/minimap.ts's SILHOUETTE_OPTIONS)
+ * and not exposed through the `minimap` option. Measured against this
+ * playground's own example data, that silhouette tops out around 25%
+ * opacity even on the busiest examples — a real limitation, not one a CSS
+ * override at the host can fix; see the playground's polish report for the
+ * numbers.
+ *
+ * The shadow here used to be considerably harder than the library's own
+ * (`0 2px 10px` at 35% alpha) — it was overriding the softened one the
+ * library now sets inline right back to something heavy. Softened here too,
+ * in step with minimap.ts's own change, so the host doesn't undo it.
+ */
+.klad-minimap {
+  background: color-mix(in srgb, canvas 97%, canvastext 3%) !important;
+  border: 2px solid color-mix(in srgb, canvastext 55%, canvas 45%) !important;
+  box-shadow:
+    var(--node-shadow),
+    0 0 0 1px color-mix(in srgb, canvastext 10%, canvas 90%) !important;
+}
+
+/* The viewport-rectangle overlay — the library's only other child element in
+   here, a plain positioned `<div>` with no class of its own. A touch thicker
+   so it stays legible even on the smallest minimap size an example asks for. */
+.klad-minimap > div {
+  border-width: 2px !important;
+}
+
+/* Sits over the image instead of the caption band, so it never crowds the name/title text. */
+.photo-tile .toggle-btn {
+  top: 0.4rem;
+  right: 0.4rem;
+  bottom: auto;
+  border-color: rgba(255, 255, 255, 0.6);
+  background: rgba(0, 0, 0, 0.35);
+  color: #fff;
+}
+
+/* ---------------------------------------------------------------------------
+ * Subtree counts card. Four numbers about the node's own subtree, read
+ * straight off the node context (see `renderCounts` in vanilla-demo.ts).
+ * ------------------------------------------------------------------------ */
+.counts-card {
+  --accent: #64748b;
+  box-sizing: border-box;
+  width: 100%;
+  height: 100%;
+  display: flex;
+  flex-direction: column;
+  justify-content: center;
+  gap: 0.2rem;
+  padding: 0.5rem 0.7rem 0.5rem 0.85rem;
+  border: 1px solid var(--node-border);
+  border-left: 4px solid var(--accent);
+  border-radius: var(--node-radius);
+  background: var(--node-bg);
+  box-shadow: var(--node-shadow);
+  overflow: hidden;
+  position: relative;
+}
+
+.counts-card strong {
+  font-size: 0.9rem;
+  font-weight: 700;
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+}
+
+.counts-card small {
+  font-size: 0.78rem;
+  color: color-mix(in srgb, canvastext 60%, canvas 40%);
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+}
+
+.counts-row {
+  display: flex;
+  gap: 0.28rem;
+  margin-top: 0.2rem;
+  overflow: hidden;
+}
+
+/* Monospace digits so the numbers don't jitter sideways as they change
+   width — these sit in a fixed-size box and are read by comparison. */
+.count {
+  font-size: 0.68rem;
+  font-weight: 700;
+  font-variant-numeric: tabular-nums;
+  padding: 0.1rem 0.4rem;
+  border-radius: 5px;
+  min-width: 1.6rem;
+  text-align: center;
+  cursor: help;
+}
+
+.count-direct {
+  color: color-mix(in srgb, var(--accent) 70%, canvastext 30%);
+  background: color-mix(in srgb, var(--accent) 16%, canvas 84%);
+}
+
+.count-total {
+  color: color-mix(in srgb, canvastext 75%, canvas 25%);
+  background: color-mix(in srgb, canvastext 10%, canvas 90%);
+}
+
+.count-depth,
+.count-height {
+  color: color-mix(in srgb, canvastext 55%, canvas 45%);
+  background: transparent;
+  border: 1px solid color-mix(in srgb, canvastext 18%, canvas 82%);
+}
+
+/* ---------------------------------------------------------------------------
+ * Dropdown card: a real form control on a pooled overlay element.
+ * ------------------------------------------------------------------------ */
+.dropdown-card {
+  box-sizing: border-box;
+  width: 100%;
+  height: 100%;
+  display: flex;
+  flex-direction: column;
+  justify-content: center;
+  gap: 0.35rem;
+  padding: 0.5rem 0.7rem;
+  border: 1px solid var(--node-border);
+  border-radius: var(--node-radius);
+  background: var(--node-bg);
+  box-shadow: var(--node-shadow);
+  overflow: hidden;
+}
+
+.dropdown-text {
+  display: flex;
+  flex-direction: column;
+  min-width: 0;
+}
+
+.dropdown-text strong {
+  font-size: 0.9rem;
+  font-weight: 700;
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+}
+
+.dropdown-text small {
+  font-size: 0.76rem;
+  color: color-mix(in srgb, canvastext 60%, canvas 40%);
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+}
+
+.dropdown-select {
+  font: inherit;
+  font-size: 0.76rem;
+  padding: 0.18rem 0.3rem;
+  border: 1px solid color-mix(in srgb, canvastext 25%, canvas 75%);
+  border-radius: 6px;
+  background: canvas;
+  color: canvastext;
+  cursor: pointer;
+}
+
+/* ---------------------------------------------------------------------------
+ * Accordion card: the card's own disclosure, independent of the chart's
+ * expand/collapse. The node box is sized for the OPEN state up front, since
+ * layout cannot measure a card (see the README).
+ * ------------------------------------------------------------------------ */
+.accordion-card {
+  box-sizing: border-box;
+  width: 100%;
+  height: 100%;
+  display: flex;
+  flex-direction: column;
+  gap: 0.3rem;
+  padding: 0.55rem 0.7rem;
+  border: 1px solid var(--node-border);
+  border-radius: var(--node-radius);
+  background: var(--node-bg);
+  box-shadow: var(--node-shadow);
+  overflow: hidden;
+}
+
+.accordion-head {
+  display: flex;
+  align-items: center;
+  gap: 0.4rem;
+  min-width: 0;
+}
+
+.accordion-text {
+  display: flex;
+  flex-direction: column;
+  min-width: 0;
+  flex: 1 1 auto;
+}
+
+.accordion-text strong {
+  font-size: 0.9rem;
+  font-weight: 700;
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+}
+
+.accordion-text small {
+  font-size: 0.76rem;
+  color: color-mix(in srgb, canvastext 60%, canvas 40%);
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+}
+
+.accordion-btn {
+  font: inherit;
+  font-size: 0.68rem;
+  font-weight: 600;
+  flex: 0 0 auto;
+  padding: 0.15rem 0.45rem;
+  border: 1px solid color-mix(in srgb, canvastext 25%, canvas 75%);
+  border-radius: 999px;
+  background: canvas;
+  color: canvastext;
+  cursor: pointer;
+  white-space: nowrap;
+}
+
+.accordion-body {
+  font-size: 0.74rem;
+  line-height: 1.35;
+  color: color-mix(in srgb, canvastext 65%, canvas 35%);
+  border-top: 1px dashed color-mix(in srgb, canvastext 18%, canvas 82%);
+  padding-top: 0.3rem;
+  /* Collapsed leaves no border or padding behind — an empty pane still
+     drawing its own divider reads as a rendering fault, not a closed pane. */
+  display: none;
+}
+
+/* The card fills whatever box the layout reserved for it, and that box now
+   changes with the disclosure (the example's `nodeSize` is a function of the
+   same flag), so the open pane just takes the space that appeared instead of
+   carrying a height of its own. */
+.accordion-body.is-open {
+  display: block;
+  flex: 1 1 auto;
+  overflow: hidden;
+}
+
+/* ---------------------------------------------------------------------------
+ * Actions card: the node as a small toolbar of custom buttons.
+ * ------------------------------------------------------------------------ */
+.actions-card {
+  box-sizing: border-box;
+  width: 100%;
+  height: 100%;
+  display: flex;
+  flex-direction: column;
+  justify-content: center;
+  gap: 0.35rem;
+  padding: 0.5rem 0.7rem;
+  border: 1px solid var(--node-border);
+  border-radius: var(--node-radius);
+  background: var(--node-bg);
+  box-shadow: var(--node-shadow);
+  overflow: hidden;
+}
+
+.actions-text {
+  display: flex;
+  flex-direction: column;
+  min-width: 0;
+}
+
+.actions-text strong {
+  font-size: 0.9rem;
+  font-weight: 700;
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+}
+
+.actions-text small {
+  font-size: 0.76rem;
+  color: color-mix(in srgb, canvastext 60%, canvas 40%);
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+}
+
+.actions-bar {
+  display: flex;
+  gap: 0.3rem;
+}
+
+.action-btn {
+  font: inherit;
+  font-size: 0.8rem;
+  line-height: 1;
+  width: 1.7rem;
+  height: 1.7rem;
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  border: 1px solid color-mix(in srgb, canvastext 22%, canvas 78%);
+  border-radius: 6px;
+  background: canvas;
+  color: canvastext;
+  cursor: pointer;
+}
+
+.action-btn:hover {
+  background: color-mix(in srgb, canvastext 8%, canvas 92%);
+}
+
+.action-btn.is-on {
+  color: #f59e0b;
+  border-color: color-mix(in srgb, #f59e0b 55%, canvas 45%);
+  background: color-mix(in srgb, #f59e0b 14%, canvas 86%);
+}
+
+/* ---------------------------------------------------------------------------
+ * "Go to node" panel — sits in the canvas's own corner rather than the
+ * sidebar, because it belongs to one example rather than to the playground.
+ * Top-left, opposite the minimap's default corner, so the two never collide.
+ * ------------------------------------------------------------------------ */
+.goto-panel {
+  position: absolute;
+  top: 0.6rem;
+  left: 0.6rem;
+  /* Above the chart's canvas and its overlay cards, below nothing else — the
+     panel is chrome over the drawing, not part of it. */
+  z-index: 5;
+  display: flex;
+  align-items: center;
+  gap: 0.45rem;
+  padding: 0.4rem 0.55rem;
+  border: 1px solid var(--border);
+  border-radius: var(--radius-md);
+  background: color-mix(in srgb, var(--surface) 92%, transparent);
+  box-shadow: var(--shadow-sm);
+  backdrop-filter: blur(6px);
+}
+
+.goto-panel label {
+  font-size: 0.72rem;
+  font-weight: 600;
+  letter-spacing: 0.01em;
+  color: var(--text-muted);
+  white-space: nowrap;
+}
+
+.goto-panel .select {
+  min-width: 11rem;
+  max-width: 15rem;
+}

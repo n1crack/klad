@@ -1,0 +1,15 @@
+{
+  "//": "Declaration-emit config for the published build ONLY — `pnpm typecheck` still uses tsconfig.json, which resolves the workspace through source so an edit in another package is seen immediately.
+
+The difference is `paths`. Every package's `exports` points at its own `.ts` source during development, so TypeScript treats a sibling package as part of this compilation and emits declarations that reference its SOURCE path — `../core/src/index.d.ts`, a file that is never built and never published. The result compiled, but every type imported across a package boundary silently resolved to `undefined` in the shipped `.d.ts`: `NodeData` became `undefined`, and with it the payload of every event a consumer handles.
+
+Pointing at the siblings' built declarations instead makes the emitted imports name real files. Turbo's `^build` guarantees they exist by the time this runs.",
+  "extends": "./tsconfig.json",
+  "compilerOptions": {
+    "paths": {
+      "@klad/core": ["../vanilla/dist/index.d.ts"],
+      "@klad/engine": ["../core/dist/index.d.ts"],
+      "@klad/engine/host": ["../core/dist/worker/host.d.ts"]
+    }
+  }
+}
