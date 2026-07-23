@@ -39,10 +39,26 @@ chartRef.current?.api?.fit()
 | Method | |
 |---|---|
 | `fit()` | Zoom out to show the whole visible tree. |
+| `fitSubtree(id)` | Frame one branch instead — the smallest camera that shows `id` and everything visible below it. On a chart of thousands, "show me Engineering" is the question people actually have. |
 | `reset()` | Back to the opening view. |
 | `zoomIn()` / `zoomOut()` | One step about the viewport centre. |
 | `zoomTo(k)` | An exact scale, within `zoomLimits`. |
 | `focus(id, opts?)` | Centre a node, opening every collapsed ancestor on the way. `{ ring: true }` flashes the confirmation ring on arrival. |
+
+### Saving where you are
+
+```ts
+const view = chart.api.getView()      // { camera, open, highlighted }
+localStorage.setItem('chart', JSON.stringify(view))
+
+chart.api.setView(JSON.parse(localStorage.getItem('chart')!))
+chart.api.setView(view, { animate: true })   // fly there instead of arriving
+```
+
+A view is a plain serialisable object naming nodes by id, so it survives the
+data being refetched, reordered or grown — put one in a URL and you have a
+link to a place in a chart. Ids it names that are no longer in the tree are
+ignored rather than throwing, which is what keeps an old bookmark usable.
 
 ## Tree
 

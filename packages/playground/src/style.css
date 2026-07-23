@@ -798,6 +798,40 @@ body {
   box-shadow: 0 0 0 3px color-mix(in srgb, var(--accent) 30%, transparent);
 }
 
+/* Key hints in the View panel. Read rather than pressed, so they are quiet:
+   the point is that the keys EXIST, which nothing on the chart itself says. */
+.key-hint {
+  display: flex;
+  align-items: center;
+  gap: 0.45rem;
+  font-size: 0.7rem;
+  color: var(--text-muted);
+}
+
+.key-combo {
+  display: flex;
+  gap: 0.15rem;
+  flex: none;
+}
+
+.key-hint kbd {
+  font: inherit;
+  font-size: 0.66rem;
+  font-weight: 600;
+  min-width: 1.15rem;
+  padding: 0.05rem 0.28rem;
+  text-align: center;
+  border-radius: 4px;
+  border: 1px solid var(--border-strong);
+  border-bottom-width: 2px;
+  background: var(--surface);
+  color: canvastext;
+}
+
+.key-what {
+  min-width: 0;
+}
+
 /* ---------------------------------------------------------------------------
  * Code panel — the chart you dialled in, as options. Reported, not edited:
  * everything in it is read-only text plus one button that copies it.

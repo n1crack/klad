@@ -15,6 +15,7 @@ import {
   pan,
   pruneToVisible,
   resolveTheme,
+  subtreeOf,
   screenToWorld,
   toSVG as coreToSVG,
   toWireTree,
@@ -38,6 +39,7 @@ import {
 } from '@klad/engine'
 import { createA11yTree, type A11yTree } from './a11y.js'
 import { attachInput } from './input.js'
+import { attachKeys } from './keys.js'
 import { createMinimap, type Minimap, type MinimapOptions } from './minimap.js'
 import { createOverlay } from './overlay.js'
 
@@ -134,6 +136,18 @@ export interface Options {
    */
   animate?: boolean
   /**
+   * Keyboard control of the CAMERA: arrows pan, `+`/`-` zoom about the
+   * centre, `f` fits, `0` resets, `Home` centres the root, `Escape` clears the
+   * highlight. Turning this on is also what makes the host a tab stop, so the
+   * chart can be reached from the keyboard at all.
+   *
+   * Separate from the accessibility tree, which is always present and moves
+   * between NODES rather than moving the view (see `a11y.ts`). Defaults to
+   * `true`; set `false` if the surrounding app binds these keys itself, or if
+   * the host must not take focus.
+   */
+  keyboard?: boolean
+  /**
    * After a single-node `expand`/`collapse` (not `expandAll`/`collapseAll`,
    * which always `fit()` — the whole chart changed, so a full fit is the
    * sensible response), pins the toggled node to a FIXED screen position for
@@ -218,6 +232,25 @@ export interface ChartState {
   bounds: Bounds
   /** Screen-space centre of the first root, for tests and for `focus`. */
   rootScreenCentre: { x: number; y: number }
+  /** Whatever `highlight()` was last given, or `null`. */
+  highlighted: string[] | null
+}
+
+/**
+ * Everything about WHERE A VIEWER IS, in one plain object: the camera, which
+ * branches are open, and what is lit.
+ *
+ * Plain and serialisable on purpose — `JSON.stringify` it into a URL, a saved
+ * report, or a "resume where I was". Ids rather than indices, so a view
+ * survives the data being reordered, refetched, or grown; nodes it names that
+ * are no longer in the tree are ignored rather than throwing, which is what
+ * makes a bookmarked view still open a chart six months later.
+ */
+export interface ChartView {
+  camera: Camera
+  /** Ids of the nodes whose children are shown. */
+  open: string[]
+  highlighted: string[] | null
 }
 
 export interface KladEvents {
@@ -247,6 +280,21 @@ export interface KladApi {
   zoomIn(): void
   zoomOut(): void
   fit(): void
+  /**
+   * Frames one branch instead of the whole chart: the smallest camera that
+   * shows `id` and everything currently visible below it.
+   *
+   * The distinction that makes this worth having separately from `fit()` is
+   * scale. On a chart of tens of thousands of nodes, fitting everything means
+   * a zoom level where nothing can be read — "show me Engineering" is the
+   * question people actually have, and this is its answer.
+   *
+   * Counts only what is on screen-able: a collapsed branch inside the subtree
+   * contributes nothing, because framing space for nodes the viewer cannot
+   * see would leave the ones they can see smaller than they need to be. Does
+   * nothing for an unknown id, or for one that is itself collapsed away.
+   */
+  fitSubtree(id: string): void
   reset(): void
   /**
    * Puts `id` on screen, opening every collapsed ancestor on the way so it
@@ -346,6 +394,24 @@ export interface KladApi {
    */
   setRing(enabled: boolean): void
   getState(): ChartState
+  /**
+   * Where the viewer is, as a plain serialisable object — see `ChartView`.
+   * Pair with `setView` for a shareable link, a saved report, or a way back
+   * to where someone was before they navigated away.
+   */
+  getView(): ChartView
+  /**
+   * Restores a view from `getView`. Ids that are no longer in the tree are
+   * ignored rather than throwing: a view saved six months ago should still
+   * open the chart, showing what is left of what it named.
+   *
+   * `animate` defaults to `false` — restoring a view is arriving somewhere,
+   * not travelling there, and a viewer who just opened a link has no memory
+   * of the previous position for the motion to relate to. Pass `true` when
+   * moving between views WITHIN a session, where the flight is the thing that
+   * tells them they moved.
+   */
+  setView(view: ChartView, opts?: { animate?: boolean }): void
 }
 
 export interface KladInstance {
@@ -828,6 +894,7 @@ export function createKlad(host: HTMLElement, options: Options): KladInstance {
       camera,
       bounds,
       rootScreenCentre: centre,
+      highlighted: highlightedIds,
     }
   }
 
@@ -1472,6 +1539,26 @@ export function createKlad(host: HTMLElement, options: Options): KladInstance {
     emit('nodeHover', id === null ? { id: null, item: null } : { id, item: item! })
   }
 
+  const detachKeys =
+    options.keyboard === false
+      ? () => {}
+      : attachKeys(host, () => limits, {
+          getCamera: () => camera,
+          setCamera: setCameraInstant,
+          cancelAnimation: () => cancelCameraAnimation(false),
+          viewport: () => {
+            const rect = host.getBoundingClientRect()
+            return { width: rect.width, height: rect.height }
+          },
+          fit: () => api.fit(),
+          reset: () => api.reset(),
+          goToRoot: () => {
+            const rootId = tree.indexToId[tree.roots[0] ?? 0]
+            if (rootId !== undefined) api.focus(rootId)
+          },
+          clearHighlight: () => api.highlight(null),
+        })
+
   const detachInput = attachInput(host, () => limits, {
     getCamera: () => camera,
     setCamera: setCameraInstant,
@@ -1559,6 +1646,32 @@ export function createKlad(host: HTMLElement, options: Options): KladInstance {
     fit() {
       const rect = host.getBoundingClientRect()
       animateTo(fitCamera(bounds, { width: rect.width, height: rect.height }, FIT_PADDING, limits))
+    },
+    fitSubtree(id) {
+      const index = tree.idToIndex.get(id)
+      if (index === undefined) return
+      // Only what is on screen-able: `boxOfSource` returns null for anything
+      // inside a collapsed branch, and framing room for nodes the viewer
+      // cannot see would leave the ones they can see smaller than they need
+      // to be. A subtree whose own root is collapsed away has no box at all,
+      // and there is nothing to frame.
+      let minX = Infinity
+      let minY = Infinity
+      let maxX = -Infinity
+      let maxY = -Infinity
+      for (const source of subtreeOf(tree, index)) {
+        const box = boxOfSource(source)
+        if (box === null) continue
+        minX = Math.min(minX, box.x)
+        minY = Math.min(minY, box.y)
+        maxX = Math.max(maxX, box.x + box.w)
+        maxY = Math.max(maxY, box.y + box.h)
+      }
+      if (minX === Infinity) return
+      const rect = host.getBoundingClientRect()
+      animateTo(
+        fitCamera({ minX, minY, maxX, maxY }, { width: rect.width, height: rect.height }, FIT_PADDING, limits),
+      )
     },
     reset() {
       api.fit()
@@ -1845,6 +1958,44 @@ export function createKlad(host: HTMLElement, options: Options): KladInstance {
       currentOptions = { ...currentOptions, ring: enabled }
     },
     getState,
+    getView() {
+      const openIds: string[] = []
+      for (let i = 0; i < tree.count; i++) {
+        if (open[i] === 1) openIds.push(tree.indexToId[i]!)
+      }
+      // Copies, not the live arrays: a view is a snapshot, and one that
+      // changed under its holder as the chart moved would be a bug that only
+      // shows up in whoever stored it.
+      return {
+        camera: { ...camera },
+        open: openIds,
+        highlighted: highlightedIds === null ? null : [...highlightedIds],
+      }
+    },
+    setView(view, opts) {
+      // Open state first: the camera is meaningless against a layout that has
+      // not happened yet, and expanding changes where everything is.
+      const wanted = new Set(view.open)
+      for (let i = 0; i < tree.count; i++) {
+        const next: 0 | 1 = wanted.has(tree.indexToId[i]!) ? 1 : 0
+        if (open[i] === next) continue
+        open[i] = next
+        // No ring on any of these: a restored view is not a toggle the viewer
+        // performed, and a chart that flashes once per changed branch on
+        // arrival is exactly the strobe the ring exists to avoid.
+        chartHost.setOpen(i, next === 1, false)
+      }
+      a11yDirty = true
+
+      // Ids that have since left the tree are dropped rather than throwing —
+      // see `ChartView`. `highlight` already ignores unknown ids, so this only
+      // has to preserve `null` as "nothing lit".
+      api.highlight(view.highlighted === null ? null : [...view.highlighted])
+
+      if (opts?.animate === true) animateTo({ ...view.camera })
+      else setCameraInstant({ ...view.camera })
+      scheduleFrame()
+    },
   }
 
   // Created here, after `api`, because both call back into it.
@@ -1890,6 +2041,7 @@ export function createKlad(host: HTMLElement, options: Options): KladInstance {
       cancelCameraAnimation()
       observer.disconnect()
       detachInput()
+      detachKeys()
       overlay?.destroy()
       a11y?.destroy()
       minimap?.destroy()

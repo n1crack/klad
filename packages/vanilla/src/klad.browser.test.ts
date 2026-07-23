@@ -341,6 +341,172 @@ describe('createKlad', () => {
     expect(getComputedStyle(el).touchAction).not.toBe('none')
   })
 
+  // Keyboard camera. Not the accessibility tree — that mirrors the STRUCTURE
+  // and its arrows move between nodes; these move the VIEW, which is what a
+  // sighted user reaches for after clicking the chart.
+  it('makes the host a tab stop, and gives it back on destroy', async () => {
+    const el = host()
+    const chart = createKlad(el, { data: DATA, worker: false })
+    await nextFrame()
+    // Without this the chart cannot be reached from the keyboard at all: it is
+    // clickable, and then Tab walks straight past it into the overlay cards.
+    expect(el.tabIndex).toBe(0)
+    chart.destroy()
+    expect(el.hasAttribute('tabindex')).toBe(false)
+  })
+
+  it('pans with the arrow keys, and strides with shift held', async () => {
+    const chart = make()
+    await settle()
+    const el = document.querySelector('canvas')!.parentElement!
+    const before = chart.api.getState().camera.x
+
+    el.dispatchEvent(new KeyboardEvent('keydown', { key: 'ArrowRight', bubbles: true }))
+    await nextFrame()
+    const stepped = chart.api.getState().camera.x
+    // Right moves the VIEW right, so the content goes the other way — the
+    // relationship a scrollbar has with its page, not the one dragging has.
+    expect(stepped).toBeLessThan(before)
+
+    el.dispatchEvent(new KeyboardEvent('keydown', { key: 'ArrowLeft', shiftKey: true, bubbles: true }))
+    await nextFrame()
+    // One shifted press in the opposite direction more than undoes one plain
+    // press: the stride is a multiple of the step, not the same distance.
+    expect(chart.api.getState().camera.x).toBeGreaterThan(before)
+    chart.destroy()
+  })
+
+  it('zooms on + and -, about the middle of the host', async () => {
+    const chart = make()
+    await settle()
+    const el = document.querySelector('canvas')!.parentElement!
+    const before = chart.api.getState().camera.k
+
+    el.dispatchEvent(new KeyboardEvent('keydown', { key: '+', bubbles: true }))
+    await nextFrame()
+    const zoomedIn = chart.api.getState().camera.k
+    expect(zoomedIn).toBeGreaterThan(before)
+
+    el.dispatchEvent(new KeyboardEvent('keydown', { key: '-', bubbles: true }))
+    await nextFrame()
+    expect(chart.api.getState().camera.k).toBeLessThan(zoomedIn)
+    chart.destroy()
+  })
+
+  it('clears the highlight on Escape', async () => {
+    const chart = make()
+    await settle()
+    chart.api.highlight(['a', 'b'])
+    await nextFrame()
+    const el = document.querySelector('canvas')!.parentElement!
+    el.dispatchEvent(new KeyboardEvent('keydown', { key: 'Escape', bubbles: true }))
+    await nextFrame()
+    expect(chart.api.getState().highlighted).toBeNull()
+    chart.destroy()
+  })
+
+  // A card can hold a real form control (see the playground's dropdown
+  // example). Panning the chart out from under someone typing in it would be
+  // a bug, not a feature.
+  it('leaves the keys alone when a card\'s own control has focus', async () => {
+    const chart = make()
+    await settle()
+    const el = document.querySelector('canvas')!.parentElement!
+    const before = chart.api.getState().camera.x
+
+    const input = document.createElement('input')
+    el.append(input)
+    input.focus()
+    input.dispatchEvent(new KeyboardEvent('keydown', { key: 'ArrowRight', bubbles: true }))
+    await nextFrame()
+
+    expect(chart.api.getState().camera.x).toBe(before)
+    input.remove()
+    chart.destroy()
+  })
+
+  it('binds nothing, and takes no focus, when keyboard is off', async () => {
+    const el = host()
+    const chart = createKlad(el, { data: DATA, worker: false, keyboard: false })
+    await settle()
+    const before = chart.api.getState().camera.x
+    expect(el.hasAttribute('tabindex')).toBe(false)
+    el.dispatchEvent(new KeyboardEvent('keydown', { key: 'ArrowRight', bubbles: true }))
+    await nextFrame()
+    expect(chart.api.getState().camera.x).toBe(before)
+    chart.destroy()
+  })
+
+  // `fitSubtree` — the question people actually have on a large chart is not
+  // "show me everything", it is "show me this branch".
+  it('frames one branch tighter than the whole chart', async () => {
+    const chart = make()
+    await settle()
+    chart.api.fit()
+    await settle()
+    const whole = chart.api.getState().camera.k
+
+    chart.api.fitSubtree('b')
+    await settle()
+    // 'b' and its one child occupy a fraction of the tree, so framing them
+    // has to arrive closer than framing all four nodes did.
+    expect(chart.api.getState().camera.k).toBeGreaterThan(whole)
+    chart.destroy()
+  })
+
+  it('ignores fitSubtree for an unknown id rather than throwing', async () => {
+    const chart = make()
+    await settle()
+    const before = { ...chart.api.getState().camera }
+    chart.api.fitSubtree('nope')
+    await settle()
+    expect(chart.api.getState().camera).toEqual(before)
+    chart.destroy()
+  })
+
+  // A view is where a viewer IS: camera, what is open, what is lit. It has to
+  // survive a round trip through JSON, because the point of it is a URL.
+  it('restores a camera, an open set and a highlight from a saved view', async () => {
+    const chart = make()
+    await settle()
+    chart.api.collapse('b')
+    chart.api.highlight(['a', 'c'])
+    chart.api.zoomTo(1.75)
+    await settle()
+
+    const view = JSON.parse(JSON.stringify(chart.api.getView()))
+    expect(view.open).not.toContain('b')
+    expect(view.highlighted).toEqual(['a', 'c'])
+
+    // Move everything somewhere else, then come back.
+    chart.api.expandAll()
+    chart.api.highlight(null)
+    chart.api.zoomTo(0.5)
+    await settle()
+
+    chart.api.setView(view)
+    await settle()
+
+    const state = chart.api.getState()
+    expect(state.camera.k).toBeCloseTo(1.75, 5)
+    expect(state.highlighted).toEqual(['a', 'c'])
+    // 'b' closed again, so its child is out of the visible tree.
+    expect(state.visibleCount).toBe(3)
+    chart.destroy()
+  })
+
+  it('drops ids a view names that are no longer in the tree', async () => {
+    const chart = make()
+    await settle()
+    // A view saved when the chart had a node it no longer has: it should open
+    // what is left rather than throw, which is what makes an old bookmark
+    // still usable.
+    chart.api.setView({ camera: { x: 0, y: 0, k: 1 }, open: ['a', 'ghost'], highlighted: ['ghost'] })
+    await settle()
+    expect(chart.api.getState().visibleCount).toBe(3)
+    chart.destroy()
+  })
+
   it('zooms about the cursor on wheel', async () => {
     const chart = make()
     // The opening view arrives on a tween of its own. Reading `before` one

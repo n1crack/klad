@@ -253,6 +253,33 @@ const demoGroup = sidebarGroup('Demo', stackField, exampleField)
 
 let currentApi: KladApi | null = null
 
+/**
+ * The same commands the keyboard has, as buttons — and then the keys
+ * themselves, listed.
+ *
+ * The list is here because the feature is invisible otherwise: the chart takes
+ * focus and answers to arrows, but nothing on screen says so, and the first
+ * person to try it in this playground reported the keys as broken rather than
+ * as undiscovered. A control panel is the one place a reader is already
+ * looking for "what can I do".
+ */
+function keyHint(keys: string, what: string): HTMLDivElement {
+  const row = document.createElement('div')
+  row.className = 'key-hint'
+  const combo = document.createElement('span')
+  combo.className = 'key-combo'
+  for (const key of keys.split(' ')) {
+    const kbd = document.createElement('kbd')
+    kbd.textContent = key
+    combo.append(kbd)
+  }
+  const label = document.createElement('span')
+  label.className = 'key-what'
+  label.textContent = what
+  row.append(combo, label)
+  return row
+}
+
 const viewGroup = sidebarGroup(
   'View',
   sidebarButton('Zoom In', () => currentApi?.zoomIn()),
@@ -260,6 +287,15 @@ const viewGroup = sidebarGroup(
   sidebarButton('Fit', () => currentApi?.fit()),
   sidebarButton('Expand All', () => currentApi?.expandAll()),
   sidebarButton('Collapse All', () => currentApi?.collapseAll()),
+  subGroup(
+    'Keys',
+    keyHint('← ↑ → ↓', 'Pan — hold Shift to stride'),
+    keyHint('+ −', 'Zoom'),
+    keyHint('F', 'Fit'),
+    keyHint('0', 'Opening view'),
+    keyHint('Home', 'Centre the root'),
+    keyHint('Esc', 'Clear the highlight'),
+  ),
 )
 
 // --- "Minimap" group: on/off toggle plus a corner picker ---

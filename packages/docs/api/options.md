@@ -40,6 +40,7 @@ that produces a usable chart.
 
 | Option | Type | Default | |
 |---|---|---|---|
+| `keyboard` | `boolean` | `true` | Camera control from the keyboard, and the tab stop that makes the chart reachable at all — see [Navigating](/guide/navigating#keyboard). |
 | `animate` | `boolean` | `true` | Every animation this layer starts on its own: the expand/collapse transition, camera eases, kinetic panning. `prefers-reduced-motion: reduce` forces it off regardless. |
 | `autoPanOnToggle` | `boolean` | `true` | Keeps the toggled node pinned on screen while the layout moves around it. |
 | `ring` | `boolean` | `true` | The one-shot confirmation flash after a single-node toggle. |
