@@ -573,14 +573,14 @@ body {
 
   /* Full width, under its label, rather than a fixed 11rem that would push the
      panel off the side of a narrow surface. */
-  .goto-panel {
+  .surface-panel {
     right: 0.6rem;
     flex-direction: column;
     align-items: stretch;
     gap: 0.25rem;
   }
 
-  .goto-panel .select {
+  .surface-panel .select {
     min-width: 0;
     max-width: none;
   }
@@ -1728,7 +1728,7 @@ body {
  * sidebar, because it belongs to one example rather than to the playground.
  * Top-left, opposite the minimap's default corner, so the two never collide.
  * ------------------------------------------------------------------------ */
-.goto-panel {
+.surface-panel {
   position: absolute;
   top: 0.6rem;
   left: 0.6rem;
@@ -1746,7 +1746,7 @@ body {
   backdrop-filter: blur(6px);
 }
 
-.goto-panel label {
+.surface-panel label {
   font-size: 0.72rem;
   font-weight: 600;
   letter-spacing: 0.01em;
@@ -1754,7 +1754,44 @@ body {
   white-space: nowrap;
 }
 
-.goto-panel .select {
+.surface-panel .select {
   min-width: 11rem;
   max-width: 15rem;
+}
+
+/* The branch-and-view panel stacks instead of running along one line: it holds
+   a picker and two buttons, and a single row of that is wider than the chart
+   it floats over on anything but a desktop. */
+.surface-panel-stacked {
+  flex-direction: column;
+  align-items: stretch;
+  gap: 0.35rem;
+}
+
+.panel-row {
+  display: flex;
+  align-items: center;
+  gap: 0.35rem;
+}
+
+.panel-row .btn {
+  flex: 0 0 auto;
+}
+
+.btn:disabled {
+  opacity: 0.45;
+  cursor: not-allowed;
+}
+
+.btn:disabled:hover {
+  background: var(--surface);
+  border-color: var(--border-strong);
+}
+
+/* Reads the saved view back to the viewer, so "Save" is visibly something
+   rather than a button that appears to do nothing. */
+.panel-note {
+  font-size: 0.68rem;
+  color: var(--text-muted);
+  white-space: nowrap;
 }

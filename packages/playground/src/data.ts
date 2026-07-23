@@ -347,6 +347,13 @@ export interface Example {
    * something on one of them is worse than no control.
    */
   gotoControl?: boolean
+  /**
+   * Shows the "branch and view" panel on the canvas: a branch picker wired to
+   * `fitSubtree`, and save/restore buttons for `getView`/`setView`. Same
+   * per-example opt-in as `gotoControl`, for the same reason — these belong to
+   * the one example that is about them.
+   */
+  viewControl?: boolean
 }
 
 // Shared by every example except "Large", which needs its own scale and its
@@ -390,7 +397,7 @@ export const EXAMPLES: Example[] = [
     id: 'basic',
     name: 'Basic',
     description:
-      "28 nodes, every option left at its default (plus minimap: true) — the reference example. At this scale the minimap's silhouette actually reads as a tree, and the viewport rectangle covers a real fraction of it — contrast that with Large, below, which is deep and narrow rather than wide.",
+      'Nothing configured but the minimap — the chart you get from data alone. Every other example is this with one thing changed.',
     data: SHARED_DATA,
     options: { minimap: true },
     content: 'card',
@@ -399,7 +406,7 @@ export const EXAMPLES: Example[] = [
     id: 'orientations',
     name: 'Orientations',
     description:
-      "Same data as Basic, laid out with orientation: 'lr'. Connector elbows split on the x axis instead of the y axis.",
+      'The same tree growing left to right instead of top to bottom.',
     data: SHARED_DATA,
     options: { orientation: 'lr' },
     content: 'card',
@@ -408,7 +415,7 @@ export const EXAMPLES: Example[] = [
     id: 'rtl',
     name: 'RTL',
     description:
-      "Same data, rtl: true on a top-to-bottom chart — sibling order mirrors, the growth direction does not.",
+      'Mirrored sibling order, for charts read right to left. The tree still grows downward.',
     data: SHARED_DATA,
     options: { orientation: 'tb', rtl: true },
     content: 'card',
@@ -417,7 +424,7 @@ export const EXAMPLES: Example[] = [
     id: 'variable-sizes',
     name: 'Variable node sizes',
     description:
-      'nodeSize is a function returning one of three sizes per node, so the layout has to handle mismatched node dimensions.',
+      'Cards of three different sizes in one chart, for data where some nodes carry more than others.',
     data: SHARED_DATA,
     options: {
       nodeSize: (item) => {
@@ -430,7 +437,7 @@ export const EXAMPLES: Example[] = [
   {
     id: 'collapsed',
     name: 'Collapsed by default',
-    description: 'collapsedByDefault: true — every node starts closed; expand from a cold start.',
+    description: 'Everything starts closed. Open a branch at a time, or use Expand All.',
     data: SHARED_DATA,
     options: { collapsedByDefault: true },
     content: 'card',
@@ -439,7 +446,7 @@ export const EXAMPLES: Example[] = [
     id: 'avatar-card',
     name: 'Avatar card',
     description:
-      'Circular initials monogram plus name and role — the most common org chart look. nodeSize: 224×96, declared to fit exactly. minimap: true — a wider node size shifts the silhouette proportions versus Basic.',
+      'The familiar org chart card: initials, a name and a role.',
     data: SHARED_DATA,
     options: { nodeSize: { w: 224, h: 96 }, minimap: true },
     content: 'avatar',
@@ -448,7 +455,7 @@ export const EXAMPLES: Example[] = [
     id: 'avatar-circle',
     name: 'Avatar circle',
     description:
-      'Just a floating circle and a name — no card box. The connector meets the node at the bottom, under the name, where a +/- toggle sits tight against that junction (shown only on nodes with reports; a leaf shows none). nodeSize: 96×108, snug around the circle, name and toggle with almost no slack. toggleOnNodeClick: true still works too: tap the circle itself to expand or collapse. The canvas\'s own node box is made transparent via theme.nodeFill/nodeStroke so nothing but the circle, name and toggle ever paints, and label is suppressed so the canvas does not also draw the name as plain text underneath.',
+      'No card at all — a floating avatar with the name under it, and the toggle sitting where the line to its reports begins. Tap the circle to open or close.',
     data: SHARED_DATA,
     options: {
       nodeSize: { w: 96, h: 108 },
@@ -462,7 +469,7 @@ export const EXAMPLES: Example[] = [
     id: 'status-card',
     name: 'Status card',
     description:
-      'Department-coloured accent plus a headcount badge — a second dimension of meaning riding along with the hierarchy. No room left for a toggle button at this density, so toggleOnNodeClick: true is on instead: tap the card to expand or collapse it. nodeSize: 208×88. minimap: true, top-left this time — position is per-instance.',
+      'Colour carrying a second meaning alongside the hierarchy: which department someone is in, and how many people report to them. Tap a card to open or close it.',
     data: SHARED_DATA,
     options: { nodeSize: { w: 208, h: 88 }, toggleOnNodeClick: true, minimap: { position: 'top-left' } },
     content: 'status',
@@ -471,7 +478,7 @@ export const EXAMPLES: Example[] = [
     id: 'photo-tile',
     name: 'Photo tile',
     description:
-      'A squarer, image-dominant card (CSS-gradient placeholder photo, no network) — a very different aspect ratio from the wide default card. nodeSize: 132×156.',
+      'A taller, picture-led card, for charts where the face matters more than the title.',
     data: SHARED_DATA,
     options: { nodeSize: { w: 132, h: 156 } },
     content: 'photo',
@@ -480,7 +487,7 @@ export const EXAMPLES: Example[] = [
     id: 'counts',
     name: 'Subtree counts',
     description:
-      'Every card reports its own subtree: direct reports, everyone below at any depth, its level from the root, and how deep its own subtree runs. All four come from the node context and are precomputed once per tree, so a card reads them as array lookups rather than counting a subtree while it is being drawn. Collapse a branch and the numbers do not change — they describe the whole tree, not the part currently expanded. nodeSize: 216×96.',
+      'Every card reporting on its own branch: direct reports, everyone below at any depth, and how deep it runs. Collapse a branch — the numbers describe the whole tree, not the part you can see.',
     data: SHARED_DATA,
     options: { nodeSize: { w: 216, h: 96 } },
     content: 'counts',
@@ -489,7 +496,7 @@ export const EXAMPLES: Example[] = [
     id: 'dropdown',
     name: 'Card with a dropdown',
     description:
-      'A real <select> living on a pooled overlay card above the canvas. Opening the menu must not pan the chart and choosing an option must not read as a node tap; the chosen value is written back to the node data so it survives the element being recycled onto another node. nodeSize: 208×92.',
+      'A real form control living on a card. Opening it does not pan the chart, and choosing an option is not mistaken for clicking the node.',
     data: SHARED_DATA,
     options: { nodeSize: { w: 208, h: 92 } },
     content: 'dropdown',
@@ -498,7 +505,7 @@ export const EXAMPLES: Example[] = [
     id: 'accordion',
     name: 'Accordion detail',
     description:
-      "A second, independent kind of open: the card's own detail pane, which has nothing to do with the chart's expand/collapse of children. The disclosure state lives on the node data, and the node GROWS with it — nodeSize is a function of that state, so opening a card makes it taller and the whole layout reflows around it. It slides rather than snapping: sizes are declared, never measured off the DOM (layout runs in a worker), so the demo eases the number nodeSize returns from 72 to 132 over 200ms and calls api.refresh() on each frame — which re-reads every node's size while keeping expand/collapse, camera and highlight exactly where they were. Note that this is a full relayout per frame, affordable at 28 nodes and deliberately not how the library's own expand/collapse transition works.",
+      'A card with its own detail pane, opening independently of the chart\'s own expand and collapse — and the layout sliding out of its way as it grows.',
     data: SHARED_DATA,
     options: {
       // A function of the card's own disclosure PROGRESS, not just its open
@@ -516,7 +523,7 @@ export const EXAMPLES: Example[] = [
     id: 'actions',
     name: 'Custom buttons',
     description:
-      "The node as a small toolbar: star it, jump to it, expand it. Arbitrary controls can live on a card and each keeps its own click — the chart's own toggle is just one button among them rather than an affordance the library imposes. The ⇢ button marks the path from the root and flies there with a confirmation ring, which is the go-to-node command in one gesture. nodeSize: 212×96.",
+      'The node as a small toolbar. Star someone, or use the arrow to fly to them with the route from the top marked.',
     data: SHARED_DATA,
     options: { nodeSize: { w: 212, h: 96 } },
     content: 'actions',
@@ -525,17 +532,27 @@ export const EXAMPLES: Example[] = [
     id: 'goto',
     name: 'Go to node',
     description:
-      "Everything starts closed, and the combo box in the sidebar jumps to whichever node you pick — opening the way to it if it is buried, going straight there if it is already on screen. One call does both: api.focus(id) expands every collapsed ancestor and then centres the node, waiting for the layout that expansion produced rather than reading a box that does not exist yet. The path from the root is painted with api.highlight(api.pathTo(id)), which lights the nodes and the connectors between them, and the confirmation ring fires on arrival rather than on departure so the whole flash happens where you are looking.",
+      'Finding someone in a chart that starts fully closed. Pick a name and the way opens, the route from the top lights up, and the camera arrives on them.',
     data: SHARED_DATA,
     options: { collapsedByDefault: true, nodeSize: { w: 200, h: 72 } },
     content: 'card',
     gotoControl: true,
   },
   {
+    id: 'views',
+    name: 'Branches and views',
+    description:
+      'Frame one branch instead of the whole chart, and save where you are so you can come back to it — or send it to someone. Pan and zoom away after saving, then restore.',
+    data: SHARED_DATA,
+    options: { minimap: true, nodeSize: { w: 200, h: 72 } },
+    content: 'card',
+    viewControl: true,
+  },
+  {
     id: 'canvas-only',
     name: 'Canvas only',
     description:
-      'No renderNode at all — the chart is pure canvas. A frameworkless user pays nothing for DOM; this is what the canvas tier draws on its own.',
+      'No cards at all — what the canvas draws by itself. The lightest the chart gets.',
     data: SHARED_DATA,
     options: {},
     content: 'none',
@@ -544,7 +561,7 @@ export const EXAMPLES: Example[] = [
     id: 'large',
     name: 'Large (20k)',
     description:
-      "20,000 nodes with the minimap on: a normal-looking crown for the first few levels, then long single-file reporting chains, so the tree reads as tall and narrow (~127 levels deep) rather than the near-flat band a uniformly branching tree of this size would be. Zoom in and out to watch the LOD tiers switch (thresholds at k = 0.25 and k = 0.6), and use the silhouette in the corner to see where you are in the whole tree.",
+      '20,000 nodes. Zoom out and watch the cards give way to labels and then to plain shapes; the minimap in the corner is how you keep your place.',
     // Getter, not a plain property: the 20k-node tree is built on first read
     // of `.data`, i.e. only once this example is actually selected.
     get data() {

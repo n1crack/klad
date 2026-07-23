@@ -1,7 +1,7 @@
 import { createApp } from 'vue'
 import { createElement } from 'react'
 import { createRoot, type Root } from 'react-dom/client'
-import type { KladApi, Theme } from '@klad/core'
+import type { ChartView, KladApi, Theme } from '@klad/core'
 import {
   BLOCK_FILL_SEED,
   EDGE_RADIUS_MAX,
@@ -736,7 +736,7 @@ const gotoLabel = document.createElement('label')
 gotoLabel.textContent = 'Go to node'
 gotoLabel.htmlFor = 'goto-select'
 const gotoField = document.createElement('div')
-gotoField.className = 'goto-panel'
+gotoField.className = 'surface-panel'
 gotoField.append(gotoLabel, gotoSelect)
 
 // The surface is the chart's own host: a pointer landing here would otherwise
@@ -756,6 +756,125 @@ gotoSelect.onchange = () => {
   // starts as.
   currentApi?.highlight(currentApi.pathTo(id))
   currentApi?.focus(id, { ring: true })
+}
+
+/**
+ * "Branch and view" — the panel for the example about `fitSubtree` and
+ * `getView`/`setView`.
+ *
+ * On the canvas rather than in the sidebar for the same reason the go-to combo
+ * box is: it belongs to ONE example, and a control that means nothing on the
+ * other fifteen reads as broken. It also sits next to what it acts on.
+ */
+const branchSelect = document.createElement('select')
+branchSelect.id = 'branch-select'
+branchSelect.className = 'select'
+const branchLabel = document.createElement('label')
+branchLabel.textContent = 'Frame branch'
+branchLabel.htmlFor = 'branch-select'
+
+/**
+ * The last saved view, and the only state this panel keeps. In a real app this
+ * is the thing you would put in a URL — it is a plain object of ids and
+ * numbers, which is the whole point of it (see `getView`).
+ */
+let savedView: ChartView | null = null
+
+const saveViewButton = document.createElement('button')
+saveViewButton.type = 'button'
+saveViewButton.className = 'btn'
+saveViewButton.textContent = 'Save view'
+
+const restoreViewButton = document.createElement('button')
+restoreViewButton.type = 'button'
+restoreViewButton.className = 'btn'
+restoreViewButton.textContent = 'Restore'
+
+const viewNote = document.createElement('span')
+viewNote.className = 'panel-note'
+
+function updateViewButtons(): void {
+  restoreViewButton.disabled = savedView === null
+  viewNote.textContent =
+    savedView === null
+      ? 'Nothing saved yet'
+      : `${savedView.open.length} open · zoom ${savedView.camera.k.toFixed(2)}`
+}
+
+branchSelect.onchange = () => {
+  const id = branchSelect.value
+  if (id === '') return
+  // Frames the branch and lights it, so it is obvious WHICH branch was framed
+  // once the camera stops — at a tight zoom the surrounding chart is off
+  // screen and there is otherwise nothing to compare against.
+  currentApi?.highlight(currentApi.pathTo(id))
+  currentApi?.fitSubtree(id)
+}
+
+saveViewButton.onclick = () => {
+  const view = currentApi?.getView()
+  if (view === undefined) return
+  // Round-tripped through JSON deliberately: this is what a URL or a database
+  // column would do to it, and doing it here means the demo cannot
+  // accidentally rely on anything that would not survive the trip.
+  savedView = JSON.parse(JSON.stringify(view)) as ChartView
+  updateViewButtons()
+}
+
+restoreViewButton.onclick = () => {
+  if (savedView === null) return
+  // Animated because this is a move WITHIN a session: the viewer remembers
+  // where they were, and the flight is what tells them they went back rather
+  // than that something jumped.
+  currentApi?.setView(savedView, { animate: true })
+}
+
+const viewButtons = document.createElement('div')
+viewButtons.className = 'panel-row'
+viewButtons.append(saveViewButton, restoreViewButton, viewNote)
+
+const viewField = document.createElement('div')
+viewField.className = 'surface-panel surface-panel-stacked'
+viewField.append(branchLabel, branchSelect, viewButtons)
+
+for (const type of ['pointerdown', 'wheel'] as const) {
+  viewField.addEventListener(type, (event) => event.stopPropagation())
+}
+
+/**
+ * Fills the branch picker with the nodes that HAVE children — framing a leaf
+ * is framing one card, which is a zoom rather than an answer — and hides the
+ * panel for every example that did not ask for it.
+ */
+function syncViewControl(example: Example): void {
+  viewField.remove()
+  savedView = null
+  updateViewButtons()
+  if (example.viewControl !== true) return
+
+  surface.append(viewField)
+  const childCount = new Map<string, number>()
+  for (const item of example.data) {
+    const parentId = item.parentId
+    if (parentId === undefined || parentId === null) continue
+    const key = String(parentId)
+    childCount.set(key, (childCount.get(key) ?? 0) + 1)
+  }
+
+  branchSelect.innerHTML = ''
+  const placeholder = document.createElement('option')
+  placeholder.value = ''
+  placeholder.textContent = 'Pick a branch…'
+  branchSelect.append(placeholder)
+  for (const item of example.data) {
+    const count = childCount.get(item.id) ?? 0
+    if (count === 0) continue
+    const option = document.createElement('option')
+    option.value = item.id
+    option.textContent = `${String(item.name ?? item.id)} — ${count} report${count === 1 ? '' : 's'}`
+    branchSelect.append(option)
+  }
+  branchSelect.value = ''
 }
 
 /**
@@ -1236,6 +1355,7 @@ function show(stack: Stack, exampleId: string): void {
 
   const example = findExample(exampleId)
   syncGotoControl(example)
+  syncViewControl(example)
   descriptionText.textContent = example.description
   description.classList.remove('is-expanded')
 
