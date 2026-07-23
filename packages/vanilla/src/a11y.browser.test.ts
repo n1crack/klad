@@ -507,9 +507,9 @@ describe('pooled update performance', () => {
     const labelOf = (i: number) => tree.indexToId[i]!
     const RUNS = 5
 
-    // Same method as the pre-pooling baseline (measured at 15.86ms, range
-    // 14.0-18.8ms over five runs, see docs/superpowers/decisions-to-revisit.md
-    // #23): build the tree once, then measure update() populating a mirror
+    // Same method as the pre-pooling baseline, which measured 15.86ms over
+    // five runs (range 14.0–18.8ms): build the tree once, then measure
+    // update() populating a mirror
     // from nothing, averaged over several runs. Each run uses its own fresh
     // createA11yTree so every measured call is a cold "populate from
     // nothing" call — the one call in the pooled implementation that still

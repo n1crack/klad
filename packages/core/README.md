@@ -41,8 +41,8 @@ main entry stays importable inside the Web Worker it also ships
 (`worker/chart.worker.ts`).
 
 Full architecture notes live in the
-[repository README](https://github.com/n1crack/klad#readme) and the
-[design document](https://github.com/n1crack/klad/blob/main/docs/superpowers/specs/2026-07-21-orgchart-rework-design.md).
+[repository README](https://github.com/n1crack/klad#readme) and in the
+[documentation](https://klad.ozdemir.be).
 
 ## Licence
 
