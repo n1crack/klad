@@ -111,6 +111,39 @@ export const DEFAULT_THEME: Readonly<Theme> = Object.freeze({
   ringMaxOffset: 4,
 })
 
+/**
+ * The same theme for a dark host. Not a mode the library switches into on its
+ * own — it has no opinion about your page — but the set of values you would
+ * otherwise have to derive by hand, ready to spread:
+ *
+ * ```ts
+ * chart.api.setTheme(dark ? DARK_THEME : DEFAULT_THEME)
+ * ```
+ *
+ * Two of these tokens are not free to choose, and they are the reason this
+ * exists rather than being left as an exercise. `nodeFill` and `cornerRadius`
+ * are painted BEHIND your overlay cards: whatever colour and radius the card's
+ * own CSS uses, these have to be the same, or the box underneath shows around
+ * the card's edges — a halo at each corner where the two rounded rectangles
+ * part company, or in the light-theme-under-dark-cards case a white slab
+ * behind every card. Drive both from one place (a CSS custom property the card
+ * and this both read) rather than setting them twice and hoping.
+ *
+ * The accents (`highlightStroke`, `edgeHighlightStroke`, `ringStroke`) are the
+ * same amber as the light theme: they answer a question the user just asked,
+ * and that meaning should not change with the page's background. Only
+ * `highlightFill`, which is a large filled area rather than a line, moves to
+ * the dark end of the same hue — amber-100 behind white text is unreadable.
+ */
+export const DARK_THEME: Readonly<Theme> = Object.freeze({
+  ...DEFAULT_THEME,
+  nodeFill: '#1b2029',
+  nodeStroke: '#333c4b',
+  edgeStroke: '#3a4453',
+  labelColour: '#e7eaf0',
+  highlightFill: '#4a3a12',
+})
+
 /** Assigns `value` into `target[key]` only when it is not `undefined`. */
 function assignDefined<T, K extends keyof T>(target: T, key: K, value: T[K] | undefined): void {
   if (value !== undefined) target[key] = value

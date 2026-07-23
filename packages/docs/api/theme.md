@@ -17,6 +17,10 @@ chart.api.setTheme({ edgeStroke: '#94a3b8' })
 `setTheme` merges over the **current** theme, not the defaults, so an earlier
 call's tokens survive unless this one overrides them too.
 
+Every token below has a default; the tables give the light one. `DEFAULT_THEME`
+and `DARK_THEME` are both exported, ready to spread — see
+[Dark mode](#dark-mode).
+
 ## Nodes
 
 | Token | Default | |
@@ -59,3 +63,66 @@ call's tokens survive unless this one overrides them too.
 Setting `highlightStroke`, `edgeHighlightStroke` and `ringStroke` to one colour
 is usually right: they all answer a question the user just asked, and a route
 drawn in one colour but confirmed in another reads as two unrelated events.
+
+## Dark mode
+
+Two palettes ship, both frozen `Theme` objects: `DEFAULT_THEME` and
+`DARK_THEME`. Switching is one call, and it is paint-only — camera, expand
+state and highlight all survive it.
+
+```ts
+import { DARK_THEME, DEFAULT_THEME } from '@n1crack/orgchart'
+
+const media = window.matchMedia('(prefers-color-scheme: dark)')
+const apply = () => chart.api.setTheme(media.matches ? DARK_THEME : DEFAULT_THEME)
+apply()
+media.addEventListener('change', apply)
+```
+
+`setTheme` merges, so pushing a whole palette also resets anything you set
+yourself earlier. If your app has its own theme tokens on top — a brand accent,
+a heavier connector — either re-apply them after the switch or push only the
+tokens that actually differ between the two:
+
+```ts
+const modeKeys = (Object.keys(DEFAULT_THEME) as (keyof Theme)[])
+  .filter((key) => DEFAULT_THEME[key] !== DARK_THEME[key])
+```
+
+### Cards must agree with the box underneath them
+
+The one part that is not a matter of taste. Your overlay cards are DOM sitting
+on top of a node box the canvas has already painted, so `nodeFill` and
+`cornerRadius` are not decoration — they are the colour and radius your card's
+own CSS has to have. Where they disagree, the canvas's box shows around the
+card: a halo at each corner where two different radii part company, or, with a
+light theme left under dark cards, a white slab behind every one of them.
+
+Drive both from one value rather than setting them twice:
+
+```ts
+document.documentElement.style.setProperty('--node-bg', theme.nodeFill)
+document.documentElement.style.setProperty('--node-radius', `${theme.cornerRadius}px`)
+chart.api.setTheme(theme)
+```
+
+```css
+.my-card {
+  background: var(--node-bg);
+  border-radius: var(--node-radius);
+}
+```
+
+An example that deliberately wants no box at all — a floating avatar, say —
+sets `nodeFill: 'transparent'` and `nodeStroke: 'transparent'` instead, and
+then has nothing to match.
+
+### The rest of the page
+
+Two things outside this table also carry the mode:
+
+- **Card shadows.** A shadow mixed from the page's text colour becomes a *halo*
+  in dark mode. Cast a dark shadow in both modes; just a deeper one in dark.
+- **The minimap.** Its plate, border and viewport rectangle are DOM — restyle
+  them through `.orgchart-minimap` in your own CSS. Its silhouette is not, so
+  it takes the [`silhouetteColour`](/guide/navigating#the-minimap) option.

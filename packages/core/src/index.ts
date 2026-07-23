@@ -45,7 +45,7 @@ export type { TextMeasurer, TextMetricsSource } from './text/measure.js'
 export { createTextMeasurer } from './text/measure.js'
 
 export type { Theme } from './render/theme.js'
-export { DEFAULT_THEME, resolveTheme } from './render/theme.js'
+export { DARK_THEME, DEFAULT_THEME, resolveTheme } from './render/theme.js'
 export type { LodThresholds, LodTier } from './render/lod.js'
 export { DEFAULT_LOD, lodFor, overlayEnabled } from './render/lod.js'
 

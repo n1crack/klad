@@ -1,4 +1,4 @@
-import type { Options } from '@n1crack/orgchart'
+import { DARK_THEME, DEFAULT_THEME, type Theme } from '@n1crack/orgchart'
 
 /**
  * Light/dark for the whole playground — the shell's chrome AND the chart's own
@@ -38,35 +38,44 @@ const STORAGE_KEY = 'orgchart-playground-theme'
 const DOCS_STORAGE_KEY = 'vitepress-theme-appearance'
 
 /**
- * The chart-side tokens per mode: what the canvas paints. Only the tokens that
- * actually carry the light/dark look are listed — an example's own theme
- * (Avatar circle's transparent node box, say) still wins over these, and the
- * playground's own colour controls still override them live afterwards.
+ * The tokens that actually differ between the library's two palettes —
+ * derived rather than listed, so a token the library dark-themes later is
+ * picked up here without this file being edited.
  *
- * `nodeFill`/`nodeStroke` are deliberately the SAME values the cards use for
- * `background`/`border-color` (see `SHELL_TOKENS`), not merely similar ones.
+ * Deriving it also answers the question this control has to get right: a mode
+ * switch must move the mode's OWN colours and nothing else. The sidebar's
+ * accent, line width and shape fill are the viewer's choices, made after the
+ * chart mounted, and pushing a whole `Theme` on every flip would quietly undo
+ * them.
  */
-const CHART_TOKENS: Record<ThemeMode, NonNullable<Options['theme']>> = {
-  light: {
-    nodeFill: '#ffffff',
-    nodeStroke: '#d8dce3',
-    cornerRadius: 8,
-    edgeStroke: '#cbd2dc',
-    labelColour: '#18181b',
-    highlightFill: '#fef3c7',
-  },
-  dark: {
-    nodeFill: '#1b2029',
-    nodeStroke: '#333c4b',
-    cornerRadius: 8,
-    edgeStroke: '#3a4453',
-    labelColour: '#e7eaf0',
-    // The light mode's amber-100 would glare on a dark chart; this is the same
-    // hue at the other end of its ramp, so a lit node still reads as "the one
-    // you asked for" against its neighbours without becoming the brightest
-    // thing on the page.
-    highlightFill: '#4a3a12',
-  },
+const MODE_KEYS = (Object.keys(DEFAULT_THEME) as (keyof Theme)[]).filter(
+  (key) => DEFAULT_THEME[key] !== DARK_THEME[key],
+)
+
+function modeTokens(theme: Theme): Partial<Theme> {
+  const tokens: Partial<Theme> = {}
+  for (const key of MODE_KEYS) {
+    // `as never`: each key's value type is correct by construction (same key,
+    // same object shape), but TS cannot narrow a union of keys to a single
+    // assignment like this.
+    tokens[key] = theme[key] as never
+  }
+  return tokens
+}
+
+/**
+ * The chart-side tokens per mode: what the canvas paints.
+ *
+ * Straight from the library's own two palettes rather than a set of colours
+ * invented here — this app is also the reference for how a consumer should do
+ * this, and inventing a private dark theme in the demo would be showing the
+ * long way round. An example's own theme (Avatar circle's transparent node
+ * box, say) still wins over these, and the sidebar's colour controls still
+ * override them live afterwards.
+ */
+const CHART_TOKENS: Record<ThemeMode, Partial<Theme>> = {
+  light: modeTokens(DEFAULT_THEME),
+  dark: modeTokens(DARK_THEME),
 }
 
 /**
@@ -78,18 +87,18 @@ const CHART_TOKENS: Record<ThemeMode, NonNullable<Options['theme']>> = {
  */
 const SHELL_TOKENS: Record<ThemeMode, Record<string, string>> = {
   light: {
-    '--node-bg': CHART_TOKENS.light.nodeFill!,
-    '--node-border': CHART_TOKENS.light.nodeStroke!,
-    '--node-radius': `${CHART_TOKENS.light.cornerRadius!}px`,
+    '--node-bg': DEFAULT_THEME.nodeFill,
+    '--node-border': DEFAULT_THEME.nodeStroke,
+    '--node-radius': `${DEFAULT_THEME.cornerRadius}px`,
     '--accent': '#2563eb',
     '--accent-contrast': '#ffffff',
     '--shadow-sm': '0 1px 2px rgba(15, 23, 42, 0.12)',
     '--node-shadow': '0 1px 3px rgba(15, 23, 42, 0.14)',
   },
   dark: {
-    '--node-bg': CHART_TOKENS.dark.nodeFill!,
-    '--node-border': CHART_TOKENS.dark.nodeStroke!,
-    '--node-radius': `${CHART_TOKENS.dark.cornerRadius!}px`,
+    '--node-bg': DARK_THEME.nodeFill,
+    '--node-border': DARK_THEME.nodeStroke,
+    '--node-radius': `${DARK_THEME.cornerRadius}px`,
     // blue-600 reads dim on a dark surface; blue-400 keeps the same role
     // (links, focus rings, the export buttons, a pressed toggle) readable.
     '--accent': '#60a5fa',
@@ -123,7 +132,7 @@ export function silhouetteColour(mode: ThemeMode): string {
 }
 
 /** The canvas tokens for `mode` — see `CHART_TOKENS`. */
-export function chartTokens(mode: ThemeMode): NonNullable<Options['theme']> {
+export function chartTokens(mode: ThemeMode): Partial<Theme> {
   return CHART_TOKENS[mode]
 }
 

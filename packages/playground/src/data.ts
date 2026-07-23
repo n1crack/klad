@@ -1,4 +1,4 @@
-import type { MinimapPosition, Options } from '@n1crack/orgchart'
+import { DEFAULT_THEME, type MinimapPosition, type Options } from '@n1crack/orgchart'
 import { chartTokens, silhouetteColour, type ThemeMode } from './theme.js'
 
 export type { MinimapPosition } from '@n1crack/orgchart'
@@ -101,7 +101,7 @@ export const EDGE_RADIUS_DEFAULT = 0
  * chart shows near-black boxes reads as a broken control.
  */
 export function nodeFillDefault(mode: ThemeMode): string {
-  return chartTokens(mode).nodeFill!
+  return chartTokens(mode).nodeFill ?? DEFAULT_THEME.nodeFill
 }
 
 /**

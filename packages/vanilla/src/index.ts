@@ -1892,3 +1892,7 @@ export type {
   Warning,
   ZoomLimits,
 } from '@n1crack/orgchart-core'
+
+// The two ready-made palettes, for the same reason: a host doing light/dark
+// should not have to derive a dark theme by hand, nor reach into core for it.
+export { DARK_THEME, DEFAULT_THEME } from '@n1crack/orgchart-core'

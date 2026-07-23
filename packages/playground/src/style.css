@@ -26,8 +26,8 @@
    * right in the moment before the (deferred) module script runs.
    */
   --node-bg: #ffffff;
-  --node-border: #d8dce3;
-  --node-radius: 8px;
+  --node-border: #d4d4d8;
+  --node-radius: 6px;
   --surface: canvas;
   --surface-raised: color-mix(in srgb, canvas 97%, canvastext 3%);
   --surface-sunken: color-mix(in srgb, canvas 94%, canvastext 6%);
