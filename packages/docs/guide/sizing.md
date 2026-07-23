@@ -1,10 +1,15 @@
 # Sizing
 
-`nodeSize` is required, and it is declared rather than measured:
+`nodeSize` defaults to `{ w: 180, h: 64 }`, and whatever you set it to is
+**declared** rather than measured:
 
 ```ts
 nodeSize: Size | ((item: NodeData) => Size) // Size = { w: number; h: number }
 ```
+
+The default is enough for a name-and-role card at 1:1, which is why a first
+chart needs nothing but `data`. Past that, the number is yours to set — and it
+is a number you set rather than one the library reads back off your card.
 
 Every DOM-based org chart can mount a node, read its
 `getBoundingClientRect()`, and lay the tree out around whatever size it turned

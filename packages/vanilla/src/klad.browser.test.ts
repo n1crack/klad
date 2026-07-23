@@ -232,6 +232,35 @@ describe('createKlad', () => {
     chart.destroy()
   })
 
+  // The smallest chart anyone can write. Both of the options this used to
+  // require — a node size and a label accessor — now have defaults, and this
+  // asserts what those defaults are worth: boxes of a readable size, with the
+  // node's own name in them, from data alone.
+  it('draws a chart from data alone, with no size and no label accessor', async () => {
+    const el = host()
+    const chart = createKlad(el, { data: DATA, worker: false })
+    await nextFrame()
+
+    const svg = chart.api.toSVG()
+    expect(chart.api.getState().visibleCount).toBe(4)
+    expect(svg).toContain('width="180"')
+    expect(svg).toContain('height="64"')
+    // The label came from `name` without being asked for.
+    expect(svg).toContain('Root')
+    expect(svg).toContain('Leaf')
+    chart.destroy()
+  })
+
+  // `id` is the last resort, and the one that matters: data shaped in some
+  // fourth way still identifies its nodes rather than drawing empty boxes.
+  it('falls back to the id when a node carries no name, label or title', async () => {
+    const el = host()
+    const chart = createKlad(el, { data: [{ id: 'only-node' }], worker: false })
+    await nextFrame()
+    expect(chart.api.toSVG()).toContain('only-node')
+    chart.destroy()
+  })
+
   it('pans on pointer drag', async () => {
     const chart = make()
     // The opening view arrives on a tween of its own. Reading `before` one

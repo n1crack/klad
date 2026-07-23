@@ -77,7 +77,30 @@ export interface NodeContext extends NodeStats {
 
 export interface Options {
   data: NodeData[]
-  nodeSize: Size | ((item: NodeData) => Size)
+  /**
+   * The box every node occupies, in world units — a fixed size, or a function
+   * of the node for charts whose cards differ.
+   *
+   * Declared rather than measured, and that is not an oversight: layout runs
+   * in a worker with no DOM, so there is nothing to measure at the moment the
+   * tree is arranged. A card that overflows the size declared here is not
+   * clipped — it simply overlaps its neighbours, because the layout that
+   * spaced them apart was told a smaller number.
+   *
+   * Defaults to `DEFAULT_NODE_SIZE` (180x64), which is a readable name-and-role
+   * card at 1:1 and lets a first chart be `{ data }` and nothing else.
+   */
+  nodeSize?: Size | ((item: NodeData) => Size)
+  /**
+   * The text the CANVAS draws inside a node — the label at every zoom where
+   * text is legible but overlay cards are not (see `lodThresholds`), and the
+   * only text at all when `renderNode` is absent.
+   *
+   * Defaults to the first of `name`, `label`, `title` the node actually
+   * carries, falling back to its `id`. That default exists so a chart drawn
+   * from ordinary data reads as a chart rather than a grid of empty boxes;
+   * return `''` from your own function for a node that should stay blank.
+   */
   label?: (item: NodeData) => string
   orientation?: Orientation
   rtl?: boolean
@@ -335,6 +358,35 @@ export interface KladInstance {
 
 const DEFAULT_LIMITS: ZoomLimits = { minK: 0.05, maxK: 4 }
 
+/**
+ * The node box used when `nodeSize` is not given: wide enough for a name and a
+ * role at the default label size, short enough that a few hundred nodes still
+ * fit a screen once zoomed out. Exported because a consumer sizing their own
+ * cards around it should not have to guess the number this layer would have
+ * used — and because a card whose CSS disagrees with the box under it is the
+ * one mistake this option makes easy.
+ */
+export const DEFAULT_NODE_SIZE: Size = { w: 180, h: 64 }
+
+/**
+ * The label used when `label` is not given: whichever of `name`, `label` or
+ * `title` the node actually has, else its id.
+ *
+ * A chart's data almost always carries one of those three, and requiring a
+ * one-line accessor before anything shows up made "here is your data" a
+ * two-step. Falling back to the id rather than to nothing keeps a node
+ * identifiable even when the data is shaped in some fourth way — an empty box
+ * tells the reader neither what it is nor that they need to say.
+ */
+function defaultLabel(item: NodeData): string {
+  for (const key of ['name', 'label', 'title'] as const) {
+    const value = item[key]
+    if (typeof value === 'string' && value !== '') return value
+    if (typeof value === 'number') return String(value)
+  }
+  return String(item.id)
+}
+
 /** Screen-space breathing room left around the chart by `fit()`. */
 const FIT_PADDING = 32
 
@@ -480,12 +532,14 @@ export function createKlad(host: HTMLElement, options: Options): KladInstance {
 
   const chartHost: ChartHost = createChartHost(canvas, theme, options.worker !== false)
 
-  const sizeOf = (item: NodeData): Size =>
-    typeof currentOptions.nodeSize === 'function'
-      ? currentOptions.nodeSize(item)
-      : currentOptions.nodeSize
+  const sizeOf = (item: NodeData): Size => {
+    const declared = currentOptions.nodeSize
+    if (declared === undefined) return DEFAULT_NODE_SIZE
+    return typeof declared === 'function' ? declared(item) : declared
+  }
 
-  const labelOf = (item: NodeData): string => currentOptions.label?.(item) ?? ''
+  const labelOf = (item: NodeData): string =>
+    currentOptions.label === undefined ? defaultLabel(item) : currentOptions.label(item)
 
   /**
    * Pushes the tree, every node's size and label, and the current open flags

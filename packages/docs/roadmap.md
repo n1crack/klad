@@ -1,55 +1,58 @@
 # Roadmap
 
-Intent, not dated commitments.
+What is here, and what is being worked towards. Order is intent, not a
+schedule — nothing below carries a date, and the next release ships when it is
+ready rather than when a quarter ends.
 
-## 1.0 — released
-
-Everything documented on this site: the worker-backed canvas pipeline, tidy
-layout with four orientations and RTL, LOD tiers, the pooled overlay, the
-staged expand/collapse transition with its camera anchor, minimap, SVG/PNG
-export, a full keyboard tree, per-node subtree counts, go-to-node with route
-highlighting, and the Vue and React bindings.
+## Available now — 1.0
 
 ```bash
 npm install @klad/core    # or @klad/vue, @klad/react
 ```
 
-Published from CI on a GitHub Release, so every tarball carries a
-[provenance attestation](https://docs.npmjs.com/generating-provenance-statements)
-tying it to the commit and the workflow that built it.
+Layout in four orientations with RTL, drawn on a canvas in a Web Worker. Your
+own components on the nodes, mounted only where they are readable. Expand and
+collapse with the toggled node held still, a minimap, SVG and PNG export,
+keyboard navigation with a screen-reader tree, per-node subtree counts, and
+go-to-node that opens the way and paints the route.
 
-## 1.1 — Drag-and-drop reparenting
+## Next — drag-and-drop reparenting
 
-Drag a node onto a new parent: a ghost while dragging, the drop target
-highlighted, a drop that would create a cycle rejected and reported rather
-than applied, and an incremental relayout of only the dirty subtree.
+Drag a node onto a new parent, with a ghost while you drag and the drop target
+lit. A drop that would make a cycle is refused and reported rather than
+applied, and only the subtree that actually changed is laid out again.
 
-Deferred out of 1.0 deliberately. The interaction is a project in its own
-right and 1.0 is otherwise complete; holding the release for it would have
-served nobody.
+## Cross-links
 
-## 1.2 — Cross-links
+Edges that are not tree edges: dotted-line reporting, matrix relationships, a
+link between any two nodes — drawn on screen and carried through to the SVG
+and PNG exports.
 
-Edges that are not tree edges: dotted-line reporting, matrix relationships, an
-arbitrary link between any two nodes. Touches routing, the renderer and the
-export path.
+## Alternative layouts
 
-## 1.3 — Alternative layouts
+More than one way to arrange the same tree: arrangements that adapt to the
+shape of a subtree, and compact forms for the deep narrow chains that make an
+org chart taller than a screen.
 
-More than one way to arrange the same tree — arrangements that switch by
-subtree shape, compact forms for deep narrow chains.
+## Custom and animated edges
 
-## 1.4 — Animated links, custom edges
+Edge shape as something you supply rather than something the library decides,
+and motion along a link for charts that show flow as well as structure.
 
-Edge styling as a first-class concern: caller-supplied edge shapes, motion
-along a link.
+## Child pagination
 
-## 1.5 — Child pagination
+A manager with hundreds of direct reports shows the first few and a "more"
+control, with search to pull specific children into view. Keeps very wide
+fan-outs readable — and keeps them out of the layout, where their real cost
+is.
 
-A node with hundreds of direct children shows the first few and a "more"
-control, with search to bring specific children into the scene. Keeps very
-wide fan-outs readable, and keeps them out of the layout.
+## Nested sets
 
-## 1.6 — Nested sets
+`lft`/`rgt` values exposed and rendered, for data that already stores its tree
+that way, plus binary-tree presentation.
 
-`lft`/`rgt` values exposed and rendered, and binary-tree presentation.
+---
+
+Something missing, or ordered wrongly for what you are building?
+[Open an issue](https://github.com/n1crack/klad/issues) — what people actually
+need moves up this list.

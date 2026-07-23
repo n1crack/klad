@@ -19,8 +19,6 @@ const options: Options = {
     { id: 'ceo', name: 'Jamie Fox', title: 'CEO' },
     { id: 'cto', parentId: 'ceo', name: 'Amy Chen', title: 'CTO' },
   ],
-  nodeSize: { w: 180, h: 64 }, // required — layout runs in a worker with no DOM to measure
-  label: (item) => String(item.name ?? ''),
   renderNode(element, context) {
     element.innerHTML = `<strong>${String(context.item.name ?? '')}</strong>`
   },
