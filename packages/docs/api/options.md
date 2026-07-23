@@ -40,6 +40,7 @@ that produces a usable chart.
 
 | Option | Type | Default | |
 |---|---|---|---|
+| `selection` | `boolean` | `false` | Selecting nodes with the pointer — click, ctrl/cmd-click, shift-click, shift-drag for a box, alt-drag for a lasso. `select()` and `selectionChange` work either way; this is only about the pointer. |
 | `keyboard` | `boolean` | `true` | Camera control from the keyboard, and the tab stop that makes the chart reachable at all — see [Navigating](/guide/navigating#keyboard). |
 | `animate` | `boolean` | `true` | Every animation this layer starts on its own: the expand/collapse transition, camera eases, kinetic panning. `prefers-reduced-motion: reduce` forces it off regardless. |
 | `autoPanOnToggle` | `boolean` | `true` | Keeps the toggled node pinned on screen while the layout moves around it. |

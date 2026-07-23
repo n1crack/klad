@@ -279,7 +279,11 @@ export function createCanvas2DRenderer(
       // highlight is a deliberate, explicit signal (search/focus), not the
       // ambient node colour the block tier's default transparency is about
       // hiding — so only an UNLIT node at the block tier can be skipped.
-      if (!lit && blockFillSkipped) {
+      const isSelected = frame.selected !== null && frame.selected[i] === 1
+      // Same reasoning as `lit` below: a node the viewer explicitly selected
+      // is not ambient colour, so the block tier's transparency does not
+      // apply to it.
+      if (!lit && !isSelected && blockFillSkipped) {
         calls.nodes++
         if (i === frame.dragIndex || revealAlpha < 1) ctx.globalAlpha = 1
         continue
@@ -293,6 +297,16 @@ export function createCanvas2DRenderer(
       if (frame.tier !== 'block') {
         ctx.strokeStyle = lit ? theme.highlightStroke : theme.nodeStroke
         ctx.lineWidth = theme.nodeStrokeWidth
+        ctx.stroke()
+      }
+      // The selection outline goes OVER whatever the node's own stroke was,
+      // rather than replacing it: a selected node is still a highlighted node
+      // or a plain one, and losing that says the wrong thing. Drawn at every
+      // tier, `block` included — a selection made at a readable zoom has to
+      // still be findable after zooming out, which is exactly when it matters.
+      if (isSelected) {
+        ctx.strokeStyle = theme.selectionStroke
+        ctx.lineWidth = theme.selectionStrokeWidth
         ctx.stroke()
       }
       calls.nodes++

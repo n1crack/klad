@@ -40,6 +40,7 @@ import {
 import { createA11yTree, type A11yTree } from './a11y.js'
 import { attachInput } from './input.js'
 import { attachKeys } from './keys.js'
+import { attachMarquee, pointInPolygon } from './marquee.js'
 import { createMinimap, type Minimap, type MinimapOptions } from './minimap.js'
 import { createOverlay } from './overlay.js'
 
@@ -148,6 +149,18 @@ export interface Options {
    */
   keyboard?: boolean
   /**
+   * Selecting nodes with the pointer: click to select, ctrl/cmd-click to add
+   * or remove one, shift-click to add, shift-drag for a box and alt-drag for a
+   * lasso. `Escape` clears it.
+   *
+   * Off by default, and that is a deliberate choice rather than caution: a
+   * chart built before this existed has its own meaning for a click, and
+   * turning every click into a selection underneath it would change what that
+   * chart does without anyone asking. `select()` and the `selectionChange`
+   * event work either way — this option is only about the POINTER.
+   */
+  selection?: boolean
+  /**
    * After a single-node `expand`/`collapse` (not `expandAll`/`collapseAll`,
    * which always `fit()` — the whole chart changed, so a full fit is the
    * sensible response), pins the toggled node to a FIXED screen position for
@@ -236,6 +249,8 @@ export interface ChartState {
   highlighted: string[] | null
   /** The node the chart is re-rooted at, or `null` for the whole tree. */
   isolated: string | null
+  /** Ids of the selected nodes — see `select`. */
+  selected: string[]
 }
 
 /**
@@ -261,10 +276,19 @@ export interface ChartView {
   highlighted?: string[] | null
   /** The node the chart is re-rooted at, or `null` — see `isolate`. */
   isolated?: string | null
+  /** Ids of the selected nodes — see `select`. */
+  selected?: string[]
 }
 
 export interface KladEvents {
   nodeClick: (event: { id: string; item: NodeData }) => void
+  /**
+   * The selection changed — by a click, a region drag, or `select()`. Carries
+   * the whole selection rather than a delta: every consumer of this so far
+   * wants "what is selected now", and a delta makes them rebuild that
+   * themselves.
+   */
+  selectionChange: (event: { ids: string[]; items: NodeData[] }) => void
   /**
    * Fires with `{ id, item }` the instant the pointer enters a node, and with
    * `{ id: null, item: null }` when it leaves all nodes (including plain
@@ -377,6 +401,21 @@ export interface KladApi {
    */
   pathTo(id: string): string[] | null
   highlight(ids: string[] | null): void
+  /**
+   * The SELECTED nodes — what the viewer picked, as opposed to what
+   * `highlight` says the chart is pointing at. `null` or `[]` clears it.
+   *
+   * Two separate concepts on purpose, and they co-occur constantly: select
+   * three people, then search, and a chart that drew both the same way would
+   * have thrown away which was which. Selection is also what a later drag
+   * moves — a person drags a selection, not a node.
+   *
+   * Unknown ids are ignored, so a caller can hand back a list from data it no
+   * longer has without checking first.
+   */
+  select(ids: string[] | null): void
+  /** The current selection, in the order it was given. */
+  getSelection(): string[]
   /**
    * Serializes the whole VISIBLE tree (collapsed branches excluded, same rule
    * as everywhere else) to a standalone SVG document string — vector,
@@ -926,6 +965,7 @@ export function createKlad(host: HTMLElement, options: Options): KladInstance {
       rootScreenCentre: centre,
       highlighted: highlightedIds,
       isolated: isolatedIndex === -1 ? null : (tree.indexToId[isolatedIndex] ?? null),
+      selected: [...selectedIds],
     }
   }
 
@@ -1038,6 +1078,10 @@ export function createKlad(host: HTMLElement, options: Options): KladInstance {
   let highlightedIds: string[] | null = null
   /** Source index the chart is re-rooted at, or -1 — see `api.isolate`. */
   let isolatedIndex = -1
+  /** Ids of the selected nodes, in the order they were given. */
+  let selectedIds: string[] = []
+  /** Set when the next relayout is a different TREE — see the minimap call. */
+  let minimapNeedsRefit = false
 
   /**
    * Set by `focus()`, consumed by the first frame that has the layout its
@@ -1184,8 +1228,14 @@ export function createKlad(host: HTMLElement, options: Options): KladInstance {
           // no longer has).
           const rootIndex = tree.roots[0]
           const rootBox = rootIndex === undefined ? null : boxOfSource(rootIndex)
-          if (rootBox === null) minimap.onLayout(boxes, bounds)
-          else minimap.onLayout(boxes, bounds, boxCentre(rootBox))
+          // `minimapNeedsRefit` is the "this is a different tree" signal —
+          // isolating replaces what the map is a map OF, and holding the old
+          // frame steady then leaves the branch drawn in the corner the whole
+          // org used to occupy rather than filling the widget.
+          const refit = minimapNeedsRefit
+          minimapNeedsRefit = false
+          if (rootBox === null) minimap.onLayout(boxes, bounds, undefined, refit)
+          else minimap.onLayout(boxes, bounds, boxCentre(rootBox), refit)
         }
         // Cheap by contrast: two point transforms and a CSS transform write.
         //
@@ -1572,6 +1622,40 @@ export function createKlad(host: HTMLElement, options: Options): KladInstance {
     emit('nodeHover', id === null ? { id: null, item: null } : { id, item: item! })
   }
 
+  /**
+   * Sets the selection, pushes it to the renderer and tells the host — the one
+   * path every way of selecting goes through (a click, a region drag,
+   * `select()`), so none of them can forget one of the three.
+   *
+   * Unknown ids are dropped rather than kept as ghosts: a caller handing back
+   * a stored list should get a selection of what still exists, and the event
+   * should say what is actually selected.
+   */
+  const applySelection = (ids: readonly string[]): void => {
+    const kept: string[] = []
+    const indices: number[] = []
+    const seen = new Set<string>()
+    for (const id of ids) {
+      if (seen.has(id)) continue
+      const index = tree.idToIndex.get(id)
+      if (index === undefined) continue
+      seen.add(id)
+      kept.push(id)
+      indices.push(index)
+    }
+    const unchanged =
+      kept.length === selectedIds.length && kept.every((id, i) => id === selectedIds[i])
+    if (unchanged) return
+
+    selectedIds = kept
+    chartHost.setSelection(indices.length === 0 ? null : Uint32Array.from(indices))
+    scheduleFrame()
+    emit('selectionChange', {
+      ids: [...kept],
+      items: kept.map((id) => itemById.get(id)).filter((item): item is NodeData => item !== undefined),
+    })
+  }
+
   const detachKeys =
     options.keyboard === false
       ? () => {}
@@ -1589,8 +1673,59 @@ export function createKlad(host: HTMLElement, options: Options): KladInstance {
             const rootId = tree.indexToId[tree.roots[0] ?? 0]
             if (rootId !== undefined) api.focus(rootId)
           },
-          clearHighlight: () => api.highlight(null),
+          clearHighlight: () => {
+            // Both, in one press: to a viewer they are the same "never mind",
+            // and a chart that needed two presses to drop what it was showing
+            // would be counting its own internal distinctions out loud.
+            api.highlight(null)
+            applySelection([])
+          },
         })
+
+  /**
+   * Which visible nodes a dragged region covers, in screen space.
+   *
+   * Screen space rather than world, because that is where the gesture
+   * happened: converting the region back into world coordinates would be the
+   * same arithmetic in the other direction, and would go wrong the moment the
+   * camera moved mid-drag.
+   *
+   * A box takes any node it OVERLAPS, a lasso takes any node whose centre it
+   * contains. That asymmetry is the conventional one, and it is right for the
+   * shapes: a box is dragged across things, a lasso is drawn around them.
+   */
+  const nodesInRegion = (points: { x: number; y: number }[], lasso: boolean): string[] => {
+    const found: string[] = []
+    const minX = Math.min(...points.map((p) => p.x))
+    const maxX = Math.max(...points.map((p) => p.x))
+    const minY = Math.min(...points.map((p) => p.y))
+    const maxY = Math.max(...points.map((p) => p.y))
+
+    for (let i = 0; i < visibleToSource.length; i++) {
+      const o = i * 4
+      const x = boxes[o]! * camera.k + camera.x
+      const y = boxes[o + 1]! * camera.k + camera.y
+      const w = boxes[o + 2]! * camera.k
+      const h = boxes[o + 3]! * camera.k
+      // The bounding box first either way: for a box it IS the test, and for
+      // a lasso it rejects almost everything before the polygon maths runs.
+      if (x + w < minX || x > maxX || y + h < minY || y > maxY) continue
+      if (lasso && !pointInPolygon({ x: x + w / 2, y: y + h / 2 }, points)) continue
+      const id = tree.indexToId[visibleToSource[i]!]
+      if (id !== undefined) found.push(id)
+    }
+    return found
+  }
+
+  const detachMarquee =
+    options.selection === true
+      ? attachMarquee(host, {
+          onRegion(points, additive) {
+            const ids = nodesInRegion(points, points.length > 2)
+            applySelection(additive ? [...selectedIds, ...ids] : ids)
+          },
+        })
+      : () => {}
 
   const detachInput = attachInput(host, () => limits, {
     getCamera: () => camera,
@@ -1601,12 +1736,18 @@ export function createKlad(host: HTMLElement, options: Options): KladInstance {
     // moves the camera reports through `setCamera` above, which is
     // `setCameraInstant` — and that drops the anchor.
     cancelAnimation: () => cancelCameraAnimation(false),
-    onTap(screenX, screenY, target) {
+    onTap(screenX, screenY, target, modifiers) {
       const world = screenToWorld(camera, screenX, screenY)
       void chartHost.hitTest(world.x, world.y).then((index) => {
         if (destroyed) return
         if (index === -1) {
           lastTapId = null
+          // Clicking the background clears the selection, unless the click was
+          // asking to add to it — the same rule as a file manager, where a
+          // plain click on empty space means "never mind".
+          if (currentOptions.selection === true && !modifiers.additive && !modifiers.extend) {
+            applySelection([])
+          }
           return
         }
         const id = tree.indexToId[index]!
@@ -1630,6 +1771,24 @@ export function createKlad(host: HTMLElement, options: Options): KladInstance {
         } else {
           lastTapId = id
           lastTapAt = now
+          if (currentOptions.selection === true && !isInteractiveTarget(target)) {
+            // Plain click replaces, ctrl/cmd toggles one, shift adds — the
+            // conventions of every list a person has ever multi-selected in.
+            // "Extend a range" is deliberately not one of them: a range in a
+            // tree has no obvious meaning, and guessing one (preorder? same
+            // parent?) is worse than adding the node they clicked.
+            if (modifiers.additive) {
+              applySelection(
+                selectedIds.includes(id)
+                  ? selectedIds.filter((selected) => selected !== id)
+                  : [...selectedIds, id],
+              )
+            } else if (modifiers.extend) {
+              applySelection([...selectedIds, id])
+            } else {
+              applySelection([id])
+            }
+          }
           // `nodeClick` always fires first, unconditionally — see
           // `toggleOnNodeClick`'s docblock for why the toggle is an
           // unsuppressable side effect of this event rather than a
@@ -1711,6 +1870,7 @@ export function createKlad(host: HTMLElement, options: Options): KladInstance {
       if (next === isolatedIndex) return
       isolatedIndex = next
       chartHost.setIsolate(next)
+      minimapNeedsRefit = true
       a11yDirty = true
       // The chart now contains a different set of nodes, at different
       // positions: whatever the camera was framing is gone or has moved. A
@@ -1868,6 +2028,12 @@ export function createKlad(host: HTMLElement, options: Options): KladInstance {
       if (highlightedIds !== null) api.highlight(highlightedIds)
       scheduleFrame()
     },
+    select(ids) {
+      applySelection(ids ?? [])
+    },
+    getSelection() {
+      return [...selectedIds]
+    },
     highlight(ids) {
       highlightedIds = ids
       if (ids === null) {
@@ -1935,7 +2101,12 @@ export function createKlad(host: HTMLElement, options: Options): KladInstance {
         dpr: scale,
         tier: 'full',
         horizontal: data.horizontal,
+        // Neither highlight nor selection: an export is a picture of the
+        // CHART, and both of those are states of the person looking at it.
+        // A PNG that arrives with someone else's selection outlined on it is
+        // a picture of their afternoon, not of the org.
         highlight: null,
+        selected: null,
         dragIndex: -1,
         revealAlpha: null,
         ghostBoxes: EMPTY_GHOST_BOXES,
@@ -2017,6 +2188,7 @@ export function createKlad(host: HTMLElement, options: Options): KladInstance {
         open: openIds,
         highlighted: highlightedIds === null ? null : [...highlightedIds],
         isolated: isolatedIndex === -1 ? null : (tree.indexToId[isolatedIndex] ?? null),
+        selected: [...selectedIds],
       }
     },
     setView(view, opts) {
@@ -2045,6 +2217,7 @@ export function createKlad(host: HTMLElement, options: Options): KladInstance {
       // Ids that have since left the tree are dropped rather than throwing —
       // see `ChartView`. `highlight` already ignores unknown ids, so this only
       // has to preserve `null` as "nothing lit".
+      applySelection(view.selected ?? [])
       const wantedHighlight = view.highlighted
       api.highlight(wantedHighlight === undefined || wantedHighlight === null ? null : [...wantedHighlight])
 
@@ -2098,6 +2271,7 @@ export function createKlad(host: HTMLElement, options: Options): KladInstance {
       observer.disconnect()
       detachInput()
       detachKeys()
+      detachMarquee()
       overlay?.destroy()
       a11y?.destroy()
       minimap?.destroy()

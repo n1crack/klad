@@ -57,6 +57,20 @@ export interface Theme {
   edgeHighlightWidth: number
   /** Alpha applied to a node while it is being dragged. */
   dragGhostAlpha: number
+  /**
+   * Outline for a SELECTED node, and its weight.
+   *
+   * Deliberately separate from `highlightStroke`, which the two could easily
+   * have shared: a highlight is something the chart is telling you (a search
+   * hit, the route to a node), and a selection is something you told the
+   * chart. They co-occur constantly — select a node, then search — and a
+   * viewer who cannot tell which of the two a lit node is has lost the
+   * distinction that makes either useful. Drawn OVER the node's own stroke
+   * rather than replacing it, so a selected node still reads as the kind of
+   * node it is.
+   */
+  selectionStroke: string
+  selectionStrokeWidth: number
   /** Colour of the one-shot expand/collapse confirmation ring. */
   ringStroke: string
   /**
@@ -99,6 +113,8 @@ export const DEFAULT_THEME: Readonly<Theme> = Object.freeze({
   labelFont: '14px system-ui, -apple-system, Segoe UI, sans-serif',
   labelPadding: 10,
   highlightFill: '#fef3c7',
+  selectionStroke: '#2563eb',
+  selectionStrokeWidth: 2.5,
   highlightStroke: '#f59e0b',
   edgeHighlightStroke: '#f59e0b',
   edgeHighlightWidth: 2.5,
@@ -139,6 +155,7 @@ export const DARK_THEME: Readonly<Theme> = Object.freeze({
   ...DEFAULT_THEME,
   nodeFill: '#1b2029',
   nodeStroke: '#333c4b',
+  selectionStroke: '#60a5fa',
   edgeStroke: '#3a4453',
   labelColour: '#e7eaf0',
   highlightFill: '#4a3a12',

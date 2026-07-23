@@ -95,6 +95,7 @@ export type MainToWorkerMessage =
   | { t: 'resize'; width: number; height: number; dpr: number }
   | { t: 'highlight'; ids: Uint32Array | null }
   | { t: 'isolate'; index: number }
+  | { t: 'selection'; ids: Uint32Array | null }
   | { t: 'drag'; index: number }
   | { t: 'animate'; enabled: boolean }
   /**

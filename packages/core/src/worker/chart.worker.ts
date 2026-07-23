@@ -60,6 +60,9 @@ self.onmessage = (event: MessageEvent<MainToWorker>): void => {
       case 'isolate':
         engine?.setIsolate(message.index)
         break
+      case 'selection':
+        engine?.setSelection(message.ids)
+        break
       case 'drag':
         engine?.setDrag(message.index)
         break

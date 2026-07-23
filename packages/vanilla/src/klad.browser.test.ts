@@ -608,6 +608,124 @@ describe('createKlad', () => {
     chart.destroy()
   })
 
+  // Selection: what the viewer picked, as opposed to what `highlight` says the
+  // chart is pointing at.
+  it('selects through the API, reports it, and clears', async () => {
+    const chart = make()
+    await settle()
+    const heard: string[][] = []
+    chart.on('selectionChange', ({ ids }) => heard.push(ids))
+
+    chart.api.select(['a', 'c'])
+    await nextFrame()
+    expect(chart.api.getSelection()).toEqual(['a', 'c'])
+    expect(chart.api.getState().selected).toEqual(['a', 'c'])
+    expect(heard).toEqual([['a', 'c']])
+
+    // Setting the same selection again is not a change, and must not tell
+    // anyone it was.
+    chart.api.select(['a', 'c'])
+    await nextFrame()
+    expect(heard.length).toBe(1)
+
+    chart.api.select(null)
+    await nextFrame()
+    expect(chart.api.getSelection()).toEqual([])
+    expect(heard.length).toBe(2)
+    chart.destroy()
+  })
+
+  it('drops ids that are not in the tree rather than keeping ghosts', async () => {
+    const chart = make()
+    await settle()
+    chart.api.select(['a', 'ghost'])
+    await nextFrame()
+    expect(chart.api.getSelection()).toEqual(['a'])
+    chart.destroy()
+  })
+
+  it('carries the selection through a saved view', async () => {
+    const chart = make()
+    await settle()
+    chart.api.select(['b', 'd'])
+    await settle()
+    const view = JSON.parse(JSON.stringify(chart.api.getView()))
+    chart.api.select(null)
+    await settle()
+    chart.api.setView(view)
+    await settle()
+    expect(chart.api.getSelection()).toEqual(['b', 'd'])
+    chart.destroy()
+  })
+
+  it('leaves the pointer alone until selection is switched on', async () => {
+    const chart = make()
+    await settle()
+    const canvas = document.querySelector('canvas')!
+    const centre = chart.api.getState().rootScreenCentre
+    canvas.dispatchEvent(new PointerEvent('pointerdown', { clientX: centre.x, clientY: centre.y, bubbles: true }))
+    window.dispatchEvent(new PointerEvent('pointerup', { clientX: centre.x, clientY: centre.y, bubbles: true }))
+    await settle()
+    // A chart written before selection existed has its own meaning for a
+    // click; switching this on underneath it would change what that chart does.
+    expect(chart.api.getSelection()).toEqual([])
+    chart.destroy()
+  })
+
+  it('selects on click, adds with ctrl, and clears on the background', async () => {
+    const chart = make({ selection: true })
+    await settle()
+    const canvas = document.querySelector('canvas')!
+    const tap = (x: number, y: number, init: PointerEventInit = {}) => {
+      canvas.dispatchEvent(new PointerEvent('pointerdown', { clientX: x, clientY: y, bubbles: true, ...init }))
+      window.dispatchEvent(new PointerEvent('pointerup', { clientX: x, clientY: y, bubbles: true, ...init }))
+    }
+    const root = chart.api.getState().rootScreenCentre
+
+    tap(root.x, root.y)
+    await settle()
+    expect(chart.api.getSelection()).toEqual(['a'])
+
+    // Ctrl on the same node takes it back out — a toggle, as in every list.
+    // Waited out first: two taps on one node inside 300ms are a double click
+    // (see `DOUBLE_CLICK_MS`), which is a different event and does not select.
+    await settleTransition()
+    tap(root.x, root.y, { ctrlKey: true })
+    await settle()
+    expect(chart.api.getSelection()).toEqual([])
+
+    tap(root.x, root.y)
+    await settle()
+    // Far from any node: "never mind".
+    tap(root.x + 400, root.y + 260)
+    await settle()
+    expect(chart.api.getSelection()).toEqual([])
+    chart.destroy()
+  })
+
+  it('selects a dragged box, and Escape drops it', async () => {
+    const chart = make({ selection: true })
+    await settle()
+    const el = document.querySelector('canvas')!.parentElement!
+    const rect = el.getBoundingClientRect()
+
+    // Shift-drag across the whole chart: everything visible is inside it.
+    el.dispatchEvent(
+      new PointerEvent('pointerdown', { clientX: rect.left + 2, clientY: rect.top + 2, shiftKey: true, bubbles: true }),
+    )
+    window.dispatchEvent(
+      new PointerEvent('pointermove', { clientX: rect.right - 2, clientY: rect.bottom - 2, bubbles: true }),
+    )
+    window.dispatchEvent(new PointerEvent('pointerup', { bubbles: true }))
+    await settle()
+    expect(chart.api.getSelection().length).toBe(4)
+
+    el.dispatchEvent(new KeyboardEvent('keydown', { key: 'Escape', bubbles: true }))
+    await settle()
+    expect(chart.api.getSelection()).toEqual([])
+    chart.destroy()
+  })
+
   it('zooms about the cursor on wheel', async () => {
     const chart = make()
     // The opening view arrives on a tween of its own. Reading `before` one

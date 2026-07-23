@@ -20,6 +20,7 @@ export interface ChartHost {
   setViewport(width: number, height: number, dpr: number): void
   setHighlight(ids: Uint32Array | null): void
   setIsolate(index: number): void
+  setSelection(ids: Uint32Array | null): void
   setDrag(index: number): void
   setAnimate(enabled: boolean): void
   /**
@@ -246,6 +247,10 @@ export function createChartHost(
     setHighlight(ids) {
       engine?.setHighlight(ids)
       post({ t: 'highlight', ids })
+    },
+    setSelection(ids) {
+      engine?.setSelection(ids)
+      post({ t: 'selection', ids })
     },
     setDrag(index) {
       engine?.setDrag(index)

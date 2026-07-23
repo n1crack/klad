@@ -90,6 +90,13 @@ export interface Frame {
   horizontal: boolean
   /** 1 per highlighted node index, or null when nothing is highlighted. */
   highlight: Uint8Array | null
+  /**
+   * 1 per SELECTED node index, or null when nothing is selected. Keyed the
+   * same way as `highlight`, and separate from it for the reason
+   * `theme.selectionStroke` is separate from `highlightStroke`: the two say
+   * different things and co-occur.
+   */
+  selected: Uint8Array | null
   /** Node currently being dragged, or -1. Drawn with reduced alpha. */
   dragIndex: number
   /**
