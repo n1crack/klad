@@ -8,11 +8,11 @@ for the nodes currently on screen and zoomed in far enough to read.
 This package is one function.
 
 ```bash
-npm install klad
+npm install @klad/core
 ```
 
 ```ts
-import { createKlad, type Options } from 'klad'
+import { createKlad, type Options } from '@klad/core'
 
 const options: Options = {
   data: [

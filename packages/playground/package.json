@@ -8,7 +8,7 @@
     "typecheck": "vue-tsc --noEmit -p tsconfig.json"
   },
   "dependencies": {
-    "klad": "workspace:*",
+    "@klad/core": "workspace:*",
     "@klad/react": "workspace:*",
     "@klad/vue": "workspace:*",
     "react": "^19.2.0",

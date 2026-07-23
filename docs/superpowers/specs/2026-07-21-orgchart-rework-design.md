@@ -79,7 +79,7 @@ later without touching the core.
 
 ```
 packages/
-  core/          @klad/core    pure TS, no DOM, worker-safe, zero deps
+  core/          @klad/engine    pure TS, no DOM, worker-safe, zero deps
   vanilla/       klad         DOM binding layer, no framework
   vue/           @klad/vue     peer: vue >=3.5 <4
   react/         @klad/react   peer: react >=19        (spec 2)

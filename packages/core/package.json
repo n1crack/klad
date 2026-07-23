@@ -1,5 +1,5 @@
 {
-  "name": "@klad/core",
+  "name": "@klad/engine",
   "version": "1.0.0-alpha.0",
   "description": "Layout, viewport maths, spatial index, canvas renderer and worker protocol for Klad. No DOM.",
   "keywords": [
@@ -9,7 +9,7 @@
     "tree",
     "hierarchy",
     "canvas",
-    "klad",
+    "@klad/core",
     "layout",
     "tidy-tree"
   ],

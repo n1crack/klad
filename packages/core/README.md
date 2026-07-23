@@ -1,4 +1,4 @@
-# @klad/core
+# @klad/engine
 
 The pure-logic layer of [Klad](https://github.com/n1crack/klad): tree
 normalization, the tidy-tree layout algorithm, orientation/RTL mirroring, the
@@ -7,19 +7,19 @@ renderer, and the typed worker protocol. No DOM dependency in the main entry,
 so it can run inside a Web Worker.
 
 Most consumers don't need this package directly — use
-[`klad`](https://www.npmjs.com/package/klad)
+[`@klad/core`](https://www.npmjs.com/package/klad)
 (frameworkless) or
 [`@klad/vue`](https://www.npmjs.com/package/@klad/vue)
 instead. Depend on this package directly only if you're building a new
-framework adapter; `klad`'s source is the reference
+framework adapter; `@klad/core`'s source is the reference
 implementation to read.
 
 ```bash
-npm install @klad/core
+npm install @klad/engine
 ```
 
 ```ts
-import { normalize, layout } from '@klad/core'
+import { normalize, layout } from '@klad/engine'
 
 const tree = normalize([
   { id: 'ceo' },
@@ -36,7 +36,7 @@ const { boxes, bounds } = layout(tree, sizes, { spacingX: 16, spacingY: 48 })
 ```
 
 The one DOM-touching module, `ChartHost`, is exported from a separate
-subpath — `@klad/core/host` — rather than the main entry, so the
+subpath — `@klad/engine/host` — rather than the main entry, so the
 main entry stays importable inside the Web Worker it also ships
 (`worker/chart.worker.ts`).
 

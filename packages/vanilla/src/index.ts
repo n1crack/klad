@@ -1,4 +1,4 @@
-import { createChartHost, type ChartHost } from '@klad/core/host'
+import { createChartHost, type ChartHost } from '@klad/engine/host'
 import {
   applyOrientation,
   centreOn,
@@ -35,7 +35,7 @@ import {
   type Tree,
   type Warning,
   type ZoomLimits,
-} from '@klad/core'
+} from '@klad/engine'
 import { createA11yTree, type A11yTree } from './a11y.js'
 import { attachInput } from './input.js'
 import { createMinimap, type Minimap, type MinimapOptions } from './minimap.js'
@@ -684,7 +684,7 @@ export function createKlad(host: HTMLElement, options: Options): KladInstance {
    * engine directly.
    *
    * This is a deliberate workaround, not a shortcut: `ChartHost` (see
-   * `@klad/core/host`) does not expose `getExportData()`, and in
+   * `@klad/engine/host`) does not expose `getExportData()`, and in
    * worker mode the live `ChartEngine` lives inside the worker and is not
    * reachable from here at all — only `boxes`/`bounds`/`visibleToSource` are
    * mirrored back across the protocol, not the pruned `parent`/`labels`
@@ -1891,8 +1891,8 @@ export type {
   Theme,
   Warning,
   ZoomLimits,
-} from '@klad/core'
+} from '@klad/engine'
 
 // The two ready-made palettes, for the same reason: a host doing light/dark
 // should not have to derive a dark theme by hand, nor reach into core for it.
-export { DARK_THEME, DEFAULT_THEME } from '@klad/core'
+export { DARK_THEME, DEFAULT_THEME } from '@klad/engine'

@@ -6,7 +6,7 @@ import {
   type KladApi,
   type KladEvents,
   type KladInstance,
-} from 'klad'
+} from '@klad/core'
 import {
   useCallback,
   useEffect,
@@ -80,7 +80,7 @@ interface Slot {
 const WRAPPER_STYLE: CSSProperties = { display: 'block', boxSizing: 'border-box', width: '100%', height: '100%' }
 
 /**
- * Binds React to `klad`. Every chart behaviour — layout, canvas
+ * Binds React to `@klad/core`. Every chart behaviour — layout, canvas
  * drawing, hit-testing, pointer/keyboard input, the worker — lives in the
  * vanilla layer; this component only creates it, keeps it in sync with
  * props, and renders node content through portals into the overlay elements

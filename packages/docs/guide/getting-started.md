@@ -10,7 +10,7 @@ there is never a second package to remember.
 == Vanilla
 
 ```bash
-npm install klad
+npm install @klad/core
 ```
 
 == Vue
@@ -31,7 +31,7 @@ React 18 or newer, as a peer dependency.
 
 :::
 
-There is a fourth package, `@klad/core`, but you only install it
+There is a fourth package, `@klad/engine`, but you only install it
 directly to write a binding for a framework that does not have one. It is the
 pure-logic layer — layout, viewport maths, the quadtree, the renderer, the
 worker protocol — and it touches no DOM.
@@ -43,7 +43,7 @@ worker protocol — and it touches no DOM.
 == Vanilla
 
 ```ts
-import { createKlad, type Options } from 'klad'
+import { createKlad, type Options } from '@klad/core'
 
 const options: Options = {
   data: [

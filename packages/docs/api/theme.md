@@ -71,7 +71,7 @@ Two palettes ship, both frozen `Theme` objects: `DEFAULT_THEME` and
 state and highlight all survive it.
 
 ```ts
-import { DARK_THEME, DEFAULT_THEME } from 'klad'
+import { DARK_THEME, DEFAULT_THEME } from '@klad/core'
 
 const media = window.matchMedia('(prefers-color-scheme: dark)')
 const apply = () => chart.api.setTheme(media.matches ? DARK_THEME : DEFAULT_THEME)

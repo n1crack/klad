@@ -1,6 +1,6 @@
 ---
+'@klad/engine': minor
 '@klad/core': minor
-'klad': minor
 '@klad/vue': minor
 '@klad/react': minor
 ---

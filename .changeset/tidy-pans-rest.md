@@ -1,5 +1,5 @@
 ---
-'klad': minor
+'@klad/core': minor
 ---
 
 Pointer and touch fixes.

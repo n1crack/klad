@@ -1,5 +1,5 @@
 import { describe, expect, it } from 'vitest'
-import { normalize } from '@klad/core'
+import { normalize } from '@klad/engine'
 import { createA11yTree, type A11yTree } from './a11y.js'
 import { createKlad } from './index.js'
 

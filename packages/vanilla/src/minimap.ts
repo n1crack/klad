@@ -9,7 +9,7 @@ import {
   type Silhouette,
   type SilhouetteOptions,
   type ViewportSize,
-} from '@klad/core'
+} from '@klad/engine'
 
 export type MinimapPosition = 'top-left' | 'top-right' | 'bottom-left' | 'bottom-right'
 

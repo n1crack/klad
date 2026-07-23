@@ -2,7 +2,7 @@ import { describe, expect, it } from 'vitest'
 import { act, createElement, type ReactElement } from 'react'
 import { createRoot, type Root } from 'react-dom/client'
 import { Klad, type KladHandle } from './Klad.js'
-import type { NodeContext, NodeData } from 'klad'
+import type { NodeContext, NodeData } from '@klad/core'
 
 const DATA = [
   { id: 'a', name: 'Root' },

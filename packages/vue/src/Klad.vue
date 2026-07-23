@@ -6,7 +6,7 @@ import {
   type Options,
   type KladApi,
   type KladEvents,
-} from 'klad'
+} from '@klad/core'
 import { h, onBeforeUnmount, onMounted, provide, render, shallowRef, watch, type VNode } from 'vue'
 import { ORG_CHART_KEY } from './useKlad.js'
 

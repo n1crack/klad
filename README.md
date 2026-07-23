@@ -19,18 +19,18 @@ reference, and a playground you can dial a chart in with. Run it locally with
 
 | Package | For |
 |---|---|
-| [`klad`](packages/vanilla) | The frameworkless API. One function, `createKlad`. Use it directly, or read it as the reference for a new binding. |
+| [`@klad/core`](packages/vanilla) | The frameworkless API. One function, `createKlad`. Use it directly, or read it as the reference for a new binding. |
 | [`@klad/vue`](packages/vue) | Vue 3: a `<Klad>` component with a `#node` scoped slot, plus `useKlad()`. |
 | [`@klad/react`](packages/react) | React: `<Klad>` with a render prop and a ref handle. |
-| [`@klad/core`](packages/core) | Layout, viewport maths, spatial index, renderer, worker protocol. No DOM. Only needed to build a new binding. |
+| [`@klad/engine`](packages/core) | Layout, viewport maths, spatial index, renderer, worker protocol. No DOM. Only needed to build a new binding. |
 
 Each depends on the layers beneath it, so installing one is enough — you never
-also install `klad` to use the Vue adapter.
+also install `@klad/core` to use the Vue adapter.
 
 ## Install
 
 ```bash
-npm install klad         # frameworkless
+npm install @klad/core   # frameworkless
 npm install @klad/vue    # Vue 3 (>=3.5 <4)
 npm install @klad/react  # React (>=18)
 ```
@@ -38,7 +38,7 @@ npm install @klad/react  # React (>=18)
 ## Quick start
 
 ```ts
-import { createKlad } from 'klad'
+import { createKlad } from '@klad/core'
 
 const chart = createKlad(document.getElementById('chart')!, {
   data: [

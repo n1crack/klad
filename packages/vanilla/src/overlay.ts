@@ -1,4 +1,4 @@
-import { worldToScreen, type Camera } from '@klad/core'
+import { worldToScreen, type Camera } from '@klad/engine'
 
 export interface OverlayItem {
   /** Source node index. */

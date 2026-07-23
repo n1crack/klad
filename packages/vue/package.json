@@ -9,7 +9,7 @@
     "tree",
     "hierarchy",
     "canvas",
-    "klad",
+    "@klad/core",
     "vue",
     "vue3"
   ],
@@ -48,8 +48,8 @@
   ],
   "//dependencies": "orgchart-core is a DIRECT dependency, not merely a transitive one through orgchart: this package's own published .d.ts names types declared there (NodeData, and through it every event payload), so a consumer's TypeScript has to be able to resolve it. Under a strict node_modules layout a transitive dependency is not resolvable from here.",
   "dependencies": {
-    "klad": "workspace:*",
-    "@klad/core": "workspace:*"
+    "@klad/core": "workspace:*",
+    "@klad/engine": "workspace:*"
   },
   "peerDependencies": {
     "vue": ">=3.5 <4"

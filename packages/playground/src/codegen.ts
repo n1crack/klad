@@ -1,4 +1,4 @@
-import type { Theme } from 'klad'
+import type { Theme } from '@klad/core'
 import { minimapOptionFor, type Example, type MinimapPosition } from './data.js'
 import type { ThemeMode } from './theme.js'
 
@@ -179,7 +179,7 @@ function vanilla(snapshot: ConfigSnapshot): string {
   const content = snapshot.hasNodeContent
     ? `\n  renderNode: (element, context) => {\n    element.textContent = String(context.item.name ?? '')\n  },`
     : ''
-  return `import { createKlad } from 'klad'
+  return `import { createKlad } from '@klad/core'
 
 ${DATA_NOTE}
 ${nodeContentNote(snapshot.hasNodeContent)}

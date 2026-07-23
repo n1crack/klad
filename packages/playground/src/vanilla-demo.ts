@@ -1,4 +1,4 @@
-import { createKlad, type KladApi, type Options, type Theme } from 'klad'
+import { createKlad, type KladApi, type Options, type Theme } from '@klad/core'
 import {
   DEPARTMENT_COLOR,
   EDGE_RADIUS_DEFAULT,

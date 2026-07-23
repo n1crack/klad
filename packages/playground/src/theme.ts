@@ -1,4 +1,4 @@
-import { DARK_THEME, DEFAULT_THEME, type Theme } from 'klad'
+import { DARK_THEME, DEFAULT_THEME, type Theme } from '@klad/core'
 
 /**
  * Light/dark for the whole playground — the shell's chrome AND the chart's own

@@ -9,7 +9,7 @@
     "tree",
     "hierarchy",
     "canvas",
-    "klad",
+    "@klad/core",
     "react"
   ],
   "homepage": "https://klad.ozdemir.be",
@@ -46,7 +46,7 @@
     "LICENSE-COMMERCIAL.md"
   ],
   "dependencies": {
-    "klad": "workspace:*"
+    "@klad/core": "workspace:*"
   },
   "peerDependencies": {
     "react": ">=19",

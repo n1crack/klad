@@ -1,7 +1,7 @@
-import { DEFAULT_THEME, type MinimapPosition, type Options, type Theme } from 'klad'
+import { DEFAULT_THEME, type MinimapPosition, type Options, type Theme } from '@klad/core'
 import { baseTheme, chartTokens, silhouetteColour, type ThemeMode } from './theme.js'
 
-export type { MinimapPosition } from 'klad'
+export type { MinimapPosition } from '@klad/core'
 
 /**
  * Whether `example`'s own declared options already turn the minimap on —
@@ -176,7 +176,7 @@ export const MINIMAP_POSITIONS: { value: MinimapPosition; label: string }[] = [
 ]
 
 /**
- * `NodeData` itself is not re-exported from `klad`'s public
+ * `NodeData` itself is not re-exported from `@klad/core`'s public
  * surface (only the interfaces that reference it are). Deriving the item
  * type from `Options['data'][number]` gets the same structural type —
  * `{ id: string; parentId?: string | null; [key: string]: unknown }` —

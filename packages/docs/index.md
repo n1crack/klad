@@ -35,11 +35,11 @@ features:
 == Vanilla
 
 ```bash
-npm install klad
+npm install @klad/core
 ```
 
 ```ts
-import { createKlad } from 'klad'
+import { createKlad } from '@klad/core'
 
 const chart = createKlad(document.getElementById('chart')!, {
   data: [

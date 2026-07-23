@@ -1,5 +1,5 @@
 import { createContext, useContext } from 'react'
-import type { ChartState, KladApi } from 'klad'
+import type { ChartState, KladApi } from '@klad/core'
 
 export interface KladContextValue {
   api: KladApi | null

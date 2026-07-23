@@ -67,4 +67,4 @@ export { toWireTree, wireTreeToTree } from './worker/protocol.js'
 
 // ChartHost is deliberately NOT re-exported here. It is the only DOM-bound module
 // in this package, and keeping it off the main entry is what lets this entry be
-// imported inside a Web Worker. Reach it at '@klad/core/host'.
+// imported inside a Web Worker. Reach it at '@klad/engine/host'.

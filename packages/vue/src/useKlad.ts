@@ -1,5 +1,5 @@
 import { inject, shallowRef, type ShallowRef } from 'vue'
-import type { ChartState, KladApi } from 'klad'
+import type { ChartState, KladApi } from '@klad/core'
 
 export interface KladContext {
   api: ShallowRef<KladApi | null>

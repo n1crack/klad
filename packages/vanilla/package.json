@@ -1,5 +1,5 @@
 {
-  "name": "klad",
+  "name": "@klad/core",
   "version": "1.0.0-alpha.0",
   "description": "Klad — a canvas org chart for tens of thousands of nodes, with a DOM overlay for your own node content. Frameworkless.",
   "keywords": [
@@ -9,7 +9,7 @@
     "tree",
     "hierarchy",
     "canvas",
-    "klad",
+    "@klad/core",
     "vanilla",
     "typescript"
   ],
@@ -47,7 +47,7 @@
     "LICENSE-COMMERCIAL.md"
   ],
   "dependencies": {
-    "@klad/core": "workspace:*"
+    "@klad/engine": "workspace:*"
   },
   "scripts": {
     "build": "node ../../scripts/copy-license.mjs && tsdown",

@@ -64,15 +64,15 @@ importers:
 
   packages/playground:
     dependencies:
+      '@klad/core':
+        specifier: workspace:*
+        version: link:../vanilla
       '@klad/react':
         specifier: workspace:*
         version: link:../react
       '@klad/vue':
         specifier: workspace:*
         version: link:../vue
-      klad:
-        specifier: workspace:*
-        version: link:../vanilla
       react:
         specifier: ^19.2.0
         version: 19.2.7
@@ -104,7 +104,7 @@ importers:
 
   packages/react:
     dependencies:
-      klad:
+      '@klad/core':
         specifier: workspace:*
         version: link:../vanilla
     devDependencies:
@@ -126,7 +126,7 @@ importers:
 
   packages/vanilla:
     dependencies:
-      '@klad/core':
+      '@klad/engine':
         specifier: workspace:*
         version: link:../core
 
@@ -134,10 +134,10 @@ importers:
     dependencies:
       '@klad/core':
         specifier: workspace:*
-        version: link:../core
-      klad:
-        specifier: workspace:*
         version: link:../vanilla
+      '@klad/engine':
+        specifier: workspace:*
+        version: link:../core
     devDependencies:
       '@vitejs/plugin-vue':
         specifier: ^6.0.0

@@ -1,17 +1,21 @@
 ---
+'@klad/engine': major
 '@klad/core': major
-'klad': major
 '@klad/vue': major
 '@klad/react': major
 ---
 
 Renamed the project to **Klad** — short for κλάδος, Greek for "branch".
 
-Packages are `klad`, `@klad/core`, `@klad/vue` and `@klad/react` — the
-`@n1crack/orgchart*` names are gone. The headline package is unscoped so the
-install line is as short as the name, and the adapters sit under the matching
-`@klad` scope, so the whole family reads as one word rather than a word plus a
-different word for its scope.
+Everything lives under the `@klad` scope: `@klad/core` is the frameworkless
+chart you install, `@klad/vue` and `@klad/react` are the adapters, and
+`@klad/engine` is the DOM-less layer underneath that only a new binding needs.
+The `@n1crack/orgchart*` names are gone.
+
+Scoped rather than an unscoped headline package, and not by preference: npm
+refuses `klad` outright — "package name too similar to existing packages" —
+which is a filter that applies only to unscoped names. Under a scope the name
+is ours and the family reads as one word.
 
 The API carries the name too, since a brand that appears only in the import
 line is half a brand:

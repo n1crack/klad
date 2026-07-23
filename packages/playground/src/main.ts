@@ -1,7 +1,7 @@
 import { createApp } from 'vue'
 import { createElement } from 'react'
 import { createRoot, type Root } from 'react-dom/client'
-import type { KladApi, Theme } from 'klad'
+import type { KladApi, Theme } from '@klad/core'
 import {
   BLOCK_FILL_SEED,
   EDGE_RADIUS_MAX,

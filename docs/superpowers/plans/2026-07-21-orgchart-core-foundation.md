@@ -16,7 +16,7 @@
 - **No DOM, no `window`, no `document`** anywhere in `packages/core/src`. These modules must run inside a Web Worker.
 - **No recursion over tree nodes.** Depth can reach 50,000. Use explicit ordering arrays or stacks.
 - **Public API uses `string` ids. Internals use dense `uint32` indices.** `tree.ts` owns the mapping and is the only module aware of both.
-- **Node package scope:** `@klad/core`.
+- **Node package scope:** `@klad/engine`.
 - **Performance budget:** 50,000-node cold layout under 400ms. Enforced by a test in Task 3.
 - Spec of record: `docs/superpowers/specs/2026-07-21-orgchart-rework-design.md`.
 
@@ -42,7 +42,7 @@ Replaces the v0.2.5 single-package layout with a pnpm workspace. The old `src/` 
 
 **Interfaces:**
 - Consumes: nothing.
-- Produces: a working `pnpm test` at the repo root; the `@klad/core` package that every later task adds files to.
+- Produces: a working `pnpm test` at the repo root; the `@klad/engine` package that every later task adds files to.
 
 - [ ] **Step 1: Remove the v0.2.5 source tree**
 
@@ -157,7 +157,7 @@ dist/
 
 ```json
 {
-  "name": "@klad/core",
+  "name": "@klad/engine",
   "version": "1.0.0-alpha.0",
   "type": "module",
   "license": "MIT",
@@ -236,7 +236,7 @@ pnpm install
 pnpm test
 ```
 
-Expected: turbo runs `@klad/core#test`, vitest reports `1 passed`.
+Expected: turbo runs `@klad/engine#test`, vitest reports `1 passed`.
 
 If `pnpm install` reports the lockfile is for a different workspace shape, delete `pnpm-lock.yaml` and rerun — the old lockfile describes the deleted single-package layout.
 
@@ -436,7 +436,7 @@ describe('wouldCreateCycle', () => {
 Run:
 
 ```bash
-pnpm --filter @klad/core test
+pnpm --filter @klad/engine test
 ```
 
 Expected: FAIL — `Failed to resolve import "./tree.js"`.
@@ -656,7 +656,7 @@ export { normalize, subtreeOf, wouldCreateCycle } from './tree.js'
 Run:
 
 ```bash
-pnpm --filter @klad/core test
+pnpm --filter @klad/engine test
 pnpm typecheck
 ```
 
@@ -884,7 +884,7 @@ describe('layout performance budget', () => {
 Run:
 
 ```bash
-pnpm --filter @klad/core test
+pnpm --filter @klad/engine test
 ```
 
 Expected: FAIL — `Failed to resolve import "./tidy.js"`.
@@ -1185,7 +1185,7 @@ export { layout } from './layout/tidy.js'
 Run:
 
 ```bash
-pnpm --filter @klad/core test
+pnpm --filter @klad/engine test
 ```
 
 Expected: every `tidy.test.ts` case passes, including the no-overlap property test, and `tidy.bench.test.ts` reports the 50k layout under 400ms.
@@ -1302,7 +1302,7 @@ describe('applyOrientation', () => {
 Run:
 
 ```bash
-pnpm --filter @klad/core test
+pnpm --filter @klad/engine test
 ```
 
 Expected: FAIL — `Failed to resolve import "./orientation.js"`.
@@ -1387,7 +1387,7 @@ export { applyOrientation } from './layout/orientation.js'
 Run:
 
 ```bash
-pnpm --filter @klad/core test
+pnpm --filter @klad/engine test
 pnpm typecheck
 ```
 
@@ -1537,7 +1537,7 @@ describe('buildQuadTree', () => {
 Run:
 
 ```bash
-pnpm --filter @klad/core test
+pnpm --filter @klad/engine test
 ```
 
 Expected: FAIL — `Failed to resolve import "./quadtree.js"`.
@@ -1715,7 +1715,7 @@ export { buildQuadTree } from './spatial/quadtree.js'
 Run:
 
 ```bash
-pnpm --filter @klad/core test
+pnpm --filter @klad/engine test
 pnpm typecheck
 ```
 
@@ -1930,7 +1930,7 @@ describe('easeInOutCubic', () => {
 Run:
 
 ```bash
-pnpm --filter @klad/core test
+pnpm --filter @klad/engine test
 ```
 
 Expected: FAIL — `Failed to resolve import "./viewport.js"`.

@@ -19,7 +19,7 @@
 - `noUncheckedIndexedAccess: true` and `exactOptionalPropertyTypes: true` are on.
 - **Worker bundling:** `new Worker(new URL('./chart.worker.js', import.meta.url), { type: 'module' })`. No blob inlining, no consumer bundler configuration.
 - **Performance budget:** frame time under 16ms at p95 with 50,000 nodes. A cold 50k layout is already under 400ms (measured ~21ms).
-- Package names: `@klad/core`, `klad` (vanilla), `@klad/vue`.
+- Package names: `@klad/engine`, `@klad/core` (vanilla), `@klad/vue`.
 - Spec of record: `docs/superpowers/specs/2026-07-21-orgchart-rework-design.md`.
 
 ## What already exists
@@ -192,7 +192,7 @@ describe('pruneToVisible', () => {
 
 - [ ] **Step 2: Run the test to verify it fails**
 
-Run: `pnpm --filter @klad/core test`
+Run: `pnpm --filter @klad/engine test`
 Expected: FAIL — `Failed to resolve import "./visible.js"`.
 
 - [ ] **Step 3: Write the implementation**
@@ -300,7 +300,7 @@ export { pruneToVisible } from './visible.js'
 
 - [ ] **Step 5: Run the tests**
 
-Run: `pnpm --filter @klad/core test && pnpm typecheck && pnpm lint`
+Run: `pnpm --filter @klad/engine test && pnpm typecheck && pnpm lint`
 Expected: all pass, exit 0.
 
 - [ ] **Step 6: Commit**
@@ -424,7 +424,7 @@ describe('createTextMeasurer', () => {
 
 - [ ] **Step 2: Run the test to verify it fails**
 
-Run: `pnpm --filter @klad/core test`
+Run: `pnpm --filter @klad/engine test`
 Expected: FAIL — `Failed to resolve import "./measure.js"`.
 
 - [ ] **Step 3: Write the implementation**
@@ -516,7 +516,7 @@ export { createTextMeasurer } from './text/measure.js'
 
 - [ ] **Step 5: Run the tests**
 
-Run: `pnpm --filter @klad/core test && pnpm typecheck && pnpm lint`
+Run: `pnpm --filter @klad/engine test && pnpm typecheck && pnpm lint`
 Expected: all pass.
 
 - [ ] **Step 6: Commit**
@@ -619,7 +619,7 @@ describe('resolveTheme', () => {
 
 - [ ] **Step 2: Run the test to verify it fails**
 
-Run: `pnpm --filter @klad/core test`
+Run: `pnpm --filter @klad/engine test`
 Expected: FAIL — `Failed to resolve import "./lod.js"`.
 
 - [ ] **Step 3: Write the implementations**
@@ -711,7 +711,7 @@ export { DEFAULT_LOD, lodFor, overlayEnabled } from './render/lod.js'
 
 - [ ] **Step 5: Run the tests**
 
-Run: `pnpm --filter @klad/core test && pnpm typecheck && pnpm lint`
+Run: `pnpm --filter @klad/engine test && pnpm typecheck && pnpm lint`
 Expected: all pass.
 
 - [ ] **Step 6: Commit**
@@ -948,7 +948,7 @@ describe('createCanvas2DRenderer', () => {
 
 - [ ] **Step 3: Run the test to verify it fails**
 
-Run: `pnpm --filter @klad/core test`
+Run: `pnpm --filter @klad/engine test`
 Expected: FAIL — `Failed to resolve import "./canvas2d.js"`. The browser project should start Chromium; if Playwright reports a missing browser, rerun `pnpm exec playwright install chromium`.
 
 - [ ] **Step 4: Write the renderer interface**
@@ -1220,7 +1220,7 @@ export { createCanvas2DRenderer } from './render/canvas2d.js'
 
 - [ ] **Step 7: Run the tests**
 
-Run: `pnpm --filter @klad/core test && pnpm typecheck && pnpm lint`
+Run: `pnpm --filter @klad/engine test && pnpm typecheck && pnpm lint`
 Expected: the node project keeps passing and the browser project runs the seven canvas cases in Chromium.
 
 - [ ] **Step 8: Commit**
@@ -1425,7 +1425,7 @@ describe('ChartEngine', () => {
 
 - [ ] **Step 2: Run the test to verify it fails**
 
-Run: `pnpm --filter @klad/core test`
+Run: `pnpm --filter @klad/engine test`
 Expected: FAIL — `Failed to resolve import "./engine.js"`.
 
 - [ ] **Step 3: Write the protocol**
@@ -1753,7 +1753,7 @@ export { toWireTree, wireTreeToTree } from './worker/protocol.js'
 
 - [ ] **Step 6: Run the tests**
 
-Run: `pnpm --filter @klad/core test && pnpm typecheck && pnpm lint`
+Run: `pnpm --filter @klad/engine test && pnpm typecheck && pnpm lint`
 Expected: all pass.
 
 - [ ] **Step 7: Commit**
@@ -1894,7 +1894,7 @@ describe('createChartHost with a worker', () => {
 
 - [ ] **Step 2: Run the test to verify it fails**
 
-Run: `pnpm --filter @klad/core test`
+Run: `pnpm --filter @klad/engine test`
 Expected: FAIL — `Failed to resolve import "./host.js"`.
 
 - [ ] **Step 3: Write the worker entry**
@@ -2187,12 +2187,12 @@ Add to `packages/core/src/index.ts`:
 //
 //   "./host": { "types": "./src/worker/host.ts", "import": "./src/worker/host.ts" }
 //
-// Consumers reach it at `@klad/core/host`.
+// Consumers reach it at `@klad/engine/host`.
 ```
 
 - [ ] **Step 6: Run the tests**
 
-Run: `pnpm --filter @klad/core test && pnpm typecheck && pnpm lint`
+Run: `pnpm --filter @klad/engine test && pnpm typecheck && pnpm lint`
 Expected: the browser project exercises both the worker and in-process paths, and the "same drawn set" case proves they agree.
 
 If the worker fails to resolve under vitest browser mode, the cause is almost always the `new URL(...)` specifier not being statically analysable — keep it exactly as written, a literal relative path inside `new URL`, or bundlers will silently stop emitting the worker chunk.
@@ -2236,7 +2236,7 @@ Every piece of DOM work lives here, once. `createKlad` is the frameworkless API 
 
 ```json
 {
-  "name": "klad",
+  "name": "@klad/core",
   "version": "1.0.0-alpha.0",
   "type": "module",
   "license": "MIT",
@@ -2249,7 +2249,7 @@ Every piece of DOM work lives here, once. `createKlad` is the frameworkless API 
   },
   "files": ["dist"],
   "dependencies": {
-    "@klad/core": "workspace:*"
+    "@klad/engine": "workspace:*"
   },
   "scripts": {
     "test": "vitest run",
@@ -2488,7 +2488,7 @@ Expected: FAIL — `Failed to resolve import "./index.js"`.
 `packages/vanilla/src/input.ts`:
 
 ```ts
-import { pan, screenToWorld, zoomAt, type Camera, type ZoomLimits } from '@klad/core'
+import { pan, screenToWorld, zoomAt, type Camera, type ZoomLimits } from '@klad/engine'
 
 export interface InputCallbacks {
   getCamera(): Camera
@@ -2617,7 +2617,7 @@ export { screenToWorld }
 `packages/vanilla/src/overlay.ts`:
 
 ```ts
-import { worldToScreen, type Camera } from '@klad/core'
+import { worldToScreen, type Camera } from '@klad/engine'
 
 export interface OverlayItem {
   /** Source node index. */
@@ -2696,7 +2696,7 @@ export function createOverlay(container: HTMLElement, callbacks: OverlayCallback
 `packages/vanilla/src/index.ts` — the module is long, so it is given in one block:
 
 ```ts
-import { createChartHost, type ChartHost } from '@klad/core/host'
+import { createChartHost, type ChartHost } from '@klad/engine/host'
 import {
   DEFAULT_LOD,
   fit as fitCamera,
@@ -2716,7 +2716,7 @@ import {
   type Tree,
   type Warning,
   type ZoomLimits,
-} from '@klad/core'
+} from '@klad/engine'
 import { attachInput } from './input.js'
 import { createOverlay } from './overlay.js'
 
@@ -3360,7 +3360,7 @@ Expected: FAIL — no `[role="tree"]` in the document.
 `packages/vanilla/src/a11y.ts`:
 
 ```ts
-import type { Tree } from '@klad/core'
+import type { Tree } from '@klad/engine'
 
 export interface A11yTree {
   update(tree: Tree, open: Uint8Array, labelOf: (index: number) => string): void
@@ -3533,7 +3533,7 @@ The adapter binds `subscribe` to Vue reactivity and routes the `#node` scoped sl
 - Create: `packages/playground/src/data.ts`
 
 **Interfaces:**
-- Consumes: `createKlad`, `Options`, `NodeContext`, `KladApi`, `ChartState` from `klad`.
+- Consumes: `createKlad`, `Options`, `NodeContext`, `KladApi`, `ChartState` from `@klad/core`.
 - Produces:
   - Vue component `Klad` with props `options: Options`, exposing `api`, emitting `nodeClick`, `toggle`, `ready`, `warning`; scoped slot `#node` receiving `NodeContext`.
   - `function useKlad(): { api: ShallowRef<KladApi | null>; state: ShallowRef<ChartState | null> }` for use inside the component's subtree.
@@ -3558,7 +3558,7 @@ The adapter binds `subscribe` to Vue reactivity and routes the `#node` scoped sl
   },
   "files": ["dist"],
   "dependencies": {
-    "klad": "workspace:*"
+    "@klad/core": "workspace:*"
   },
   "peerDependencies": {
     "vue": ">=3.5 <4"
@@ -3729,7 +3729,7 @@ Expected: FAIL — `Failed to resolve import "./Klad.vue"`.
 
 ```vue
 <script setup lang="ts">
-import { createKlad, type ChartState, type NodeContext, type Options, type KladApi } from 'klad'
+import { createKlad, type ChartState, type NodeContext, type Options, type KladApi } from '@klad/core'
 import { onBeforeUnmount, onMounted, provide, render, shallowRef, watch, h, type VNode } from 'vue'
 
 const props = defineProps<{ options: Options }>()
@@ -3800,7 +3800,7 @@ defineExpose({ api })
 
 ```ts
 import { inject, shallowRef, type ShallowRef } from 'vue'
-import type { ChartState, KladApi } from 'klad'
+import type { ChartState, KladApi } from '@klad/core'
 
 export interface KladContext {
   api: ShallowRef<KladApi | null>
@@ -3831,7 +3831,7 @@ export type {
   Options,
   KladApi,
   SearchResult,
-} from 'klad'
+} from '@klad/core'
 
 export const KladPlugin: Plugin = {
   install(app) {
@@ -3854,7 +3854,7 @@ export const KladPlugin: Plugin = {
     "build": "vite build"
   },
   "dependencies": {
-    "klad": "workspace:*",
+    "@klad/core": "workspace:*",
     "@klad/vue": "workspace:*"
   }
 }
@@ -3885,7 +3885,7 @@ export default defineConfig({ plugins: [vue()] })
 `packages/playground/src/data.ts`:
 
 ```ts
-import type { NodeData } from 'klad'
+import type { NodeData } from '@klad/core'
 
 /** Builds a branching org chart of roughly `target` nodes. */
 export function buildOrg(target: number): NodeData[] {
@@ -3910,7 +3910,7 @@ export function buildOrg(target: number): NodeData[] {
 `packages/playground/src/vanilla-demo.ts`:
 
 ```ts
-import { createKlad } from 'klad'
+import { createKlad } from '@klad/core'
 import { buildOrg } from './data.js'
 
 export function mountVanilla(host: HTMLElement, count: number) {

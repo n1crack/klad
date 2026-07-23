@@ -8,7 +8,7 @@ Work continues on the `dev` branch. The full design is
 
 ## Where things stand
 
-Five packages, all green (423 tests): `@klad/core`, `klad`
+Five packages, all green (423 tests): `@klad/engine`, `@klad/core`
 (vanilla), `@klad/vue`, `@klad/react`, plus a private playground.
 Everything runs from source through the pnpm workspace — no build step yet. `pnpm dev`
 serves the playground; `pnpm test` / `pnpm typecheck` / `pnpm lint` from the root.
@@ -48,7 +48,7 @@ so it happens from the machine that has it:
   publish rights on the four `klad*` packages). Nothing else is missing — the
   release workflow is already written against it.
 - Confirm the `@klad` scope exists and the four package names are free
-  (`klad`, `@klad/core`, `@klad/vue`, `@klad/react` all read as
+  (`@klad/core`, `@klad/engine`, `@klad/vue`, `@klad/react` all read as
   unpublished on the registry as of the rename).
 - Decide the first published version. Everything currently sits at
   `1.0.0-alpha.0`; `pnpm changeset` then `pnpm version-packages` is what moves
@@ -68,7 +68,7 @@ so it happens from the machine that has it:
   sibling's SOURCE path, and every cross-package type silently became
   `undefined` in the shipped `.d.ts` — `NodeData`, and with it the payload of
   every event a consumer handles. Pointing at the siblings' built declarations
-  fixes it; turbo's `^build` guarantees they exist. `@klad/core`
+  fixes it; turbo's `^build` guarantees they exist. `@klad/engine`
   is a direct dependency of the Vue package for the same reason: its published
   types name it.
 - **Licence files copied into each package at build time**
