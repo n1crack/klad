@@ -31,17 +31,19 @@ jobs:
   release:
     runs-on: ubuntu-latest
     steps:
-      - uses: actions/checkout@v4
+      - uses: actions/checkout@v7
         with:
           # Changesets needs the history to work out what changed.
           fetch-depth: 0
 
-      # Pinned to pnpm 10 by the root manifest's `packageManager`. Worth knowing
-      # before anyone bumps it: OIDC publishing works there and regressed in
-      # pnpm 11 (pnpm/pnpm#11513), where the token exchange 404s.
-      - uses: pnpm/action-setup@v4
+      # The pnpm VERSION comes from the root manifest's `packageManager`, not
+      # from this action's major — v6 only adds the ability to install pnpm 11.
+      # Worth knowing before anyone bumps that field: OIDC publishing works on
+      # pnpm 10 and regressed on 11 (pnpm/pnpm#11513), where the token exchange
+      # 404s. This job's whole credential is that exchange.
+      - uses: pnpm/action-setup@v6
 
-      - uses: actions/setup-node@v4
+      - uses: actions/setup-node@v7
         with:
           node-version-file: package.json
           cache: pnpm
