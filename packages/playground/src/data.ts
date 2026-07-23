@@ -1,4 +1,5 @@
 import type { MinimapPosition, Options } from '@n1crack/orgchart'
+import { chartTokens, silhouetteColour, type ThemeMode } from './theme.js'
 
 export type { MinimapPosition } from '@n1crack/orgchart'
 
@@ -39,20 +40,28 @@ function minimapOnConfig(example: Example): NonNullable<Options['minimap']> {
 }
 
 /**
- * The effective `minimap` option for `on`/`off` and the chosen corner, given
- * `example`'s own config. `position` always wins over whatever the example
- * itself declared — it is the playground's own dropdown control, and the
- * point of the control is that the viewer can move the widget regardless of
- * what an individual example happened to configure.
+ * The effective `minimap` option for `on`/`off`, the chosen corner and the
+ * current light/dark mode, given `example`'s own config. `position` always
+ * wins over whatever the example itself declared — it is the playground's own
+ * dropdown control, and the point of the control is that the viewer can move
+ * the widget regardless of what an individual example happened to configure.
+ *
+ * The silhouette colour comes from `mode` because it is the one part of the
+ * widget the host's own CSS cannot reach — see `silhouetteColour` in
+ * theme.ts.
  */
 export function minimapOptionFor(
   example: Example,
   on: boolean,
   position: MinimapPosition,
+  mode: ThemeMode,
 ): NonNullable<Options['minimap']> {
   if (!on) return false
+  const silhouette = silhouetteColour(mode)
   const configured = minimapOnConfig(example)
-  return typeof configured === 'object' ? { ...configured, position } : { position }
+  return typeof configured === 'object'
+    ? { ...configured, position, silhouetteColour: silhouette }
+    : { position, silhouetteColour: silhouette }
 }
 
 /** Slider bounds and default for the "Line width" control. `EDGE_WIDTH_DEFAULT`
@@ -79,18 +88,21 @@ export const EDGE_RADIUS_MAX = 24
 export const EDGE_RADIUS_DEFAULT = 0
 
 /**
- * The initial swatch value for the "Node fill" control — the library's own
- * default (`DEFAULT_THEME.nodeFill` in packages/core/src/render/theme.ts),
- * not each example's own effective value. Unlike `EDGE_RADIUS_DEFAULT`, this
- * is NEVER baked into `themeFor`/construction-time options: an example that
- * declares its own `nodeFill` for a reason (Avatar/Monogram's transparent
- * node box, so only the circle+name paint) must keep it on first mount,
- * untouched, until a viewer actually drags this control — see
- * `setNodeFill` in vanilla-demo.ts/VueDemo.vue/ReactDemo.tsx, which goes
- * straight through `api.setTheme({ nodeFill })`, never through
- * `buildOptions`/`themeFor`.
+ * The initial swatch value for the "Node fill" control — the fill the chart
+ * ACTUALLY starts with in `mode` (see theme.ts), not each example's own
+ * effective value: an example that declares its own `nodeFill` for a reason
+ * (Avatar/Monogram's transparent node box, so only the circle+name paint)
+ * keeps it on first mount, untouched, until a viewer actually drags this
+ * control — see `setNodeFill` in vanilla-demo.ts/VueDemo.vue/ReactDemo.tsx,
+ * which goes straight through `api.setTheme({ nodeFill })`.
+ *
+ * It is mode-dependent because the swatch has to be honest: in dark mode the
+ * chart's nodes are not white, and a picker sitting on `#ffffff` while the
+ * chart shows near-black boxes reads as a broken control.
  */
-export const NODE_FILL_DEFAULT = '#ffffff'
+export function nodeFillDefault(mode: ThemeMode): string {
+  return chartTokens(mode).nodeFill!
+}
 
 /**
  * The swatch value the "Shape fill" colour picker SEEDS with once a viewer
@@ -99,31 +111,49 @@ export const NODE_FILL_DEFAULT = '#ffffff'
  * packages/core/src/render/theme.ts), not a colour at all. The picker
  * control (an `<input type="color">`) can't represent "no colour" itself, so
  * it needs SOME starting hex value ready for the moment a viewer flips the
- * "shape fill" checkbox on; this is that seed, distinct from `NODE_FILL_DEFAULT`
- * so the two swatches are visually distinguishable at a glance.
+ * "shape fill" checkbox on; this is that seed, distinct from the mode's own
+ * node fill so the two swatches are visually distinguishable at a glance.
  */
 export const BLOCK_FILL_SEED = '#e2e8f0'
 
 /**
  * The initial swatch value for the "Ring colour" control — the library's own
  * default (`DEFAULT_THEME.ringStroke` in packages/core/src/render/theme.ts),
- * same convention as `NODE_FILL_DEFAULT` above.
+ * same convention as `nodeFillDefault` above.
  */
 export const RING_STROKE_DEFAULT = '#f59e0b'
 
 /**
- * The effective `theme` for `example`, with `edgeCornerRadius` set from the
- * playground's own slider. Merged over the example's own declared theme
- * (rather than replacing it) so examples that already set theme tokens for
- * their own reasons — Avatar circle's transparent node box, for instance —
- * keep them; the slider only ever adds or overrides the one token it owns.
+ * The effective `theme` for `example` in `mode`, with `edgeCornerRadius` set
+ * from the playground's own slider.
  *
- * `nodeFill`/`blockFill`/`ringStroke` deliberately have NO equivalent
- * parameter here — see `NODE_FILL_DEFAULT`'s docblock for why those controls
- * never touch construction-time options at all, live-only via `api.setTheme`.
+ * Layered rather than replaced, innermost-wins: the mode's own palette (node
+ * fill/stroke, corner radius, connector and label colours — see theme.ts)
+ * underneath, then the example's own declared theme over it, so examples that
+ * set tokens for their own reasons — Avatar circle's transparent node box,
+ * for instance — keep them in either mode, then the slider's one token last.
+ *
+ * `blockFill`/`ringStroke` deliberately have NO equivalent parameter here —
+ * see `nodeFillDefault`'s docblock for why those controls never touch
+ * construction-time options at all, live-only via `api.setTheme`.
  */
-export function themeFor(example: Example, edgeCornerRadius: number): NonNullable<Options['theme']> {
-  return { ...example.options.theme, edgeCornerRadius }
+export function themeFor(
+  example: Example,
+  edgeCornerRadius: number,
+  mode: ThemeMode,
+): NonNullable<Options['theme']> {
+  return { ...chartTokens(mode), ...example.options.theme, edgeCornerRadius }
+}
+
+/**
+ * The theme tokens to push into an ALREADY-MOUNTED chart when the viewer flips
+ * light/dark — the same layering as `themeFor`, minus the slider's token,
+ * which the sidebar owns and must not be reset by a theme flip. Sent through
+ * `api.setTheme` (see each demo's `setMode`), so switching mode never touches
+ * camera, expand/collapse or highlight state.
+ */
+export function modeThemeFor(example: Example, mode: ThemeMode): NonNullable<Options['theme']> {
+  return { ...chartTokens(mode), ...example.options.theme }
 }
 
 /** Options for the minimap-corner `<select>`, in on-screen order. */

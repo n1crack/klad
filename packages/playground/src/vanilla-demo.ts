@@ -7,6 +7,7 @@ import {
   minimapDefaultOn,
   minimapDefaultPosition,
   minimapOptionFor,
+  modeThemeFor,
   themeFor,
   accordionProgress,
   type Department,
@@ -14,6 +15,7 @@ import {
   type MinimapPosition,
   type NodeContentKind,
 } from './data.js'
+import type { ThemeMode } from './theme.js'
 
 const DEFAULT_NODE_SIZE = { w: 180, h: 64 }
 
@@ -449,6 +451,7 @@ export interface VanillaDemoHandle {
   setAccent(accent: string): void
   setEdgeWidth(width: number): void
   setRingEnabled(enabled: boolean): void
+  setMode(mode: ThemeMode): void
 }
 
 /**
@@ -471,9 +474,11 @@ export interface VanillaDemoHandle {
 export function mountVanilla(
   host: HTMLElement,
   example: Example,
+  mode: ThemeMode,
   onApiChange: (api: OrgChartApi) => void,
 ): VanillaDemoHandle {
   const renderNode = RENDERERS[example.content]
+  let currentMode = mode
   let minimapOn = minimapDefaultOn(example)
   let minimapPosition = minimapDefaultPosition(example)
 
@@ -483,8 +488,8 @@ export function mountVanilla(
       nodeSize: DEFAULT_NODE_SIZE,
       label: (item) => String(item.name ?? ''),
       ...example.options,
-      theme: themeFor(example, EDGE_RADIUS_DEFAULT),
-      minimap: minimapOptionFor(example, minimapOn, minimapPosition),
+      theme: themeFor(example, EDGE_RADIUS_DEFAULT, currentMode),
+      minimap: minimapOptionFor(example, minimapOn, minimapPosition, currentMode),
       ...(renderNode !== null ? { renderNode } : {}),
     }
   }
@@ -584,11 +589,11 @@ export function mountVanilla(
       minimapOn = on
       // Straight through the API rather than `chart.update()`, so toggling
       // the minimap never resets the tree's expand/collapse state.
-      chart.api.setMinimap(minimapOptionFor(example, minimapOn, minimapPosition))
+      chart.api.setMinimap(minimapOptionFor(example, minimapOn, minimapPosition, currentMode))
     },
     setMinimapPosition(position) {
       minimapPosition = position
-      chart.api.setMinimap(minimapOptionFor(example, minimapOn, minimapPosition))
+      chart.api.setMinimap(minimapOptionFor(example, minimapOn, minimapPosition, currentMode))
     },
     setEdgeRadius(radius) {
       chart.api.setTheme({ edgeCornerRadius: radius })
@@ -611,6 +616,25 @@ export function mountVanilla(
     },
     setRingEnabled(enabled) {
       chart.api.setRing(enabled)
+    },
+    /**
+     * Light/dark, applied to the chart the same paint-only way every other
+     * control here is — the canvas's node fill and stroke have to move with
+     * the CSS the cards over them use, or the canvas box shows around each
+     * card's edges (see theme.ts). `mode` is also kept for the next
+     * `buildOptions()` call, so a later minimap toggle rebuilds the options
+     * with the mode the chart is actually in rather than the one it mounted
+     * in.
+     */
+    setMode(next) {
+      currentMode = next
+      chart.api.setTheme(modeThemeFor(example, next))
+      // The minimap's silhouette is the one piece of it the playground's own
+      // CSS cannot restyle (see `silhouetteColour` in theme.ts), so it has to
+      // be re-applied through the option — but only while the widget is
+      // actually showing, since `setMinimap(false)` on an already-hidden
+      // minimap would just rebuild nothing.
+      if (minimapOn) chart.api.setMinimap(minimapOptionFor(example, true, minimapPosition, next))
     },
   }
 }

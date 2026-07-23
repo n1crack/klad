@@ -9,11 +9,13 @@ import {
   minimapDefaultOn,
   minimapDefaultPosition,
   minimapOptionFor,
+  modeThemeFor,
   themeFor,
   type Department,
   type Example,
   type MinimapPosition,
 } from './data.js'
+import type { ThemeMode } from './theme.js'
 
 const DEFAULT_NODE_SIZE = { w: 180, h: 64 }
 
@@ -153,10 +155,12 @@ export interface ReactDemoHandle {
   setAccent(accent: string): void
   setEdgeWidth(width: number): void
   setRingEnabled(enabled: boolean): void
+  setMode(mode: ThemeMode): void
 }
 
 export interface ReactDemoProps {
   example: Example
+  mode: ThemeMode
   onReady?: (api: OrgChartApi) => void
   ref?: Ref<ReactDemoHandle>
 }
@@ -170,7 +174,7 @@ export interface ReactDemoProps {
  * function that returns null) so this adapter never claims overlay DOM it
  * doesn't need — matching the vanilla and Vue "canvas only" behaviour.
  */
-export function ReactDemo({ example, onReady, ref }: ReactDemoProps): ReactNode {
+export function ReactDemo({ example, mode, onReady, ref }: ReactDemoProps): ReactNode {
   const chartRef = useRef<OrgChartHandle>(null)
 
   /**
@@ -196,14 +200,26 @@ export function ReactDemo({ example, onReady, ref }: ReactDemoProps): ReactNode 
   const minimapOnRef = useRef(minimapDefaultOn(example))
   const minimapPositionRef = useRef<MinimapPosition>(minimapDefaultPosition(example))
 
+  /**
+   * The light/dark mode this chart MOUNTED in, captured once for the same
+   * reason the two refs above exist: it feeds `options`, and `options`
+   * changing identity is what makes the adapter call `instance.update()` and
+   * reset every node's open/closed state. main.ts flips the mode through
+   * `setMode` below instead, which is paint-only.
+   */
+  const mountedModeRef = useRef<ThemeMode>(mode)
+
+  /** The mode the chart is in NOW — `mountedModeRef` moved on by `setMode` below. */
+  const modeRef = useRef<ThemeMode>(mode)
+
   const options: Options = useMemo<Options>(
     () => ({
       data: example.data,
       nodeSize: DEFAULT_NODE_SIZE,
       label: (item) => String(item.name ?? ''),
       ...example.options,
-      theme: themeFor(example, EDGE_RADIUS_DEFAULT),
-      minimap: minimapOptionFor(example, minimapOnRef.current, minimapPositionRef.current),
+      theme: themeFor(example, EDGE_RADIUS_DEFAULT, mountedModeRef.current),
+      minimap: minimapOptionFor(example, minimapOnRef.current, minimapPositionRef.current, mountedModeRef.current),
     }),
     [example],
   )
@@ -221,11 +237,15 @@ export function ReactDemo({ example, onReady, ref }: ReactDemoProps): ReactNode 
         // toggling the minimap does not reset the tree's expand/collapse state.
         // See the comment on `minimapOnRef` above for why it is a ref, not
         // state, which is what makes this safe rather than merely apparently so.
-        chartRef.current?.api?.setMinimap(minimapOptionFor(example, on, minimapPositionRef.current))
+        chartRef.current?.api?.setMinimap(
+          minimapOptionFor(example, on, minimapPositionRef.current, modeRef.current),
+        )
       },
       setMinimapPosition: (position: MinimapPosition) => {
         minimapPositionRef.current = position
-        chartRef.current?.api?.setMinimap(minimapOptionFor(example, minimapOnRef.current, position))
+        chartRef.current?.api?.setMinimap(
+          minimapOptionFor(example, minimapOnRef.current, position, modeRef.current),
+        )
       },
       // `edgeCornerRadius`/`nodeFill` both live under `theme`, which used to
       // require a full `key={...}` remount to change post-construction
@@ -265,6 +285,22 @@ export function ReactDemo({ example, onReady, ref }: ReactDemoProps): ReactNode 
       // packages/vanilla/src/index.ts.
       setRingEnabled: (enabled: boolean) => {
         chartRef.current?.api?.setRing(enabled)
+      },
+      // Light/dark, on the same paint-only `setTheme` path as everything
+      // above: the canvas's node fill and stroke have to move with the CSS
+      // the cards over them use, or the canvas box shows around each card's
+      // edges (see theme.ts).
+      setMode: (next: ThemeMode) => {
+        modeRef.current = next
+        chartRef.current?.api?.setTheme(modeThemeFor(example, next))
+        // The silhouette is the one piece of the minimap a host stylesheet
+        // cannot reach (see `silhouetteColour` in theme.ts), so it is
+        // re-applied through the option — only while the widget is showing.
+        if (minimapOnRef.current) {
+          chartRef.current?.api?.setMinimap(
+            minimapOptionFor(example, true, minimapPositionRef.current, next),
+          )
+        }
       },
     }),
     [example],

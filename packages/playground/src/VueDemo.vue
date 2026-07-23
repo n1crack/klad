@@ -10,13 +10,15 @@ import {
   minimapDefaultOn,
   minimapDefaultPosition,
   minimapOptionFor,
+  modeThemeFor,
   themeFor,
   type Department,
   type Example,
   type MinimapPosition,
 } from './data.js'
+import type { ThemeMode } from './theme.js'
 
-const props = defineProps<{ example: Example }>()
+const props = defineProps<{ example: Example; mode: ThemeMode }>()
 const emit = defineEmits<{ ready: [OrgChartApi] }>()
 
 const chartRef = ref<{ api: OrgChartApi | null } | null>(null)
@@ -46,13 +48,26 @@ type Item = NodeContext['item']
 let minimapOn = minimapDefaultOn(props.example)
 let minimapPosition: MinimapPosition = minimapDefaultPosition(props.example)
 
+/**
+ * The light/dark mode this chart MOUNTED in, read once. Same reasoning as
+ * `minimapOn` above: `props.mode` is set at `createApp` and never updated
+ * (main.ts flips the mode through `setMode` below, not by re-rendering), but
+ * reading it inside the `options` computed anyway would make a future prop
+ * update recompute `options` and hand the adapter a `chart.update()` that
+ * resets every node's open/closed state.
+ */
+const mountedMode: ThemeMode = props.mode
+
+/** The mode the chart is in NOW — `mountedMode` moved on by `setMode` below. */
+let currentMode: ThemeMode = mountedMode
+
 const options = computed<Options>(() => ({
   data: props.example.data,
   nodeSize: DEFAULT_NODE_SIZE,
   label: (item) => String(item.name ?? ''),
   ...props.example.options,
-  theme: themeFor(props.example, EDGE_RADIUS_DEFAULT),
-  minimap: minimapOptionFor(props.example, minimapOn, minimapPosition),
+  theme: themeFor(props.example, EDGE_RADIUS_DEFAULT, mountedMode),
+  minimap: minimapOptionFor(props.example, minimapOn, minimapPosition, mountedMode),
 }))
 
 function handleReady(): void {
@@ -66,12 +81,12 @@ function setMinimap(on: boolean): void {
   // expand/collapse state as an unrelated side effect. See the comment on
   // `minimapOn` above for why it is a plain variable, not a `ref`, which is
   // what makes this safe rather than merely apparently safe.
-  chartRef.value?.api?.setMinimap(minimapOptionFor(props.example, on, minimapPosition))
+  chartRef.value?.api?.setMinimap(minimapOptionFor(props.example, on, minimapPosition, currentMode))
 }
 
 function setMinimapPosition(position: MinimapPosition): void {
   minimapPosition = position
-  chartRef.value?.api?.setMinimap(minimapOptionFor(props.example, minimapOn, position))
+  chartRef.value?.api?.setMinimap(minimapOptionFor(props.example, minimapOn, position, currentMode))
 }
 
 /**
@@ -127,6 +142,22 @@ function setRingEnabled(enabled: boolean): void {
   chartRef.value?.api?.setRing(enabled)
 }
 
+/**
+ * Light/dark. Same paint-only `setTheme` path as every control above — the
+ * canvas's node fill and stroke must move with the CSS the cards over them
+ * use, or the canvas box shows around each card's edges (see theme.ts).
+ */
+function setMode(mode: ThemeMode): void {
+  currentMode = mode
+  chartRef.value?.api?.setTheme(modeThemeFor(props.example, mode))
+  // The silhouette is the one piece of the minimap a host stylesheet cannot
+  // reach (see `silhouetteColour` in theme.ts), so it is re-applied through
+  // the option — only while the widget is actually showing.
+  if (minimapOn) {
+    chartRef.value?.api?.setMinimap(minimapOptionFor(props.example, true, minimapPosition, mode))
+  }
+}
+
 defineExpose({
   setMinimap,
   setMinimapPosition,
@@ -136,6 +167,7 @@ defineExpose({
   setAccent,
   setEdgeWidth,
   setRingEnabled,
+  setMode,
 })
 
 // Shared by the avatar/status/photo templates below, mirroring the vanilla

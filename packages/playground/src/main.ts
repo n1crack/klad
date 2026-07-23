@@ -15,17 +15,27 @@ import {
   MINIMAP_POSITIONS,
   minimapDefaultOn,
   minimapDefaultPosition,
-  NODE_FILL_DEFAULT,
+  nodeFillDefault,
   RING_STROKE_DEFAULT,
   type Example,
   type MinimapPosition,
 } from './data.js'
+import { applyTheme, initialMode, rememberMode, watchSystemTheme, type ThemeMode } from './theme.js'
 import { mountVanilla, type VanillaDemoHandle } from './vanilla-demo.js'
 import VueDemo from './VueDemo.vue'
 import { ReactDemo, type ReactDemoHandle } from './ReactDemo.js'
 import './style.css'
 
 type Stack = 'vanilla' | 'vue' | 'react'
+
+/**
+ * Light/dark, applied to `<html>` BEFORE the shell is built: every colour
+ * below — the shell's own `canvas`/`canvastext`-derived tokens and the chart
+ * theme the demos mount with alike — is read from the document, so a mode
+ * settled after the first paint would show as a flash of the wrong one.
+ */
+let mode: ThemeMode = initialMode()
+applyTheme(mode)
 
 const root = document.querySelector<HTMLDivElement>('#app')
 if (root === null) throw new Error('#app element not found')
@@ -86,7 +96,66 @@ brand.append(markEl, appTitle)
 const here = new URL('.', window.location.href).pathname
 const parent = new URL('..', window.location.href).pathname
 
-header.append(brand)
+const headerActions = document.createElement('div')
+headerActions.className = 'app-actions'
+
+/**
+ * Light/dark. One button rather than a three-way light/dark/system control:
+ * the playground already STARTS on the OS preference and keeps following it
+ * until this is clicked (see theme.ts), so the third state is the default
+ * state and does not need a seat of its own.
+ *
+ * The icon shows what a click will GIVE you, not what you are in — the label
+ * says the same thing, so the two never contradict each other.
+ */
+const SUN = `<svg viewBox="0 0 24 24" aria-hidden="true" focusable="false" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round">
+  <circle cx="12" cy="12" r="4.2" />
+  <path d="M12 2.6v2.2M12 19.2v2.2M2.6 12h2.2M19.2 12h2.2M5.4 5.4l1.6 1.6M17 17l1.6 1.6M18.6 5.4L17 7M7 17l-1.6 1.6" />
+</svg>`
+const MOON = `<svg viewBox="0 0 24 24" aria-hidden="true" focusable="false" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
+  <path d="M20.5 14.2A8.6 8.6 0 0 1 9.8 3.5a8.6 8.6 0 1 0 10.7 10.7Z" />
+</svg>`
+
+/**
+ * Opens the sidebar on a narrow screen, where it is a drawer over the chart
+ * rather than a column beside it. Hidden by CSS at every width where the
+ * sidebar is simply there (see the `max-width: 720px` block in style.css) —
+ * a button that toggles something already permanently visible is noise.
+ *
+ * The drawer is the answer to the sidebar's own size on a phone: as a block
+ * ABOVE the chart it took nearly half the screen, leaving the thing the page
+ * exists to show as a strip at the bottom. Over the chart, it costs nothing
+ * until it is asked for.
+ */
+const controlsButton = document.createElement('button')
+controlsButton.type = 'button'
+controlsButton.className = 'app-controls-toggle'
+controlsButton.textContent = 'Controls'
+controlsButton.setAttribute('aria-expanded', 'false')
+controlsButton.onclick = () => setControlsOpen(!layout.classList.contains('is-controls-open'))
+headerActions.append(controlsButton)
+
+function setControlsOpen(open: boolean): void {
+  layout.classList.toggle('is-controls-open', open)
+  controlsButton.setAttribute('aria-expanded', String(open))
+}
+
+const themeButton = document.createElement('button')
+themeButton.type = 'button'
+themeButton.className = 'app-theme-toggle'
+themeButton.onclick = () => {
+  switchMode(mode === 'dark' ? 'light' : 'dark', true)
+}
+headerActions.append(themeButton)
+
+/** Keeps the toggle's icon and its accessible label pointing at the mode a click would move TO. */
+function updateThemeButton(): void {
+  const next = mode === 'dark' ? 'light' : 'dark'
+  themeButton.innerHTML = mode === 'dark' ? SUN : MOON
+  themeButton.title = `Switch to ${next} theme`
+  themeButton.setAttribute('aria-label', themeButton.title)
+}
+updateThemeButton()
 
 // Only when there is somewhere to go back TO. Served on its own — `pnpm dev`,
 // or deployed at a root — the parent is this same page, and an exit that
@@ -96,8 +165,10 @@ if (parent !== here) {
   backLink.className = 'app-back'
   backLink.href = parent
   backLink.innerHTML = '<span aria-hidden="true">←</span> Docs'
-  header.append(backLink)
+  headerActions.append(backLink)
 }
+
+header.append(brand, headerActions)
 
 /** A labelled group of related controls — the sidebar's unit of visual hierarchy. */
 function sidebarGroup(caption: string, ...children: HTMLElement[]): HTMLDivElement {
@@ -229,6 +300,12 @@ let currentSetBlockFill: ((blockFill: string) => void) | null = null
 let currentSetAccent: ((accent: string) => void) | null = null
 let currentSetEdgeWidth: ((width: number) => void) | null = null
 let currentSetRingEnabled: ((enabled: boolean) => void) | null = null
+/**
+ * Pushes a light/dark switch into whichever stack is mounted. Like every
+ * other setter here it goes through `api.setTheme`, so flipping the theme
+ * never resets camera, expand/collapse or highlight state.
+ */
+let currentSetMode: ((mode: ThemeMode) => void) | null = null
 
 const edgeRadiusField = document.createElement('div')
 edgeRadiusField.className = 'field field-range'
@@ -301,14 +378,14 @@ const nodeFillInput = document.createElement('input')
 nodeFillInput.type = 'color'
 nodeFillInput.id = 'node-fill-input'
 nodeFillInput.className = 'color-input'
-nodeFillInput.value = NODE_FILL_DEFAULT
+nodeFillInput.value = nodeFillDefault(mode)
 const nodeFillLabel = document.createElement('label')
 nodeFillLabel.textContent = 'Node fill'
 nodeFillLabel.htmlFor = 'node-fill-input'
 const nodeFillValue = document.createElement('output')
 nodeFillValue.className = 'field-range-value'
 nodeFillValue.setAttribute('for', 'node-fill-input')
-nodeFillValue.textContent = NODE_FILL_DEFAULT.toUpperCase()
+nodeFillValue.textContent = nodeFillDefault(mode).toUpperCase()
 const nodeFillRow = document.createElement('div')
 nodeFillRow.className = 'field-range-row'
 nodeFillRow.append(nodeFillInput, nodeFillValue)
@@ -334,7 +411,7 @@ nodeFillInput.oninput = () => {
 // checked sends whatever the swatch holds. The picker itself stays enabled
 // either way (dragging it while unchecked pre-arms a colour for the next
 // time the checkbox is ticked, rather than being inert), and starts on
-// `BLOCK_FILL_SEED`, a colour distinct from `NODE_FILL_DEFAULT` purely so the
+// `BLOCK_FILL_SEED`, a colour distinct from the mode's own node fill purely so the
 // two swatches read as different controls at a glance.
 const blockFillCheckbox = document.createElement('input')
 blockFillCheckbox.type = 'checkbox'
@@ -543,12 +620,38 @@ const appearanceGroup = sidebarGroup(
   canvasBgField,
 )
 
+/**
+ * Whether the viewer has actually picked a background of their own. Until
+ * they have, the surface keeps whatever its stylesheet resolves to, which is
+ * what lets it follow a light/dark switch (and the OS preference) on its own;
+ * an inline override frozen in at boot would pin the chart area to one mode's
+ * colour forever after. Once they HAVE picked one, a mode switch leaves it
+ * alone — it is now their choice, not a default.
+ */
+let canvasBgOverridden = false
+
 function applyCanvasBg(hex: string): void {
   surface.style.backgroundColor = hex
   canvasBgValue.textContent = hex.toUpperCase()
 }
 
-canvasBgInput.oninput = () => applyCanvasBg(canvasBgInput.value)
+canvasBgInput.oninput = () => {
+  canvasBgOverridden = true
+  applyCanvasBg(canvasBgInput.value)
+}
+
+/**
+ * Points the background swatch at whatever the surface actually resolves to
+ * right now, WITHOUT writing that value back as an inline override — see
+ * `canvasBgOverridden`. Called once at boot and again after every mode switch
+ * the viewer has not overridden.
+ */
+function seedCanvasBg(): void {
+  surface.style.backgroundColor = ''
+  const hex = rgbToHex(getComputedStyle(surface).backgroundColor)
+  canvasBgInput.value = hex
+  canvasBgValue.textContent = hex.toUpperCase()
+}
 
 /**
  * Approximates a computed colour string as a `#rrggbb` hex string —
@@ -620,6 +723,13 @@ descriptionEyebrow.textContent = 'Example'
 const descriptionText = document.createElement('p')
 description.append(descriptionEyebrow, descriptionText)
 
+// Clamped to two lines on a narrow screen and unclamped by a tap (see
+// `.example-description` in style.css). The class is toggled at every width —
+// it simply has nothing to do above the breakpoint, where the text is never
+// clamped in the first place — and it is reset on every example change, since
+// the next description is a new thing to read, not a continuation.
+description.onclick = () => description.classList.toggle('is-expanded')
+
 const surface = document.createElement('div')
 surface.className = 'surface'
 
@@ -636,12 +746,35 @@ root.append(header, layout)
 // Seed the background picker from whatever colour the surface actually
 // resolves to right now (its CSS default, light or dark) — only once it's
 // in the document, so `getComputedStyle` has an actual value to resolve
-// `color-mix()` against. Deliberately does NOT call `applyCanvasBg`: that
-// would freeze an inline override in immediately and stop the swatch from
-// tracking the OS light/dark preference until the user actually touches it.
-const initialCanvasBg = rgbToHex(getComputedStyle(surface).backgroundColor)
-canvasBgInput.value = initialCanvasBg
-canvasBgValue.textContent = initialCanvasBg.toUpperCase()
+// `color-mix()` against.
+seedCanvasBg()
+
+/**
+ * Switches light/dark: the document (which is what every shell colour and the
+ * `<canvas>` host's own background are derived from), the mounted chart's own
+ * theme (its node fill and stroke have to move WITH the cards' CSS, or the
+ * canvas box shows around each card's edges — see theme.ts), and the two
+ * controls whose value is a mode default rather than a viewer's choice.
+ *
+ * `remember` is false for a mode arriving from the OS and true for a click on
+ * the toggle: only a deliberate choice pins the playground away from the
+ * system preference (see theme.ts's `watchSystemTheme`).
+ */
+function switchMode(next: ThemeMode, remember: boolean): void {
+  mode = next
+  applyTheme(next)
+  if (remember) rememberMode(next)
+  updateThemeButton()
+  currentSetMode?.(next)
+  // The node-fill swatch shows a mode default, so it follows the mode. The
+  // background swatch does too — unless the viewer has picked one, in which
+  // case it is theirs and stays put.
+  nodeFillInput.value = nodeFillDefault(next)
+  nodeFillValue.textContent = nodeFillDefault(next).toUpperCase()
+  if (!canvasBgOverridden) seedCanvasBg()
+}
+
+watchSystemTheme((next) => switchMode(next, false))
 
 // --- mounting ---
 
@@ -666,11 +799,13 @@ function show(stack: Stack, exampleId: string): void {
   currentSetAccent = null
   currentSetEdgeWidth = null
   currentSetRingEnabled = null
+  currentSetMode = null
   surface.innerHTML = ''
 
   const example = findExample(exampleId)
   syncGotoControl(example)
   descriptionText.textContent = example.description
+  description.classList.remove('is-expanded')
 
   // Reset every live control to whatever this example itself declares before
   // it mounts, rather than carrying over the previous example/stack's state —
@@ -686,9 +821,9 @@ function show(stack: Stack, exampleId: string): void {
   // rather than whatever an example's OWN theme happens to declare (e.g.
   // Avatar/Monogram's transparent node box) — this control never applies
   // anything until a viewer actually drags it, so there's nothing to
-  // reconcile the swatch against; see `NODE_FILL_DEFAULT`'s docblock.
-  nodeFillInput.value = NODE_FILL_DEFAULT
-  nodeFillValue.textContent = NODE_FILL_DEFAULT.toUpperCase()
+  // reconcile the swatch against; see `nodeFillDefault`'s docblock.
+  nodeFillInput.value = nodeFillDefault(mode)
+  nodeFillValue.textContent = nodeFillDefault(mode).toUpperCase()
   // Same reset pattern: back to "no shape fill" (the library default) rather
   // than carrying over the previous example/stack's state.
   blockFillCheckbox.checked = false
@@ -702,7 +837,7 @@ function show(stack: Stack, exampleId: string): void {
   updateRingEnabledButton()
 
   if (stack === 'vanilla') {
-    const chart: VanillaDemoHandle = mountVanilla(surface, example, (api) => {
+    const chart: VanillaDemoHandle = mountVanilla(surface, example, mode, (api) => {
       currentApi = api
     })
     currentSetMinimap = (on) => chart.setMinimap(on)
@@ -713,10 +848,12 @@ function show(stack: Stack, exampleId: string): void {
     currentSetAccent = (accent) => chart.setAccent(accent)
     currentSetEdgeWidth = (width) => chart.setEdgeWidth(width)
     currentSetRingEnabled = (enabled) => chart.setRingEnabled(enabled)
+    currentSetMode = (next) => chart.setMode(next)
     teardown = () => chart.destroy()
   } else if (stack === 'vue') {
     const app = createApp(VueDemo, {
       example,
+      mode,
       onReady: (api: OrgChartApi) => {
         currentApi = api
       },
@@ -734,6 +871,7 @@ function show(stack: Stack, exampleId: string): void {
       setAccent: (accent: string) => void
       setEdgeWidth: (width: number) => void
       setRingEnabled: (enabled: boolean) => void
+      setMode: (mode: ThemeMode) => void
     }
     currentSetMinimap = (on) => instance.setMinimap(on)
     currentSetMinimapPosition = (position) => instance.setMinimapPosition(position)
@@ -743,6 +881,7 @@ function show(stack: Stack, exampleId: string): void {
     currentSetAccent = (accent) => instance.setAccent(accent)
     currentSetEdgeWidth = (width) => instance.setEdgeWidth(width)
     currentSetRingEnabled = (enabled) => instance.setRingEnabled(enabled)
+    currentSetMode = (next) => instance.setMode(next)
     teardown = () => app.unmount()
   } else {
     const root: Root = createRoot(surface)
@@ -750,6 +889,7 @@ function show(stack: Stack, exampleId: string): void {
     root.render(
       createElement(ReactDemo, {
         example,
+        mode,
         onReady: (api: OrgChartApi) => {
           currentApi = api
         },
@@ -764,6 +904,7 @@ function show(stack: Stack, exampleId: string): void {
     currentSetAccent = (accent) => reactHandle.current?.setAccent(accent)
     currentSetEdgeWidth = (width) => reactHandle.current?.setEdgeWidth(width)
     currentSetRingEnabled = (enabled) => reactHandle.current?.setRingEnabled(enabled)
+    currentSetMode = (next) => reactHandle.current?.setMode(next)
     teardown = () => root.unmount()
   }
 }
@@ -772,8 +913,27 @@ function refresh(): void {
   show(stackSelect.value as Stack, exampleSelect.value)
 }
 
-stackSelect.onchange = refresh
-exampleSelect.onchange = refresh
+// Both close the drawer on the way through: on a phone the point of picking a
+// stack or an example is to LOOK at the result, which is behind the panel that
+// was just used to pick it. (A no-op at any width where the sidebar is not a
+// drawer — see `setControlsOpen`.)
+stackSelect.onchange = () => {
+  setControlsOpen(false)
+  refresh()
+}
+exampleSelect.onchange = () => {
+  setControlsOpen(false)
+  refresh()
+}
+
+// Anywhere outside the drawer dismisses it — the chart included, where the
+// tap would otherwise land on a chart the drawer is covering. `pointerdown`
+// rather than `click` so it closes on contact, before the gesture becomes a
+// pan of the chart underneath.
+content.addEventListener('pointerdown', () => setControlsOpen(false))
+window.addEventListener('keydown', (event) => {
+  if (event.key === 'Escape') setControlsOpen(false)
+})
 
 stackSelect.value = 'vanilla'
 exampleSelect.value = EXAMPLES[0]!.id

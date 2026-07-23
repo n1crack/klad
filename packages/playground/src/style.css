@@ -15,6 +15,19 @@
 
   --accent: #2563eb;
   --accent-contrast: #ffffff;
+  /*
+   * The node tokens are the one part of this palette that is NOT free-floating
+   * CSS: theme.ts writes them onto `:root` (and hands the very same values to
+   * the chart through `api.setTheme`) so a card's background, border and
+   * corner radius are identical to what the canvas paints in the node box
+   * UNDERNEATH it. They disagree and the canvas's own box shows around the
+   * card — a pale halo at each corner in light mode, a white box behind every
+   * card in dark. The values here are the light-mode ones, so the shell looks
+   * right in the moment before the (deferred) module script runs.
+   */
+  --node-bg: #ffffff;
+  --node-border: #d8dce3;
+  --node-radius: 8px;
   --surface: canvas;
   --surface-raised: color-mix(in srgb, canvas 97%, canvastext 3%);
   --surface-sunken: color-mix(in srgb, canvas 94%, canvastext 6%);
@@ -23,9 +36,21 @@
   --text-muted: color-mix(in srgb, canvastext 62%, canvas 38%);
   --radius-sm: 6px;
   --radius-md: 10px;
-  --shadow-sm: 0 1px 2px color-mix(in srgb, canvastext 12%, transparent);
+  /* Both of these are overwritten per mode by theme.ts (see `--node-bg`
+     above); a shadow mixed from `canvastext` would be a white HALO in dark
+     mode rather than a shadow. These are the light-mode values, for the paint
+     before the module script runs. */
+  --shadow-sm: 0 1px 2px rgba(15, 23, 42, 0.12);
+  --node-shadow: 0 1px 3px rgba(15, 23, 42, 0.14);
 }
 
+/*
+ * The pre-JS paint only. theme.ts writes the mode's own values for these four
+ * straight onto `:root` (an inline style, so it wins over this rule either
+ * way) as soon as it runs, and from then on the EXPLICIT choice decides —
+ * including a viewer who has picked light while their OS is in dark, which
+ * this media query on its own would get wrong.
+ */
 @media (prefers-color-scheme: dark) {
   :root {
     /* blue-600 reads dim on a dark surface; blue-400 keeps the same role
@@ -33,6 +58,8 @@
        readable without touching anything else. */
     --accent: #60a5fa;
     --accent-contrast: #0b1220;
+    --node-bg: #1b2029;
+    --node-border: #333c4b;
   }
 }
 
@@ -40,8 +67,18 @@ body {
   margin: 0;
   display: flex;
   flex-direction: column;
+  /* `dvh` rather than `vh`: on a phone, `100vh` is the viewport with the
+     browser's own toolbars hidden, so the chart's bottom edge sits under them
+     until you scroll — which this layout deliberately does not let you do.
+     `vh` first, so a browser without `dvh` still gets a height. */
   height: 100vh;
+  height: 100dvh;
   color: canvastext;
+  /* The chart claims its own touch gestures (`touch-action: none` on the host,
+     see packages/vanilla/src/input.ts). This stops a pan that starts there and
+     travels past the chart's edge from turning into the page's own pull-to-
+     refresh or rubber-band scroll. */
+  overscroll-behavior: none;
   background: var(--surface);
 }
 
@@ -82,6 +119,91 @@ body {
   width: 100%;
   height: 100%;
   display: block;
+}
+
+/*
+ * The sidebar-as-drawer trigger. Present only where the sidebar is a drawer
+ * (see the `max-width: 720px` block below) — at every wider width the panel is
+ * simply there, and a button toggling something already visible is noise.
+ */
+.app-controls-toggle {
+  display: none;
+  flex: none;
+  align-items: center;
+  font: inherit;
+  font-size: 0.78rem;
+  font-weight: 600;
+  min-height: 2.1rem;
+  padding: 0.3rem 0.7rem;
+  border-radius: var(--radius-sm);
+  border: 1px solid var(--border-strong);
+  background: var(--surface);
+  color: canvastext;
+  cursor: pointer;
+}
+
+.app-controls-toggle[aria-expanded='true'] {
+  background: color-mix(in srgb, var(--accent) 16%, var(--surface) 84%);
+  border-color: var(--accent);
+  color: var(--accent);
+}
+
+.app-controls-toggle:focus-visible {
+  outline: none;
+  border-color: var(--accent);
+  box-shadow: 0 0 0 3px color-mix(in srgb, var(--accent) 30%, transparent);
+}
+
+/* Everything on the right-hand end of the header: the theme toggle, and the
+   way back to the docs when there is one. */
+.app-actions {
+  flex: none;
+  display: flex;
+  align-items: center;
+  gap: 0.4rem;
+}
+
+/*
+ * The light/dark toggle. Square and icon-only — it sits beside a text link and
+ * the two would compete if both were labelled — with its meaning carried by
+ * `title`/`aria-label` (see `updateThemeButton` in main.ts), both of which name
+ * the mode a click moves TO rather than the one you are in.
+ *
+ * 36px, which is also the smallest comfortable touch target: this is the one
+ * piece of chrome a phone visitor is most likely to reach for.
+ */
+.app-theme-toggle {
+  flex: none;
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  width: 36px;
+  height: 36px;
+  padding: 0;
+  border-radius: var(--radius-sm);
+  border: 1px solid transparent;
+  background: transparent;
+  color: var(--text-muted);
+  cursor: pointer;
+  transition: color 120ms ease, background 120ms ease, border-color 120ms ease;
+}
+
+.app-theme-toggle svg {
+  width: 18px;
+  height: 18px;
+  display: block;
+}
+
+.app-theme-toggle:hover {
+  color: var(--accent);
+  border-color: var(--border);
+  background: color-mix(in srgb, var(--accent) 8%, var(--surface) 92%);
+}
+
+.app-theme-toggle:focus-visible {
+  outline: none;
+  border-color: var(--accent);
+  box-shadow: 0 0 0 3px color-mix(in srgb, var(--accent) 30%, transparent);
 }
 
 /* The way back. Quiet until pointed at: it is an exit, not the reason anyone
@@ -218,18 +340,154 @@ body {
 @media (max-width: 720px) {
   .layout {
     flex-direction: column;
+    /* The drawer is positioned against this. */
+    position: relative;
   }
 
+  /*
+   * The sidebar becomes a drawer OVER the chart rather than a block above it.
+   * As a block it took nearly half a phone screen, leaving the chart — the
+   * thing the page exists to show — as a strip at the bottom; over the chart
+   * it costs nothing at all until the Controls button asks for it.
+   */
   .sidebar {
-    flex: 0 0 auto;
+    position: absolute;
+    z-index: 10;
+    top: 0;
+    left: 0;
+    right: 0;
     width: auto;
-    max-height: 45vh;
+    flex: none;
+    max-height: min(70vh, 30rem);
     border-right: none;
     border-bottom: 1px solid var(--border);
+    box-shadow: 0 10px 24px rgba(0, 0, 0, 0.28);
+    /* Off-screen rather than `display: none`: the panel keeps its layout, so
+       opening it slides instead of appearing, and its controls stay reachable
+       by script (they are the same elements at every width). */
+    transform: translateY(-102%);
+    visibility: hidden;
+    transition: transform 180ms ease, visibility 180ms;
+  }
+
+  .layout.is-controls-open .sidebar {
+    transform: none;
+    visibility: visible;
+  }
+
+  .app-controls-toggle {
+    display: inline-flex;
   }
 
   .sidebar-group-body .btn {
     flex: 1 1 auto;
+  }
+
+  /* The chart is what a phone visitor came for, so the chrome around it gives
+     up its margins first: the description card and the surface keep their
+     shape but stop spending a quarter of a narrow screen on gutters. */
+  .example-description {
+    margin: 0.6rem 0.7rem 0;
+    padding: 0.5rem 0.7rem;
+    cursor: pointer;
+  }
+
+  /* Some of these descriptions run to seven lines on a phone, which is more
+     of the screen than the chart they describe was getting. Clamped to two,
+     with the whole card as the control that unclamps it — the text is worth
+     reading, just not before you have seen the thing it is about. */
+  .example-description p {
+    display: -webkit-box;
+    -webkit-box-orient: vertical;
+    -webkit-line-clamp: 2;
+    line-clamp: 2;
+    overflow: hidden;
+  }
+
+  .example-description.is-expanded p {
+    -webkit-line-clamp: none;
+    line-clamp: none;
+    overflow: visible;
+  }
+
+  .surface {
+    margin: 0.6rem 0.7rem 0.7rem;
+  }
+
+  .app-header {
+    padding: 0.55rem 0.7rem;
+  }
+
+  /* Two lines of header on a 360px screen leaves the chart barely any room,
+     and the tagline is the part a returning visitor already knows. */
+  .app-tagline {
+    display: none;
+  }
+
+  /* Full width, under its label, rather than a fixed 11rem that would push the
+     panel off the side of a narrow surface. */
+  .goto-panel {
+    right: 0.6rem;
+    flex-direction: column;
+    align-items: stretch;
+    gap: 0.25rem;
+  }
+
+  .goto-panel .select {
+    min-width: 0;
+    max-width: none;
+  }
+}
+
+/*
+ * The library honours `prefers-reduced-motion` for the chart's own animation;
+ * the shell's own transitions — the drawer's slide, hover/focus fades — should
+ * respect the same preference rather than be the one thing on the page that
+ * still moves.
+ */
+@media (prefers-reduced-motion: reduce) {
+  *,
+  *::before,
+  *::after {
+    transition-duration: 0.01ms !important;
+    animation-duration: 0.01ms !important;
+  }
+}
+
+/*
+ * Touch. A finger is not a mouse pointer: the same controls that read as
+ * comfortably small under a cursor are a coin-toss under a fingertip, and the
+ * ones ON the cards are the ones a viewer reaches for most. Only the target
+ * grows — type sizes, spacing and colours are left exactly as they are, so
+ * this stays one design rather than becoming a second, chunkier one.
+ */
+@media (pointer: coarse) {
+  .toggle-btn {
+    width: 1.9rem;
+    height: 1.9rem;
+    font-size: 1.05rem;
+  }
+
+  .action-btn {
+    width: 2.1rem;
+    height: 2.1rem;
+  }
+
+  .btn,
+  .select,
+  .dropdown-select,
+  .accordion-btn {
+    min-height: 2.1rem;
+  }
+
+  .color-input {
+    height: 2.1rem;
+  }
+
+  /* A range track thin enough to be a nuisance to grab is worse than one that
+     costs a couple of pixels of sidebar height. */
+  .field-range-row input[type='range'] {
+    height: 1.6rem;
   }
 }
 
@@ -462,10 +720,10 @@ body {
   justify-content: center;
   gap: 0.15rem;
   padding: 0.5rem 0.75rem;
-  border: 1px solid color-mix(in srgb, canvastext 25%, canvas 75%);
-  border-radius: 8px;
-  background: color-mix(in srgb, canvas 92%, canvastext 8%);
-  box-shadow: 0 1px 3px color-mix(in srgb, canvastext 15%, transparent);
+  border: 1px solid var(--node-border);
+  border-radius: var(--node-radius);
+  background: var(--node-bg);
+  box-shadow: var(--node-shadow);
   font-family: inherit;
   overflow: hidden;
   position: relative;
@@ -512,10 +770,10 @@ body {
   align-items: center;
   gap: 0.65rem;
   padding: 0.6rem 0.75rem;
-  border: 1px solid color-mix(in srgb, canvastext 25%, canvas 75%);
-  border-radius: 10px;
-  background: color-mix(in srgb, canvas 92%, canvastext 8%);
-  box-shadow: 0 1px 3px color-mix(in srgb, canvastext 15%, transparent);
+  border: 1px solid var(--node-border);
+  border-radius: var(--node-radius);
+  background: var(--node-bg);
+  box-shadow: var(--node-shadow);
   font-family: inherit;
   overflow: hidden;
   position: relative;
@@ -615,7 +873,7 @@ body {
   /* No card background behind it any more (it floats directly on the
      canvas) — a soft shadow keeps the circle reading as a distinct badge
      rather than a flat patch of colour on the chart background. */
-  box-shadow: 0 1px 3px color-mix(in srgb, canvastext 20%, transparent);
+  box-shadow: var(--node-shadow);
 }
 
 .monogram-name {
@@ -662,11 +920,11 @@ body {
   justify-content: center;
   gap: 0.2rem;
   padding: 0.5rem 0.7rem 0.5rem 0.85rem;
-  border: 1px solid color-mix(in srgb, canvastext 20%, canvas 80%);
+  border: 1px solid var(--node-border);
   border-left: 4px solid var(--accent);
-  border-radius: 8px;
-  background: color-mix(in srgb, canvas 92%, canvastext 8%);
-  box-shadow: 0 1px 3px color-mix(in srgb, canvastext 15%, transparent);
+  border-radius: var(--node-radius);
+  background: var(--node-bg);
+  box-shadow: var(--node-shadow);
   overflow: hidden;
   position: relative;
 }
@@ -723,10 +981,10 @@ body {
   height: 100%;
   display: flex;
   flex-direction: column;
-  border: 1px solid color-mix(in srgb, canvastext 25%, canvas 75%);
-  border-radius: 10px;
-  background: color-mix(in srgb, canvas 92%, canvastext 8%);
-  box-shadow: 0 1px 3px color-mix(in srgb, canvastext 15%, transparent);
+  border: 1px solid var(--node-border);
+  border-radius: var(--node-radius);
+  background: var(--node-bg);
+  box-shadow: var(--node-shadow);
   overflow: hidden;
   position: relative;
 }
@@ -797,7 +1055,7 @@ body {
   background: color-mix(in srgb, canvas 97%, canvastext 3%) !important;
   border: 2px solid color-mix(in srgb, canvastext 55%, canvas 45%) !important;
   box-shadow:
-    0 1px 3px color-mix(in srgb, canvastext 14%, transparent),
+    var(--node-shadow),
     0 0 0 1px color-mix(in srgb, canvastext 10%, canvas 90%) !important;
 }
 
@@ -832,11 +1090,11 @@ body {
   justify-content: center;
   gap: 0.2rem;
   padding: 0.5rem 0.7rem 0.5rem 0.85rem;
-  border: 1px solid color-mix(in srgb, canvastext 20%, canvas 80%);
+  border: 1px solid var(--node-border);
   border-left: 4px solid var(--accent);
-  border-radius: 8px;
-  background: color-mix(in srgb, canvas 92%, canvastext 8%);
-  box-shadow: 0 1px 3px color-mix(in srgb, canvastext 15%, transparent);
+  border-radius: var(--node-radius);
+  background: var(--node-bg);
+  box-shadow: var(--node-shadow);
   overflow: hidden;
   position: relative;
 }
@@ -906,10 +1164,10 @@ body {
   justify-content: center;
   gap: 0.35rem;
   padding: 0.5rem 0.7rem;
-  border: 1px solid color-mix(in srgb, canvastext 20%, canvas 80%);
-  border-radius: 8px;
-  background: color-mix(in srgb, canvas 92%, canvastext 8%);
-  box-shadow: 0 1px 3px color-mix(in srgb, canvastext 15%, transparent);
+  border: 1px solid var(--node-border);
+  border-radius: var(--node-radius);
+  background: var(--node-bg);
+  box-shadow: var(--node-shadow);
   overflow: hidden;
 }
 
@@ -959,10 +1217,10 @@ body {
   flex-direction: column;
   gap: 0.3rem;
   padding: 0.55rem 0.7rem;
-  border: 1px solid color-mix(in srgb, canvastext 20%, canvas 80%);
-  border-radius: 8px;
-  background: color-mix(in srgb, canvas 92%, canvastext 8%);
-  box-shadow: 0 1px 3px color-mix(in srgb, canvastext 15%, transparent);
+  border: 1px solid var(--node-border);
+  border-radius: var(--node-radius);
+  background: var(--node-bg);
+  box-shadow: var(--node-shadow);
   overflow: hidden;
 }
 
@@ -1043,10 +1301,10 @@ body {
   justify-content: center;
   gap: 0.35rem;
   padding: 0.5rem 0.7rem;
-  border: 1px solid color-mix(in srgb, canvastext 20%, canvas 80%);
-  border-radius: 8px;
-  background: color-mix(in srgb, canvas 92%, canvastext 8%);
-  box-shadow: 0 1px 3px color-mix(in srgb, canvastext 15%, transparent);
+  border: 1px solid var(--node-border);
+  border-radius: var(--node-radius);
+  background: var(--node-bg);
+  box-shadow: var(--node-shadow);
   overflow: hidden;
 }
 
