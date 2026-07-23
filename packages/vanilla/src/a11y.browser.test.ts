@@ -25,6 +25,20 @@ function make() {
 
 const nextFrame = () => new Promise((r) => requestAnimationFrame(() => r(null)))
 
+/**
+ * Waits out a camera tween (200ms — see `animateTo` in index.ts) plus a frame
+ * for the paint it lands on.
+ *
+ * A single `nextFrame()` is NOT enough to observe a camera move, and the
+ * difference is a race rather than a slow machine: `animateTo` schedules its
+ * first step with `requestAnimationFrame`, so that step and the test's own
+ * `nextFrame` run in the SAME frame, the step first. If that frame happens to
+ * fire with no measurable time elapsed since the tween started, the eased
+ * progress is 0 and the camera is still exactly where it was — which is how
+ * this passed locally for months and failed on CI.
+ */
+const settle = () => new Promise<void>((resolve) => setTimeout(resolve, 260))
+
 describe('accessibility tree', () => {
   it('mirrors the chart as a role=tree', async () => {
     const chart = make()
@@ -91,13 +105,15 @@ describe('accessibility tree', () => {
   it('moves the camera when focus moves', async () => {
     const chart = make()
     chart.api.zoomTo(2)
-    await nextFrame()
+    // Zoom is a tween of its own; reading the camera one frame in would
+    // compare against a mid-flight value that is still moving on its own.
+    await settle()
     const before = { ...chart.api.getState().camera }
     const leaf = Array.from(document.querySelectorAll('[role="treeitem"]')).find((el) =>
       el.textContent?.includes('Leaf'),
     )! as HTMLElement
     leaf.focus()
-    await nextFrame()
+    await settle()
     const after = chart.api.getState().camera
     expect(after.x !== before.x || after.y !== before.y).toBe(true)
     chart.destroy()

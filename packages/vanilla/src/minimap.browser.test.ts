@@ -36,6 +36,9 @@ function host(): HTMLElement {
 
 const nextFrame = () => new Promise((r) => requestAnimationFrame(() => r(null)))
 
+/** Waits out a camera tween (200ms — see `animateTo` in index.ts) and its last paint. */
+const settle = () => new Promise<void>((resolve) => setTimeout(resolve, 260))
+
 describe('minimap', () => {
   it('is absent by default', async () => {
     const el = host()
@@ -207,7 +210,11 @@ describe('minimap', () => {
       }),
     )
     minimapRoot.dispatchEvent(new PointerEvent('pointerup', { pointerId: 1, bubbles: true }))
-    await nextFrame()
+    // The pan the minimap asks for is an eased camera move, and its first step
+    // shares a frame with this `await`. One frame is therefore not enough to
+    // see it: if that frame fires with no measurable time elapsed, the eased
+    // progress is 0 and the camera is still exactly where it was.
+    await settle()
 
     const after = chart.api.getState().camera
     expect(after.x !== before.x || after.y !== before.y).toBe(true)
