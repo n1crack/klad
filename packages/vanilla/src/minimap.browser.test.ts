@@ -148,6 +148,50 @@ describe('minimap', () => {
     chart.destroy()
   })
 
+  // Isolating replaces the tree the minimap is a map OF. Holding the frame
+  // steady — which is right for a toggle, where the same tree changes shape —
+  // leaves the branch drawn at the whole org's scale, in the corner the org
+  // used to occupy. Measured before the fix: the silhouette spanned 80px of a
+  // 200px widget and sat against the left edge; after, 191px.
+  it('refits the frame when a branch is isolated', async () => {
+    const el = host()
+    const chart = createKlad(el, {
+      data: buildOrg(300),
+      nodeSize: { w: 120, h: 48 },
+      worker: false,
+      minimap: true,
+    })
+    await nextFrame()
+    await nextFrame()
+
+    const canvas = el.querySelectorAll('canvas')[1] as HTMLCanvasElement
+    /** How far across the widget the painted silhouette actually reaches. */
+    const inkWidth = (): number => {
+      const data = canvas.getContext('2d')!.getImageData(0, 0, canvas.width, canvas.height).data
+      let minX = canvas.width
+      let maxX = -1
+      for (let y = 0; y < canvas.height; y++) {
+        for (let x = 0; x < canvas.width; x++) {
+          if (data[(y * canvas.width + x) * 4 + 3]! === 0) continue
+          if (x < minX) minX = x
+          if (x > maxX) maxX = x
+        }
+      }
+      return maxX < 0 ? 0 : maxX - minX
+    }
+
+    expect(inkWidth()).toBeGreaterThan(canvas.width * 0.6)
+
+    chart.api.isolate('n1')
+    await nextFrame()
+    await nextFrame()
+    await nextFrame()
+
+    // A tree is a tree: an isolated branch fills the widget like any other.
+    expect(inkWidth()).toBeGreaterThan(canvas.width * 0.6)
+    chart.destroy()
+  })
+
   it('respects a custom size and position', async () => {
     const el = host()
     const chart = createKlad(el, {
