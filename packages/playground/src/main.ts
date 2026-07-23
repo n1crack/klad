@@ -20,7 +20,14 @@ import {
   type Example,
   type MinimapPosition,
 } from './data.js'
-import { applyTheme, initialMode, rememberMode, watchSystemTheme, type ThemeMode } from './theme.js'
+import {
+  applyTheme,
+  initialMode,
+  rememberMode,
+  watchStoredTheme,
+  watchSystemTheme,
+  type ThemeMode,
+} from './theme.js'
 import { mountVanilla, type VanillaDemoHandle } from './vanilla-demo.js'
 import VueDemo from './VueDemo.vue'
 import { ReactDemo, type ReactDemoHandle } from './ReactDemo.js'
@@ -775,6 +782,12 @@ function switchMode(next: ThemeMode, remember: boolean): void {
 }
 
 watchSystemTheme((next) => switchMode(next, false))
+// The documentation site writes the same preference key (see theme.ts), so a
+// toggle over there while this page is open in another tab lands here too.
+// `remember: false` — it is already stored, by whoever changed it.
+watchStoredTheme((next) => {
+  if (next !== mode) switchMode(next, false)
+})
 
 // --- mounting ---
 

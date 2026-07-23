@@ -21,21 +21,24 @@ import { DARK_THEME, DEFAULT_THEME, type Theme } from '@n1crack/orgchart'
  */
 export type ThemeMode = 'light' | 'dark'
 
-const STORAGE_KEY = 'orgchart-playground-theme'
-
 /**
- * VitePress's own appearance key. This app is served BOTH on its own and as a
- * page of the documentation site (`<docs base>/playground/`, a plain
- * navigation rather than an iframe — see packages/docs/.vitepress/config.ts),
- * and the two are the same origin, so the docs' own light/dark choice is
- * readable here. A visitor who set the docs to dark and then clicked
- * "Playground" should not be handed a white page.
+ * VitePress's own appearance key — deliberately shared rather than a key of
+ * this app's own.
  *
- * Read only as a FALLBACK, below this app's own key, and only for an explicit
- * `'light'`/`'dark'` — VitePress writes `'auto'` for "follow the OS", which is
- * what `systemMode()` already does.
+ * This app is served BOTH on its own and as a page of the documentation site
+ * (`<docs base>/playground/`, a plain navigation rather than an iframe — see
+ * packages/docs/.vitepress/config.ts). Same origin, so one key means the two
+ * are genuinely one preference: set the docs to dark, click "Playground", and
+ * it is already dark; toggle it here, go back, and the docs are too. With a
+ * key of its own the second half of that never worked, and the first half only
+ * until the first click in here.
+ *
+ * The value space is VitePress's, and this app writes exactly what VitePress's
+ * own toggle writes: `'dark'`/`'light'` for a deliberate choice, with `'auto'`
+ * (or nothing at all) meaning "follow the OS" — which is what `systemMode()`
+ * does. Anything else is treated as absent.
  */
-const DOCS_STORAGE_KEY = 'vitepress-theme-appearance'
+const STORAGE_KEY = 'vitepress-theme-appearance'
 
 /**
  * The tokens that actually differ between the library's two palettes —
@@ -163,12 +166,9 @@ function systemMode(): ThemeMode {
   return window.matchMedia('(prefers-color-scheme: dark)').matches ? 'dark' : 'light'
 }
 
-/**
- * The mode to start in: this app's own stored choice, else the documentation
- * site's (see `DOCS_STORAGE_KEY`), else the OS preference.
- */
+/** The mode to start in: the shared stored choice, else the OS preference. */
 export function initialMode(): ThemeMode {
-  return storedMode() ?? readMode(DOCS_STORAGE_KEY) ?? systemMode()
+  return storedMode() ?? systemMode()
 }
 
 /** Remembers `mode` as an explicit choice, so the OS no longer decides. */
@@ -190,6 +190,22 @@ export function watchSystemTheme(onChange: (mode: ThemeMode) => void): void {
   window.matchMedia('(prefers-color-scheme: dark)').addEventListener('change', (event) => {
     if (storedMode() !== null) return
     onChange(event.matches ? 'dark' : 'light')
+  })
+}
+
+/**
+ * Calls `onChange` when the shared preference is changed in ANOTHER tab —
+ * the documentation site's own toggle, in practice, since it writes the same
+ * key (see `STORAGE_KEY`). `storage` only fires in the tabs that did NOT make
+ * the change, so this can never loop back on this app's own writes.
+ *
+ * A stored value going back to `'auto'` (or being cleared) is not "no news":
+ * it means the OS decides again, which is a mode change like any other.
+ */
+export function watchStoredTheme(onChange: (mode: ThemeMode) => void): void {
+  window.addEventListener('storage', (event) => {
+    if (event.key !== null && event.key !== STORAGE_KEY) return
+    onChange(storedMode() ?? systemMode())
   })
 }
 
