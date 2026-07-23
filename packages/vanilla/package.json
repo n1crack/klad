@@ -1,6 +1,6 @@
 {
   "name": "@klad/core",
-  "version": "1.0.0",
+  "version": "1.1.0",
   "description": "Klad — a canvas org chart for tens of thousands of nodes, with a DOM overlay for your own node content. Frameworkless.",
   "keywords": [
     "org-chart",

@@ -1,6 +1,6 @@
 {
   "name": "@klad/vue",
-  "version": "1.0.0",
+  "version": "1.1.0",
   "description": "Vue 3 adapter for Klad — a <Klad> component with a #node scoped slot.",
   "keywords": [
     "org-chart",
