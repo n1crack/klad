@@ -28,6 +28,7 @@ import {
   watchSystemTheme,
   type ThemeMode,
 } from './theme.js'
+import { startAnalytics } from './analytics.js'
 import { generateCode, type ConfigSnapshot, type Stack as CodeStack } from './codegen.js'
 import { highlight } from './highlight.js'
 import { mountVanilla, type VanillaDemoHandle } from './vanilla-demo.js'
@@ -45,6 +46,9 @@ type Stack = 'vanilla' | 'vue' | 'react'
  */
 let mode: ThemeMode = initialMode()
 applyTheme(mode)
+
+// A no-op in development — see analytics.ts.
+startAnalytics()
 
 const root = document.querySelector<HTMLDivElement>('#app')
 if (root === null) throw new Error('#app element not found')

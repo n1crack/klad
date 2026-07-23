@@ -1,7 +1,7 @@
 import { readFileSync } from 'node:fs'
 import { dirname, join } from 'node:path'
 import { fileURLToPath } from 'node:url'
-import { defineConfig } from 'vitepress'
+import { defineConfig, type HeadConfig } from 'vitepress'
 import { tabsMarkdownPlugin } from 'vitepress-plugin-tabs'
 
 /**
@@ -19,6 +19,36 @@ import { tabsMarkdownPlugin } from 'vitepress-plugin-tabs'
 // get `/klad/klad/` in every canonical link.
 const SITE_URL = (process.env.DOCS_URL ?? 'https://klad.ozdemir.be').replace(/\/$/, '')
 const BASE = process.env.DOCS_BASE ?? '/'
+
+/**
+ * Google Analytics, in the built site only.
+ *
+ * `NODE_ENV` is `production` under `vitepress build` and `development` under
+ * `vitepress dev`, so a local session never lands in the numbers — which
+ * matters more than it sounds for a site this size, where one afternoon of
+ * writing would otherwise outweigh a week of real visitors.
+ *
+ * The playground carries the same measurement id from its own entry point (see
+ * packages/playground/src/analytics.ts): it is served as a page of this site
+ * but built as a separate app, so it has its own `<head>` and needs its own
+ * tag.
+ */
+const GA_ID = 'G-3MEVPBV06E'
+
+const ANALYTICS: HeadConfig[] =
+  process.env.NODE_ENV === 'production'
+    ? [
+        ['script', { async: '', src: `https://www.googletagmanager.com/gtag/js?id=${GA_ID}` }],
+        [
+          'script',
+          {},
+          `window.dataLayer = window.dataLayer || []
+function gtag(){ dataLayer.push(arguments) }
+gtag('js', new Date())
+gtag('config', '${GA_ID}')`,
+        ],
+      ]
+    : []
 
 const DESCRIPTION =
   'A framework-agnostic org chart that renders 50,000 nodes at 60fps. Canvas in a Web Worker; your Vue, React or plain-DOM components mounted only where they can be read.'
@@ -75,6 +105,7 @@ export default defineConfig({
   sitemap: { hostname: `${SITE_URL}${BASE}` },
 
   head: [
+    ...ANALYTICS,
     ['link', { rel: 'icon', type: 'image/svg+xml', href: `${BASE}logo.svg` }],
     ['meta', { name: 'theme-color', content: '#2563eb' }],
 
