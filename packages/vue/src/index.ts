@@ -6,6 +6,7 @@ export { useKlad } from './useKlad.js'
 export type { KladContext } from './useKlad.js'
 export type {
   ChartState,
+  ChartView,
   NodeContext,
   Options,
   KladApi,

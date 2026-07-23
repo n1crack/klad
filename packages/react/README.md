@@ -21,8 +21,6 @@ const options: Options = {
     { id: 'cto', parentId: 'ceo', name: 'Amy Chen', title: 'CTO' },
     { id: 'cfo', parentId: 'ceo', name: 'Priya Rao', title: 'CFO' },
   ],
-  nodeSize: { w: 180, h: 64 },
-  label: (item) => String(item.name ?? ''),
 }
 
 export function Chart() {

@@ -1,55 +1,70 @@
 # Roadmap
 
-Intent, not dated commitments.
+The plan, in order. No dates — each release ships when it is ready.
 
-## 1.0 — released
+Klad draws org charts today. It is being built into a general tree renderer:
+the same canvas behind file explorers, ASTs and family trees.
 
-Everything documented on this site: the worker-backed canvas pipeline, tidy
-layout with four orientations and RTL, LOD tiers, the pooled overlay, the
-staged expand/collapse transition with its camera anchor, minimap, SVG/PNG
-export, a full keyboard tree, per-node subtree counts, go-to-node with route
-highlighting, and the Vue and React bindings.
+## 1.0 — available now
 
 ```bash
 npm install @klad/core    # or @klad/vue, @klad/react
 ```
 
-Published from CI on a GitHub Release, so every tarball carries a
-[provenance attestation](https://docs.npmjs.com/generating-provenance-statements)
-tying it to the commit and the workflow that built it.
+Four orientations and RTL, drawn on a canvas in a Web Worker. Your own
+components on the nodes. Expand and collapse, minimap, SVG and PNG export,
+keyboard navigation, a screen-reader tree, per-node subtree counts, and
+go-to-node with the route marked.
 
-## 1.1 — Drag-and-drop reparenting
+## 1.1 — navigating large charts
 
-Drag a node onto a new parent: a ghost while dragging, the drop target
-highlighted, a drop that would create a cycle rejected and reported rather
-than applied, and an incremental relayout of only the dirty subtree.
+- **`fitSubtree(id)`** — frame one branch instead of the whole chart.
+- **`isolate(id)`** — show one branch as if it were the whole chart.
+- **`getView()` / `setView()`** — camera, open branches and highlight as one
+  object. Put it in a URL.
+- **Keyboard camera** — arrows pan, `+`/`-` zoom, `f` fits.
+- **Selection** — click, ctrl-click, shift-click, box and lasso.
 
-Deferred out of 1.0 deliberately. The interaction is a project in its own
-right and 1.0 is otherwise complete; holding the release for it would have
-served nobody.
+## 1.2 — more layouts
 
-## 1.2 — Cross-links
+Layout becomes something you choose, and can supply yourself. First up:
+**indented**, the file-explorer shape, and the one layout whose width does not
+explode as a tree grows. Children can be loaded on demand as branches open.
 
-Edges that are not tree edges: dotted-line reporting, matrix relationships, an
-arbitrary link between any two nodes. Touches routing, the renderer and the
-export path.
+## 1.3 — drag and drop
 
-## 1.3 — Alternative layouts
+Drag a node, or a selection, onto a new parent. A drop that would make a cycle
+is refused and reported. Only the subtree that changed is laid out again.
 
-More than one way to arrange the same tree — arrangements that switch by
-subtree shape, compact forms for deep narrow chains.
+## 1.4 — radial layout and custom edges
 
-## 1.4 — Animated links, custom edges
+Root at the centre, generations as rings — for trees that are wide and shallow.
+Edge shape becomes yours to supply, with motion along a link for charts that
+show flow as well as structure.
 
-Edge styling as a first-class concern: caller-supplied edge shapes, motion
-along a link.
+## 1.5 — very wide levels
 
-## 1.5 — Child pagination
+A manager with four hundred reports, a folder with ten thousand files: show the
+first few with a **more** control, aggregate the rest into one node that says
+how many it stands for, and pull specific children into view with search.
 
-A node with hundreds of direct children shows the first few and a "more"
-control, with search to bring specific children into the scene. Keeps very
-wide fan-outs readable, and keeps them out of the layout.
+## 1.6 — cross-links
 
-## 1.6 — Nested sets
+Edges that are not tree edges: dotted-line reporting, matrix relationships, a
+link between any two nodes — on screen and in the exports.
 
-`lft`/`rgt` values exposed and rendered, and binary-tree presentation.
+## 1.7 — nested sets
+
+`lft`/`rgt` values exposed and rendered, plus binary-tree presentation.
+
+## 2.0 — beyond trees
+
+Family trees, dependency graphs and git histories all give a node several ways
+in. That needs multi-parent layout and edge routing built for crossings — a
+second layout engine rather than an option on this one. A plugin API arrives
+with it.
+
+---
+
+Something missing, or ordered wrongly for what you are building?
+[Open an issue](https://github.com/n1crack/klad/issues).

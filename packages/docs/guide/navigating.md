@@ -46,7 +46,41 @@ else — a highlighted node's other children are not themselves highlighted, so
 their connectors stay quiet. Scattered highlights (a search result) light the
 nodes without inventing a path between them.
 
-`highlight(null)` clears it.
+`highlight(null)` clears it — and so does <kbd>Esc</kbd>.
+
+## Showing one branch
+
+```ts
+chart.api.fitSubtree('eng')  // point the camera at it
+chart.api.isolate('eng')     // make it the chart
+chart.api.isolate(null)      // and back
+```
+
+The difference matters once a chart is large. `fitSubtree` moves the camera and
+leaves everything else where it was, just off screen. `isolate` re-roots the
+tree: the layout has one branch to arrange, the minimap shows that branch
+rather than a speck inside a company, Tab walks it instead of the org, and an
+export is a picture of it.
+
+Where the viewer is, is yours to say — `pathTo(id)` returns the chain from the
+real root, which is a breadcrumb:
+
+```ts
+const trail = chart.api.pathTo('eng') // ['ceo', 'cto', 'eng']
+```
+
+## Saving a view
+
+```ts
+const view = chart.api.getView() // { camera, open, highlighted }
+chart.api.setView(view)          // arrive there
+chart.api.setView(view, { animate: true }) // fly there
+```
+
+Where the viewer is, as one plain object: the camera, which branches are open,
+and what is lit. It is serialisable and names nodes by id, so it goes in a URL
+or a saved report and still works after the data is refetched or grown. Ids it
+names that have since left the tree are ignored rather than throwing.
 
 ## Search
 
@@ -69,6 +103,8 @@ sits without a second call.
 | Call | What it does |
 |---|---|
 | `fit()` | Zooms out far enough to show the whole visible tree. |
+| `fitSubtree(id)` | Frames one branch instead. On a large chart this is the useful one — fitting everything means a zoom level where nothing can be read. |
+| `isolate(id)` | Shows that branch **as** the chart; `isolate(null)` puts the rest back. |
 | `reset()` | Back to the opening view. |
 | `zoomIn()` / `zoomOut()` | One step, about the centre. |
 | `zoomTo(k)` | An exact scale. |
@@ -76,6 +112,28 @@ sits without a second call.
 
 Every one of them eases rather than jumping, and every one is interrupted the
 instant a user's hand touches the canvas — dragging always wins immediately.
+
+## Keyboard
+
+Click the chart, or Tab to it, and the camera answers to the keyboard:
+
+| Key | |
+|---|---|
+| Arrows | Pan. Hold **Shift** for a stride rather than a step. |
+| `+` / `-` | Zoom about the middle of the view. |
+| `f` | Fit the whole chart. |
+| `0` | Back to the opening view. |
+| `Home` | Centre the root. |
+| `Esc` | Clear the highlight. |
+
+The chart is a tab stop, and the first one inside itself — so "Tab, then
+arrows" works without walking past every card's own buttons to get there. Keys
+are left alone when the focus is inside something using them already: an input
+or `<select>` on one of your cards, or a row of the accessibility tree, which
+has its own arrow keys for moving between NODES rather than moving the view.
+
+Set `keyboard: false` if the surrounding app binds these itself, or if the host
+must not take focus.
 
 ## Gestures
 

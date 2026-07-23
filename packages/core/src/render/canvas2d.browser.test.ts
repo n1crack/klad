@@ -44,6 +44,7 @@ function frame(overrides: Partial<Frame> = {}): Frame {
     tier: 'full',
     horizontal: false,
     highlight: null,
+    selected: null,
     dragIndex: -1,
     revealAlpha: null,
     ghostBoxes: new Float64Array(0),

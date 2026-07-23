@@ -53,6 +53,7 @@ function gridFrame(count: number, tier: Frame['tier']): Frame {
     tier,
     horizontal: false,
     highlight: null,
+    selected: null,
     dragIndex: -1,
     revealAlpha: null,
     ghostBoxes: new Float64Array(0),

@@ -25,7 +25,12 @@ export interface InputCallbacks {
    * "toggle button" or an "interactive element" is — that judgement belongs
    * to the caller (see `toggleOnNodeClick` in index.ts).
    */
-  onTap(screenX: number, screenY: number, target: EventTarget | null): void
+  onTap(
+    screenX: number,
+    screenY: number,
+    target: EventTarget | null,
+    modifiers: { additive: boolean; extend: boolean },
+  ): void
   /**
    * Screen-space point, relative to the chart host element. Fired for plain
    * hover motion — not while dragging or pinching, since those already
@@ -102,6 +107,11 @@ export function attachInput(
   // this gesture turns out to be a tap rather than a drag — see `onTap`'s
   // docblock above for why the caller needs this.
   let downTarget: EventTarget | null = null
+  // Read at press rather than at release: a viewer who lets go of ctrl before
+  // lifting the finger still meant ctrl-click, and the press is when they
+  // decided.
+  let downAdditive = false
+  let downExtend = false
   const activePointers = new Map<number, { x: number; y: number }>()
   let pinchDistance = 0
 
@@ -155,6 +165,8 @@ export function attachInput(
     downX = event.clientX
     downY = event.clientY
     downTarget = event.target
+    downAdditive = event.ctrlKey || event.metaKey
+    downExtend = event.shiftKey
     moveSamples = [{ t: performance.now(), x: event.clientX, y: event.clientY }]
   }
 
@@ -201,7 +213,7 @@ export function attachInput(
     dragging = false
     if (travelled <= DRAG_THRESHOLD_PX) {
       const point = localPoint({ clientX: downX, clientY: downY })
-      callbacks.onTap(point.x, point.y, downTarget)
+      callbacks.onTap(point.x, point.y, downTarget, { additive: downAdditive, extend: downExtend })
       return
     }
     const first = moveSamples[0]

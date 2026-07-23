@@ -573,14 +573,14 @@ body {
 
   /* Full width, under its label, rather than a fixed 11rem that would push the
      panel off the side of a narrow surface. */
-  .goto-panel {
+  .surface-panel {
     right: 0.6rem;
     flex-direction: column;
     align-items: stretch;
     gap: 0.25rem;
   }
 
-  .goto-panel .select {
+  .surface-panel .select {
     min-width: 0;
     max-width: none;
   }
@@ -697,6 +697,110 @@ body {
   color: canvastext;
 }
 
+/* A radio that is present for the keyboard and the screen reader, and drawn
+   by the label around it. `clip` rather than `display: none`, which would take
+   it out of the tab order and out of the accessibility tree with it. */
+.visually-hidden {
+  position: absolute;
+  width: 1px;
+  height: 1px;
+  padding: 0;
+  margin: -1px;
+  overflow: hidden;
+  clip-path: inset(50%);
+  white-space: nowrap;
+}
+
+/* Stack: three mutually exclusive answers, all worth seeing — the shape a
+   segmented control has, and the same one the Code panel's own tabs use, so
+   "which stack" looks like one question asked in two places. */
+.segmented {
+  display: flex;
+  gap: 2px;
+  padding: 2px;
+  width: 100%;
+  border-radius: var(--radius-sm);
+  background: var(--surface-sunken);
+  border: 1px solid var(--border);
+}
+
+.segment {
+  flex: 1 1 0;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  padding: 0.26rem 0.2rem;
+  border-radius: calc(var(--radius-sm) - 2px);
+  font-size: 0.72rem;
+  font-weight: 600;
+  color: var(--text-muted);
+  cursor: pointer;
+  transition: background 120ms ease, color 120ms ease;
+}
+
+.segment:hover {
+  color: canvastext;
+}
+
+.segment:has(:checked) {
+  background: var(--surface);
+  color: var(--accent);
+  box-shadow: var(--shadow-sm);
+}
+
+.segment:has(:focus-visible) {
+  outline: 2px solid var(--accent);
+  outline-offset: -2px;
+}
+
+/* Example: seventeen answers, so a list rather than a row — and shown in full
+   rather than behind a dropdown, because how many examples there are is
+   itself worth knowing. */
+.option-list {
+  display: flex;
+  flex-direction: column;
+  gap: 1px;
+  width: 100%;
+}
+
+.option-row {
+  display: flex;
+  align-items: center;
+  gap: 0.4rem;
+  padding: 0.3rem 0.5rem;
+  border-radius: var(--radius-sm);
+  font-size: 0.76rem;
+  color: var(--text-muted);
+  cursor: pointer;
+  /* The marker for the checked row, transparent until then: an indent that
+     appears and disappears would make the whole list jump by 3px. */
+  border-left: 3px solid transparent;
+  transition: background 120ms ease, color 120ms ease, border-color 120ms ease;
+}
+
+.option-row:hover {
+  background: color-mix(in srgb, var(--accent) 8%, transparent);
+  color: canvastext;
+}
+
+.option-row:has(:checked) {
+  background: color-mix(in srgb, var(--accent) 12%, transparent);
+  border-left-color: var(--accent);
+  color: var(--accent);
+  font-weight: 600;
+}
+
+.option-row:has(:focus-visible) {
+  outline: 2px solid var(--accent);
+  outline-offset: -2px;
+}
+
+.field-label {
+  font-size: 0.7rem;
+  font-weight: 600;
+  color: var(--text-muted);
+}
+
 .select,
 .btn {
   font: inherit;
@@ -796,6 +900,40 @@ body {
   outline: none;
   border-color: var(--accent);
   box-shadow: 0 0 0 3px color-mix(in srgb, var(--accent) 30%, transparent);
+}
+
+/* Key hints in the View panel. Read rather than pressed, so they are quiet:
+   the point is that the keys EXIST, which nothing on the chart itself says. */
+.key-hint {
+  display: flex;
+  align-items: center;
+  gap: 0.45rem;
+  font-size: 0.7rem;
+  color: var(--text-muted);
+}
+
+.key-combo {
+  display: flex;
+  gap: 0.15rem;
+  flex: none;
+}
+
+.key-hint kbd {
+  font: inherit;
+  font-size: 0.66rem;
+  font-weight: 600;
+  min-width: 1.15rem;
+  padding: 0.05rem 0.28rem;
+  text-align: center;
+  border-radius: 4px;
+  border: 1px solid var(--border-strong);
+  border-bottom-width: 2px;
+  background: var(--surface);
+  color: canvastext;
+}
+
+.key-what {
+  min-width: 0;
 }
 
 /* ---------------------------------------------------------------------------
@@ -1694,7 +1832,7 @@ body {
  * sidebar, because it belongs to one example rather than to the playground.
  * Top-left, opposite the minimap's default corner, so the two never collide.
  * ------------------------------------------------------------------------ */
-.goto-panel {
+.surface-panel {
   position: absolute;
   top: 0.6rem;
   left: 0.6rem;
@@ -1712,7 +1850,7 @@ body {
   backdrop-filter: blur(6px);
 }
 
-.goto-panel label {
+.surface-panel label {
   font-size: 0.72rem;
   font-weight: 600;
   letter-spacing: 0.01em;
@@ -1720,7 +1858,102 @@ body {
   white-space: nowrap;
 }
 
-.goto-panel .select {
+.surface-panel .select {
   min-width: 11rem;
   max-width: 15rem;
+}
+
+/* The branch-and-view panel stacks instead of running along one line: it holds
+   a picker and two buttons, and a single row of that is wider than the chart
+   it floats over on anything but a desktop. */
+.surface-panel-stacked {
+  flex-direction: column;
+  align-items: stretch;
+  gap: 0.35rem;
+}
+
+.panel-row {
+  display: flex;
+  align-items: center;
+  gap: 0.35rem;
+}
+
+.panel-row .btn {
+  flex: 0 0 auto;
+}
+
+.btn:disabled {
+  opacity: 0.45;
+  cursor: not-allowed;
+}
+
+.btn:disabled:hover {
+  background: var(--surface);
+  border-color: var(--border-strong);
+}
+
+/* The selection panel's own two lines: what the gestures are, and who is
+   picked. Both quiet — the chart is the thing being looked at. */
+.panel-hint {
+  font-size: 0.66rem;
+  color: var(--text-muted);
+  white-space: nowrap;
+}
+
+.panel-names {
+  font-size: 0.7rem;
+  font-weight: 600;
+  color: canvastext;
+  max-width: 22rem;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.panel-names:empty {
+  display: none;
+}
+
+/* The breadcrumb out of an isolated branch. Quiet, because it is a way back
+   rather than the thing you came for — and hidden entirely while nothing is
+   isolated, since an empty trail reads as a broken one. */
+.panel-trail {
+  display: flex;
+  align-items: center;
+  flex-wrap: wrap;
+  gap: 0.15rem;
+  font-size: 0.7rem;
+}
+
+.panel-trail-sep {
+  color: var(--border-strong);
+}
+
+.panel-crumb {
+  font: inherit;
+  font-size: 0.7rem;
+  padding: 0.1rem 0.3rem;
+  border: none;
+  border-radius: 4px;
+  background: none;
+  color: var(--text-muted);
+  cursor: pointer;
+}
+
+.panel-crumb:hover {
+  color: var(--accent);
+  background: color-mix(in srgb, var(--accent) 10%, transparent);
+}
+
+.panel-crumb:last-child {
+  color: canvastext;
+  font-weight: 600;
+}
+
+/* Reads the saved view back to the viewer, so "Save" is visibly something
+   rather than a button that appears to do nothing. */
+.panel-note {
+  font-size: 0.68rem;
+  color: var(--text-muted);
+  white-space: nowrap;
 }

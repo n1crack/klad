@@ -19,6 +19,8 @@ export interface ChartHost {
   setCamera(camera: Camera): void
   setViewport(width: number, height: number, dpr: number): void
   setHighlight(ids: Uint32Array | null): void
+  setIsolate(index: number): void
+  setSelection(ids: Uint32Array | null): void
   setDrag(index: number): void
   setAnimate(enabled: boolean): void
   /**
@@ -238,9 +240,17 @@ export function createChartHost(
       engine?.setViewport(width, height, dpr)
       post({ t: 'resize', width, height, dpr })
     },
+    setIsolate(index) {
+      engine?.setIsolate(index)
+      post({ t: 'isolate', index })
+    },
     setHighlight(ids) {
       engine?.setHighlight(ids)
       post({ t: 'highlight', ids })
+    },
+    setSelection(ids) {
+      engine?.setSelection(ids)
+      post({ t: 'selection', ids })
     },
     setDrag(index) {
       engine?.setDrag(index)

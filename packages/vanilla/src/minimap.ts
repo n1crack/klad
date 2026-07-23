@@ -58,7 +58,19 @@ export interface Minimap {
    * canvas has the toggle camera anchor to absorb this; this is the minimap's
    * equivalent. Omit it and the transform is used as-is.
    */
-  onLayout(boxes: Float64Array, bounds: Bounds, anchorWorld?: { x: number; y: number }): void
+  onLayout(
+    boxes: Float64Array,
+    bounds: Bounds,
+    anchorWorld?: { x: number; y: number },
+    /**
+     * Forces a fresh fit instead of reusing the frame. For a relayout that
+     * replaced the TREE rather than reshaped it — isolating a branch, or new
+     * data — where holding the old frame steady is not stability but a map of
+     * something that is no longer there: the branch ends up drawn in the
+     * corner the whole org used to occupy.
+     */
+    refit?: boolean,
+  ): void
   /**
    * Call on every camera change. Cheap: two point transforms and a CSS
    * `transform` write on an already-painted overlay, no silhouette work.
@@ -359,7 +371,7 @@ export function createMinimap(
   root.addEventListener('pointercancel', onPointerUp)
 
   return {
-    onLayout(boxes, bounds, anchorWorld) {
+    onLayout(boxes, bounds, anchorWorld, refit) {
       // Keep the frame we already have whenever the new layout still fits in
       // it, and refit only when it genuinely doesn't. Refitting on every
       // relayout — which is what fitting `bounds` unconditionally amounts to
@@ -388,7 +400,7 @@ export function createMinimap(
       // anchor still can itself push the tree past an edge (expanding a root
       // pinned near the left grows to the right), and that is a genuine
       // refit, same as outgrowing the scale.
-      const reuse = candidate !== null && fitsUnder(candidate, bounds)
+      const reuse = refit !== true && candidate !== null && fitsUnder(candidate, bounds)
       const silhouette = computeSilhouette(boxes, bounds, { width, height }, {
         ...SILHOUETTE_OPTIONS,
         ...(reuse ? { transform: candidate! } : {}),

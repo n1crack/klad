@@ -54,6 +54,20 @@ export interface ChartEngine {
   setCamera(camera: Camera): void
   setViewport(width: number, height: number, dpr: number): void
   setHighlight(sourceIds: Uint32Array | null): void
+  /**
+   * The SELECTED nodes, by source index — what the viewer picked, as opposed
+   * to what `setHighlight` says the chart is pointing at. Paint-only, like
+   * highlighting: nothing about the layout depends on it.
+   */
+  setSelection(sourceIds: Uint32Array | null): void
+  /**
+   * Re-roots the visible tree at one node — that branch and nothing else — or
+   * `-1` for the whole forest. See `pruneToVisible`'s `isolateRoot`.
+   *
+   * Relayouts, because it changes which nodes exist as far as everything
+   * downstream is concerned; it is not a filter applied at draw time.
+   */
+  setIsolate(sourceIndex: number): void
   setDrag(sourceIndex: number): void
   /**
    * Enables or disables the expand/collapse layout transition. Disabling
@@ -1060,6 +1074,10 @@ export function createChartEngine(renderer: Renderer): ChartEngine {
   let camera: Camera = { x: 0, y: 0, k: 1 }
   let viewport = { width: 0, height: 0, dpr: 1 }
   let highlightSource: Uint32Array | null = null
+  /** Source index the visible tree is re-rooted at, or -1 for the whole forest. */
+  let isolateSource = -1
+  let selectionSource: Uint32Array | null = null
+  let selectionBuffer: Uint8Array | null = null
   let dragSource = -1
 
   let layoutDirty = true
@@ -1142,7 +1160,7 @@ export function createChartEngine(renderer: Renderer): ChartEngine {
     const prevParent = prunedParent
     const prevTransition = transition
 
-    const pruned = pruneToVisible(sourceTree, open)
+    const pruned = pruneToVisible(sourceTree, open, isolateSource)
     visibleToSource = pruned.toSource
     prunedParent = pruned.tree.parent
     prunedFromSource = pruned.fromSource
@@ -1458,21 +1476,29 @@ export function createChartEngine(renderer: Renderer): ChartEngine {
     }
     // --- end one-shot toggle ring ---
 
-    if (highlightSource === null) {
-      highlightBuffer = null
-    } else {
-      if (highlightBuffer === null || highlightBuffer.length < n) highlightBuffer = new Uint8Array(n)
-      else highlightBuffer.fill(0)
-      // highlightSource holds SOURCE indices; translate into pruned space.
-      for (const src of highlightSource) {
-        for (let i = 0; i < n; i++) {
-          if (visibleToSource[i] === src) {
-            highlightBuffer[i] = 1
-            break
-          }
-        }
+    /**
+     * Source indices -> a flag per PRUNED index, through `prunedFromSource`.
+     *
+     * That map is the whole point: this used to scan `visibleToSource` looking
+     * for each id, which is O(marked x visible) and fine for the handful of
+     * nodes a highlighted path contains. A box selection over a large chart
+     * marks thousands, and thousands times fifty thousand, every frame, is not
+     * a cost anything survives.
+     */
+    const markSource = (source: Uint32Array | null, buffer: Uint8Array | null): Uint8Array | null => {
+      if (source === null) return null
+      let marks = buffer
+      if (marks === null || marks.length < n) marks = new Uint8Array(n)
+      else marks.fill(0)
+      for (const src of source) {
+        const pruned = prunedFromSource[src]
+        if (pruned !== undefined && pruned !== -1) marks[pruned] = 1
       }
+      return marks
     }
+
+    highlightBuffer = markSource(highlightSource, highlightBuffer)
+    selectionBuffer = markSource(selectionSource, selectionBuffer)
 
     let dragPruned = -1
     if (dragSource !== -1) {
@@ -1498,6 +1524,7 @@ export function createChartEngine(renderer: Renderer): ChartEngine {
       tier,
       horizontal: options.orientation === 'lr' || options.orientation === 'rl',
       highlight: highlightBuffer,
+      selected: selectionBuffer,
       dragIndex: dragPruned,
       revealAlpha,
       ghostBoxes: ghostDrawBoxes,
@@ -1639,6 +1666,15 @@ export function createChartEngine(renderer: Renderer): ChartEngine {
     setViewport(width, height, dpr) {
       viewport = { width, height, dpr }
       renderer.resize(width, height, dpr)
+    },
+    setIsolate(sourceIndex) {
+      if (isolateSource === sourceIndex) return
+      isolateSource = sourceIndex
+      // A relayout, not a repaint: the set of nodes that exist just changed.
+      layoutDirty = true
+    },
+    setSelection(ids) {
+      selectionSource = ids
     },
     setHighlight(ids) {
       highlightSource = ids

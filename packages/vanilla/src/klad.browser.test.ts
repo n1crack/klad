@@ -232,6 +232,35 @@ describe('createKlad', () => {
     chart.destroy()
   })
 
+  // The smallest chart anyone can write. Both of the options this used to
+  // require — a node size and a label accessor — now have defaults, and this
+  // asserts what those defaults are worth: boxes of a readable size, with the
+  // node's own name in them, from data alone.
+  it('draws a chart from data alone, with no size and no label accessor', async () => {
+    const el = host()
+    const chart = createKlad(el, { data: DATA, worker: false })
+    await nextFrame()
+
+    const svg = chart.api.toSVG()
+    expect(chart.api.getState().visibleCount).toBe(4)
+    expect(svg).toContain('width="180"')
+    expect(svg).toContain('height="64"')
+    // The label came from `name` without being asked for.
+    expect(svg).toContain('Root')
+    expect(svg).toContain('Leaf')
+    chart.destroy()
+  })
+
+  // `id` is the last resort, and the one that matters: data shaped in some
+  // fourth way still identifies its nodes rather than drawing empty boxes.
+  it('falls back to the id when a node carries no name, label or title', async () => {
+    const el = host()
+    const chart = createKlad(el, { data: [{ id: 'only-node' }], worker: false })
+    await nextFrame()
+    expect(chart.api.toSVG()).toContain('only-node')
+    chart.destroy()
+  })
+
   it('pans on pointer drag', async () => {
     const chart = make()
     // The opening view arrives on a tween of its own. Reading `before` one
@@ -310,6 +339,391 @@ describe('createKlad', () => {
     expect(getComputedStyle(el).touchAction).toBe('none')
     chart.destroy()
     expect(getComputedStyle(el).touchAction).not.toBe('none')
+  })
+
+  // Keyboard camera. Not the accessibility tree — that mirrors the STRUCTURE
+  // and its arrows move between nodes; these move the VIEW, which is what a
+  // sighted user reaches for after clicking the chart.
+  it('makes the host a tab stop, and gives it back on destroy', async () => {
+    const el = host()
+    const chart = createKlad(el, { data: DATA, worker: false })
+    await nextFrame()
+    // Without this the chart cannot be reached from the keyboard at all: it is
+    // clickable, and then Tab walks straight past it into the overlay cards.
+    expect(el.tabIndex).toBe(0)
+    chart.destroy()
+    expect(el.hasAttribute('tabindex')).toBe(false)
+  })
+
+  it('pans with the arrow keys, and strides with shift held', async () => {
+    const chart = make()
+    await settle()
+    const el = document.querySelector('canvas')!.parentElement!
+    const before = chart.api.getState().camera.x
+
+    el.dispatchEvent(new KeyboardEvent('keydown', { key: 'ArrowRight', bubbles: true }))
+    await nextFrame()
+    const stepped = chart.api.getState().camera.x
+    // Right moves the VIEW right, so the content goes the other way — the
+    // relationship a scrollbar has with its page, not the one dragging has.
+    expect(stepped).toBeLessThan(before)
+
+    el.dispatchEvent(new KeyboardEvent('keydown', { key: 'ArrowLeft', shiftKey: true, bubbles: true }))
+    await nextFrame()
+    // One shifted press in the opposite direction more than undoes one plain
+    // press: the stride is a multiple of the step, not the same distance.
+    expect(chart.api.getState().camera.x).toBeGreaterThan(before)
+    chart.destroy()
+  })
+
+  it('zooms on + and -, about the middle of the host', async () => {
+    const chart = make()
+    await settle()
+    const el = document.querySelector('canvas')!.parentElement!
+    const before = chart.api.getState().camera.k
+
+    el.dispatchEvent(new KeyboardEvent('keydown', { key: '+', bubbles: true }))
+    await nextFrame()
+    const zoomedIn = chart.api.getState().camera.k
+    expect(zoomedIn).toBeGreaterThan(before)
+
+    el.dispatchEvent(new KeyboardEvent('keydown', { key: '-', bubbles: true }))
+    await nextFrame()
+    expect(chart.api.getState().camera.k).toBeLessThan(zoomedIn)
+    chart.destroy()
+  })
+
+  it('clears the highlight on Escape', async () => {
+    const chart = make()
+    await settle()
+    chart.api.highlight(['a', 'b'])
+    await nextFrame()
+    const el = document.querySelector('canvas')!.parentElement!
+    el.dispatchEvent(new KeyboardEvent('keydown', { key: 'Escape', bubbles: true }))
+    await nextFrame()
+    expect(chart.api.getState().highlighted).toBeNull()
+    chart.destroy()
+  })
+
+  // A card can hold a real form control (see the playground's dropdown
+  // example). Panning the chart out from under someone typing in it would be
+  // a bug, not a feature.
+  it('leaves the keys alone when a card\'s own control has focus', async () => {
+    const chart = make()
+    await settle()
+    const el = document.querySelector('canvas')!.parentElement!
+    const before = chart.api.getState().camera.x
+
+    const input = document.createElement('input')
+    el.append(input)
+    input.focus()
+    input.dispatchEvent(new KeyboardEvent('keydown', { key: 'ArrowRight', bubbles: true }))
+    await nextFrame()
+
+    expect(chart.api.getState().camera.x).toBe(before)
+    input.remove()
+    chart.destroy()
+  })
+
+  it('binds nothing, and takes no focus, when keyboard is off', async () => {
+    const el = host()
+    const chart = createKlad(el, { data: DATA, worker: false, keyboard: false })
+    await settle()
+    const before = chart.api.getState().camera.x
+    expect(el.hasAttribute('tabindex')).toBe(false)
+    el.dispatchEvent(new KeyboardEvent('keydown', { key: 'ArrowRight', bubbles: true }))
+    await nextFrame()
+    expect(chart.api.getState().camera.x).toBe(before)
+    chart.destroy()
+  })
+
+  // `fitSubtree` — the question people actually have on a large chart is not
+  // "show me everything", it is "show me this branch".
+  it('frames one branch tighter than the whole chart', async () => {
+    const chart = make()
+    await settle()
+    chart.api.fit()
+    await settle()
+    const whole = chart.api.getState().camera.k
+
+    chart.api.fitSubtree('b')
+    await settle()
+    // 'b' and its one child occupy a fraction of the tree, so framing them
+    // has to arrive closer than framing all four nodes did.
+    expect(chart.api.getState().camera.k).toBeGreaterThan(whole)
+    chart.destroy()
+  })
+
+  it('ignores fitSubtree for an unknown id rather than throwing', async () => {
+    const chart = make()
+    await settle()
+    const before = { ...chart.api.getState().camera }
+    chart.api.fitSubtree('nope')
+    await settle()
+    expect(chart.api.getState().camera).toEqual(before)
+    chart.destroy()
+  })
+
+  // A view is where a viewer IS: camera, what is open, what is lit. It has to
+  // survive a round trip through JSON, because the point of it is a URL.
+  it('restores a camera, an open set and a highlight from a saved view', async () => {
+    const chart = make()
+    await settle()
+    chart.api.collapse('b')
+    chart.api.highlight(['a', 'c'])
+    chart.api.zoomTo(1.75)
+    await settle()
+
+    const view = JSON.parse(JSON.stringify(chart.api.getView()))
+    expect(view.open).not.toContain('b')
+    expect(view.highlighted).toEqual(['a', 'c'])
+
+    // Move everything somewhere else, then come back.
+    chart.api.expandAll()
+    chart.api.highlight(null)
+    chart.api.zoomTo(0.5)
+    await settle()
+
+    chart.api.setView(view)
+    await settle()
+
+    const state = chart.api.getState()
+    expect(state.camera.k).toBeCloseTo(1.75, 5)
+    expect(state.highlighted).toEqual(['a', 'c'])
+    // 'b' closed again, so its child is out of the visible tree.
+    expect(state.visibleCount).toBe(3)
+    chart.destroy()
+  })
+
+  it('drops ids a view names that are no longer in the tree', async () => {
+    const chart = make()
+    await settle()
+    // A view saved when the chart had a node it no longer has: it should open
+    // what is left rather than throw, which is what makes an old bookmark
+    // still usable.
+    chart.api.setView({ camera: { x: 0, y: 0, k: 1 }, open: ['a', 'ghost'], highlighted: ['ghost'] })
+    await settle()
+    expect(chart.api.getState().visibleCount).toBe(3)
+    chart.destroy()
+  })
+
+  // Isolation: one branch AS the chart, rather than one branch with the rest
+  // still there off screen (which is what `fitSubtree` does).
+  it('re-roots the chart at one branch, and puts the rest back', async () => {
+    const chart = make()
+    await settle()
+    expect(chart.api.getState().visibleCount).toBe(4)
+
+    chart.api.isolate('b')
+    await settle()
+    const isolated = chart.api.getState()
+    // 'b' and its child 'd'. 'a' is an ancestor, 'c' a sibling — both gone,
+    // not merely off screen.
+    expect(isolated.visibleCount).toBe(2)
+    expect(isolated.isolated).toBe('b')
+    // The export is the same tree, so it is the cheapest place to check that
+    // "gone" reaches everything downstream rather than only the canvas.
+    const svg = chart.api.toSVG()
+    expect(svg).toContain('Leaf')
+    expect(svg).not.toContain('Right')
+
+    chart.api.isolate(null)
+    await settle()
+    expect(chart.api.getState().visibleCount).toBe(4)
+    expect(chart.api.getState().isolated).toBeNull()
+    chart.destroy()
+  })
+
+  it('mirrors an isolated branch in the accessibility tree, not the whole org', async () => {
+    const chart = make()
+    await settle()
+    chart.api.isolate('b')
+    await settle()
+    // A screen reader reading out nodes the chart is not showing is a mirror
+    // that contradicts what it mirrors.
+    const labels = [...document.querySelectorAll('[role="treeitem"]')].map((el) => el.textContent)
+    expect(labels).toEqual(['Left', 'Leaf'])
+    chart.destroy()
+  })
+
+  it('keeps collapsing working inside an isolated branch', async () => {
+    const chart = make()
+    await settle()
+    chart.api.isolate('b')
+    chart.api.collapse('b')
+    await settle()
+    expect(chart.api.getState().visibleCount).toBe(1)
+    chart.destroy()
+  })
+
+  it('carries isolation through a saved view', async () => {
+    const chart = make()
+    await settle()
+    chart.api.isolate('b')
+    await settle()
+
+    const view = JSON.parse(JSON.stringify(chart.api.getView()))
+    expect(view.isolated).toBe('b')
+
+    chart.api.isolate(null)
+    await settle()
+    expect(chart.api.getState().visibleCount).toBe(4)
+
+    chart.api.setView(view)
+    await settle()
+    expect(chart.api.getState().isolated).toBe('b')
+    expect(chart.api.getState().visibleCount).toBe(2)
+    chart.destroy()
+  })
+
+  // Worker mode specifically. The layout lives in the worker and is posted
+  // back on the messages that change it; `isolate` was missing from that list,
+  // so the main thread kept the whole tree's boxes and bounds — the overlay
+  // drew nothing, the camera fitted the old bounds (which put the zoom below
+  // the tier where nodes are drawn at all), and the minimap showed a chart
+  // that was no longer on screen.
+  it('sends the new layout back to the main thread when isolating in worker mode', async () => {
+    const chart = make({ worker: true })
+    await settle()
+    const whole = chart.api.getState().bounds
+
+    chart.api.isolate('b')
+    await settle()
+    const branch = chart.api.getState().bounds
+
+    expect(chart.api.getState().visibleCount).toBe(2)
+    // The bounds the main thread holds have to describe the branch, not the
+    // tree it came out of — everything it does with them (fit, overlay,
+    // minimap) is wrong otherwise.
+    expect(branch.maxX - branch.minX).toBeLessThan(whole.maxX - whole.minX)
+    chart.destroy()
+  })
+
+  it('ignores isolate for an unknown id', async () => {
+    const chart = make()
+    await settle()
+    chart.api.isolate('nope')
+    await settle()
+    expect(chart.api.getState().visibleCount).toBe(4)
+    chart.destroy()
+  })
+
+  // Selection: what the viewer picked, as opposed to what `highlight` says the
+  // chart is pointing at.
+  it('selects through the API, reports it, and clears', async () => {
+    const chart = make()
+    await settle()
+    const heard: string[][] = []
+    chart.on('selectionChange', ({ ids }) => heard.push(ids))
+
+    chart.api.select(['a', 'c'])
+    await nextFrame()
+    expect(chart.api.getSelection()).toEqual(['a', 'c'])
+    expect(chart.api.getState().selected).toEqual(['a', 'c'])
+    expect(heard).toEqual([['a', 'c']])
+
+    // Setting the same selection again is not a change, and must not tell
+    // anyone it was.
+    chart.api.select(['a', 'c'])
+    await nextFrame()
+    expect(heard.length).toBe(1)
+
+    chart.api.select(null)
+    await nextFrame()
+    expect(chart.api.getSelection()).toEqual([])
+    expect(heard.length).toBe(2)
+    chart.destroy()
+  })
+
+  it('drops ids that are not in the tree rather than keeping ghosts', async () => {
+    const chart = make()
+    await settle()
+    chart.api.select(['a', 'ghost'])
+    await nextFrame()
+    expect(chart.api.getSelection()).toEqual(['a'])
+    chart.destroy()
+  })
+
+  it('carries the selection through a saved view', async () => {
+    const chart = make()
+    await settle()
+    chart.api.select(['b', 'd'])
+    await settle()
+    const view = JSON.parse(JSON.stringify(chart.api.getView()))
+    chart.api.select(null)
+    await settle()
+    chart.api.setView(view)
+    await settle()
+    expect(chart.api.getSelection()).toEqual(['b', 'd'])
+    chart.destroy()
+  })
+
+  it('leaves the pointer alone until selection is switched on', async () => {
+    const chart = make()
+    await settle()
+    const canvas = document.querySelector('canvas')!
+    const centre = chart.api.getState().rootScreenCentre
+    canvas.dispatchEvent(new PointerEvent('pointerdown', { clientX: centre.x, clientY: centre.y, bubbles: true }))
+    window.dispatchEvent(new PointerEvent('pointerup', { clientX: centre.x, clientY: centre.y, bubbles: true }))
+    await settle()
+    // A chart written before selection existed has its own meaning for a
+    // click; switching this on underneath it would change what that chart does.
+    expect(chart.api.getSelection()).toEqual([])
+    chart.destroy()
+  })
+
+  it('selects on click, adds with ctrl, and clears on the background', async () => {
+    const chart = make({ selection: true })
+    await settle()
+    const canvas = document.querySelector('canvas')!
+    const tap = (x: number, y: number, init: PointerEventInit = {}) => {
+      canvas.dispatchEvent(new PointerEvent('pointerdown', { clientX: x, clientY: y, bubbles: true, ...init }))
+      window.dispatchEvent(new PointerEvent('pointerup', { clientX: x, clientY: y, bubbles: true, ...init }))
+    }
+    const root = chart.api.getState().rootScreenCentre
+
+    tap(root.x, root.y)
+    await settle()
+    expect(chart.api.getSelection()).toEqual(['a'])
+
+    // Ctrl on the same node takes it back out — a toggle, as in every list.
+    // Waited out first: two taps on one node inside 300ms are a double click
+    // (see `DOUBLE_CLICK_MS`), which is a different event and does not select.
+    await settleTransition()
+    tap(root.x, root.y, { ctrlKey: true })
+    await settle()
+    expect(chart.api.getSelection()).toEqual([])
+
+    tap(root.x, root.y)
+    await settle()
+    // Far from any node: "never mind".
+    tap(root.x + 400, root.y + 260)
+    await settle()
+    expect(chart.api.getSelection()).toEqual([])
+    chart.destroy()
+  })
+
+  it('selects a dragged box, and Escape drops it', async () => {
+    const chart = make({ selection: true })
+    await settle()
+    const el = document.querySelector('canvas')!.parentElement!
+    const rect = el.getBoundingClientRect()
+
+    // Shift-drag across the whole chart: everything visible is inside it.
+    el.dispatchEvent(
+      new PointerEvent('pointerdown', { clientX: rect.left + 2, clientY: rect.top + 2, shiftKey: true, bubbles: true }),
+    )
+    window.dispatchEvent(
+      new PointerEvent('pointermove', { clientX: rect.right - 2, clientY: rect.bottom - 2, bubbles: true }),
+    )
+    window.dispatchEvent(new PointerEvent('pointerup', { bubbles: true }))
+    await settle()
+    expect(chart.api.getSelection().length).toBe(4)
+
+    el.dispatchEvent(new KeyboardEvent('keydown', { key: 'Escape', bubbles: true }))
+    await settle()
+    expect(chart.api.getSelection()).toEqual([])
+    chart.destroy()
   })
 
   it('zooms about the cursor on wheel', async () => {

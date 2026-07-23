@@ -39,10 +39,50 @@ chartRef.current?.api?.fit()
 | Method | |
 |---|---|
 | `fit()` | Zoom out to show the whole visible tree. |
+| `fitSubtree(id)` | Frame one branch instead — the smallest camera that shows `id` and everything visible below it. On a chart of thousands, "show me Engineering" is the question people actually have. |
+| `isolate(id \| null)` | Show one branch **as** the chart: `id` becomes the root and everything else stops existing — for the layout, the minimap, the keyboard tree, search and export alike. `fitSubtree` points the camera; this changes what is there. |
 | `reset()` | Back to the opening view. |
 | `zoomIn()` / `zoomOut()` | One step about the viewport centre. |
 | `zoomTo(k)` | An exact scale, within `zoomLimits`. |
 | `focus(id, opts?)` | Centre a node, opening every collapsed ancestor on the way. `{ ring: true }` flashes the confirmation ring on arrival. |
+
+### Saving where you are
+
+```ts
+const view = chart.api.getView()      // { camera, open, highlighted, isolated }
+localStorage.setItem('chart', JSON.stringify(view))
+
+chart.api.setView(JSON.parse(localStorage.getItem('chart')!))
+chart.api.setView(view, { animate: true })   // fly there instead of arriving
+```
+
+A view is a plain serialisable object naming nodes by id, so it survives the
+data being refetched, reordered or grown — put one in a URL and you have a
+link to a place in a chart. Ids it names that are no longer in the tree are
+ignored rather than throwing, which is what keeps an old bookmark usable.
+
+## Selection
+
+| Method | |
+|---|---|
+| `select(ids \| null)` | Set the selection. Unknown ids are ignored. |
+| `getSelection()` | The current selection, in the order it was given. |
+
+Selection is what the *viewer* picked; [`highlight`](#highlighting) is what the
+*chart* is pointing at (a search hit, the route to a node). They co-occur —
+select three people, then search — so they are drawn differently and stored
+separately.
+
+The `selectionChange` event carries the whole selection rather than a delta:
+
+```ts
+chart.on('selectionChange', ({ ids, items }) => console.log(ids.length, 'selected'))
+```
+
+Pointer selection is opt-in with [`selection: true`](/api/options): click to
+select, ctrl/cmd-click to add or remove one, shift-click to add, shift-drag for
+a box, alt-drag for a lasso, `Esc` to clear. It is off by default because a
+chart written before this existed already has its own meaning for a click.
 
 ## Tree
 

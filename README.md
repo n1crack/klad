@@ -44,13 +44,16 @@ const chart = createKlad(document.getElementById('chart')!, {
     { id: 'cto', parentId: 'ceo', name: 'Amy Chen', title: 'CTO' },
     { id: 'cfo', parentId: 'ceo', name: 'Priya Rao', title: 'CFO' },
   ],
-  nodeSize: { w: 180, h: 64 },
-  label: (item) => String(item.name ?? ''),
 })
 
 chart.on('nodeClick', ({ id, item }) => console.log('clicked', id, item))
 // later: chart.destroy()
 ```
+
+`data` is the only option without a default: nodes are sized `180x64` and
+labelled from each item's `name` (or `label`, `title`, failing those its
+`id`). Everything else — your own cards, a minimap, a different orientation —
+is added one option at a time.
 
 `data` is flat. Every item is `{ id, parentId?, ...your own fields }`; there is
 no nested-children shape, and an item whose `parentId` names nothing becomes a

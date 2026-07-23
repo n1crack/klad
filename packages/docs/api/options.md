@@ -1,15 +1,16 @@
 # Options
 
 The object passed to `createKlad` (or the `options` prop on the Vue and
-React components). Only `data` and `nodeSize` are required.
+React components). Only `data` is required — everything below has a default
+that produces a usable chart.
 
 ## Data
 
 | Option | Type | Default | |
 |---|---|---|---|
 | `data` | `NodeData[]` | — | Flat array. Every item is `{ id, parentId?, ...yours }`; an unresolvable `parentId` makes a root and emits a `warning`. |
-| `nodeSize` | `Size \| (item) => Size` | — | Declared, never measured — see [Sizing](/guide/sizing). |
-| `label` | `(item) => string` | `''` | The text the **canvas** draws inside a node. Independent of whatever your card renders. |
+| `nodeSize` | `Size \| (item) => Size` | `{ w: 180, h: 64 }` | The box each node occupies. Declared, never measured — see [Sizing](/guide/sizing). Exported as `DEFAULT_NODE_SIZE`. |
+| `label` | `(item) => string` | `name` → `label` → `title` → `id` | The text the **canvas** draws inside a node, independent of whatever your card renders. Return `''` for a node that should stay blank. |
 
 ## Layout
 
@@ -39,6 +40,8 @@ React components). Only `data` and `nodeSize` are required.
 
 | Option | Type | Default | |
 |---|---|---|---|
+| `selection` | `boolean` | `false` | Selecting nodes with the pointer — click, ctrl/cmd-click, shift-click, shift-drag for a box, alt-drag for a lasso. `select()` and `selectionChange` work either way; this is only about the pointer. |
+| `keyboard` | `boolean` | `true` | Camera control from the keyboard, and the tab stop that makes the chart reachable at all — see [Navigating](/guide/navigating#keyboard). |
 | `animate` | `boolean` | `true` | Every animation this layer starts on its own: the expand/collapse transition, camera eases, kinetic panning. `prefers-reduced-motion: reduce` forces it off regardless. |
 | `autoPanOnToggle` | `boolean` | `true` | Keeps the toggled node pinned on screen while the layout moves around it. |
 | `ring` | `boolean` | `true` | The one-shot confirmation flash after a single-node toggle. |
