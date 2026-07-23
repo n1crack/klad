@@ -275,20 +275,121 @@ body {
    and the more of these controls are visible without scrolling, the less
    often you leave it to reach one. */
 .sidebar {
+  flex: 0 0 auto;
+  display: flex;
+  background: var(--surface-raised);
+  border-right: 1px solid var(--border);
+  min-height: 0;
+}
+
+/* Closed: the rail alone, and the whole rest of the width goes to the chart. */
+.sidebar.is-collapsed .sidebar-body {
+  display: none;
+}
+
+/*
+ * The rail — one tab per panel, down the sidebar's outer edge, the shape an
+ * IDE uses for the same job. Two things it buys: the group names stop taking
+ * horizontal room from the controls they label, and only one group is open at
+ * a time, so finding a slider stops being a scroll.
+ */
+.rail {
+  flex: none;
+  width: 38px;
+  display: flex;
+  flex-direction: column;
+  align-items: stretch;
+  gap: 2px;
+  padding: 0.4rem 0;
+  border-right: 1px solid var(--border);
+  background: var(--surface-sunken);
+}
+
+/*
+ * `writing-mode` rather than a `rotate()` transform: the tab still takes part
+ * in normal layout (its height is its label's length, so the rail lays itself
+ * out), the text stays selectable and searchable, and a screen reader reads it
+ * as the text it is. `sideways-lr` reads bottom-to-top, which is the direction
+ * these labels run in every editor that does this; `vertical-rl` + `rotate` is
+ * the fallback for browsers without it, and reads top-to-bottom instead.
+ */
+.rail-tab {
+  flex: none;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  padding: 0.55rem 0;
+  border: none;
+  border-left: 2px solid transparent;
+  background: none;
+  font: inherit;
+  font-size: 0.68rem;
+  font-weight: 700;
+  letter-spacing: 0.08em;
+  text-transform: uppercase;
+  color: var(--text-muted);
+  cursor: pointer;
+  transition: color 120ms ease, background 120ms ease, border-color 120ms ease;
+}
+
+.rail-tab span {
+  writing-mode: vertical-rl;
+  transform: rotate(180deg);
+  white-space: nowrap;
+}
+
+@supports (writing-mode: sideways-lr) {
+  .rail-tab span {
+    writing-mode: sideways-lr;
+    transform: none;
+  }
+}
+
+.rail-tab:hover {
+  color: canvastext;
+  background: color-mix(in srgb, var(--accent) 8%, transparent);
+}
+
+.rail-tab.is-on {
+  color: var(--accent);
+  border-left-color: var(--accent);
+  background: var(--surface-raised);
+}
+
+.rail-tab:focus-visible {
+  outline: none;
+  box-shadow: inset 0 0 0 2px var(--accent);
+}
+
+.sidebar-body {
   flex: 0 0 226px;
   width: 226px;
   display: flex;
   flex-direction: column;
-  background: var(--surface-raised);
-  border-right: 1px solid var(--border);
+  gap: 0.7rem;
+  padding: 0.7rem 0.75rem;
   overflow-y: auto;
 }
 
-.sidebar-body {
-  display: flex;
-  flex-direction: column;
-  gap: 0.7rem;
-  padding: 0.7rem 0.75rem;
+/* Wider for the Code panel — see `openPanel` in main.ts. Capped against the
+   viewport so it can never take the chart's whole width on a small laptop. */
+.sidebar.is-wide .sidebar-body {
+  flex-basis: min(380px, 40vw);
+  width: min(380px, 40vw);
+}
+
+/* One panel at a time, so the group's own border-as-separator has nothing to
+   separate it from. */
+.sidebar-body .sidebar-group {
+  border-bottom: none;
+  padding-bottom: 0;
+}
+
+/* `display: flex` below would otherwise beat the user agent's own
+   `[hidden] { display: none }`, and every panel would show at once — which is
+   exactly what happened the first time the rail was wired up. */
+.sidebar-group[hidden] {
+  display: none;
 }
 
 .sidebar-group {
@@ -356,7 +457,6 @@ body {
     top: 0;
     left: 0;
     right: 0;
-    width: auto;
     flex: none;
     max-height: min(70vh, 30rem);
     border-right: none;
@@ -378,6 +478,25 @@ body {
   .app-controls-toggle {
     display: inline-flex;
   }
+
+  /* The rail keeps its shape inside the drawer — it is how you move between
+     groups there too — but the panel beside it takes whatever width is left
+     rather than the fixed 226px of the desktop column. */
+  .sidebar-body {
+    flex: 1 1 auto;
+    width: auto;
+    min-width: 0;
+  }
+
+  /* A closed panel inside an open drawer is a drawer showing nothing. */
+  .sidebar.is-collapsed .sidebar-body {
+    display: flex;
+  }
+
+  .code-block {
+    max-height: 40vh;
+  }
+
 
   .sidebar-group-body .btn {
     flex: 1 1 auto;
@@ -649,6 +768,91 @@ body {
   outline: none;
   border-color: var(--accent);
   box-shadow: 0 0 0 3px color-mix(in srgb, var(--accent) 30%, transparent);
+}
+
+/* ---------------------------------------------------------------------------
+ * Code panel — the chart you dialled in, as options. Reported, not edited:
+ * everything in it is read-only text plus one button that copies it.
+ * ------------------------------------------------------------------------ */
+.code-stacks {
+  display: flex;
+  gap: 2px;
+  padding: 2px;
+  width: 100%;
+  border-radius: var(--radius-sm);
+  background: var(--surface-sunken);
+  border: 1px solid var(--border);
+}
+
+.code-stack {
+  flex: 1 1 0;
+  font: inherit;
+  font-size: 0.7rem;
+  font-weight: 600;
+  padding: 0.24rem 0.2rem;
+  border: none;
+  border-radius: calc(var(--radius-sm) - 2px);
+  background: none;
+  color: var(--text-muted);
+  cursor: pointer;
+}
+
+.code-stack:hover {
+  color: canvastext;
+}
+
+.code-stack.is-on {
+  background: var(--surface);
+  color: var(--accent);
+  box-shadow: var(--shadow-sm);
+}
+
+.code-stack:focus-visible {
+  outline: 2px solid var(--accent);
+  outline-offset: -2px;
+}
+
+/*
+ * A hard height rather than "as tall as the code": these snippets run to
+ * thirty-odd lines, and a panel that grows with them turns the sidebar into a
+ * scrolling document with the Copy button somewhere below the fold. Its own
+ * scroll, with the button pinned under it.
+ */
+/* The Code panel is the one that wants the sidebar's whole height: the snippet
+   fills it and the Copy button sits under it, rather than the snippet stopping
+   at some fraction of the viewport with dead space below. */
+#rail-panel-code,
+#rail-panel-code .sidebar-group-body {
+  flex: 1 1 auto;
+  min-height: 0;
+}
+
+#rail-panel-code .sidebar-group-body {
+  flex-direction: column;
+  flex-wrap: nowrap;
+}
+
+.code-block {
+  margin: 0;
+  width: 100%;
+  flex: 1 1 auto;
+  min-height: 8rem;
+  overflow: auto;
+  padding: 0.5rem 0.6rem;
+  border-radius: var(--radius-sm);
+  border: 1px solid var(--border);
+  background: var(--surface-sunken);
+  color: canvastext;
+  font-family: ui-monospace, SFMono-Regular, 'SF Mono', Menlo, Consolas, monospace;
+  font-size: 0.68rem;
+  line-height: 1.5;
+  tab-size: 2;
+  /* Wrapped, not clipped: a snippet you cannot read without scrolling
+     sideways in a 226px panel is a snippet you copy blind. */
+  white-space: pre-wrap;
+  word-break: break-word;
+  /* The one place in this app where selecting text is the point. */
+  user-select: text;
 }
 
 .example-description {

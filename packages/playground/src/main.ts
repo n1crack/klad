@@ -28,6 +28,7 @@ import {
   watchSystemTheme,
   type ThemeMode,
 } from './theme.js'
+import { generateCode, type ConfigSnapshot, type Stack as CodeStack } from './codegen.js'
 import { mountVanilla, type VanillaDemoHandle } from './vanilla-demo.js'
 import VueDemo from './VueDemo.vue'
 import { ReactDemo, type ReactDemoHandle } from './ReactDemo.js'
@@ -715,12 +716,215 @@ const exportGroup = sidebarGroup(
   ),
 )
 
+// --- "Code" group: the chart you have dialled in, as code ---
+//
+// Every other panel changes what is on screen; this one reports it. The
+// playground's whole premise is that you can find the options you want by
+// dragging them, which is only half an answer if you then have to translate a
+// sidebar back into an options object by hand.
+//
+// The stack shown here is INDEPENDENT of the mounted one: the options are the
+// same object in all three, so seeing the React form while the Vue demo runs
+// is a legitimate thing to want, and remounting a chart just to read its
+// snippet would be absurd. It does follow the Demo panel's stack when that
+// changes, since that is the more common intent.
+let codeStack: CodeStack = 'vanilla'
+
+const codeStackRow = document.createElement('div')
+codeStackRow.className = 'code-stacks'
+codeStackRow.setAttribute('role', 'tablist')
+
+const codeBlock = document.createElement('pre')
+codeBlock.className = 'code-block'
+const codeText = document.createElement('code')
+codeBlock.append(codeText)
+
+const codeCopy = document.createElement('button')
+codeCopy.type = 'button'
+codeCopy.className = 'btn btn-export'
+codeCopy.textContent = 'Copy'
+
+let copyResetHandle: number | null = null
+codeCopy.onclick = () => {
+  void navigator.clipboard.writeText(codeText.textContent ?? '').then(
+    () => flashCopy('Copied'),
+    // A clipboard write can be refused outright (an insecure origin, a denied
+    // permission). Saying so is better than a button that silently does
+    // nothing — the text is selectable either way.
+    () => flashCopy('Press ⌘C'),
+  )
+}
+
+function flashCopy(message: string): void {
+  codeCopy.textContent = message
+  if (copyResetHandle !== null) clearTimeout(copyResetHandle)
+  copyResetHandle = window.setTimeout(() => {
+    codeCopy.textContent = 'Copy'
+    copyResetHandle = null
+  }, 1400)
+}
+
+const codeStackButtons = new Map<CodeStack, HTMLButtonElement>()
+for (const [value, label] of [
+  ['vanilla', 'Vanilla'],
+  ['vue', 'Vue'],
+  ['react', 'React'],
+] as [CodeStack, string][]) {
+  const button = document.createElement('button')
+  button.type = 'button'
+  button.className = 'code-stack'
+  button.textContent = label
+  button.setAttribute('role', 'tab')
+  button.onclick = () => {
+    codeStack = value
+    syncCode()
+  }
+  codeStackButtons.set(value, button)
+  codeStackRow.append(button)
+}
+
+const codeGroup = sidebarGroup('Code', codeStackRow, codeBlock, codeCopy)
+
+/**
+ * The live values of every control that ends up in the emitted options —
+ * read at the moment the code is rendered rather than tracked as they change,
+ * so there is exactly one place that decides what "current" means.
+ */
+function snapshot(): ConfigSnapshot {
+  const example = findExample(exampleSelect.value)
+  return {
+    example,
+    mode,
+    minimapOn,
+    minimapPosition: minimapPositionSelect.value as MinimapPosition,
+    edgeRadius: Number(edgeRadiusRange.value),
+    edgeWidth: Number(edgeWidthRange.value),
+    nodeFill: nodeFillInput.value,
+    blockFill: blockFillCheckbox.checked ? blockFillInput.value : 'transparent',
+    accent: ringStrokeInput.value,
+    ringEnabled,
+    hasNodeContent: example.content !== 'none',
+  }
+}
+
+/** Re-renders the snippet. Cheap enough to call from every control's handler. */
+function syncCode(): void {
+  for (const [value, button] of codeStackButtons) {
+    const on = value === codeStack
+    button.classList.toggle('is-on', on)
+    button.setAttribute('aria-selected', String(on))
+  }
+  codeText.textContent = generateCode(codeStack, snapshot())
+}
+
 const sidebar = document.createElement('aside')
 sidebar.className = 'sidebar'
+
+/**
+ * The rail: one vertical tab per panel, down the sidebar's left edge, in the
+ * shape an IDE uses for the same job. It buys two things at once — the group
+ * captions stop competing with the controls for the panel's own width, and
+ * only one group is open at a time, so the sidebar stops being a column you
+ * scroll to find the slider you want. Clicking the open tab closes it
+ * entirely, which is how you hand the whole width back to the chart.
+ */
+const PANELS: { id: string; label: string; body: HTMLElement }[] = [
+  { id: 'demo', label: 'Demo', body: demoGroup },
+  { id: 'view', label: 'View', body: viewGroup },
+  { id: 'minimap', label: 'Minimap', body: minimapGroup },
+  { id: 'appearance', label: 'Appearance', body: appearanceGroup },
+  { id: 'export', label: 'Export', body: exportGroup },
+  { id: 'code', label: 'Code', body: codeGroup },
+]
+
+const PANEL_KEY = 'orgchart-playground-panel'
+const rail = document.createElement('div')
+rail.className = 'rail'
+rail.setAttribute('role', 'tablist')
+rail.setAttribute('aria-orientation', 'vertical')
 const sidebarBody = document.createElement('div')
 sidebarBody.className = 'sidebar-body'
-sidebarBody.append(demoGroup, viewGroup, minimapGroup, appearanceGroup, exportGroup)
-sidebar.append(sidebarBody)
+
+const railTabs = new Map<string, HTMLButtonElement>()
+for (const panel of PANELS) {
+  const tab = document.createElement('button')
+  tab.type = 'button'
+  tab.className = 'rail-tab'
+  tab.setAttribute('role', 'tab')
+  tab.id = `rail-tab-${panel.id}`
+  // The label is turned on its side in CSS (`writing-mode`), not here: it is
+  // ordinary text — selectable, searchable, readable by a screen reader —
+  // that happens to be drawn rotated.
+  const label = document.createElement('span')
+  label.textContent = panel.label
+  tab.append(label)
+  tab.onclick = () => openPanel(activePanel === panel.id ? null : panel.id)
+  railTabs.set(panel.id, tab)
+  rail.append(tab)
+
+  panel.body.id = `rail-panel-${panel.id}`
+  panel.body.setAttribute('role', 'tabpanel')
+  panel.body.setAttribute('aria-labelledby', tab.id)
+  sidebarBody.append(panel.body)
+}
+
+/**
+ * Arrow keys move along the rail, the way a tablist is expected to behave —
+ * and the way it has to behave here, since the tabs are the only route to five
+ * of the six panels. Home/End jump to the ends. Wraps, so holding one arrow
+ * cycles rather than dead-ends.
+ */
+rail.addEventListener('keydown', (event) => {
+  const order = PANELS.map((panel) => panel.id)
+  const from = order.findIndex((id) => railTabs.get(id) === document.activeElement)
+  if (from === -1) return
+  const to =
+    event.key === 'ArrowDown' || event.key === 'ArrowRight'
+      ? (from + 1) % order.length
+      : event.key === 'ArrowUp' || event.key === 'ArrowLeft'
+        ? (from - 1 + order.length) % order.length
+        : event.key === 'Home'
+          ? 0
+          : event.key === 'End'
+            ? order.length - 1
+            : -1
+  if (to === -1) return
+  event.preventDefault()
+  const tab = railTabs.get(order[to]!)!
+  tab.focus()
+  openPanel(order[to]!)
+})
+
+let activePanel: string | null = null
+
+/** Opens `id`, or closes the sidebar's body entirely when `null`. */
+function openPanel(id: string | null): void {
+  activePanel = id
+  for (const panel of PANELS) {
+    const on = panel.id === id
+    panel.body.hidden = !on
+    const tab = railTabs.get(panel.id)!
+    tab.classList.toggle('is-on', on)
+    tab.setAttribute('aria-selected', String(on))
+  }
+  sidebar.classList.toggle('is-collapsed', id === null)
+  // Code needs a wider panel than a column of sliders does: at the sidebar's
+  // usual width these snippets wrap every second line, which is not something
+  // anyone should have to read before pasting it.
+  sidebar.classList.toggle('is-wide', id === 'code')
+  try {
+    localStorage.setItem(PANEL_KEY, id ?? '')
+  } catch {
+    // Same as the theme preference: a playground that cannot remember which
+    // panel was open is fine, one that fails to start because of it is not.
+  }
+  // The chart's host just changed width. It has a ResizeObserver of its own,
+  // so nothing needs telling — this comment exists so the next reader does not
+  // go looking for the call that is missing.
+  if (id === 'code') syncCode()
+}
+
+sidebar.append(rail, sidebarBody)
 
 const description = document.createElement('div')
 description.className = 'example-description'
@@ -779,6 +983,7 @@ function switchMode(next: ThemeMode, remember: boolean): void {
   nodeFillInput.value = nodeFillDefault(next)
   nodeFillValue.textContent = nodeFillDefault(next).toUpperCase()
   if (!canvasBgOverridden) seedCanvasBg()
+  refreshCode()
 }
 
 watchSystemTheme((next) => switchMode(next, false))
@@ -924,6 +1129,7 @@ function show(stack: Stack, exampleId: string): void {
 
 function refresh(): void {
   show(stackSelect.value as Stack, exampleSelect.value)
+  refreshCode()
 }
 
 // Both close the drawer on the way through: on a phone the point of picking a
@@ -932,11 +1138,30 @@ function refresh(): void {
 // drawer — see `setControlsOpen`.)
 stackSelect.onchange = () => {
   setControlsOpen(false)
+  // The Code panel follows the mounted stack — you asked for React, you want
+  // the React snippet — but it can still be pointed elsewhere from its own
+  // tabs afterwards.
+  codeStack = stackSelect.value as CodeStack
   refresh()
 }
 exampleSelect.onchange = () => {
   setControlsOpen(false)
   refresh()
+}
+
+/**
+ * Re-renders the snippet after anything that could change it. One delegated
+ * listener rather than a call in every control's own handler: the sidebar's
+ * controls all bubble here, and a handler that has to remember to tell a
+ * second thing about itself is a handler that eventually forgets. A no-op
+ * while the Code panel is closed, which is most of the time.
+ */
+function refreshCode(): void {
+  if (activePanel === 'code') syncCode()
+}
+
+for (const type of ['input', 'change', 'click'] as const) {
+  sidebar.addEventListener(type, refreshCode)
 }
 
 // Anywhere outside the drawer dismisses it — the chart included, where the
@@ -951,3 +1176,21 @@ window.addEventListener('keydown', (event) => {
 stackSelect.value = 'vanilla'
 exampleSelect.value = EXAMPLES[0]!.id
 refresh()
+
+/**
+ * The panel that was open last time, or Demo on a first visit — deliberately
+ * not "closed", which would leave a first-time viewer looking at a rail of
+ * unlabelled-looking tabs with nothing to say what they do. An empty stored
+ * value means the viewer closed it on purpose, which IS restored.
+ */
+function initialPanel(): string | null {
+  try {
+    const stored = localStorage.getItem(PANEL_KEY)
+    if (stored === null) return PANELS[0]!.id
+    return stored === '' ? null : (PANELS.find((panel) => panel.id === stored)?.id ?? PANELS[0]!.id)
+  } catch {
+    return PANELS[0]!.id
+  }
+}
+
+openPanel(initialPanel())
