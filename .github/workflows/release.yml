@@ -12,9 +12,19 @@ concurrency:
 permissions:
   contents: write
   pull-requests: write
-  # Lets npm accept the publish on the workflow's own OIDC identity, so the
-  # package carries a provenance attestation tying it to this commit and this
-  # workflow. Requires npm >= 9.5 and a public package; both hold here.
+  # The publish credential itself. Each package names this repository and this
+  # workflow file as its trusted publisher on npm, so the registry accepts the
+  # workflow's own short-lived OIDC identity and there is no token to leak,
+  # rotate or accidentally scope too widely. It also carries the provenance
+  # attestation tying the tarball to this commit and this workflow.
+  #
+  # Two things this depends on, neither obvious from here:
+  #  - The workflow FILENAME is part of the trust configuration. Renaming this
+  #    file breaks publishing until npm is told the new name.
+  #  - The first version of a package cannot be published this way: npm has no
+  #    settings page for a package that does not exist yet, so trusted
+  #    publishing can only be configured after a manual first release. Ours
+  #    was `1.0.0-alpha.0`, published by hand.
   id-token: write
 
 jobs:
@@ -26,6 +36,9 @@ jobs:
           # Changesets needs the history to work out what changed.
           fetch-depth: 0
 
+      # Pinned to pnpm 10 by the root manifest's `packageManager`. Worth knowing
+      # before anyone bumps it: OIDC publishing works there and regressed in
+      # pnpm 11 (pnpm/pnpm#11513), where the token exchange 404s.
       - uses: pnpm/action-setup@v4
 
       - uses: actions/setup-node@v4
@@ -65,4 +78,3 @@ jobs:
         env:
           GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
           NPM_CONFIG_PROVENANCE: true
-          NODE_AUTH_TOKEN: ${{ secrets.NPM_TOKEN }}

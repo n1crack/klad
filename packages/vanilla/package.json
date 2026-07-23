@@ -9,7 +9,7 @@
     "tree",
     "hierarchy",
     "canvas",
-    "@klad/core",
+    "klad",
     "vanilla",
     "typescript"
   ],
