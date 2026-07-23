@@ -1,0 +1,46 @@
+version: 2
+
+updates:
+  # One pull request a week for the whole workspace, not one per package.
+  #
+  # Ungrouped, this repository generates a stream of single-dependency PRs
+  # against a lockfile they cannot each be tested against independently — and
+  # worse, PRs whose title claims a bump the lockfile cannot actually make:
+  # "bump vite from 5.4.21 to 8.1.5" turned out to be a postcss patch, because
+  # the vite it wanted to move belonged to VitePress and was pinned there. A
+  # grouped PR is one lockfile change, one CI run, one decision.
+  - package-ecosystem: npm
+    directory: /
+    schedule:
+      interval: weekly
+    open-pull-requests-limit: 3
+    groups:
+      # Everything that only builds or tests this repository. None of it
+      # reaches a consumer: the published packages depend on each other and on
+      # their framework peers, nothing else. So these can move together and be
+      # judged by whether CI is still green.
+      dev-tooling:
+        dependency-type: development
+        update-types: [minor, patch]
+      # Runtime dependencies stay separate and are read one at a time: they
+      # are the only ones that end up in someone else's node_modules.
+      runtime:
+        dependency-type: production
+        update-types: [minor, patch]
+    # Majors are not automated. Every major in this tree — TypeScript, Vue,
+    # React, Vite — changes something a human has to look at, and a bot cannot
+    # tell "compiles" from "still behaves".
+    ignore:
+      - dependency-name: '*'
+        update-types: [version-update:semver-major]
+
+  # The workflows pin action majors (checkout@v7, setup-node@v7). Those go
+  # stale silently — a deprecated runtime is a warning long before it is a
+  # failure — so they are watched too, monthly, which is as often as they move.
+  - package-ecosystem: github-actions
+    directory: /
+    schedule:
+      interval: monthly
+    groups:
+      actions:
+        patterns: ['*']
