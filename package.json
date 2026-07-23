@@ -17,8 +17,7 @@
     "lint": "oxlint packages",
     "format": "prettier --write \"packages/**/*.{ts,vue,json,md}\"",
     "changeset": "changeset",
-    "version-packages": "changeset version && pnpm install --lockfile-only",
-    "//release": "A release is: `pnpm changeset` while you work, then `pnpm version-packages` to apply the pending ones, commit that, and publish a GitHub Release tagged `v<version>`. The tag is what ships — see .github/workflows/release.yml."
+    "version-packages": "changeset version && pnpm install --lockfile-only"
   },
   "devDependencies": {
     "@arethetypeswrong/cli": "^0.18.5",
