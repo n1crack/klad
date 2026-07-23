@@ -1,7 +1,7 @@
 {
-  "name": "@klados/core",
+  "name": "@klad/core",
   "version": "1.0.0-alpha.0",
-  "description": "Layout, viewport maths, spatial index, canvas renderer and worker protocol for Klados. No DOM.",
+  "description": "Layout, viewport maths, spatial index, canvas renderer and worker protocol for Klad. No DOM.",
   "keywords": [
     "org-chart",
     "orgchart",
@@ -9,18 +9,18 @@
     "tree",
     "hierarchy",
     "canvas",
-    "klados",
+    "klad",
     "layout",
     "tidy-tree"
   ],
-  "homepage": "https://n1crack.github.io/klados/",
+  "homepage": "https://klad.ozdemir.be",
   "repository": {
     "type": "git",
-    "url": "git+https://github.com/n1crack/klados.git",
+    "url": "git+https://github.com/n1crack/klad.git",
     "directory": "packages/core"
   },
   "bugs": {
-    "url": "https://github.com/n1crack/klados/issues"
+    "url": "https://github.com/n1crack/klad/issues"
   },
   "author": "Yusuf Özdemir",
   "type": "module",

@@ -9,7 +9,7 @@ import {
   type Silhouette,
   type SilhouetteOptions,
   type ViewportSize,
-} from '@klados/core'
+} from '@klad/core'
 
 export type MinimapPosition = 'top-left' | 'top-right' | 'bottom-left' | 'bottom-right'
 
@@ -219,7 +219,7 @@ export function createMinimap(
   const silhouetteRgb = resolveSilhouetteRgb(options.silhouetteColour)
 
   const root = document.createElement('div')
-  root.className = 'klados-minimap'
+  root.className = 'klad-minimap'
   root.style.position = 'absolute'
   root.style.width = `${width}px`
   root.style.height = `${height}px`
@@ -247,7 +247,7 @@ export function createMinimap(
   root.appendChild(canvas)
 
   const ctx = canvas.getContext('2d')
-  if (ctx === null) throw new Error('Klados: 2D canvas context unavailable for minimap')
+  if (ctx === null) throw new Error('Klad: 2D canvas context unavailable for minimap')
 
   const viewportEl = document.createElement('div')
   viewportEl.style.position = 'absolute'

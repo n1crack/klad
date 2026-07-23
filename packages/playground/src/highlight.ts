@@ -90,7 +90,7 @@ export function highlight(source: string): string {
       continue
     }
 
-    // A JSX/HTML tag name, including a closing tag's slash: `<Klados`, `</div`.
+    // A JSX/HTML tag name, including a closing tag's slash: `<Klad`, `</div`.
     if (char === '<' && /[A-Za-z/]/.test(next ?? '')) {
       IDENT.lastIndex = next === '/' ? i + 2 : i + 1
       const match = IDENT.exec(source)

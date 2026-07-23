@@ -17,7 +17,7 @@ thousand times.
 == Vanilla
 
 ```ts
-createKlados(host, {
+createKlad(host, {
   ...options,
   renderNode(element, context) {
     // `element` is a pooled div, reused across frames and across NODES. Build
@@ -40,7 +40,7 @@ createKlados(host, {
 
 ```vue
 <template>
-  <Klados :options="options">
+  <Klad :options="options">
     <template #node="{ item, hasChildren, open, toggle }">
       <div class="card">
         <strong>{{ item.name }}</strong>
@@ -50,14 +50,14 @@ createKlados(host, {
         </button>
       </div>
     </template>
-  </Klados>
+  </Klad>
 </template>
 ```
 
 == React
 
 ```tsx
-<Klados options={options}>
+<Klad options={options}>
   {({ item, hasChildren, open, toggle }) => (
     <div className="card">
       <strong>{String(item.name)}</strong>
@@ -69,7 +69,7 @@ createKlados(host, {
       )}
     </div>
   )}
-</Klados>
+</Klad>
 ```
 
 :::

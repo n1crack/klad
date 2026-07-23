@@ -1,15 +1,15 @@
 # Chart API
 
-The imperative handle. `createKlados` returns an instance whose `.api` is
-this; in Vue reach it with `useKlados()` or a `ref` on the component, in
-React with a `ref` on `<Klados>`.
+The imperative handle. `createKlad` returns an instance whose `.api` is
+this; in Vue reach it with `useKlad()` or a `ref` on the component, in
+React with a `ref` on `<Klad>`.
 
 ::: tabs key:stack
 
 == Vanilla
 
 ```ts
-const chart = createKlados(host, options)
+const chart = createKlad(host, options)
 chart.api.fit()
 ```
 
@@ -17,9 +17,9 @@ chart.api.fit()
 
 ```vue
 <script setup lang="ts">
-import { useKlados } from '@klados/vue'
+import { useKlad } from '@klad/vue'
 
-const { api, state } = useKlados() // both shallowRefs
+const { api, state } = useKlad() // both shallowRefs
 api.value?.fit()
 </script>
 ```
@@ -27,7 +27,7 @@ api.value?.fit()
 == React
 
 ```tsx
-const chartRef = useRef<KladosHandle>(null)
+const chartRef = useRef<KladHandle>(null)
 // ...
 chartRef.current?.api?.fit()
 ```

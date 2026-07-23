@@ -5,7 +5,7 @@ look from your own CSS; this is the box, the connector, the label and the
 confirmation ring underneath them.
 
 ```ts
-createKlados(host, {
+createKlad(host, {
   ...options,
   theme: { nodeFill: '#ffffff', edgeCornerRadius: 8 },
 })
@@ -71,7 +71,7 @@ Two palettes ship, both frozen `Theme` objects: `DEFAULT_THEME` and
 state and highlight all survive it.
 
 ```ts
-import { DARK_THEME, DEFAULT_THEME } from 'klados'
+import { DARK_THEME, DEFAULT_THEME } from 'klad'
 
 const media = window.matchMedia('(prefers-color-scheme: dark)')
 const apply = () => chart.api.setTheme(media.matches ? DARK_THEME : DEFAULT_THEME)
@@ -124,5 +124,5 @@ Two things outside this table also carry the mode:
 - **Card shadows.** A shadow mixed from the page's text colour becomes a *halo*
   in dark mode. Cast a dark shadow in both modes; just a deeper one in dark.
 - **The minimap.** Its plate, border and viewport rectangle are DOM — restyle
-  them through `.klados-minimap` in your own CSS. Its silhouette is not, so
+  them through `.klad-minimap` in your own CSS. Its silhouette is not, so
   it takes the [`silhouetteColour`](/guide/navigating#the-minimap) option.

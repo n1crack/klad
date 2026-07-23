@@ -1,6 +1,6 @@
 <script setup lang="ts">
-import { Klados } from '@klados/vue'
-import type { KladosApi, NodeContext, Options, Theme } from '@klados/vue'
+import { Klad } from '@klad/vue'
+import type { KladApi, NodeContext, Options, Theme } from '@klad/vue'
 import { computed, ref } from 'vue'
 import {
   DEPARTMENT_COLOR,
@@ -18,9 +18,9 @@ import {
 import type { ThemeMode } from './theme.js'
 
 const props = defineProps<{ example: Example; mode: ThemeMode }>()
-const emit = defineEmits<{ ready: [KladosApi] }>()
+const emit = defineEmits<{ ready: [KladApi] }>()
 
-const chartRef = ref<{ api: KladosApi | null } | null>(null)
+const chartRef = ref<{ api: KladApi | null } | null>(null)
 
 const DEFAULT_NODE_SIZE = { w: 180, h: 64 }
 
@@ -33,7 +33,7 @@ type Item = NodeContext['item']
  * starts the fresh chart with the current values baked in), but reading a
  * plain variable inside `computed` does not register it as a reactive
  * dependency. If it did — if these were refs — then changing either one
- * would recompute `options` to a new object, which Klados.vue's own
+ * would recompute `options` to a new object, which Klad.vue's own
  * `watch(() => props.options, ..., { deep: true })` would see as a prop
  * change and respond to with `chart.update()`, which calls `initOpen()` and
  * resets every node's open/closed state. That is exactly the reset
@@ -99,9 +99,9 @@ function setMinimapPosition(position: MinimapPosition): void {
 }
 
 /**
- * One door for every theme token the sidebar owns. `KladosApi.setTheme`
+ * One door for every theme token the sidebar owns. `KladApi.setTheme`
  * (packages/vanilla/src/index.ts) merges a partial over whatever the chart is
- * already showing and repaints — paint-only, so unlike the `<Klados :key>`
+ * already showing and repaints — paint-only, so unlike the `<Klad :key>`
  * remount this used to need, it keeps camera position and expand/collapse
  * state exactly where they were.
  */
@@ -116,7 +116,7 @@ function setMinimapSilhouette(colour: string): void {
   chartRef.value?.api?.setMinimap(minimapOption())
 }
 
-/** `KladosApi.setRing` — NOT a theme token, so it goes through its own
+/** `KladApi.setRing` — NOT a theme token, so it goes through its own
  * method rather than `setTheme`; see `Options.ring`'s docblock in
  * packages/vanilla/src/index.ts. */
 function setRingEnabled(enabled: boolean): void {
@@ -165,7 +165,7 @@ function headcountOf(item: Item): number {
 </script>
 
 <template>
-  <Klados ref="chartRef" :options="options" class="chart-host" @ready="handleReady">
+  <Klad ref="chartRef" :options="options" class="chart-host" @ready="handleReady">
     <!--
       One `#node` slot, branching on `example.content` — the same tag the
       vanilla demo switches on to pick a render function. `v-if` directly on
@@ -236,5 +236,5 @@ function headcountOf(item: Item): number {
         </button>
       </div>
     </template>
-  </Klados>
+  </Klad>
 </template>

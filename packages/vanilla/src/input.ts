@@ -1,4 +1,4 @@
-import { pan, screenToWorld, zoomAt, type Camera, type ZoomLimits } from '@klados/core'
+import { pan, screenToWorld, zoomAt, type Camera, type ZoomLimits } from '@klad/core'
 
 export interface InputCallbacks {
   getCamera(): Camera

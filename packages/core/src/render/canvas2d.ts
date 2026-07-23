@@ -20,7 +20,7 @@ export function createCanvas2DRenderer(
   measurerFor: (font: string) => TextMeasurer,
 ): Renderer {
   const ctx = surface.getContext('2d')
-  if (ctx === null) throw new Error('Klados: 2D canvas context unavailable')
+  if (ctx === null) throw new Error('Klad: 2D canvas context unavailable')
 
   // Mutable so `setTheme` can swap it in place — every reference to `theme.*`
   // below is a closure over this binding, so reassigning it here is picked up

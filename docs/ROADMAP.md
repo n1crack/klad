@@ -1,4 +1,4 @@
-# Klados — roadmap
+# Klad — roadmap
 
 Owner's plan, recorded 2026-07-22. Versions are intent, not commitments to a
 date. The authoritative to-do for the session in progress is

@@ -1,4 +1,4 @@
-import { createChartHost, type ChartHost } from '@klados/core/host'
+import { createChartHost, type ChartHost } from '@klad/core/host'
 import {
   applyOrientation,
   centreOn,
@@ -35,7 +35,7 @@ import {
   type Tree,
   type Warning,
   type ZoomLimits,
-} from '@klados/core'
+} from '@klad/core'
 import { createA11yTree, type A11yTree } from './a11y.js'
 import { attachInput } from './input.js'
 import { createMinimap, type Minimap, type MinimapOptions } from './minimap.js'
@@ -197,7 +197,7 @@ export interface ChartState {
   rootScreenCentre: { x: number; y: number }
 }
 
-export interface KladosEvents {
+export interface KladEvents {
   nodeClick: (event: { id: string; item: NodeData }) => void
   /**
    * Fires with `{ id, item }` the instant the pointer enters a node, and with
@@ -219,7 +219,7 @@ export interface KladosEvents {
   ready: () => void
 }
 
-export interface KladosApi {
+export interface KladApi {
   zoomTo(k: number): void
   zoomIn(): void
   zoomOut(): void
@@ -325,12 +325,12 @@ export interface KladosApi {
   getState(): ChartState
 }
 
-export interface KladosInstance {
+export interface KladInstance {
   destroy(): void
   update(data: NodeData[], options?: Partial<Options>): void
   subscribe(callback: (state: ChartState) => void): () => void
-  on<E extends keyof KladosEvents>(event: E, callback: KladosEvents[E]): () => void
-  readonly api: KladosApi
+  on<E extends keyof KladEvents>(event: E, callback: KladEvents[E]): () => void
+  readonly api: KladApi
 }
 
 const DEFAULT_LIMITS: ZoomLimits = { minK: 0.05, maxK: 4 }
@@ -358,7 +358,7 @@ const EMPTY_GHOST_BOXES: Float64Array = new Float64Array(0)
 const EMPTY_GHOST_ALPHA: Float32Array = new Float32Array(0)
 const INERT_RING_BOX: Float64Array = new Float64Array(4)
 
-export function createKlados(host: HTMLElement, options: Options): KladosInstance {
+export function createKlad(host: HTMLElement, options: Options): KladInstance {
   // Mutable so `api.setTheme` can swap it in place — `createChartHost`
   // captures this same value at construction, and every later reader (the
   // `toBlob` export renderer below, `api.setTheme` itself) closes over this
@@ -401,7 +401,7 @@ export function createKlados(host: HTMLElement, options: Options): KladosInstanc
   host.appendChild(canvas)
 
   const overlayRoot = document.createElement('div')
-  overlayRoot.className = 'klados-overlay'
+  overlayRoot.className = 'klad-overlay'
   overlayRoot.style.position = 'absolute'
   overlayRoot.style.inset = '0'
   overlayRoot.style.pointerEvents = 'none'
@@ -469,9 +469,9 @@ export function createKlados(host: HTMLElement, options: Options): KladosInstanc
   const stateListeners = new Set<(state: ChartState) => void>()
   const eventListeners = new Map<string, Set<(payload: never) => void>>()
 
-  const emit = <E extends keyof KladosEvents>(
+  const emit = <E extends keyof KladEvents>(
     event: E,
-    ...payload: Parameters<KladosEvents[E]>
+    ...payload: Parameters<KladEvents[E]>
   ): void => {
     for (const listener of eventListeners.get(event) ?? []) {
       ;(listener as (...args: unknown[]) => void)(...payload)
@@ -513,7 +513,7 @@ export function createKlados(host: HTMLElement, options: Options): KladosInstanc
       rtl: currentOptions.rtl ?? false,
       lod,
     })
-    // Deferred: applyData() runs synchronously inside createKlados, before the
+    // Deferred: applyData() runs synchronously inside createKlad, before the
     // caller has had a chance to attach a 'warning' listener via `on()`. Emitting
     // here directly would drop every warning raised on the initial load. Queuing
     // a microtask defers emission until after the constructor returns (and after
@@ -684,7 +684,7 @@ export function createKlados(host: HTMLElement, options: Options): KladosInstanc
    * engine directly.
    *
    * This is a deliberate workaround, not a shortcut: `ChartHost` (see
-   * `@klados/core/host`) does not expose `getExportData()`, and in
+   * `@klad/core/host`) does not expose `getExportData()`, and in
    * worker mode the live `ChartEngine` lives inside the worker and is not
    * reachable from here at all — only `boxes`/`bounds`/`visibleToSource` are
    * mirrored back across the protocol, not the pruned `parent`/`labels`
@@ -887,7 +887,7 @@ export function createKlados(host: HTMLElement, options: Options): KladosInstanc
 
   /**
    * Set by `focus()`, consumed by the first frame that has the layout its
-   * `expandTo` produced — see `KladosApi.focus` for why the move cannot
+   * `expandTo` produced — see `KladApi.focus` for why the move cannot
    * happen synchronously. Holds a SOURCE index, valid until the data is
    * replaced (`update()` clears it alongside the other pending camera work).
    */
@@ -1080,7 +1080,7 @@ export function createKlados(host: HTMLElement, options: Options): KladosInstanc
    * Centres the camera on a node and, if asked, flashes the confirmation ring
    * on it. Returns `false` — having done nothing — when the node has no box
    * in the CURRENT layout, i.e. it is collapsed away and the caller must wait
-   * for the relayout that reveals it (see `KladosApi.focus`).
+   * for the relayout that reveals it (see `KladApi.focus`).
    */
   const moveToSource = (source: number, ring: boolean): boolean => {
     const box = boxOfSource(source)
@@ -1491,7 +1491,7 @@ export function createKlados(host: HTMLElement, options: Options): KladosInstanc
     },
   })
 
-  const api: KladosApi = {
+  const api: KladApi = {
     zoomTo(k) {
       const rect = host.getBoundingClientRect()
       animateTo(zoomAt(camera, rect.width / 2, rect.height / 2, k / camera.k, limits))
@@ -1679,7 +1679,7 @@ export function createKlados(host: HTMLElement, options: Options): KladosInstanc
     // lives here and not in core.
     async toBlob(opts) {
       if (typeof OffscreenCanvas === 'undefined') {
-        throw new Error('Klados: toBlob() requires OffscreenCanvas, unavailable in this environment')
+        throw new Error('Klad: toBlob() requires OffscreenCanvas, unavailable in this environment')
       }
       const scale = opts.scale ?? 1
       const data = buildExportData()
@@ -1698,7 +1698,7 @@ export function createKlados(host: HTMLElement, options: Options): KladosInstanc
       // makes is valid at runtime.
       const renderer = createCanvas2DRenderer(surface as unknown as RenderSurface, theme, (font) => {
         const probe = new OffscreenCanvas(1, 1).getContext('2d')
-        if (probe === null) throw new Error('Klados: 2D canvas context unavailable')
+        if (probe === null) throw new Error('Klad: 2D canvas context unavailable')
         probe.font = font
         return createTextMeasurer({ measureWidth: (t) => probe.measureText(t).width })
       })
@@ -1706,7 +1706,7 @@ export function createKlados(host: HTMLElement, options: Options): KladosInstanc
 
       const n = data.parent.length
       // Every node, every edge, no culling — see this method's contract in
-      // `KladosApi`. `edges`/`visible` share the same full index range:
+      // `KladApi`. `edges`/`visible` share the same full index range:
       // `canvas2d.ts`'s edge loop already skips roots (`parent[i] === -1`)
       // on its own, so passing root indices through here costs nothing.
       const allIndices: Uint32Array = Uint32Array.from({ length: n }, (_, i) => i)
@@ -1891,8 +1891,8 @@ export type {
   Theme,
   Warning,
   ZoomLimits,
-} from '@klados/core'
+} from '@klad/core'
 
 // The two ready-made palettes, for the same reason: a host doing light/dark
 // should not have to derive a dark theme by hand, nor reach into core for it.
-export { DARK_THEME, DEFAULT_THEME } from '@klados/core'
+export { DARK_THEME, DEFAULT_THEME } from '@klad/core'

@@ -1,6 +1,6 @@
 import { describe, expect, it } from 'vitest'
 import { createApp, defineComponent, h, ref } from 'vue'
-import Klados from './Klados.vue'
+import Klad from './Klad.vue'
 
 const DATA = [
   { id: 'a', name: 'Root' },
@@ -20,10 +20,10 @@ function mount(setup: () => unknown) {
   return { app, el }
 }
 
-describe('Klados.vue', () => {
+describe('Klad.vue', () => {
   it('renders a canvas', async () => {
     const { app, el } = mount(() => () =>
-      h(Klados, { options: { data: DATA, nodeSize: { w: 120, h: 48 }, worker: false } }),
+      h(Klad, { options: { data: DATA, nodeSize: { w: 120, h: 48 }, worker: false } }),
     )
     await nextFrame()
     expect(el.querySelector('canvas')).not.toBeNull()
@@ -34,7 +34,7 @@ describe('Klados.vue', () => {
     const chartRef = ref<{ api: { zoomTo(k: number): void } } | null>(null)
     const { app, el } = mount(() => () =>
       h(
-        Klados,
+        Klad,
         {
           ref: chartRef,
           options: {
@@ -67,7 +67,7 @@ describe('Klados.vue', () => {
     )
     const { app, el } = mount(() => () =>
       h(
-        Klados,
+        Klad,
         {
           ref: chartRef,
           options: {
@@ -84,13 +84,13 @@ describe('Klados.vue', () => {
     chartRef.value?.api.zoomTo(1)
     await nextFrame()
     await nextFrame()
-    const before = Array.from(el.querySelectorAll('.klados-overlay-node'))
+    const before = Array.from(el.querySelectorAll('.klad-overlay-node'))
     expect(before.length).toBeGreaterThan(0)
 
     chartRef.value?.api.zoomTo(1.1)
     await nextFrame()
     await nextFrame()
-    const after = Array.from(el.querySelectorAll('.klados-overlay-node'))
+    const after = Array.from(el.querySelectorAll('.klad-overlay-node'))
     expect(after.length).toBe(before.length)
     // Same element objects, not merely the same count.
     expect(after.every((element, i) => element === before[i])).toBe(true)
@@ -100,7 +100,7 @@ describe('Klados.vue', () => {
   it('emits nodeClick', async () => {
     const seen: string[] = []
     const { app } = mount(() => () =>
-      h(Klados, {
+      h(Klad, {
         options: { data: DATA, nodeSize: { w: 120, h: 48 }, worker: false },
         onNodeClick: (event: { id: string }) => seen.push(event.id),
       }),
@@ -116,7 +116,7 @@ describe('Klados.vue', () => {
     const data = ref(DATA)
     const chartRef = ref<{ api: { getState(): { nodeCount: number } } } | null>(null)
     const { app } = mount(() => () =>
-      h(Klados, {
+      h(Klad, {
         ref: chartRef,
         options: { data: data.value, nodeSize: { w: 120, h: 48 }, worker: false },
       }),
@@ -132,7 +132,7 @@ describe('Klados.vue', () => {
 
   it('destroys the chart on unmount', async () => {
     const { app, el } = mount(() => () =>
-      h(Klados, { options: { data: DATA, nodeSize: { w: 120, h: 48 }, worker: false } }),
+      h(Klad, { options: { data: DATA, nodeSize: { w: 120, h: 48 }, worker: false } }),
     )
     await nextFrame()
     app.unmount()

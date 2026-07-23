@@ -1,6 +1,6 @@
 # Licence
 
-Klados is dual-licensed.
+Klad is dual-licensed.
 
 ## GNU AGPL v3 or later
 

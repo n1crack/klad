@@ -1,7 +1,7 @@
 {
-  "name": "@klados/react",
+  "name": "@klad/react",
   "version": "1.0.0-alpha.0",
-  "description": "React adapter for Klados — <Klados> with a render prop and a ref handle.",
+  "description": "React adapter for Klad — <Klad> with a render prop and a ref handle.",
   "keywords": [
     "org-chart",
     "orgchart",
@@ -9,17 +9,17 @@
     "tree",
     "hierarchy",
     "canvas",
-    "klados",
+    "klad",
     "react"
   ],
-  "homepage": "https://n1crack.github.io/klados/",
+  "homepage": "https://klad.ozdemir.be",
   "repository": {
     "type": "git",
-    "url": "git+https://github.com/n1crack/klados.git",
+    "url": "git+https://github.com/n1crack/klad.git",
     "directory": "packages/react"
   },
   "bugs": {
-    "url": "https://github.com/n1crack/klados/issues"
+    "url": "https://github.com/n1crack/klad/issues"
   },
   "author": "Yusuf Özdemir",
   "type": "module",
@@ -46,7 +46,7 @@
     "LICENSE-COMMERCIAL.md"
   ],
   "dependencies": {
-    "klados": "workspace:*"
+    "klad": "workspace:*"
   },
   "peerDependencies": {
     "react": ">=19",

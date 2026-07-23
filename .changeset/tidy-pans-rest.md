@@ -1,5 +1,5 @@
 ---
-'klados': minor
+'klad': minor
 ---
 
 Pointer and touch fixes.

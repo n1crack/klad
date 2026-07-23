@@ -1,13 +1,13 @@
 /** @jsxImportSource react */
 import { useCallback, useImperativeHandle, useMemo, useRef, type CSSProperties, type ReactNode, type Ref } from 'react'
 import {
-  Klados,
-  type KladosApi,
-  type KladosHandle,
+  Klad,
+  type KladApi,
+  type KladHandle,
   type NodeContext,
   type Options,
   type Theme,
-} from '@klados/react'
+} from '@klad/react'
 import {
   DEPARTMENT_COLOR,
   EDGE_RADIUS_DEFAULT,
@@ -165,7 +165,7 @@ export interface ReactDemoHandle {
 export interface ReactDemoProps {
   example: Example
   mode: ThemeMode
-  onReady?: (api: KladosApi) => void
+  onReady?: (api: KladApi) => void
   ref?: Ref<ReactDemoHandle>
 }
 
@@ -179,7 +179,7 @@ export interface ReactDemoProps {
  * doesn't need — matching the vanilla and Vue "canvas only" behaviour.
  */
 export function ReactDemo({ example, mode, onReady, ref }: ReactDemoProps): ReactNode {
-  const chartRef = useRef<KladosHandle>(null)
+  const chartRef = useRef<KladHandle>(null)
 
   /**
    * Whether the minimap is on, and which corner it's in, for THIS mounted
@@ -192,7 +192,7 @@ export function ReactDemo({ example, mode, onReady, ref }: ReactDemoProps): Reac
    * If these were state instead — as they were in an earlier version of this
    * file, caught by hand rather than by a type error — then changing either
    * one would re-render with a new `options` object (a new dependency-array
-   * entry), which the effect in Klados.tsx (`instance.update(options.data,
+   * entry), which the effect in Klad.tsx (`instance.update(options.data,
    * ...)`, watching `options` by identity) would treat as a prop change and
    * respond to with `instance.update()`, which calls `initOpen()` and resets
    * every node's open/closed state. That is exactly the reset
@@ -265,14 +265,14 @@ export function ReactDemo({ example, mode, onReady, ref }: ReactDemoProps): Reac
         silhouetteRef.current = colour
         chartRef.current?.api?.setMinimap(minimapOption())
       },
-      // `KladosApi.setTheme` merges a partial over whatever the chart is
+      // `KladApi.setTheme` merges a partial over whatever the chart is
       // already showing and repaints — paint-only, so unlike the `key={...}`
       // remount this used to need, camera position and expand/collapse state
       // stay exactly where they were.
       setTheme: (partial: Partial<Theme>) => {
         chartRef.current?.api?.setTheme(partial)
       },
-      // `KladosApi.setRing` — NOT a theme token, so it goes through its own
+      // `KladApi.setRing` — NOT a theme token, so it goes through its own
       // method rather than `setTheme`; see `Options.ring`'s docblock in
       // packages/vanilla/src/index.ts.
       setRingEnabled: (enabled: boolean) => {
@@ -295,13 +295,13 @@ export function ReactDemo({ example, mode, onReady, ref }: ReactDemoProps): Reac
   )
 
   if (example.content === 'none') {
-    return <Klados ref={chartRef} className="chart-host" options={options} onReady={handleReady} />
+    return <Klad ref={chartRef} className="chart-host" options={options} onReady={handleReady} />
   }
 
   const render = RENDERERS[example.content]
   return (
-    <Klados ref={chartRef} className="chart-host" options={options} onReady={handleReady}>
+    <Klad ref={chartRef} className="chart-host" options={options} onReady={handleReady}>
       {render}
-    </Klados>
+    </Klad>
   )
 }

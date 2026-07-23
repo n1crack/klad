@@ -10,13 +10,13 @@ there is never a second package to remember.
 == Vanilla
 
 ```bash
-npm install klados
+npm install klad
 ```
 
 == Vue
 
 ```bash
-npm install @klados/vue
+npm install @klad/vue
 ```
 
 Vue 3.5 or newer, as a peer dependency.
@@ -24,14 +24,14 @@ Vue 3.5 or newer, as a peer dependency.
 == React
 
 ```bash
-npm install @klados/react
+npm install @klad/react
 ```
 
 React 18 or newer, as a peer dependency.
 
 :::
 
-There is a fourth package, `@klados/core`, but you only install it
+There is a fourth package, `@klad/core`, but you only install it
 directly to write a binding for a framework that does not have one. It is the
 pure-logic layer — layout, viewport maths, the quadtree, the renderer, the
 worker protocol — and it touches no DOM.
@@ -43,7 +43,7 @@ worker protocol — and it touches no DOM.
 == Vanilla
 
 ```ts
-import { createKlados, type Options } from 'klados'
+import { createKlad, type Options } from 'klad'
 
 const options: Options = {
   data: [
@@ -55,7 +55,7 @@ const options: Options = {
   label: (item) => String(item.name ?? ''),
 }
 
-const chart = createKlados(document.getElementById('chart')!, options)
+const chart = createKlad(document.getElementById('chart')!, options)
 
 chart.on('nodeClick', ({ id, item }) => console.log('clicked', id, item))
 
@@ -67,7 +67,7 @@ chart.destroy()
 
 ```vue
 <script setup lang="ts">
-import { Klados, type Options } from '@klados/vue'
+import { Klad, type Options } from '@klad/vue'
 
 const options: Options = {
   data: [
@@ -81,7 +81,7 @@ const options: Options = {
 </script>
 
 <template>
-  <Klados
+  <Klad
     :options="options"
     style="width: 100%; height: 100vh"
     @node-click="({ id }) => console.log('clicked', id)"
@@ -92,7 +92,7 @@ const options: Options = {
 == React
 
 ```tsx
-import { Klados, type Options } from '@klados/react'
+import { Klad, type Options } from '@klad/react'
 
 const options: Options = {
   data: [
@@ -106,7 +106,7 @@ const options: Options = {
 
 export function Chart() {
   return (
-    <Klados
+    <Klad
       options={options}
       style={{ width: '100%', height: '100vh' }}
       onNodeClick={({ id }) => console.log('clicked', id)}

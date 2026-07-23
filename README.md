@@ -1,4 +1,4 @@
-# Klados
+# Klad
 
 *κλάδος — Greek for “branch”.*
 
@@ -11,7 +11,7 @@ cannot get there — 50,000 component instances plus as many connector elements
 exhaust memory and layout time long before. Nothing here creates DOM for a node
 unless that node is both visible and legible.
 
-📖 **[Documentation](https://n1crack.github.io/klados/)** — guide, API
+📖 **[Documentation](https://klad.ozdemir.be)** — guide, API
 reference, and a playground you can dial a chart in with. Run it locally with
 `pnpm docs`.
 
@@ -19,28 +19,28 @@ reference, and a playground you can dial a chart in with. Run it locally with
 
 | Package | For |
 |---|---|
-| [`klados`](packages/vanilla) | The frameworkless API. One function, `createKlados`. Use it directly, or read it as the reference for a new binding. |
-| [`@klados/vue`](packages/vue) | Vue 3: a `<Klados>` component with a `#node` scoped slot, plus `useKlados()`. |
-| [`@klados/react`](packages/react) | React: `<Klados>` with a render prop and a ref handle. |
-| [`@klados/core`](packages/core) | Layout, viewport maths, spatial index, renderer, worker protocol. No DOM. Only needed to build a new binding. |
+| [`klad`](packages/vanilla) | The frameworkless API. One function, `createKlad`. Use it directly, or read it as the reference for a new binding. |
+| [`@klad/vue`](packages/vue) | Vue 3: a `<Klad>` component with a `#node` scoped slot, plus `useKlad()`. |
+| [`@klad/react`](packages/react) | React: `<Klad>` with a render prop and a ref handle. |
+| [`@klad/core`](packages/core) | Layout, viewport maths, spatial index, renderer, worker protocol. No DOM. Only needed to build a new binding. |
 
 Each depends on the layers beneath it, so installing one is enough — you never
-also install `klados` to use the Vue adapter.
+also install `klad` to use the Vue adapter.
 
 ## Install
 
 ```bash
-npm install klados         # frameworkless
-npm install @klados/vue    # Vue 3 (>=3.5 <4)
-npm install @klados/react  # React (>=18)
+npm install klad         # frameworkless
+npm install @klad/vue    # Vue 3 (>=3.5 <4)
+npm install @klad/react  # React (>=18)
 ```
 
 ## Quick start
 
 ```ts
-import { createKlados } from 'klados'
+import { createKlad } from 'klad'
 
-const chart = createKlados(document.getElementById('chart')!, {
+const chart = createKlad(document.getElementById('chart')!, {
   data: [
     { id: 'ceo', name: 'Jamie Fox', title: 'CEO' },
     { id: 'cto', parentId: 'ceo', name: 'Amy Chen', title: 'CTO' },

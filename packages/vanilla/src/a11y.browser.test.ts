@@ -1,7 +1,7 @@
 import { describe, expect, it } from 'vitest'
-import { normalize } from '@klados/core'
+import { normalize } from '@klad/core'
 import { createA11yTree, type A11yTree } from './a11y.js'
-import { createKlados } from './index.js'
+import { createKlad } from './index.js'
 
 const DATA = [
   { id: 'a', name: 'Root' },
@@ -15,7 +15,7 @@ function make() {
   el.style.width = '800px'
   el.style.height = '600px'
   document.body.appendChild(el)
-  return createKlados(el, {
+  return createKlad(el, {
     data: DATA,
     nodeSize: { w: 120, h: 48 },
     label: (item) => String(item.name ?? ''),

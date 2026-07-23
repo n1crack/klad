@@ -2,7 +2,7 @@
 layout: home
 
 hero:
-  name: Klados
+  name: Klad
   text: Canvas Org Chart
   tagline: κλάδος, “branch” — a fast, framework-agnostic org chart for very large trees
   image:
@@ -17,7 +17,7 @@ hero:
       link: /api/options
     - theme: alt
       text: View on GitHub
-      link: https://github.com/n1crack/klados
+      link: https://github.com/n1crack/klad
 
 features:
   - title: ⚡ Built for Large Trees
@@ -35,13 +35,13 @@ features:
 == Vanilla
 
 ```bash
-npm install klados
+npm install klad
 ```
 
 ```ts
-import { createKlados } from 'klados'
+import { createKlad } from 'klad'
 
-const chart = createKlados(document.getElementById('chart')!, {
+const chart = createKlad(document.getElementById('chart')!, {
   data: [
     { id: 'ceo', name: 'Jamie Fox', title: 'CEO' },
     { id: 'cto', parentId: 'ceo', name: 'Amy Chen', title: 'CTO' },
@@ -55,12 +55,12 @@ const chart = createKlados(document.getElementById('chart')!, {
 == Vue
 
 ```bash
-npm install @klados/vue
+npm install @klad/vue
 ```
 
 ```vue
 <script setup lang="ts">
-import { Klados, type Options } from '@klados/vue'
+import { Klad, type Options } from '@klad/vue'
 
 const options: Options = {
   data: [
@@ -74,18 +74,18 @@ const options: Options = {
 </script>
 
 <template>
-  <Klados :options="options" style="width: 100%; height: 100vh" />
+  <Klad :options="options" style="width: 100%; height: 100vh" />
 </template>
 ```
 
 == React
 
 ```bash
-npm install @klados/react
+npm install @klad/react
 ```
 
 ```tsx
-import { Klados, type Options } from '@klados/react'
+import { Klad, type Options } from '@klad/react'
 
 const options: Options = {
   data: [
@@ -98,7 +98,7 @@ const options: Options = {
 }
 
 export function Chart() {
-  return <Klados options={options} style={{ width: '100%', height: '100vh' }} />
+  return <Klad options={options} style={{ width: '100%', height: '100vh' }} />
 }
 ```
 

@@ -15,7 +15,7 @@ off()
 == Vue
 
 ```vue
-<Klados
+<Klad
   :options="options"
   @node-click="onNodeClick"
   @toggle="onToggle"
@@ -26,7 +26,7 @@ off()
 == React
 
 ```tsx
-<Klados options={options} onNodeClick={onNodeClick} onToggle={onToggle} />
+<Klad options={options} onNodeClick={onNodeClick} onToggle={onToggle} />
 ```
 
 :::

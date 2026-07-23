@@ -1,16 +1,16 @@
-export { Klados } from './Klados.js'
-export type { KladosHandle, KladosProps } from './Klados.js'
-export { useKlados } from './useKlados.js'
-export type { KladosContextValue } from './useKlados.js'
+export { Klad } from './Klad.js'
+export type { KladHandle, KladProps } from './Klad.js'
+export { useKlad } from './useKlad.js'
+export type { KladContextValue } from './useKlad.js'
 export type {
   ChartState,
   NodeContext,
   Options,
-  KladosApi,
+  KladApi,
   SearchResult,
-} from 'klados'
+} from 'klad'
 
 // A host doing light/dark needs the palettes, and should not have to add the
 // vanilla package as a dependency to name them.
-export { DARK_THEME, DEFAULT_THEME } from 'klados'
-export type { Theme } from 'klados'
+export { DARK_THEME, DEFAULT_THEME } from 'klad'
+export type { Theme } from 'klad'

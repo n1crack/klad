@@ -1,5 +1,5 @@
 {
-  "name": "klados-monorepo",
+  "name": "klad-monorepo",
   "private": true,
   "license": "AGPL-3.0-or-later",
   "type": "module",
@@ -8,10 +8,11 @@
     "node": ">=22.12.0"
   },
   "scripts": {
-    "dev": "pnpm --filter @klados/playground dev",
-    "docs": "pnpm --filter @klados/docs dev",
+    "dev": "pnpm --filter @klad/playground dev",
+    "docs": "pnpm --filter @klad/docs dev",
     "build": "turbo run build",
     "test": "turbo run test",
+    "check:packages": "turbo run build && node scripts/check-packages.mjs",
     "typecheck": "turbo run typecheck",
     "lint": "oxlint packages",
     "format": "prettier --write \"packages/**/*.{ts,vue,json,md}\"",
@@ -20,6 +21,7 @@
     "release": "turbo run build && changeset publish"
   },
   "devDependencies": {
+    "@arethetypeswrong/cli": "^0.18.5",
     "@changesets/cli": "^2.31.1",
     "@types/node": "^22.10.0",
     "@vitest/browser": "^4.1.10",
@@ -27,6 +29,7 @@
     "oxlint": "^1.0.0",
     "playwright": "^1.61.1",
     "prettier": "^3.4.0",
+    "publint": "^0.3.22",
     "tsdown": "^0.22.13",
     "turbo": "^2.3.0",
     "typescript": "5.9.2",

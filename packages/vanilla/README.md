@@ -1,6 +1,6 @@
-# klados
+# klad
 
-The frameworkless API for [Klados](https://github.com/n1crack/klados) — an
+The frameworkless API for [Klad](https://github.com/n1crack/klad) — an
 org chart library that renders 5,000–50,000 nodes at 60fps by laying out and
 drawing the tree on a `<canvas>` inside a Web Worker, overlaying real DOM only
 for the nodes currently on screen and zoomed in far enough to read.
@@ -8,11 +8,11 @@ for the nodes currently on screen and zoomed in far enough to read.
 This package is one function.
 
 ```bash
-npm install klados
+npm install klad
 ```
 
 ```ts
-import { createKlados, type Options } from 'klados'
+import { createKlad, type Options } from 'klad'
 
 const options: Options = {
   data: [
@@ -26,16 +26,16 @@ const options: Options = {
   },
 }
 
-const chart = createKlados(document.getElementById('chart')!, options)
+const chart = createKlad(document.getElementById('chart')!, options)
 chart.on('nodeClick', ({ id, item }) => console.log(id, item))
 // chart.destroy() when done
 ```
 
-Using Vue? Use [`@klados/vue`](https://www.npmjs.com/package/@klados/vue)
+Using Vue? Use [`@klad/vue`](https://www.npmjs.com/package/@klad/vue)
 instead — it's built on this package and adds a `#node` scoped slot.
 
 Guide, API reference and roadmap:
-[the documentation](https://github.com/n1crack/klados).
+[the documentation](https://github.com/n1crack/klad).
 
 ## Licence
 

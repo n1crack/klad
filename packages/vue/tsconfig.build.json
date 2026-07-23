@@ -7,9 +7,9 @@ Pointing at the siblings' built declarations instead makes the emitted imports n
   "extends": "./tsconfig.json",
   "compilerOptions": {
     "paths": {
-      "klados": ["../vanilla/dist/index.d.ts"],
-      "@klados/core": ["../core/dist/index.d.ts"],
-      "@klados/core/host": ["../core/dist/worker/host.d.ts"]
+      "klad": ["../vanilla/dist/index.d.ts"],
+      "@klad/core": ["../core/dist/index.d.ts"],
+      "@klad/core/host": ["../core/dist/worker/host.d.ts"]
     }
   }
 }

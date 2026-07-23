@@ -1479,7 +1479,7 @@ describe('ChartEngine one-shot toggle ring', () => {
     // Simulates the vanilla layer's deep-collapse loop: 'b' is the node the
     // user actually acted on ('c' is its only child, per DATA), so only
     // 'b's `setOpen` call asks for a ring — 'c's does not, exactly as
-    // `KladosApi.collapse(id, true)`'s stack loop does (see index.ts).
+    // `KladApi.collapse(id, true)`'s stack loop does (see index.ts).
     // Without an explicit per-call signal, the old distinct-index heuristic
     // would have seen two distinct indices touched before the next relayout
     // and wrongly suppressed the ring for this single user action.

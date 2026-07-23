@@ -1,19 +1,19 @@
-# @klados/react
+# @klad/react
 
-The React adapter for [Klados](https://github.com/n1crack/klados) — an org
+The React adapter for [Klad](https://github.com/n1crack/klad) — an org
 chart library that renders 5,000–50,000 nodes at 60fps by laying out and
 drawing the tree on a `<canvas>` inside a Web Worker, mounting real React
 components only for the nodes currently on screen and zoomed in far enough to
 read.
 
 ```bash
-npm install @klados/react
+npm install @klad/react
 ```
 
 Peer dependency: `react >=18`.
 
 ```tsx
-import { Klados, type Options } from '@klados/react'
+import { Klad, type Options } from '@klad/react'
 
 const options: Options = {
   data: [
@@ -27,7 +27,7 @@ const options: Options = {
 
 export function Chart() {
   return (
-    <Klados options={options} style={{ width: '100%', height: '100vh' }}>
+    <Klad options={options} style={{ width: '100%', height: '100vh' }}>
       {({ item, hasChildren, open, toggle }) => (
         <div className="card">
           <strong>{String(item.name)}</strong>
@@ -38,7 +38,7 @@ export function Chart() {
           )}
         </div>
       )}
-    </Klados>
+    </Klad>
   )
 }
 ```
@@ -47,11 +47,11 @@ The render prop is called for the ~50 nodes in the viewport, into pooled
 elements reused across frames — never once per node in the tree. Omit it
 entirely and no overlay DOM is created at all.
 
-Reach the imperative API through a `ref` on `<Klados>`
+Reach the imperative API through a `ref` on `<Klad>`
 (`chartRef.current?.api`).
 
 Guide, API reference and roadmap:
-[the documentation](https://github.com/n1crack/klados).
+[the documentation](https://github.com/n1crack/klad).
 
 ## Licence
 

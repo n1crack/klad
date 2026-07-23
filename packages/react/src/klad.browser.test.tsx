@@ -1,8 +1,8 @@
 import { describe, expect, it } from 'vitest'
 import { act, createElement, type ReactElement } from 'react'
 import { createRoot, type Root } from 'react-dom/client'
-import { Klados, type KladosHandle } from './Klados.js'
-import type { NodeContext, NodeData } from 'klados'
+import { Klad, type KladHandle } from './Klad.js'
+import type { NodeContext, NodeData } from 'klad'
 
 const DATA = [
   { id: 'a', name: 'Root' },
@@ -39,10 +39,10 @@ async function unmount(root: Root): Promise<void> {
   })
 }
 
-describe('Klados (React)', () => {
+describe('Klad (React)', () => {
   it('renders a canvas', async () => {
     const { root, el } = await mount(
-      createElement(Klados, { options: { data: DATA, nodeSize: { w: 120, h: 48 }, worker: false } }),
+      createElement(Klad, { options: { data: DATA, nodeSize: { w: 120, h: 48 }, worker: false } }),
     )
     await nextFrame()
     expect(el.querySelector('canvas')).not.toBeNull()
@@ -50,10 +50,10 @@ describe('Klados (React)', () => {
   })
 
   it('renders children for visible nodes when zoomed in', async () => {
-    const chartRef: { current: KladosHandle | null } = { current: null }
+    const chartRef: { current: KladHandle | null } = { current: null }
     function Harness(): ReactElement {
-      return createElement(Klados, {
-        ref: (handle: KladosHandle | null) => {
+      return createElement(Klad, {
+        ref: (handle: KladHandle | null) => {
           chartRef.current = handle
         },
         options: {
@@ -83,10 +83,10 @@ describe('Klados (React)', () => {
     // layer undid that — e.g. by keying portals to the node's id instead of
     // to the pooled element — a camera change would swap the element
     // identity out from under the pool and panning would stutter at scale.
-    const chartRef: { current: KladosHandle | null } = { current: null }
+    const chartRef: { current: KladHandle | null } = { current: null }
     function Harness(): ReactElement {
-      return createElement(Klados, {
-        ref: (handle: KladosHandle | null) => {
+      return createElement(Klad, {
+        ref: (handle: KladHandle | null) => {
           chartRef.current = handle
         },
         options: {
@@ -105,7 +105,7 @@ describe('Klados (React)', () => {
     })
     await nextFrame()
     await nextFrame()
-    const before = Array.from(el.querySelectorAll('.klados-overlay-node'))
+    const before = Array.from(el.querySelectorAll('.klad-overlay-node'))
     expect(before.length).toBeGreaterThan(0)
 
     await act(async () => {
@@ -113,7 +113,7 @@ describe('Klados (React)', () => {
     })
     await nextFrame()
     await nextFrame()
-    const after = Array.from(el.querySelectorAll('.klados-overlay-node'))
+    const after = Array.from(el.querySelectorAll('.klad-overlay-node'))
     expect(after.length).toBe(before.length)
     // Same element objects, not merely the same count.
     expect(after.every((element, i) => element === before[i])).toBe(true)
@@ -122,18 +122,18 @@ describe('Klados (React)', () => {
 
   it('does not claim overlay elements when no children are provided', async () => {
     const { root, el } = await mount(
-      createElement(Klados, { options: { data: DATA, nodeSize: { w: 120, h: 48 }, worker: false } }),
+      createElement(Klad, { options: { data: DATA, nodeSize: { w: 120, h: 48 }, worker: false } }),
     )
     await nextFrame()
     await nextFrame()
-    expect(el.querySelectorAll('.klados-overlay-node').length).toBe(0)
+    expect(el.querySelectorAll('.klad-overlay-node').length).toBe(0)
     await unmount(root)
   })
 
   it('emits nodeClick', async () => {
     const seen: string[] = []
     const { root } = await mount(
-      createElement(Klados, {
+      createElement(Klad, {
         options: { data: DATA, nodeSize: { w: 120, h: 48 }, worker: false },
         onNodeClick: (event: { id: string }) => seen.push(event.id),
       }),
@@ -146,10 +146,10 @@ describe('Klados (React)', () => {
   })
 
   it('reacts to an options prop change', async () => {
-    const chartRef: { current: KladosHandle | null } = { current: null }
+    const chartRef: { current: KladHandle | null } = { current: null }
     function Harness({ data }: { data: typeof DATA }): ReactElement {
-      return createElement(Klados, {
-        ref: (handle: KladosHandle | null) => {
+      return createElement(Klad, {
+        ref: (handle: KladHandle | null) => {
           chartRef.current = handle
         },
         options: { data, nodeSize: { w: 120, h: 48 }, worker: false },
@@ -170,7 +170,7 @@ describe('Klados (React)', () => {
 
   it('destroys the chart on unmount', async () => {
     const { root, el } = await mount(
-      createElement(Klados, { options: { data: DATA, nodeSize: { w: 120, h: 48 }, worker: false } }),
+      createElement(Klad, { options: { data: DATA, nodeSize: { w: 120, h: 48 }, worker: false } }),
     )
     await nextFrame()
     await unmount(root)

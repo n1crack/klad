@@ -1,5 +1,5 @@
 {
-  "name": "@klados/playground",
+  "name": "@klad/playground",
   "private": true,
   "type": "module",
   "scripts": {
@@ -8,9 +8,9 @@
     "typecheck": "vue-tsc --noEmit -p tsconfig.json"
   },
   "dependencies": {
-    "klados": "workspace:*",
-    "@klados/react": "workspace:*",
-    "@klados/vue": "workspace:*",
+    "klad": "workspace:*",
+    "@klad/react": "workspace:*",
+    "@klad/vue": "workspace:*",
     "react": "^19.2.0",
     "react-dom": "^19.2.0",
     "vue": "^3.5.0"

@@ -43,6 +43,11 @@ jobs:
       - run: pnpm lint
       - run: pnpm typecheck
       - run: pnpm test
+      # A publish cannot be taken back, only superseded — so the packaging
+      # itself is verified here too, not just on CI. See ci.yml for what these
+      # catch that a build does not.
+      - run: pnpm build
+      - run: pnpm check:packages
 
       # Two modes, decided by whether any changeset files are pending:
       #  - pending  -> opens (or updates) a "Version Packages" PR that applies

@@ -1,4 +1,4 @@
-import { createKlados, type KladosApi, type Options, type Theme } from 'klados'
+import { createKlad, type KladApi, type Options, type Theme } from 'klad'
 import {
   DEPARTMENT_COLOR,
   EDGE_RADIUS_DEFAULT,
@@ -440,7 +440,7 @@ const RENDERERS: Record<NodeContentKind, RenderNode | null> = {
 
 /** Imperative handle main.ts uses to drive the mounted vanilla chart's live controls. */
 export interface VanillaDemoHandle {
-  readonly api: KladosApi
+  readonly api: KladApi
   destroy(): void
   setMinimap(on: boolean): void
   setMinimapPosition(position: MinimapPosition): void
@@ -466,7 +466,7 @@ export interface VanillaDemoHandle {
  * values is current.
  *
  * `setEdgeRadius`/`setNodeFill` go straight through `chart.api.setTheme`
- * instead — `KladosApi.setTheme` (packages/vanilla/src/index.ts) merges a
+ * instead — `KladApi.setTheme` (packages/vanilla/src/index.ts) merges a
  * partial theme over whatever the chart is already showing, re-resolves it,
  * and repaints, all without touching tree/layout state. Before that method
  * existed, the only way to change a theme token post-construction was to
@@ -478,7 +478,7 @@ export function mountVanilla(
   host: HTMLElement,
   example: Example,
   mode: ThemeMode,
-  onApiChange: (api: KladosApi) => void,
+  onApiChange: (api: KladApi) => void,
 ): VanillaDemoHandle {
   const renderNode = RENDERERS[example.content]
   let currentMode = mode
@@ -511,7 +511,7 @@ export function mountVanilla(
     }
   }
 
-  const chart = createKlados(host, buildOptions())
+  const chart = createKlad(host, buildOptions())
   onApiChange(chart.api)
 
   /**

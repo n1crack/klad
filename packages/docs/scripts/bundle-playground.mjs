@@ -22,7 +22,7 @@ const docsDir = resolve(dirname(fileURLToPath(import.meta.url)), '..')
 const repoRoot = resolve(docsDir, '..', '..')
 const playgroundDir = join(repoRoot, 'packages', 'playground')
 
-const docsBase = process.env.DOCS_BASE ?? '/klados/'
+const docsBase = process.env.DOCS_BASE ?? '/'
 const playgroundBase = `${docsBase.replace(/\/$/, '')}/playground/`
 
 console.log(`building the playground for ${playgroundBase}`)

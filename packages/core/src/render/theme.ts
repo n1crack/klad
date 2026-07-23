@@ -158,7 +158,7 @@ function assignDefined<T, K extends keyof T>(target: T, key: K, value: T[K] | un
  * rather than erasing it.
  *
  * The `base` parameter is what lets a runtime theme update (see
- * `KladosApi.setTheme` in packages/vanilla) merge a partial over the
+ * `KladApi.setTheme` in packages/vanilla) merge a partial over the
  * chart's CURRENT (already-resolved) theme rather than always back over the
  * built-in defaults — a second `resolveTheme({ nodeFill }, currentTheme)`
  * call keeps every token an earlier `setTheme` call already set, changing

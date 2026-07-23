@@ -1,4 +1,4 @@
-import type { Theme } from 'klados'
+import type { Theme } from 'klad'
 import { minimapOptionFor, type Example, type MinimapPosition } from './data.js'
 import type { ThemeMode } from './theme.js'
 
@@ -179,12 +179,12 @@ function vanilla(snapshot: ConfigSnapshot): string {
   const content = snapshot.hasNodeContent
     ? `\n  renderNode: (element, context) => {\n    element.textContent = String(context.item.name ?? '')\n  },`
     : ''
-  return `import { createKlados } from 'klados'
+  return `import { createKlad } from 'klad'
 
 ${DATA_NOTE}
 ${nodeContentNote(snapshot.hasNodeContent)}
 
-const chart = createKlados(host, {
+const chart = createKlad(host, {
 ${optionLines(snapshot, '  ')}${content}
 })
 `
@@ -198,7 +198,7 @@ function vue(snapshot: ConfigSnapshot): string {
     </template>`
     : ''
   return `<script setup lang="ts">
-import { Klados, type Options } from '@klados/vue'
+import { Klad, type Options } from '@klad/vue'
 
 ${DATA_NOTE}
 ${nodeContentNote(snapshot.hasNodeContent)}
@@ -209,8 +209,8 @@ ${optionLines(snapshot, '  ')}
 </script>
 
 <template>
-  <Klados :options="options">${slot}
-  </Klados>
+  <Klad :options="options">${slot}
+  </Klad>
 </template>
 `
 }
@@ -219,10 +219,10 @@ function react(snapshot: ConfigSnapshot): string {
   const children = snapshot.hasNodeContent
     ? `>
       {(context) => <div className="card">{String(context.item.name ?? '')}</div>}
-    </Klados>`
+    </Klad>`
     : ' />'
   return `import { useMemo } from 'react'
-import { Klados, type Options } from '@klados/react'
+import { Klad, type Options } from '@klad/react'
 
 ${DATA_NOTE}
 ${nodeContentNote(snapshot.hasNodeContent)}
@@ -236,7 +236,7 @@ ${optionLines(snapshot, '      ')}
   )
 
   return (
-    <Klados options={options}${children}
+    <Klad options={options}${children}
   )
 }
 `

@@ -1,5 +1,5 @@
 import { describe, expect, it } from 'vitest'
-import { createKlados } from './index.js'
+import { createKlad } from './index.js'
 
 /**
  * `toBlob` and `print` are hard to unit test meaningfully: `toBlob` produces
@@ -33,7 +33,7 @@ function host(): HTMLElement {
 }
 
 function make(overrides: Record<string, unknown> = {}) {
-  return createKlados(host(), {
+  return createKlad(host(), {
     data: DATA,
     nodeSize: { w: 120, h: 48 },
     label: (item) => String(item.name ?? ''),
@@ -44,7 +44,7 @@ function make(overrides: Record<string, unknown> = {}) {
 
 const nextFrame = () => new Promise((r) => requestAnimationFrame(() => r(null)))
 
-describe('KladosApi.toSVG', () => {
+describe('KladApi.toSVG', () => {
   it('returns a well-formed SVG document with one <rect> per visible node', async () => {
     const chart = make()
     await nextFrame()
@@ -90,7 +90,7 @@ describe('KladosApi.toSVG', () => {
   })
 })
 
-describe('KladosApi.toBlob', () => {
+describe('KladApi.toBlob', () => {
   it('resolves to a PNG Blob with a plausible, non-trivial size', async () => {
     const chart = make()
     await nextFrame()
@@ -121,7 +121,7 @@ describe('KladosApi.toBlob', () => {
   })
 })
 
-describe('KladosApi.print', () => {
+describe('KladApi.print', () => {
   // The full lifecycle — append iframe, load, call the frame window's print(),
   // remove on afterprint — cannot be driven here: in real Chromium the iframe's
   // load fires synchronously during appendChild and calls the frame's real

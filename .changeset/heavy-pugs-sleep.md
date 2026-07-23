@@ -1,8 +1,8 @@
 ---
-'@klados/core': minor
-'klados': minor
-'@klados/vue': minor
-'@klados/react': minor
+'@klad/core': minor
+'klad': minor
+'@klad/vue': minor
+'@klad/react': minor
 ---
 
 New `DARK_THEME` export — the same `Theme` shape as `DEFAULT_THEME`, with the

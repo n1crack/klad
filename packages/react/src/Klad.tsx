@@ -1,12 +1,12 @@
 import {
-  createKlados,
+  createKlad,
   type ChartState,
   type NodeContext,
   type Options,
-  type KladosApi,
-  type KladosEvents,
-  type KladosInstance,
-} from 'klados'
+  type KladApi,
+  type KladEvents,
+  type KladInstance,
+} from 'klad'
 import {
   useCallback,
   useEffect,
@@ -21,13 +21,13 @@ import {
   type Ref,
 } from 'react'
 import { createPortal } from 'react-dom'
-import { KladosContext } from './useKlados.js'
+import { KladContext } from './useKlad.js'
 
-export interface KladosHandle {
-  api: KladosApi | null
+export interface KladHandle {
+  api: KladApi | null
 }
 
-export interface KladosProps {
+export interface KladProps {
   options: Options
   /**
    * Render prop for node content — React's equivalent of the vanilla layer's
@@ -40,13 +40,13 @@ export interface KladosProps {
   children?: (context: NodeContext) => ReactNode
   className?: string
   style?: CSSProperties
-  ref?: Ref<KladosHandle>
-  onNodeClick?: KladosEvents['nodeClick']
-  onNodeHover?: KladosEvents['nodeHover']
-  onNodeDblClick?: KladosEvents['nodeDblClick']
-  onToggle?: KladosEvents['toggle']
-  onWarning?: KladosEvents['warning']
-  onReady?: KladosEvents['ready']
+  ref?: Ref<KladHandle>
+  onNodeClick?: KladEvents['nodeClick']
+  onNodeHover?: KladEvents['nodeHover']
+  onNodeDblClick?: KladEvents['nodeDblClick']
+  onToggle?: KladEvents['toggle']
+  onWarning?: KladEvents['warning']
+  onReady?: KladEvents['ready']
 }
 
 /**
@@ -74,24 +74,24 @@ interface Slot {
  * on the consumer's card has nothing to resolve against and the card
  * collapses to its content — leaving the canvas-drawn box visible
  * underneath. Vanilla has no such wrapper, so omitting this would make this
- * adapter disagree with vanilla and Vue. Mirrors Klados.vue's
+ * adapter disagree with vanilla and Vue. Mirrors Klad.vue's
  * `WRAPPER_STYLE` exactly.
  */
 const WRAPPER_STYLE: CSSProperties = { display: 'block', boxSizing: 'border-box', width: '100%', height: '100%' }
 
 /**
- * Binds React to `klados`. Every chart behaviour — layout, canvas
+ * Binds React to `klad`. Every chart behaviour — layout, canvas
  * drawing, hit-testing, pointer/keyboard input, the worker — lives in the
  * vanilla layer; this component only creates it, keeps it in sync with
  * props, and renders node content through portals into the overlay elements
  * the vanilla layer hands back.
  */
-export function Klados(props: KladosProps): ReactNode {
+export function Klad(props: KladProps): ReactNode {
   const { options, children, className, style, ref } = props
 
   const hostRef = useRef<HTMLDivElement | null>(null)
-  const [instance, setInstance] = useState<KladosInstance | null>(null)
-  const [api, setApi] = useState<KladosApi | null>(null)
+  const [instance, setInstance] = useState<KladInstance | null>(null)
+  const [api, setApi] = useState<KladApi | null>(null)
 
   // Read by the stable `renderNode` callback below, so a new render-prop
   // function identity (an inline arrow function is a new identity on every
@@ -171,7 +171,7 @@ export function Klados(props: KladosProps): ReactNode {
     if (host === null) return
 
     skipNextUpdateRef.current = true
-    const chart = createKlados(host, withRenderNode(options))
+    const chart = createKlad(host, withRenderNode(options))
     setInstance(chart)
     setApi(chart.api)
 
@@ -235,12 +235,12 @@ export function Klados(props: KladosProps): ReactNode {
 
   const slots = Array.from(slotsRef.current.values())
   // Fixed "orgchart" marker class plus whatever the consumer passed, mirroring
-  // Klados.vue's template (`class="orgchart"` on its root, with Vue's
+  // Klad.vue's template (`class="orgchart"` on its root, with Vue's
   // automatic fallthrough merging in the caller's own `class`).
   const hostClassName = className === undefined ? 'orgchart' : `orgchart ${className}`
 
   return (
-    <KladosContext.Provider value={{ api, state }}>
+    <KladContext.Provider value={{ api, state }}>
       <div ref={hostRef} className={hostClassName} style={style} />
       {hasChildren
         ? slots.map((slot) =>
@@ -253,6 +253,6 @@ export function Klados(props: KladosProps): ReactNode {
             ),
           )
         : null}
-    </KladosContext.Provider>
+    </KladContext.Provider>
   )
 }

@@ -1,4 +1,4 @@
-import type { Tree } from '@klados/core'
+import type { Tree } from '@klad/core'
 
 export interface A11yTree {
   update(tree: Tree, open: Uint8Array, labelOf: (index: number) => string): void
