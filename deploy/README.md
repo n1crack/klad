@@ -13,9 +13,10 @@ release once it succeeds. nginx then serves files and nothing else.
 ## Server setup, once
 
 1. **DNS** — an `A` record for `klad` pointing at the server.
-2. **Forge → New Site** for `klad.ozdemir.be`, project type **Static HTML**.
-   - **Web Directory**: `/packages/docs/.vitepress/dist` — where VitePress
-     writes. Getting this wrong shows as a Forge directory listing or a 403.
+2. **Forge → New Site** for `klad.ozdemir.be`, project type **Static HTML**,
+   **Web Directory** left at Forge's default `/public`. VitePress writes to
+   `packages/docs/.vitepress/dist`; the last step of the deploy script moves it
+   to `public/`, so the site setting is the same as every other site here.
 3. **Install Repository**: `n1crack/klad`, branch `main`, **Quick Deploy on**.
    That is what makes a merge to `main` a deploy.
 4. **Deploy Script**: paste [`forge-deploy.sh`](forge-deploy.sh).

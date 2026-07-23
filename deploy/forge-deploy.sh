@@ -4,12 +4,17 @@
 # Script). Kept here so the thing that builds the site is reviewable, and so a
 # rebuilt server is a paste rather than an excavation.
 #
+# Not runnable as-is, and not meant to be: `$CREATE_RELEASE()` and
+# `$ACTIVATE_RELEASE()` are Forge's own macros for its zero-downtime flow —
+# make a release directory, and point `current` at it once everything between
+# them succeeded. `bash -n` will object to them; Forge will not.
+#
 # The site is static: this builds it and Forge activates the release; nginx
-# then only serves files (see nginx.conf). Set the site's **Web Directory** to
-#
-#     /packages/docs/.vitepress/dist
-#
-# which is where VitePress writes, and the reason no build output is committed.
+# then only serves files (see nginx.conf). The site's **Web Directory** stays
+# at Forge's own default, `/public` — the build writes into
+# `packages/docs/.vitepress/dist` and the last step moves it there, which is
+# one less Forge setting to remember and the same shape as every other site on
+# the box.
 
 $CREATE_RELEASE()
 
@@ -41,8 +46,14 @@ pnpm install --frozen-lockfile --filter @klad/docs...
 # deploy: the playground is a page of the docs, not a second host.
 pnpm --filter @klad/docs build
 
-# Nothing here is served, and a release directory carrying a node_modules tree
-# per deploy fills a small disk quickly.
+# Where Forge expects to serve from. Moved rather than copied: the build
+# output is the only thing this release needs to keep, and a copy would double
+# it on disk for every release Forge retains.
+rm -rf public
+mv packages/docs/.vitepress/dist public
+
+# Nothing else here is served, and a release directory carrying a node_modules
+# tree per deploy fills a small disk quickly.
 rm -rf node_modules packages/*/node_modules
 
 $ACTIVATE_RELEASE()

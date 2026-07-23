@@ -57,3 +57,9 @@ packages/docs/.vitepress/cache
 # The playground, rebuilt into the docs site for its base path on every docs
 # build (packages/docs/scripts/bundle-playground.mjs). Build output, not source.
 packages/docs/public/playground
+
+# The deployed site: the docs build's output, moved here by the Forge deploy
+# script (see deploy/forge-deploy.sh) because that is where the server serves
+# from. Build output, never source — and only ever present after a deploy-shaped
+# build, local or otherwise.
+/public
