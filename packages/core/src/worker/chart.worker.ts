@@ -57,6 +57,9 @@ self.onmessage = (event: MessageEvent<MainToWorker>): void => {
       case 'highlight':
         engine?.setHighlight(message.ids)
         break
+      case 'isolate':
+        engine?.setIsolate(message.index)
+        break
       case 'drag':
         engine?.setDrag(message.index)
         break
@@ -108,7 +111,19 @@ self.onmessage = (event: MessageEvent<MainToWorker>): void => {
       transfer,
     )
 
-    if (message.t === 'data' || message.t === 'options' || message.t === 'open') {
+    // Every message that can change WHICH nodes exist or where they are has to
+    // send the layout back, or the main thread keeps drawing its overlay,
+    // fitting its camera and painting its minimap from boxes that no longer
+    // describe the chart. Missing `isolate` off this list showed as an
+    // isolated branch drawn as bare connectors: the camera had fitted the old
+    // whole-tree bounds, which put the zoom below the tier where nodes are
+    // drawn at all.
+    if (
+      message.t === 'data' ||
+      message.t === 'options' ||
+      message.t === 'open' ||
+      message.t === 'isolate'
+    ) {
       const boxes = engine.boxes.slice()
       const map = engine.visibleToSource.slice()
       post({ t: 'layout', boxes, bounds: engine.bounds, visibleToSource: map }, [

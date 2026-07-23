@@ -48,6 +48,27 @@ nodes without inventing a path between them.
 
 `highlight(null)` clears it — and so does <kbd>Esc</kbd>.
 
+## Showing one branch
+
+```ts
+chart.api.fitSubtree('eng')  // point the camera at it
+chart.api.isolate('eng')     // make it the chart
+chart.api.isolate(null)      // and back
+```
+
+The difference matters once a chart is large. `fitSubtree` moves the camera and
+leaves everything else where it was, just off screen. `isolate` re-roots the
+tree: the layout has one branch to arrange, the minimap shows that branch
+rather than a speck inside a company, Tab walks it instead of the org, and an
+export is a picture of it.
+
+Where the viewer is, is yours to say — `pathTo(id)` returns the chain from the
+real root, which is a breadcrumb:
+
+```ts
+const trail = chart.api.pathTo('eng') // ['ceo', 'cto', 'eng']
+```
+
 ## Saving a view
 
 ```ts
@@ -83,6 +104,7 @@ sits without a second call.
 |---|---|
 | `fit()` | Zooms out far enough to show the whole visible tree. |
 | `fitSubtree(id)` | Frames one branch instead. On a large chart this is the useful one — fitting everything means a zoom level where nothing can be read. |
+| `isolate(id)` | Shows that branch **as** the chart; `isolate(null)` puts the rest back. |
 | `reset()` | Back to the opening view. |
 | `zoomIn()` / `zoomOut()` | One step, about the centre. |
 | `zoomTo(k)` | An exact scale. |

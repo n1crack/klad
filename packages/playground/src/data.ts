@@ -542,7 +542,7 @@ export const EXAMPLES: Example[] = [
     id: 'views',
     name: 'Branches and views',
     description:
-      'Frame one branch instead of the whole chart, and save where you are so you can come back to it — or send it to someone. Pan and zoom away after saving, then restore.',
+      'Three ways to deal with a chart bigger than the screen: frame one branch, show one branch as if it were the whole chart, or save where you are and come back to it later. Isolate a branch and the trail above shows the way out.',
     data: SHARED_DATA,
     options: { minimap: true, nodeSize: { w: 200, h: 72 } },
     content: 'card',

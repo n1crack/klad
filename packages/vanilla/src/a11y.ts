@@ -1,7 +1,13 @@
 import type { Tree } from '@klad/engine'
 
 export interface A11yTree {
-  update(tree: Tree, open: Uint8Array, labelOf: (index: number) => string): void
+  /**
+   * `isolate` is the source index the chart is currently re-rooted at, or -1.
+   * The mirror has to honour it for the same reason it honours a collapsed
+   * node: a screen reader reading out nodes the chart is not showing is a
+   * mirror that contradicts what it mirrors.
+   */
+  update(tree: Tree, open: Uint8Array, labelOf: (index: number) => string, isolate?: number): void
   focusNode(id: string): void
   destroy(): void
 }
@@ -240,7 +246,7 @@ export function createA11yTree(container: HTMLElement, callbacks: A11yCallbacks)
   root.addEventListener('focusin', onFocusIn)
 
   return {
-    update(tree, open, labelOf) {
+    update(tree, open, labelOf, isolate = -1) {
       // Focus preservation. A full rebuild used to destroy the focused
       // element outright, so focus fell back to the body — an acceptable if
       // unfriendly default. Pooling introduces a sharper hazard: a row can be
@@ -286,7 +292,15 @@ export function createA11yTree(container: HTMLElement, callbacks: A11yCallbacks)
       for (let k = 0; k < tree.count; k++) {
         const index = tree.order[k]!
         const parent = tree.parent[index]!
-        const isVisible = parent === -1 || (visible[parent] === 1 && open[parent] === 1)
+        // Same rule as `pruneToVisible`: the isolate root is visible whatever
+        // its parent says, any other genuine root is not, and everything else
+        // resolves through its parent as usual.
+        const isVisible =
+          index === isolate
+            ? true
+            : parent === -1
+              ? isolate === -1
+              : visible[parent] === 1 && open[parent] === 1
         visible[index] = isVisible ? 1 : 0
         if (!isVisible) continue
 

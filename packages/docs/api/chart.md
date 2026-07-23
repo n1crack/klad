@@ -40,6 +40,7 @@ chartRef.current?.api?.fit()
 |---|---|
 | `fit()` | Zoom out to show the whole visible tree. |
 | `fitSubtree(id)` | Frame one branch instead — the smallest camera that shows `id` and everything visible below it. On a chart of thousands, "show me Engineering" is the question people actually have. |
+| `isolate(id \| null)` | Show one branch **as** the chart: `id` becomes the root and everything else stops existing — for the layout, the minimap, the keyboard tree, search and export alike. `fitSubtree` points the camera; this changes what is there. |
 | `reset()` | Back to the opening view. |
 | `zoomIn()` / `zoomOut()` | One step about the viewport centre. |
 | `zoomTo(k)` | An exact scale, within `zoomLimits`. |
@@ -48,7 +49,7 @@ chartRef.current?.api?.fit()
 ### Saving where you are
 
 ```ts
-const view = chart.api.getView()      // { camera, open, highlighted }
+const view = chart.api.getView()      // { camera, open, highlighted, isolated }
 localStorage.setItem('chart', JSON.stringify(view))
 
 chart.api.setView(JSON.parse(localStorage.getItem('chart')!))

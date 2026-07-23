@@ -288,3 +288,36 @@ describe('pruneToVisible invariants (seeded fuzz)', () => {
     expect(v.tree.indexToId).toEqual(['a', 'b', 'd', 'e'])
   })
 })
+
+describe('pruneToVisible with an isolate root', () => {
+  // a -> b -> d, a -> c
+  const tree = normalize([
+    { id: 'a' },
+    { id: 'b', parentId: 'a' },
+    { id: 'c', parentId: 'a' },
+    { id: 'd', parentId: 'b' },
+  ])
+  const allOpen = new Uint8Array(tree.count).fill(1)
+
+  it('keeps the isolated node and its open descendants, and nothing else', () => {
+    const pruned = pruneToVisible(tree, allOpen, tree.idToIndex.get('b')!)
+    expect([...pruned.toSource].map((i) => tree.indexToId[i])).toEqual(['b', 'd'])
+  })
+
+  it('makes the isolated node a root, whatever its parent is', () => {
+    const pruned = pruneToVisible(tree, allOpen, tree.idToIndex.get('b')!)
+    expect(pruned.tree.parent[0]).toBe(-1)
+    expect(pruned.tree.roots.length).toBe(1)
+  })
+
+  it('still hides the descendants of a closed node inside the isolated branch', () => {
+    const open = new Uint8Array(tree.count).fill(1)
+    open[tree.idToIndex.get('b')!] = 0
+    const pruned = pruneToVisible(tree, open, tree.idToIndex.get('b')!)
+    expect([...pruned.toSource].map((i) => tree.indexToId[i])).toEqual(['b'])
+  })
+
+  it('prunes the whole forest when no root is given', () => {
+    expect(pruneToVisible(tree, allOpen).tree.count).toBe(4)
+  })
+})

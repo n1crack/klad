@@ -507,6 +507,107 @@ describe('createKlad', () => {
     chart.destroy()
   })
 
+  // Isolation: one branch AS the chart, rather than one branch with the rest
+  // still there off screen (which is what `fitSubtree` does).
+  it('re-roots the chart at one branch, and puts the rest back', async () => {
+    const chart = make()
+    await settle()
+    expect(chart.api.getState().visibleCount).toBe(4)
+
+    chart.api.isolate('b')
+    await settle()
+    const isolated = chart.api.getState()
+    // 'b' and its child 'd'. 'a' is an ancestor, 'c' a sibling — both gone,
+    // not merely off screen.
+    expect(isolated.visibleCount).toBe(2)
+    expect(isolated.isolated).toBe('b')
+    // The export is the same tree, so it is the cheapest place to check that
+    // "gone" reaches everything downstream rather than only the canvas.
+    const svg = chart.api.toSVG()
+    expect(svg).toContain('Leaf')
+    expect(svg).not.toContain('Right')
+
+    chart.api.isolate(null)
+    await settle()
+    expect(chart.api.getState().visibleCount).toBe(4)
+    expect(chart.api.getState().isolated).toBeNull()
+    chart.destroy()
+  })
+
+  it('mirrors an isolated branch in the accessibility tree, not the whole org', async () => {
+    const chart = make()
+    await settle()
+    chart.api.isolate('b')
+    await settle()
+    // A screen reader reading out nodes the chart is not showing is a mirror
+    // that contradicts what it mirrors.
+    const labels = [...document.querySelectorAll('[role="treeitem"]')].map((el) => el.textContent)
+    expect(labels).toEqual(['Left', 'Leaf'])
+    chart.destroy()
+  })
+
+  it('keeps collapsing working inside an isolated branch', async () => {
+    const chart = make()
+    await settle()
+    chart.api.isolate('b')
+    chart.api.collapse('b')
+    await settle()
+    expect(chart.api.getState().visibleCount).toBe(1)
+    chart.destroy()
+  })
+
+  it('carries isolation through a saved view', async () => {
+    const chart = make()
+    await settle()
+    chart.api.isolate('b')
+    await settle()
+
+    const view = JSON.parse(JSON.stringify(chart.api.getView()))
+    expect(view.isolated).toBe('b')
+
+    chart.api.isolate(null)
+    await settle()
+    expect(chart.api.getState().visibleCount).toBe(4)
+
+    chart.api.setView(view)
+    await settle()
+    expect(chart.api.getState().isolated).toBe('b')
+    expect(chart.api.getState().visibleCount).toBe(2)
+    chart.destroy()
+  })
+
+  // Worker mode specifically. The layout lives in the worker and is posted
+  // back on the messages that change it; `isolate` was missing from that list,
+  // so the main thread kept the whole tree's boxes and bounds — the overlay
+  // drew nothing, the camera fitted the old bounds (which put the zoom below
+  // the tier where nodes are drawn at all), and the minimap showed a chart
+  // that was no longer on screen.
+  it('sends the new layout back to the main thread when isolating in worker mode', async () => {
+    const chart = make({ worker: true })
+    await settle()
+    const whole = chart.api.getState().bounds
+
+    chart.api.isolate('b')
+    await settle()
+    const branch = chart.api.getState().bounds
+
+    expect(chart.api.getState().visibleCount).toBe(2)
+    // The bounds the main thread holds have to describe the branch, not the
+    // tree it came out of — everything it does with them (fit, overlay,
+    // minimap) is wrong otherwise.
+    expect(branch.maxX - branch.minX).toBeLessThan(whole.maxX - whole.minX)
+    chart.destroy()
+  })
+
+  it('ignores isolate for an unknown id', async () => {
+    const chart = make()
+    await settle()
+    chart.api.isolate('nope')
+    await settle()
+    expect(chart.api.getState().visibleCount).toBe(4)
+    chart.destroy()
+  })
+
   it('zooms about the cursor on wheel', async () => {
     const chart = make()
     // The opening view arrives on a tween of its own. Reading `before` one

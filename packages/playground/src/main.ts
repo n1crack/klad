@@ -809,6 +809,7 @@ branchSelect.onchange = () => {
   // screen and there is otherwise nothing to compare against.
   currentApi?.highlight(currentApi.pathTo(id))
   currentApi?.fitSubtree(id)
+  updateTrail()
 }
 
 saveViewButton.onclick = () => {
@@ -829,13 +830,78 @@ restoreViewButton.onclick = () => {
   currentApi?.setView(savedView, { animate: true })
 }
 
+/**
+ * Isolation, and the breadcrumb back out of it.
+ *
+ * The library deliberately does not draw a breadcrumb — `pathTo(id)` returns
+ * the chain from the real root and where to put it is a host's question. This
+ * is that answer, and it is also the demonstration: without a trail, an
+ * isolated branch looks like a small chart rather than part of a big one.
+ */
+const isolateButton = document.createElement('button')
+isolateButton.type = 'button'
+isolateButton.className = 'btn'
+isolateButton.textContent = 'Isolate'
+
+const trail = document.createElement('div')
+trail.className = 'panel-trail'
+
+function updateTrail(): void {
+  const isolated = currentApi?.getState().isolated ?? null
+  trail.innerHTML = ''
+  isolateButton.disabled = branchSelect.value === '' && isolated === null
+  if (isolated === null) {
+    trail.hidden = true
+    return
+  }
+  trail.hidden = false
+  const path = currentApi?.pathTo(isolated) ?? [isolated]
+  path.forEach((id, i) => {
+    if (i > 0) {
+      const sep = document.createElement('span')
+      sep.className = 'panel-trail-sep'
+      sep.textContent = '/'
+      trail.append(sep)
+    }
+    const crumb = document.createElement('button')
+    crumb.type = 'button'
+    crumb.className = 'panel-crumb'
+    const item = example().data.find((node) => node.id === id)
+    crumb.textContent = String(item?.name ?? id)
+    // Every crumb is a place you can go: the last one is where you are, the
+    // rest re-isolate higher up — which is what makes the trail a way out
+    // rather than a label.
+    crumb.onclick = () => {
+      currentApi?.isolate(i === 0 ? null : id)
+      branchSelect.value = ''
+      updateTrail()
+    }
+    trail.append(crumb)
+  })
+}
+
+isolateButton.onclick = () => {
+  const id = branchSelect.value
+  if (id === '') {
+    currentApi?.isolate(null)
+  } else {
+    currentApi?.isolate(id)
+    currentApi?.highlight(null)
+  }
+  updateTrail()
+}
+
+function example(): Example {
+  return findExample(exampleSelect.value)
+}
+
 const viewButtons = document.createElement('div')
 viewButtons.className = 'panel-row'
-viewButtons.append(saveViewButton, restoreViewButton, viewNote)
+viewButtons.append(isolateButton, saveViewButton, restoreViewButton, viewNote)
 
 const viewField = document.createElement('div')
 viewField.className = 'surface-panel surface-panel-stacked'
-viewField.append(branchLabel, branchSelect, viewButtons)
+viewField.append(branchLabel, branchSelect, viewButtons, trail)
 
 for (const type of ['pointerdown', 'wheel'] as const) {
   viewField.addEventListener(type, (event) => event.stopPropagation())
@@ -875,6 +941,7 @@ function syncViewControl(example: Example): void {
     branchSelect.append(option)
   }
   branchSelect.value = ''
+  updateTrail()
 }
 
 /**

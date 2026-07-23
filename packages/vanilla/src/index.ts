@@ -234,6 +234,8 @@ export interface ChartState {
   rootScreenCentre: { x: number; y: number }
   /** Whatever `highlight()` was last given, or `null`. */
   highlighted: string[] | null
+  /** The node the chart is re-rooted at, or `null` for the whole tree. */
+  isolated: string | null
 }
 
 /**
@@ -250,7 +252,15 @@ export interface ChartView {
   camera: Camera
   /** Ids of the nodes whose children are shown. */
   open: string[]
-  highlighted: string[] | null
+  /**
+   * Optional, both of them, because a view is a thing people write by hand as
+   * well as read back from `getView`: a link that says "open these branches,
+   * here" should not have to say "and nothing is selected or isolated" to be
+   * valid. `getView` always fills them in; `setView` treats absent as none.
+   */
+  highlighted?: string[] | null
+  /** The node the chart is re-rooted at, or `null` — see `isolate`. */
+  isolated?: string | null
 }
 
 export interface KladEvents {
@@ -295,6 +305,23 @@ export interface KladApi {
    * nothing for an unknown id, or for one that is itself collapsed away.
    */
   fitSubtree(id: string): void
+  /**
+   * Shows one branch AS the chart: `id` becomes the root, its ancestors and
+   * every other branch stop existing as far as the layout, the minimap, the
+   * keyboard tree, search and export are all concerned. `null` restores the
+   * whole tree.
+   *
+   * Different from `fitSubtree`, which only points the camera at a branch —
+   * everything else is still there, just off screen. Isolating is the answer
+   * when "everything else" is forty thousand nodes and their presence is what
+   * makes the chart unusable: layout has less to arrange, the minimap shows
+   * the branch rather than a speck inside a company, and Tab walks the branch
+   * instead of the org.
+   *
+   * The host is left to say where the viewer is — `pathTo(id)` returns the
+   * chain from the real root, which is a breadcrumb.
+   */
+  isolate(id: string | null): void
   reset(): void
   /**
    * Puts `id` on screen, opening every collapsed ancestor on the way so it
@@ -645,7 +672,7 @@ export function createKlad(host: HTMLElement, options: Options): KladInstance {
         for (const warning of warnings) emit('warning', warning)
       })
     }
-    a11y?.update(tree, open, (index) => labelOf(itemFor(index)))
+    a11y?.update(tree, open, (index) => labelOf(itemFor(index)), isolatedIndex)
   }
 
   const initOpen = (): void => {
@@ -817,7 +844,10 @@ export function createKlad(host: HTMLElement, options: Options): KladInstance {
    * action, not a per-frame path.
    */
   const buildExportData = (): ExportData => {
-    const visible = pruneToVisible(tree, open)
+    // Isolation included: an export is a picture of the chart, and the chart
+    // is currently one branch. Leaving it out would put the whole org in a PNG
+    // taken while the screen showed a department.
+    const visible = pruneToVisible(tree, open, isolatedIndex)
     const n = visible.tree.count
     const sizes: Float64Array = new Float64Array(n * 2)
     const labels: string[] = Array.from({ length: n })
@@ -895,6 +925,7 @@ export function createKlad(host: HTMLElement, options: Options): KladInstance {
       bounds,
       rootScreenCentre: centre,
       highlighted: highlightedIds,
+      isolated: isolatedIndex === -1 ? null : (tree.indexToId[isolatedIndex] ?? null),
     }
   }
 
@@ -1005,6 +1036,8 @@ export function createKlad(host: HTMLElement, options: Options): KladInstance {
    * indices that a real data swap would invalidate.
    */
   let highlightedIds: string[] | null = null
+  /** Source index the chart is re-rooted at, or -1 — see `api.isolate`. */
+  let isolatedIndex = -1
 
   /**
    * Set by `focus()`, consumed by the first frame that has the layout its
@@ -1017,7 +1050,7 @@ export function createKlad(host: HTMLElement, options: Options): KladInstance {
   const refreshA11y = (): void => {
     if (!a11yDirty) return
     a11yDirty = false
-    a11y?.update(tree, open, (i) => labelOf(itemFor(i)))
+    a11y?.update(tree, open, (i) => labelOf(itemFor(i)), isolatedIndex)
   }
 
   const scheduleFrame = (): void => {
@@ -1673,6 +1706,19 @@ export function createKlad(host: HTMLElement, options: Options): KladInstance {
         fitCamera({ minX, minY, maxX, maxY }, { width: rect.width, height: rect.height }, FIT_PADDING, limits),
       )
     },
+    isolate(id) {
+      const next = id === null ? -1 : (tree.idToIndex.get(id) ?? -1)
+      if (next === isolatedIndex) return
+      isolatedIndex = next
+      chartHost.setIsolate(next)
+      a11yDirty = true
+      // The chart now contains a different set of nodes, at different
+      // positions: whatever the camera was framing is gone or has moved. A
+      // fit is the only view that is certainly meaningful afterwards, and it
+      // is what makes isolating feel like arriving somewhere.
+      pendingFullFit = true
+      scheduleFrame()
+    },
     reset() {
       api.fit()
     },
@@ -1970,9 +2016,18 @@ export function createKlad(host: HTMLElement, options: Options): KladInstance {
         camera: { ...camera },
         open: openIds,
         highlighted: highlightedIds === null ? null : [...highlightedIds],
+        isolated: isolatedIndex === -1 ? null : (tree.indexToId[isolatedIndex] ?? null),
       }
     },
     setView(view, opts) {
+      // Isolation first of all: it decides which nodes exist, and the open
+      // flags and camera below are both statements about a tree that has to
+      // already be the right one. `?? null` so a view saved before this field
+      // existed restores the whole tree rather than nothing.
+      api.isolate(view.isolated ?? null)
+      // A restored view says where the camera goes; the fit that isolating
+      // schedules would arrive somewhere else entirely.
+      pendingFullFit = false
       // Open state first: the camera is meaningless against a layout that has
       // not happened yet, and expanding changes where everything is.
       const wanted = new Set(view.open)
@@ -1990,7 +2045,8 @@ export function createKlad(host: HTMLElement, options: Options): KladInstance {
       // Ids that have since left the tree are dropped rather than throwing —
       // see `ChartView`. `highlight` already ignores unknown ids, so this only
       // has to preserve `null` as "nothing lit".
-      api.highlight(view.highlighted === null ? null : [...view.highlighted])
+      const wantedHighlight = view.highlighted
+      api.highlight(wantedHighlight === undefined || wantedHighlight === null ? null : [...wantedHighlight])
 
       if (opts?.animate === true) animateTo({ ...view.camera })
       else setCameraInstant({ ...view.camera })

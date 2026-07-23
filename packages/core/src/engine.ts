@@ -54,6 +54,14 @@ export interface ChartEngine {
   setCamera(camera: Camera): void
   setViewport(width: number, height: number, dpr: number): void
   setHighlight(sourceIds: Uint32Array | null): void
+  /**
+   * Re-roots the visible tree at one node — that branch and nothing else — or
+   * `-1` for the whole forest. See `pruneToVisible`'s `isolateRoot`.
+   *
+   * Relayouts, because it changes which nodes exist as far as everything
+   * downstream is concerned; it is not a filter applied at draw time.
+   */
+  setIsolate(sourceIndex: number): void
   setDrag(sourceIndex: number): void
   /**
    * Enables or disables the expand/collapse layout transition. Disabling
@@ -1060,6 +1068,8 @@ export function createChartEngine(renderer: Renderer): ChartEngine {
   let camera: Camera = { x: 0, y: 0, k: 1 }
   let viewport = { width: 0, height: 0, dpr: 1 }
   let highlightSource: Uint32Array | null = null
+  /** Source index the visible tree is re-rooted at, or -1 for the whole forest. */
+  let isolateSource = -1
   let dragSource = -1
 
   let layoutDirty = true
@@ -1142,7 +1152,7 @@ export function createChartEngine(renderer: Renderer): ChartEngine {
     const prevParent = prunedParent
     const prevTransition = transition
 
-    const pruned = pruneToVisible(sourceTree, open)
+    const pruned = pruneToVisible(sourceTree, open, isolateSource)
     visibleToSource = pruned.toSource
     prunedParent = pruned.tree.parent
     prunedFromSource = pruned.fromSource
@@ -1639,6 +1649,12 @@ export function createChartEngine(renderer: Renderer): ChartEngine {
     setViewport(width, height, dpr) {
       viewport = { width, height, dpr }
       renderer.resize(width, height, dpr)
+    },
+    setIsolate(sourceIndex) {
+      if (isolateSource === sourceIndex) return
+      isolateSource = sourceIndex
+      // A relayout, not a repaint: the set of nodes that exist just changed.
+      layoutDirty = true
     },
     setHighlight(ids) {
       highlightSource = ids
