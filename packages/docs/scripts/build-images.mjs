@@ -190,10 +190,11 @@ const browser = await chromium.launch()
 // --- og: the link preview ---------------------------------------------------
 //
 // A link preview is read at thumbnail size, in a feed, by someone who has not
-// heard of this. So it answers the only three questions they have — what is
-// it, why would I care, is it maintained — and it answers the middle one with
-// the number, because "fast" is what everything claims and "50,000 nodes at
-// 60fps" is what almost nothing can.
+// heard of this. So it says what the thing IS, in the fewest words that are
+// actually true of it — not what it scores. A benchmark on a card is a claim
+// the reader cannot check and half of them have learnt to discount; the
+// division of labour between their components and this canvas is the whole
+// idea, and it survives being read in one second.
 //
 // Dark, because the picture is a lit object and a dark ground is what makes it
 // glow rather than sit. The scene runs off the right edge on purpose: an image
@@ -320,13 +321,13 @@ const browser = await chromium.launch()
         ${MARK}
         <div>
           <div class="name">klad</div>
-          <div class="what">org chart for Vue, React &amp; plain DOM</div>
+          <div class="what">org chart for very large trees</div>
         </div>
       </div>
 
       <div class="eyebrow">Canvas org chart</div>
-      <h1>50,000 nodes.<br /><span class="accent">Still 60fps.</span></h1>
-      <div class="sub">Canvas in a Web Worker — your own components mounted only where they can be read.</div>
+      <h1>Your components,<br /><span class="accent">one canvas.</span></h1>
+      <div class="sub">Vue, React or plain DOM on top. Layout and drawing in a Web&nbsp;Worker underneath.</div>
 
       <div class="pills">
         <span class="pill">TypeScript</span>
