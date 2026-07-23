@@ -1,7 +1,5 @@
 # Klad
 
-*κλάδος — Greek for “branch”.*
-
 A framework-agnostic org chart. The tree is laid out and drawn on a `<canvas>`
 inside a Web Worker; real framework components are mounted only for the handful
 of nodes actually on screen and zoomed in far enough to read.
