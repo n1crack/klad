@@ -129,9 +129,13 @@ variable node sizes, nine card treatments, subtree counts, a go-to-node combo
 box, and a 20,000-node stress test.
 
 ## Roadmap
-
-1.1 drag-and-drop reparenting · 1.2 cross-links · 1.3 alternative layouts ·
 1.4 animated links and custom edges · 1.5 child pagination · 1.6 nested sets.
+- 1.1 drag-and-drop reparenting
+- 1.2 cross-links
+- 1.3 alternative layouts
+- 1.4 animated links and custom edges
+- 1.5 child pagination
+- 1.6 nested sets
 See the [roadmap](https://klad.ozdemir.be/roadmap).
 
 ## License
