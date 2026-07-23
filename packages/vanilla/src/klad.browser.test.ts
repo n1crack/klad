@@ -234,7 +234,14 @@ describe('createKlad', () => {
 
   it('pans on pointer drag', async () => {
     const chart = make()
-    await nextFrame()
+    // The opening view arrives on a tween of its own. Reading `before` one
+    // frame in catches it mid-flight, and the pointerdown below then CANCELS
+    // that tween (the user's hand wins immediately, by design) — so the
+    // camera never reaches where `before` assumed it would be, and the drag's
+    // own 60px lands somewhere else entirely. On a fast machine the tween is
+    // over within that frame and the bug never shows; CI is not a fast
+    // machine.
+    await settle()
     const before = chart.api.getState().camera.x
     const canvas = document.querySelector('canvas')!
     canvas.dispatchEvent(new PointerEvent('pointerdown', { clientX: 100, clientY: 100, bubbles: true }))
@@ -247,7 +254,14 @@ describe('createKlad', () => {
 
   it('does not pan on a secondary-button drag, so a context menu stays put over the chart', async () => {
     const chart = make()
-    await nextFrame()
+    // The opening view arrives on a tween of its own. Reading `before` one
+    // frame in catches it mid-flight, and the pointerdown below then CANCELS
+    // that tween (the user's hand wins immediately, by design) — so the
+    // camera never reaches where `before` assumed it would be, and the drag's
+    // own 60px lands somewhere else entirely. On a fast machine the tween is
+    // over within that frame and the bug never shows; CI is not a fast
+    // machine.
+    await settle()
     const before = chart.api.getState().camera.x
     const canvas = document.querySelector('canvas')!
     // `button: 2` is the right button. The browser opens its context menu on
@@ -263,7 +277,14 @@ describe('createKlad', () => {
 
   it('still pans with the left button after a right-button press was ignored', async () => {
     const chart = make()
-    await nextFrame()
+    // The opening view arrives on a tween of its own. Reading `before` one
+    // frame in catches it mid-flight, and the pointerdown below then CANCELS
+    // that tween (the user's hand wins immediately, by design) — so the
+    // camera never reaches where `before` assumed it would be, and the drag's
+    // own 60px lands somewhere else entirely. On a fast machine the tween is
+    // over within that frame and the bug never shows; CI is not a fast
+    // machine.
+    await settle()
     const before = chart.api.getState().camera.x
     const canvas = document.querySelector('canvas')!
     // The ignored press must leave no state behind — an early return that
@@ -293,7 +314,14 @@ describe('createKlad', () => {
 
   it('zooms about the cursor on wheel', async () => {
     const chart = make()
-    await nextFrame()
+    // The opening view arrives on a tween of its own. Reading `before` one
+    // frame in catches it mid-flight, and the pointerdown below then CANCELS
+    // that tween (the user's hand wins immediately, by design) — so the
+    // camera never reaches where `before` assumed it would be, and the drag's
+    // own 60px lands somewhere else entirely. On a fast machine the tween is
+    // over within that frame and the bug never shows; CI is not a fast
+    // machine.
+    await settle()
     const before = chart.api.getState().camera.k
     document
       .querySelector('canvas')!
