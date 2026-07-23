@@ -187,30 +187,164 @@ const browser = await chromium.launch()
   await p.close()
 }
 
-// --- og: the scene beside the name, on white -------------------------------
+// --- og: the link preview ---------------------------------------------------
+//
+// A link preview is read at thumbnail size, in a feed, by someone who has not
+// heard of this. So it answers the only three questions they have — what is
+// it, why would I care, is it maintained — and it answers the middle one with
+// the number, because "fast" is what everything claims and "50,000 nodes at
+// 60fps" is what almost nothing can.
+//
+// Dark, because the picture is a lit object and a dark ground is what makes it
+// glow rather than sit. The scene runs off the right edge on purpose: an image
+// that is fully contained reads as a diagram, one that is cropped reads as a
+// window onto something larger, which is the honest description of a chart
+// this size.
 {
+  // The site's own mark, inlined rather than fetched: this file must render
+  // with no server and no network, and `public/logo.svg` is the same drawing.
+  const MARK = `<svg viewBox="0 0 48 48" aria-hidden="true">
+    <defs>
+      <linearGradient id="face" x1="0" y1="0" x2="0.6" y2="1">
+        <stop offset="0" stop-color="#3b82f6" /><stop offset="1" stop-color="#60a5fa" />
+      </linearGradient>
+      <linearGradient id="leaf" x1="0" y1="0" x2="0.6" y2="1">
+        <stop offset="0" stop-color="#60a5fa" /><stop offset="1" stop-color="#93c5fd" />
+      </linearGradient>
+    </defs>
+    <g fill="none" stroke="#94a3b8" stroke-width="3" stroke-linecap="round">
+      <path d="M24 18v5" /><path d="M11 30v-7h26v7" />
+    </g>
+    <rect x="15" y="9" width="22" height="11" rx="3.5" fill="#1e40af" />
+    <rect x="13" y="6" width="22" height="11" rx="3.5" fill="url(#face)" />
+    <rect x="6" y="32" width="15" height="10" rx="3" fill="#2563eb" />
+    <rect x="4" y="30" width="15" height="10" rx="3" fill="url(#leaf)" />
+    <rect x="31" y="32" width="15" height="10" rx="3" fill="#2563eb" />
+    <rect x="29" y="30" width="15" height="10" rx="3" fill="url(#leaf)" />
+  </svg>`
+
   const css = `
     body {
+      position: relative;
       width: 1200px; height: 630px;
-      display: flex; align-items: center;
-      background: #ffffff; color: #0f172a; overflow: hidden;
+      background: #0b1220;
+      color: #f8fafc;
+      overflow: hidden;
     }
-    .copy { flex: 0 0 auto; padding-left: 88px; display: flex; flex-direction: column; gap: 18px; }
-    h1 { font-size: 82px; font-weight: 800; letter-spacing: -0.035em; line-height: 1; }
-    .rule { width: 88px; height: 6px; border-radius: 3px; background: #2563eb; }
-    p { font-size: 32px; line-height: 1.3; color: #475569; font-weight: 500; max-width: 14ch; }
-    .art { flex: 1; display: grid; place-items: center; }
-    /* The scene is built at 760×660; the card is shorter than that, so it is
-       scaled to fit rather than cropped. */
-    .art .scene { transform: scale(0.72); }
+
+    /* Two lights, both behind the subject: a cool one at the top left where
+       the wordmark sits, and the accent one at the right where the chart is,
+       so the slabs have something to be lit BY. Blurred at this size rather
+       than drawn as gradients, which would band. */
+    body::before, body::after {
+      content: ''; position: absolute; border-radius: 50%;
+    }
+    body::before {
+      width: 900px; height: 700px; left: -280px; top: -320px;
+      background: radial-gradient(closest-side, rgba(37, 99, 235, 0.30), transparent 70%);
+    }
+    body::after {
+      width: 1000px; height: 900px; right: -260px; top: -180px;
+      background: radial-gradient(closest-side, rgba(56, 130, 246, 0.26), transparent 70%);
+    }
+
+    .copy {
+      position: relative;
+      width: 690px; height: 100%;
+      /* Bottom padding clears the footer line, which is positioned against the
+         card rather than sitting in this column — the pills would otherwise
+         come to rest on top of it. */
+      padding: 56px 0 118px 72px;
+      display: flex; flex-direction: column;
+    }
+
+    .brand { display: flex; align-items: center; gap: 16px; }
+    .brand svg { width: 52px; height: 52px; display: block; }
+    .brand .name { font-size: 34px; font-weight: 800; letter-spacing: -0.02em; line-height: 1.05; }
+    .brand .what { font-size: 16px; font-weight: 500; color: #94a3b8; letter-spacing: 0.01em; }
+
+    .eyebrow {
+      margin-top: 56px;
+      font-size: 17px; font-weight: 700; letter-spacing: 0.22em;
+      text-transform: uppercase; color: #60a5fa;
+    }
+
+    h1 {
+      margin-top: 18px;
+      font-size: 68px; font-weight: 800; letter-spacing: -0.035em; line-height: 1.06;
+    }
+    h1 .accent { color: #60a5fa; }
+
+    .sub {
+      margin-top: 20px;
+      font-size: 21px; font-weight: 500; line-height: 1.45; color: #cbd5e1;
+      max-width: 30ch;
+    }
+
+    /* The specifics, small: nobody reads these at thumbnail size, and everybody
+       reads them once the image is opened. */
+    .pills { margin-top: auto; display: flex; gap: 10px; }
+    .pill {
+      padding: 9px 16px; border-radius: 999px;
+      font-size: 15px; font-weight: 600; color: #cbd5e1;
+      background: rgba(148, 163, 184, 0.10);
+      border: 1px solid rgba(148, 163, 184, 0.22);
+      white-space: nowrap;
+    }
+
+    .foot {
+      position: absolute; left: 72px; right: 56px; bottom: 40px;
+      display: flex; align-items: center; justify-content: space-between;
+      font-size: 16px; font-weight: 600; color: #94a3b8;
+    }
+    .foot .dot { color: #475569; margin: 0 12px; }
+    .foot .right { display: flex; gap: 10px; }
+    .badge {
+      padding: 8px 16px; border-radius: 999px; font-size: 15px; font-weight: 700;
+      border: 1px solid rgba(148, 163, 184, 0.28); color: #cbd5e1;
+    }
+    .badge.star { border-color: rgba(96, 165, 250, 0.55); color: #93c5fd; }
+
+    /* Off the right edge, and larger than the box that holds it: the crop is
+       the point; overflow: hidden on the body does the cutting. */
+    .art {
+      position: absolute; right: -150px; top: 50%;
+      transform: translateY(-50%) scale(0.92);
+      transform-origin: center;
+    }
   `
+
   const body = `
     <div class="copy">
-      <h1>Klad</h1>
-      <div class="rule"></div>
-      <p>A fast org chart for very large trees</p>
+      <div class="brand">
+        ${MARK}
+        <div>
+          <div class="name">klad</div>
+          <div class="what">org chart for Vue, React &amp; plain DOM</div>
+        </div>
+      </div>
+
+      <div class="eyebrow">Canvas org chart</div>
+      <h1>50,000 nodes.<br /><span class="accent">Still 60fps.</span></h1>
+      <div class="sub">Canvas in a Web Worker — your own components mounted only where they can be read.</div>
+
+      <div class="pills">
+        <span class="pill">TypeScript</span>
+        <span class="pill">Vue &amp; React</span>
+        <span class="pill">Minimap</span>
+        <span class="pill">SVG · PNG export</span>
+      </div>
     </div>
-    <div class="art">${scene(true)}</div>
+
+    <div class="foot">
+      <span>klad.ozdemir.be<span class="dot">·</span>github.com/n1crack/klad</span>
+      <span class="right">
+        <span class="badge">AGPL · Commercial</span>
+        <span class="badge star">★ Star</span>
+      </span>
+    </div>
+
+    <div class="art">${scene(false)}</div>
   `
   const p = await browser.newPage({ viewport: { width: 1200, height: 630 }, deviceScaleFactor: 2 })
   await p.setContent(page(body, css), { waitUntil: 'load' })
