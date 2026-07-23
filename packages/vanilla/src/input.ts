@@ -69,8 +69,18 @@ const DRAG_THRESHOLD_PX = 4
  * without that distinction every click would also nudge the camera, and clicks
  * on a trackpad always travel a pixel or two.
  *
+ * Only the PRIMARY button pans (see `onPointerDown`), so a right-click is left
+ * entirely to the browser and to any host-installed context menu.
+ *
  * Move and up are bound on `window`, not the host, so a drag that leaves the
  * element still tracks and still ends.
+ *
+ * On touch, the browser's own scroll/pinch handling would otherwise consume
+ * the same gestures this module is claiming — a one-finger drag would scroll
+ * the page instead of panning the chart, and a two-finger pinch would zoom the
+ * whole document rather than the camera. `touch-action: none` on the host is
+ * what hands those gestures to this handler; it is set here, alongside the
+ * listeners that need it, and restored on teardown.
  */
 export function attachInput(
   host: HTMLElement,
@@ -121,6 +131,15 @@ export function attachInput(
   }
 
   const onPointerDown = (event: PointerEvent): void => {
+    // Primary button only. `button` is 0 for a left click, a touch contact and
+    // a pen tip alike, so this costs touch nothing — it excludes exactly the
+    // secondary/middle/back buttons. Without it, the press that opens the
+    // browser's context menu ALSO started a pan, so the chart slid out from
+    // under the menu that had just opened over it; the same went for a
+    // middle-click, which panned while the browser started its own auto-scroll.
+    // Checked before `activePointers` is touched so a right-click can't count
+    // toward the two-pointer pinch either.
+    if (event.button !== 0) return
     callbacks.cancelAnimation()
     activePointers.set(event.pointerId, { x: event.clientX, y: event.clientY })
     if (activePointers.size === 2) {
@@ -223,6 +242,19 @@ export function attachInput(
     callbacks.onLeave()
   }
 
+  // Saved and restored rather than simply cleared on teardown: the host is the
+  // consumer's own element, which may well carry a `touch-action` of its own.
+  const previousTouchAction = host.style.touchAction
+  const previousUserSelect = host.style.userSelect
+  host.style.touchAction = 'none'
+  // A pan that starts on an overlay card would otherwise drag-SELECT that
+  // card's text (pointerdown is deliberately never `preventDefault()`-ed here,
+  // so the browser's own selection gesture still runs) — a chart left striped
+  // with highlighted labels after every pan, and on touch a long-press that
+  // pops the selection handles mid-drag. Buttons, links and form controls in a
+  // card are unaffected: this suppresses selection, not interaction.
+  host.style.userSelect = 'none'
+
   host.addEventListener('pointerdown', onPointerDown)
   window.addEventListener('pointermove', onPointerMove)
   window.addEventListener('pointerup', onPointerUp)
@@ -232,6 +264,8 @@ export function attachInput(
   host.addEventListener('pointerleave', onHoverLeave)
 
   return () => {
+    host.style.touchAction = previousTouchAction
+    host.style.userSelect = previousUserSelect
     host.removeEventListener('pointerdown', onPointerDown)
     window.removeEventListener('pointermove', onPointerMove)
     window.removeEventListener('pointerup', onPointerUp)

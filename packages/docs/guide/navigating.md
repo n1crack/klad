@@ -77,6 +77,22 @@ sits without a second call.
 Every one of them eases rather than jumping, and every one is interrupted the
 instant a user's hand touches the canvas — dragging always wins immediately.
 
+## Gestures
+
+| Gesture | |
+|---|---|
+| Drag with the primary button, or one finger | Pan. A release with speed coasts to a stop. |
+| Wheel or trackpad scroll | Zoom about the pointer. |
+| Two fingers | Pinch to zoom about the midpoint. |
+| Right or middle button | Nothing. Yours — a right-click reaches your own `contextmenu` handler with the chart holding still under it. |
+
+The host element is given `touch-action: none` while a chart is mounted, and
+it is handed back on `destroy()`. That is what makes a one-finger drag pan the
+chart instead of scrolling the page, and a pinch zoom the camera instead of the
+whole document. Text selection is suppressed on the host for the same reason —
+a pan that starts on a card would otherwise drag-select its label — while
+buttons, links and form controls inside a card keep working normally.
+
 ## Expanding and collapsing
 
 ```ts

@@ -245,6 +245,52 @@ describe('createOrgChart', () => {
     chart.destroy()
   })
 
+  it('does not pan on a secondary-button drag, so a context menu stays put over the chart', async () => {
+    const chart = make()
+    await nextFrame()
+    const before = chart.api.getState().camera.x
+    const canvas = document.querySelector('canvas')!
+    // `button: 2` is the right button. The browser opens its context menu on
+    // this press, and the chart sliding out from under that menu is exactly
+    // what the primary-button check in input.ts prevents.
+    canvas.dispatchEvent(new PointerEvent('pointerdown', { button: 2, clientX: 100, clientY: 100, bubbles: true }))
+    window.dispatchEvent(new PointerEvent('pointermove', { clientX: 160, clientY: 100, bubbles: true }))
+    window.dispatchEvent(new PointerEvent('pointerup', { button: 2, clientX: 160, clientY: 100, bubbles: true }))
+    await nextFrame()
+    expect(chart.api.getState().camera.x).toBe(before)
+    chart.destroy()
+  })
+
+  it('still pans with the left button after a right-button press was ignored', async () => {
+    const chart = make()
+    await nextFrame()
+    const before = chart.api.getState().camera.x
+    const canvas = document.querySelector('canvas')!
+    // The ignored press must leave no state behind — an early return that
+    // still registered the pointer would leave the next real drag looking
+    // like the second finger of a pinch.
+    canvas.dispatchEvent(new PointerEvent('pointerdown', { button: 2, clientX: 50, clientY: 50, bubbles: true }))
+    window.dispatchEvent(new PointerEvent('pointerup', { button: 2, clientX: 50, clientY: 50, bubbles: true }))
+    canvas.dispatchEvent(new PointerEvent('pointerdown', { clientX: 100, clientY: 100, bubbles: true }))
+    window.dispatchEvent(new PointerEvent('pointermove', { clientX: 160, clientY: 100, bubbles: true }))
+    window.dispatchEvent(new PointerEvent('pointerup', { clientX: 160, clientY: 100, bubbles: true }))
+    await nextFrame()
+    expect(chart.api.getState().camera.x).toBeCloseTo(before + 60, 5)
+    chart.destroy()
+  })
+
+  it("claims the host's touch gestures while mounted, and hands them back on destroy", async () => {
+    const el = host()
+    const chart = createOrgChart(el, { data: DATA, nodeSize: { w: 120, h: 48 }, worker: false })
+    await nextFrame()
+    // Without this the browser's own scroll/pinch consumes the same gestures
+    // the chart is trying to pan and zoom with — a one-finger drag scrolls the
+    // page instead of the chart.
+    expect(getComputedStyle(el).touchAction).toBe('none')
+    chart.destroy()
+    expect(getComputedStyle(el).touchAction).not.toBe('none')
+  })
+
   it('zooms about the cursor on wheel', async () => {
     const chart = make()
     await nextFrame()
