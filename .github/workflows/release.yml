@@ -1,8 +1,18 @@
 name: Release
 
+# A GitHub Release is the publish. Creating one — with a tag like `v1.0.1` —
+# runs this, and nothing else does.
+#
+# What this replaced: changesets' own bot, which opened a "Version Packages"
+# pull request on every merge and published when that PR was merged. That is a
+# good design for a repository with several maintainers, where the version bump
+# wants reviewing before it ships. Here it meant approving a pull request every
+# time for a diff nobody was going to argue with — so the versioning moves to a
+# local command (`pnpm version-packages`) and the shipping moves to the moment
+# you say so.
 on:
-  push:
-    branches: [main]
+  release:
+    types: [published]
 
 # Publishing is not something to do twice at once.
 concurrency:
@@ -10,37 +20,30 @@ concurrency:
   cancel-in-progress: false
 
 permissions:
-  contents: write
-  pull-requests: write
-  # The publish credential itself. Each package names this repository and this
-  # workflow file as its trusted publisher on npm, so the registry accepts the
-  # workflow's own short-lived OIDC identity and there is no token to leak,
-  # rotate or accidentally scope too widely. It also carries the provenance
-  # attestation tying the tarball to this commit and this workflow.
+  contents: read
+  # The publish credential. Each package names this repository and this
+  # workflow FILENAME as its trusted publisher on npm, so the registry accepts
+  # this run's short-lived OIDC identity and there is no token to leak or
+  # rotate. Renaming this file stops publishing until npm is told the new name.
   #
-  # Two things this depends on, neither obvious from here:
-  #  - The workflow FILENAME is part of the trust configuration. Renaming this
-  #    file breaks publishing until npm is told the new name.
-  #  - The first version of a package cannot be published this way: npm has no
-  #    settings page for a package that does not exist yet, so trusted
-  #    publishing can only be configured after a manual first release. Ours
-  #    was `1.0.0-alpha.0`, published by hand.
+  # It also carries the provenance attestation tying each tarball to this
+  # commit and this workflow — the badge on the npm page.
   id-token: write
 
 jobs:
-  release:
+  publish:
     runs-on: ubuntu-latest
     steps:
+      # The release's tag, not the branch: what ships is what was tagged.
       - uses: actions/checkout@v7
         with:
-          # Changesets needs the history to work out what changed.
-          fetch-depth: 0
+          ref: ${{ github.event.release.tag_name }}
 
       # The pnpm VERSION comes from the root manifest's `packageManager`, not
-      # from this action's major — v6 only adds the ability to install pnpm 11.
-      # Worth knowing before anyone bumps that field: OIDC publishing works on
-      # pnpm 10 and regressed on 11 (pnpm/pnpm#11513), where the token exchange
-      # 404s. This job's whole credential is that exchange.
+      # from this action's major. Worth knowing before anyone bumps that field:
+      # OIDC publishing works on pnpm 10 and regressed on 11 (pnpm/pnpm#11513),
+      # where the token exchange 404s. This job's whole credential is that
+      # exchange.
       - uses: pnpm/action-setup@v6
 
       - uses: actions/setup-node@v7
@@ -51,6 +54,21 @@ jobs:
 
       - run: pnpm install --frozen-lockfile
 
+      # A tag that disagrees with the manifests would publish a version nobody
+      # asked for, described by release notes about a different one — and a
+      # publish cannot be taken back, only superseded. All four packages share
+      # one version (see `fixed` in .changeset/config.json), so checking the
+      # one a consumer installs checks all of them.
+      - name: Check the tag against the manifests
+        run: |
+          TAG="${{ github.event.release.tag_name }}"
+          VERSION="$(node -p "require('./packages/vanilla/package.json').version")"
+          if [ "$TAG" != "v$VERSION" ]; then
+            echo "Tag $TAG does not match the packaged version $VERSION."
+            echo "Run 'pnpm version-packages', commit that, and tag the commit."
+            exit 1
+          fi
+
       - run: pnpm exec playwright install --with-deps chromium
 
       # Publishing something that does not pass its own tests is worse than
@@ -58,25 +76,16 @@ jobs:
       - run: pnpm lint
       - run: pnpm typecheck
       - run: pnpm test
-      # A publish cannot be taken back, only superseded — so the packaging
-      # itself is verified here too, not just on CI. See ci.yml for what these
-      # catch that a build does not.
       - run: pnpm build
+      # What the tests cannot see: the shape of what actually gets published —
+      # an `exports` map pointing at a file the tarball does not carry, a
+      # `.d.ts` that will not resolve under a consumer's moduleResolution.
       - run: pnpm check:packages
 
-      # Two modes, decided by whether any changeset files are pending:
-      #  - pending  -> opens (or updates) a "Version Packages" PR that applies
-      #                them, bumps versions and rewrites the changelogs.
-      #  - none     -> the versions on main are already the intended ones, so
-      #                `publish` runs and pushes whatever is not on npm yet.
-      # Merging that PR is therefore the act that releases, and it is a normal
-      # reviewable diff rather than a button that does something unseen.
-      - uses: changesets/action@v1
-        with:
-          version: pnpm version-packages
-          publish: pnpm release
-          title: 'Release: version packages'
-          commit: 'chore: version packages'
+      # `--no-git-checks` because this runs on a detached tag, which pnpm would
+      # otherwise refuse as "not on a branch". Versions already on the registry
+      # are skipped rather than failing, so re-running a release is safe.
+      - name: Publish
         env:
-          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
           NPM_CONFIG_PROVENANCE: true
+        run: pnpm -r publish --access public --no-git-checks
