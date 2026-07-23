@@ -4,7 +4,7 @@ layout: home
 hero:
   name: Klad
   text: Canvas Org Chart
-  tagline: κλάδος, “branch” — a fast, framework-agnostic org chart for very large trees
+  tagline: A fast, framework-agnostic org chart for very large trees
   image:
     src: /hero.png
     alt: An org chart of six cards in perspective, floating above their connectors
