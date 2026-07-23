@@ -114,11 +114,19 @@ would rather the camera stayed still and the tree moved under it.
 ```ts
 minimap: true
 minimap: { position: 'top-left', width: 200, height: 140 }
+minimap: { silhouetteColour: '#94a3b8' } // for a dark host
 ```
 
 It draws a silhouette of the occupied area rather than a shrunken chart —
 at that scale individual boxes fall below a pixel — with the current viewport
 as a rectangle over it. Click or drag inside it to pan.
+
+The plate, its border and the viewport rectangle are ordinary DOM — style
+them from your own CSS via `.orgchart-minimap`. The silhouette is not: it is
+written pixel by pixel into a canvas, so it is the one part that needs an
+option, `silhouetteColour`. The default slate reads well on a light plate and
+disappears on a dark one, so a dark theme should set it. Only the colour's RGB
+is used; each pixel's alpha is the silhouette's own coverage.
 
 Its frame is held steady across an expand or collapse rather than refitting to
 whatever is currently open: a minimap whose scale lurched on every toggle

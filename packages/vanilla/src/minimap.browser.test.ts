@@ -77,6 +77,74 @@ describe('minimap', () => {
     chart.destroy()
   })
 
+  it('paints the silhouette in a requested colour, and keeps its coverage as the alpha', async () => {
+    const el = host()
+    const chart = createOrgChart(el, {
+      data: buildOrg(300),
+      nodeSize: { w: 120, h: 48 },
+      worker: false,
+      // The silhouette is the one part of the widget a host stylesheet cannot
+      // reach — it is pixels, not DOM — so a dark theme needs this option.
+      minimap: { silhouetteColour: '#ff0000' },
+    })
+    await nextFrame()
+    await nextFrame()
+
+    const minimapCanvas = el.querySelectorAll('canvas')[1] as HTMLCanvasElement
+    const image = minimapCanvas
+      .getContext('2d')!
+      .getImageData(0, 0, minimapCanvas.width, minimapCanvas.height)
+    let covered = 0
+    let wrongHue = 0
+    for (let i = 0; i < image.data.length; i += 4) {
+      if (image.data[i + 3]! === 0) continue
+      covered++
+      // Red, not the default slate — and the pixel's own alpha is still the
+      // coverage value, not the colour's.
+      if (image.data[i]! < 200 || image.data[i + 1]! > 40 || image.data[i + 2]! > 40) wrongHue++
+    }
+    expect(covered).toBeGreaterThan(50)
+    expect(wrongHue).toBe(0)
+    chart.destroy()
+  })
+
+  it('falls back to the default silhouette colour when handed nonsense', async () => {
+    const el = host()
+    const chart = createOrgChart(el, {
+      data: buildOrg(300),
+      nodeSize: { w: 120, h: 48 },
+      worker: false,
+      minimap: { silhouetteColour: 'not-a-colour' },
+    })
+    await nextFrame()
+    await nextFrame()
+
+    const minimapCanvas = el.querySelectorAll('canvas')[1] as HTMLCanvasElement
+    const image = minimapCanvas
+      .getContext('2d')!
+      .getImageData(0, 0, minimapCanvas.width, minimapCanvas.height)
+    // The browser ignores an invalid `fillStyle` assignment outright, so a
+    // colour that cannot be parsed must leave the default slate (71, 85, 105)
+    // in place rather than whatever happened to be in the probe canvas.
+    //
+    // Read at the MOST opaque pixel: `getImageData` un-premultiplies, so a
+    // faint pixel's channels come back rounded off by a few, which says
+    // nothing about the colour that was asked for.
+    let best = -1
+    let bestAlpha = 0
+    for (let i = 3; i < image.data.length; i += 4) {
+      if (image.data[i]! > bestAlpha) {
+        bestAlpha = image.data[i]!
+        best = i - 3
+      }
+    }
+    expect(bestAlpha).toBeGreaterThan(0)
+    expect(image.data[best]).toBe(71)
+    expect(image.data[best + 1]).toBe(85)
+    expect(image.data[best + 2]).toBe(105)
+    chart.destroy()
+  })
+
   it('respects a custom size and position', async () => {
     const el = host()
     const chart = createOrgChart(el, {

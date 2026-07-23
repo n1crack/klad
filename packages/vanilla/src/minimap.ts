@@ -17,6 +17,23 @@ export interface MinimapOptions {
   width?: number
   height?: number
   position?: MinimapPosition
+  /**
+   * Fill for the tree's silhouette — any CSS colour string. Defaults to a
+   * neutral slate (see `SILHOUETTE_RGB`).
+   *
+   * The one part of this widget a host CANNOT restyle from its own CSS: the
+   * plate, its border and the viewport rectangle are all DOM, so a stylesheet
+   * can override them, but the silhouette is pixels written straight into an
+   * `ImageData` buffer. That makes it the one thing that cannot follow a dark
+   * theme without the library's help — and slate on a near-black plate is
+   * barely visible, which is exactly the case this exists for.
+   *
+   * Only the RGB channels are used: the alpha of every pixel is the
+   * silhouette's own coverage value (how much of the tree occupies that cell),
+   * which is the entire information content of the picture. A colour carrying
+   * its own alpha has it ignored rather than multiplied in.
+   */
+  silhouetteColour?: string
 }
 
 export interface MinimapCallbacks {
@@ -84,14 +101,47 @@ const DEFAULT_HEIGHT = 140
 // single covered cell already reads as solid, is right for tree shapes.
 const SILHOUETTE_OPTIONS: Partial<SilhouetteOptions> = { padding: 6, blur: 2, saturateAt: 1.5 }
 
-/** RGB for the silhouette fill — a neutral slate, legible on light or dark hosts. */
+/** RGB for the silhouette fill by default — a neutral slate, legible on a light host. */
 const SILHOUETTE_RGB: readonly [number, number, number] = [71, 85, 105]
 
-function paintSilhouette(ctx: CanvasRenderingContext2D, silhouette: Silhouette): void {
+/**
+ * Resolves any CSS colour string to RGB channels, falling back to
+ * `SILHOUETTE_RGB` when it is absent or the browser rejects it.
+ *
+ * Done through a 1x1 canvas rather than by parsing the string here: that is
+ * the browser's own colour parser, so named colours, `hsl()`, `#rgba` and
+ * whatever CSS Color level the host supports all work without this module
+ * growing a parser of its own. An invalid value leaves `fillStyle` untouched
+ * — which is how the two-sentinel check below detects it, since a silently
+ * ignored assignment is otherwise indistinguishable from a successful one.
+ */
+function resolveSilhouetteRgb(colour: string | undefined): readonly [number, number, number] {
+  if (colour === undefined) return SILHOUETTE_RGB
+  const probe = document.createElement('canvas')
+  probe.width = 1
+  probe.height = 1
+  const ctx = probe.getContext('2d')
+  if (ctx === null) return SILHOUETTE_RGB
+  ctx.fillStyle = '#000000'
+  ctx.fillStyle = colour
+  const fromBlack = ctx.fillStyle
+  ctx.fillStyle = '#ffffff'
+  ctx.fillStyle = colour
+  if (fromBlack !== ctx.fillStyle) return SILHOUETTE_RGB
+  ctx.fillRect(0, 0, 1, 1)
+  const [r, g, b] = ctx.getImageData(0, 0, 1, 1).data
+  return [r!, g!, b!]
+}
+
+function paintSilhouette(
+  ctx: CanvasRenderingContext2D,
+  silhouette: Silhouette,
+  rgb: readonly [number, number, number],
+): void {
   ctx.clearRect(0, 0, silhouette.width, silhouette.height)
   const imageData = ctx.createImageData(silhouette.width, silhouette.height)
   const data = imageData.data
-  const [r, g, b] = SILHOUETTE_RGB
+  const [r, g, b] = rgb
   for (let i = 0; i < silhouette.alpha.length; i++) {
     const o = i * 4
     data[o] = r
@@ -162,6 +212,11 @@ export function createMinimap(
   const width = options.width ?? DEFAULT_WIDTH
   const height = options.height ?? DEFAULT_HEIGHT
   const position = options.position ?? 'bottom-right'
+  // Resolved once per widget rather than per repaint: the string never
+  // changes for a given minimap (a host changing it goes through
+  // `api.setMinimap`, which rebuilds the widget), and the resolution costs a
+  // throwaway canvas.
+  const silhouetteRgb = resolveSilhouetteRgb(options.silhouetteColour)
 
   const root = document.createElement('div')
   root.className = 'orgchart-minimap'
@@ -344,7 +399,7 @@ export function createMinimap(
       // where the anchor lands wherever the fresh fit put it.
       anchorAt =
         anchorWorld === undefined ? null : worldToMinimap(transform, anchorWorld.x, anchorWorld.y)
-      paintSilhouette(ctx, silhouette)
+      paintSilhouette(ctx, silhouette, silhouetteRgb)
     },
     onCamera(camera, viewport, anchorWorld) {
       if (transform === null) return

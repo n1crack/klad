@@ -32,7 +32,7 @@ React components). Only `data` and `nodeSize` are required.
 | Option | Type | Default | |
 |---|---|---|---|
 | `theme` | `Partial<Theme>` | — | Colours and weights the canvas draws with. See [Theme](/api/theme). |
-| `minimap` | `boolean \| MinimapOptions` | `false` | `{ position, width, height }`. |
+| `minimap` | `boolean \| MinimapOptions` | `false` | `{ position, width, height, silhouetteColour }`. `silhouetteColour` is the one piece your own CSS cannot restyle — set it for a dark host. |
 | `zoomLimits` | `{ minK, maxK: number }` | `{ minK: 0.05, maxK: 4 }` | The floor is lowered automatically — never raised — when the tree is wider than the viewport, so `fit()` can always show everything. |
 
 ## Behaviour
