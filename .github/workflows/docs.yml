@@ -1,0 +1,72 @@
+name: Docs
+
+# Every merge to main. The site is small and the build is seconds, so a path
+# filter would only buy the risk of it being wrong — the API reference is
+# generated from prose that cites the source, and the embedded playground is
+# rebuilt from `packages/playground`, so "did the docs change?" is not a
+# question a path list answers honestly.
+on:
+  push:
+    branches: [main]
+  workflow_dispatch:
+
+# One deploy at a time, and never cancel one mid-rsync: a cancelled sync
+# leaves the site half-written, which is worse than a slightly stale site.
+concurrency:
+  group: docs-deploy
+  cancel-in-progress: false
+
+jobs:
+  deploy:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v7
+
+      - uses: pnpm/action-setup@v6
+
+      - uses: actions/setup-node@v7
+        with:
+          node-version-file: package.json
+          cache: pnpm
+
+      - run: pnpm install --frozen-lockfile
+
+      # Built HERE rather than on the server, deliberately: the server then
+      # needs no Node, no pnpm and no source checkout, and what gets deployed
+      # is exactly what a green CI produced. `DOCS_BASE` and `DOCS_URL` are
+      # deploy-time facts — the same source builds for a subpath or another
+      # domain by changing these two, which is why they are environment
+      # variables rather than committed config.
+      - name: Build the site
+        env:
+          DOCS_BASE: /
+          DOCS_URL: https://klad.ozdemir.be
+        run: pnpm --filter @klad/docs build
+
+      # The key is a deploy key for this one site's user, not a login: it can
+      # write the site directory and nothing else. `ssh-keyscan` pins the host
+      # rather than accepting whatever answers — `StrictHostKeyChecking=no`
+      # would deploy the site to any machine that won the race for that name.
+      - name: Authorise the deploy host
+        env:
+          SSH_KEY: ${{ secrets.FORGE_SSH_KEY }}
+          HOST: ${{ secrets.FORGE_HOST }}
+        run: |
+          mkdir -p ~/.ssh
+          printf '%s\n' "$SSH_KEY" > ~/.ssh/id_ed25519
+          chmod 600 ~/.ssh/id_ed25519
+          ssh-keyscan -H "$HOST" >> ~/.ssh/known_hosts
+
+      # `--delete` so a page removed from the docs is removed from the site;
+      # without it, a deleted route stays live forever and only the sitemap
+      # ever notices. The trailing slash on the source is what copies the
+      # CONTENTS of `dist` rather than the directory itself.
+      - name: Deploy
+        env:
+          HOST: ${{ secrets.FORGE_HOST }}
+          USER: ${{ secrets.FORGE_USER }}
+          TARGET: ${{ secrets.FORGE_PATH }}
+        run: |
+          rsync -az --delete --checksum \
+            packages/docs/.vitepress/dist/ \
+            "$USER@$HOST:$TARGET/"
