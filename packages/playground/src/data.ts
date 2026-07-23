@@ -354,6 +354,12 @@ export interface Example {
    * the one example that is about them.
    */
   viewControl?: boolean
+  /**
+   * Shows the selection panel: what is selected right now, and the two
+   * commands (select every visible node, clear) that an app would build on
+   * top of a selection. Per-example, like the others.
+   */
+  selectionControl?: boolean
 }
 
 // Shared by every example except "Large", which needs its own scale and its
@@ -547,6 +553,16 @@ export const EXAMPLES: Example[] = [
     options: { minimap: true, nodeSize: { w: 200, h: 72 } },
     content: 'card',
     viewControl: true,
+  },
+  {
+    id: 'selection',
+    name: 'Selecting people',
+    description:
+      'Click a card to select it, hold ⌘/Ctrl to add or remove one, drag with Shift for a box or Alt for a lasso. Esc clears. What you pick is reported back to the page — which is the point: an app does something with a selection.',
+    data: SHARED_DATA,
+    options: { selection: true, minimap: true, nodeSize: { w: 200, h: 72 } },
+    content: 'card',
+    selectionControl: true,
   },
   {
     id: 'canvas-only',

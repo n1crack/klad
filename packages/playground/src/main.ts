@@ -233,21 +233,107 @@ function sidebarButton(label: string, onClick: () => void, extraClass?: string):
 
 // --- "Demo" group: which stack, which example ---
 
-const { field: stackField, select: stackSelect } = labeledSelect('Stack', 'stack-select', [
-  { value: 'vanilla', label: 'Vanilla' },
-  { value: 'vue', label: 'Vue' },
-  { value: 'react', label: 'React' },
-])
+/**
+ * A picker built out of real radio inputs, laid out either as a row of
+ * segments or as a list of rows.
+ *
+ * Radios rather than the `<select>` these used to be, and the reason is what
+ * the control is FOR. A dropdown hides its options until asked and shows one
+ * answer; these two are the first question the page asks, their options are
+ * the point of the page, and the whole set is worth seeing at once — how many
+ * examples there are IS information about this project. Real inputs rather
+ * than styled buttons because a radio group already does everything expected
+ * of it: arrow keys move within the group, the label is a click target, and
+ * a screen reader announces "3 of 17".
+ */
+function radioPicker(
+  name: string,
+  layout: 'segmented' | 'list',
+  options: { value: string; label: string }[],
+  onChange: (value: string) => void,
+): { element: HTMLDivElement; get value(): string; set value(next: string) } {
+  const group = document.createElement('div')
+  group.className = layout === 'segmented' ? 'segmented' : 'option-list'
+  const inputs = new Map<string, HTMLInputElement>()
+
+  for (const option of options) {
+    const label = document.createElement('label')
+    label.className = layout === 'segmented' ? 'segment' : 'option-row'
+    const input = document.createElement('input')
+    input.type = 'radio'
+    input.name = name
+    input.value = option.value
+    input.className = 'visually-hidden'
+    input.onchange = () => {
+      if (input.checked) onChange(option.value)
+    }
+    const text = document.createElement('span')
+    text.textContent = option.label
+    label.append(input, text)
+    group.append(label)
+    inputs.set(option.value, input)
+  }
+
+  return {
+    element: group,
+    get value() {
+      for (const [value, input] of inputs) if (input.checked) return value
+      return options[0]?.value ?? ''
+    },
+    set value(next: string) {
+      // Assigning `.checked` does NOT fire `change` — which is what makes this
+      // usable as "reflect the state" rather than "act as if the user clicked".
+      const input = inputs.get(next)
+      if (input !== undefined) input.checked = true
+    },
+  }
+}
+
+function labelled(text: string, control: HTMLElement): HTMLDivElement {
+  const field = document.createElement('div')
+  field.className = 'field'
+  const label = document.createElement('span')
+  label.className = 'field-label'
+  label.textContent = text
+  field.append(label, control)
+  return field
+}
+
+const stackSelect = radioPicker(
+  'stack',
+  'segmented',
+  [
+    { value: 'vanilla', label: 'Vanilla' },
+    { value: 'vue', label: 'Vue' },
+    { value: 'react', label: 'React' },
+  ],
+  () => {
+    setControlsOpen(false)
+    // The Code panel follows the mounted stack — you asked for React, you want
+    // the React snippet — but it can still be pointed elsewhere from its own
+    // tabs afterwards.
+    codeStack = stackSelect.value as CodeStack
+    refresh()
+  },
+)
 
 // Driven from the same registry every stack renders, so a new example is a
 // one-line addition to data.ts rather than a page change.
-const { field: exampleField, select: exampleSelect } = labeledSelect(
-  'Example',
-  'example-select',
+const exampleSelect = radioPicker(
+  'example',
+  'list',
   EXAMPLES.map((example) => ({ value: example.id, label: example.name })),
+  () => {
+    setControlsOpen(false)
+    refresh()
+  },
 )
 
-const demoGroup = sidebarGroup('Demo', stackField, exampleField)
+const demoGroup = sidebarGroup(
+  'Demo',
+  labelled('Stack', stackSelect.element),
+  labelled('Example', exampleSelect.element),
+)
 
 // --- "View" group: camera + tree-shape controls, shared by every mounted chart ---
 
@@ -908,6 +994,115 @@ for (const type of ['pointerdown', 'wheel'] as const) {
 }
 
 /**
+ * The selection panel: what is picked right now, and the two commands an app
+ * would build on a selection.
+ *
+ * It exists because a selection you cannot see reported anywhere is just an
+ * outline. The point of the API is that the page around the chart does
+ * something with it — this panel is the smallest honest version of that.
+ */
+const selectionCount = document.createElement('span')
+selectionCount.className = 'panel-note'
+
+const selectionNames = document.createElement('div')
+selectionNames.className = 'panel-names'
+
+const selectAllButton = document.createElement('button')
+selectAllButton.type = 'button'
+selectAllButton.className = 'btn'
+selectAllButton.textContent = 'Select all'
+
+const clearSelectionButton = document.createElement('button')
+clearSelectionButton.type = 'button'
+clearSelectionButton.className = 'btn'
+clearSelectionButton.textContent = 'Clear'
+
+const selectionHint = document.createElement('div')
+selectionHint.className = 'panel-hint'
+selectionHint.textContent = 'Click · ⌘/Ctrl-click · Shift-drag box · Alt-drag lasso · Esc'
+
+function syncSelectionPanel(): void {
+  const ids = currentApi?.getSelection() ?? []
+  clearSelectionButton.disabled = ids.length === 0
+  selectionCount.textContent = ids.length === 0 ? 'Nothing selected' : `${ids.length} selected`
+  const example = findExample(exampleSelect.value)
+  // The first few names, then a count: a panel that grows with the selection
+  // would push the chart off the screen exactly when the selection got
+  // interesting.
+  const named = ids
+    .slice(0, 4)
+    .map((id) => String(example.data.find((item) => item.id === id)?.name ?? id))
+  selectionNames.textContent =
+    ids.length > 4 ? `${named.join(', ')} +${ids.length - 4} more` : named.join(', ')
+}
+
+selectAllButton.onclick = () => {
+  // `search` with a predicate that takes everything is the API's own way of
+  // asking for every node — there is no separate "give me all the ids".
+  const all = currentApi?.search(() => true).map((result) => result.id) ?? []
+  currentApi?.select(all)
+  syncSelectionPanel()
+}
+
+clearSelectionButton.onclick = () => {
+  currentApi?.select(null)
+  syncSelectionPanel()
+}
+
+const selectionButtons = document.createElement('div')
+selectionButtons.className = 'panel-row'
+selectionButtons.append(selectAllButton, clearSelectionButton, selectionCount)
+
+const selectionField = document.createElement('div')
+selectionField.className = 'surface-panel surface-panel-stacked'
+selectionField.append(selectionHint, selectionButtons, selectionNames)
+
+for (const type of ['pointerdown', 'wheel'] as const) {
+  selectionField.addEventListener(type, (event) => event.stopPropagation())
+}
+
+/**
+ * Re-reads the selection after the gestures that can change it, over the next
+ * few frames rather than once.
+ *
+ * A click does not select synchronously: the chart hit-tests the point first,
+ * and that is a round trip to the worker. Reading on `pointerup` alone gets
+ * the selection as it was BEFORE the click that just happened — which is
+ * exactly what this panel did at first, reporting "nothing selected" while a
+ * card sat outlined on screen.
+ *
+ * Three frames is not a guess about worker latency so much as a cheap way to
+ * be right either way: the sync is a string compare and a `textContent`
+ * write, and it stops as soon as the value settles.
+ */
+const syncSelectionSoon = (): void => {
+  let frames = 3
+  const step = (): void => {
+    syncSelectionPanel()
+    if (--frames > 0) requestAnimationFrame(step)
+  }
+  requestAnimationFrame(step)
+}
+
+let selectionListenersBound = false
+
+/** Shows the selection panel for the example that asked for it. */
+function syncSelectionControl(example: Example): void {
+  selectionField.remove()
+  if (example.selectionControl !== true) return
+  surface.append(selectionField)
+  if (!selectionListenersBound) {
+    selectionListenersBound = true
+    for (const type of ['pointerup', 'keyup'] as const) {
+      surface.addEventListener(type, () => {
+        if (selectionField.isConnected) syncSelectionSoon()
+      })
+    }
+  }
+  syncSelectionPanel()
+}
+
+/**
  * Fills the branch picker with the nodes that HAVE children — framing a leaf
  * is framing one card, which is a zoom rather than an answer — and hides the
  * panel for every example that did not ask for it.
@@ -1423,6 +1618,7 @@ function show(stack: Stack, exampleId: string): void {
   const example = findExample(exampleId)
   syncGotoControl(example)
   syncViewControl(example)
+  syncSelectionControl(example)
   descriptionText.textContent = example.description
   description.classList.remove('is-expanded')
 
@@ -1510,22 +1706,10 @@ function refresh(): void {
   refreshCode()
 }
 
-// Both close the drawer on the way through: on a phone the point of picking a
-// stack or an example is to LOOK at the result, which is behind the panel that
-// was just used to pick it. (A no-op at any width where the sidebar is not a
-// drawer — see `setControlsOpen`.)
-stackSelect.onchange = () => {
-  setControlsOpen(false)
-  // The Code panel follows the mounted stack — you asked for React, you want
-  // the React snippet — but it can still be pointed elsewhere from its own
-  // tabs afterwards.
-  codeStack = stackSelect.value as CodeStack
-  refresh()
-}
-exampleSelect.onchange = () => {
-  setControlsOpen(false)
-  refresh()
-}
+// Both pickers close the drawer on the way through (see `radioPicker` above):
+// on a phone the point of choosing a stack or an example is to LOOK at the
+// result, which is behind the panel that was just used to choose it. A no-op
+// at any width where the sidebar is not a drawer.
 
 /**
  * Re-renders the snippet after anything that could change it. One delegated
