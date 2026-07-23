@@ -2,9 +2,9 @@
 layout: home
 
 hero:
-  name: OrgChart
+  name: Klados
   text: Canvas Org Chart
-  tagline: A fast, framework-agnostic org chart for very large trees
+  tagline: κλάδος, “branch” — a fast, framework-agnostic org chart for very large trees
   image:
     src: /hero.png
     alt: An org chart of six cards in perspective, floating above their connectors
@@ -17,7 +17,7 @@ hero:
       link: /api/options
     - theme: alt
       text: View on GitHub
-      link: https://github.com/n1crack/orgchart
+      link: https://github.com/n1crack/klados
 
 features:
   - title: ⚡ Built for Large Trees
@@ -35,13 +35,13 @@ features:
 == Vanilla
 
 ```bash
-npm install @n1crack/orgchart
+npm install klados
 ```
 
 ```ts
-import { createOrgChart } from '@n1crack/orgchart'
+import { createKlados } from 'klados'
 
-const chart = createOrgChart(document.getElementById('chart')!, {
+const chart = createKlados(document.getElementById('chart')!, {
   data: [
     { id: 'ceo', name: 'Jamie Fox', title: 'CEO' },
     { id: 'cto', parentId: 'ceo', name: 'Amy Chen', title: 'CTO' },
@@ -55,12 +55,12 @@ const chart = createOrgChart(document.getElementById('chart')!, {
 == Vue
 
 ```bash
-npm install @n1crack/orgchart-vue
+npm install @klados/vue
 ```
 
 ```vue
 <script setup lang="ts">
-import { OrgChart, type Options } from '@n1crack/orgchart-vue'
+import { Klados, type Options } from '@klados/vue'
 
 const options: Options = {
   data: [
@@ -74,18 +74,18 @@ const options: Options = {
 </script>
 
 <template>
-  <OrgChart :options="options" style="width: 100%; height: 100vh" />
+  <Klados :options="options" style="width: 100%; height: 100vh" />
 </template>
 ```
 
 == React
 
 ```bash
-npm install @n1crack/orgchart-react
+npm install @klados/react
 ```
 
 ```tsx
-import { OrgChart, type Options } from '@n1crack/orgchart-react'
+import { Klados, type Options } from '@klados/react'
 
 const options: Options = {
   data: [
@@ -98,7 +98,7 @@ const options: Options = {
 }
 
 export function Chart() {
-  return <OrgChart options={options} style={{ width: '100%', height: '100vh' }} />
+  return <Klados options={options} style={{ width: '100%', height: '100vh' }} />
 }
 ```
 

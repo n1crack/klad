@@ -1,5 +1,5 @@
 {
-  "name": "@n1crack/orgchart-playground",
+  "name": "@klados/playground",
   "private": true,
   "type": "module",
   "scripts": {
@@ -8,9 +8,9 @@
     "typecheck": "vue-tsc --noEmit -p tsconfig.json"
   },
   "dependencies": {
-    "@n1crack/orgchart": "workspace:*",
-    "@n1crack/orgchart-react": "workspace:*",
-    "@n1crack/orgchart-vue": "workspace:*",
+    "klados": "workspace:*",
+    "@klados/react": "workspace:*",
+    "@klados/vue": "workspace:*",
     "react": "^19.2.0",
     "react-dom": "^19.2.0",
     "vue": "^3.5.0"

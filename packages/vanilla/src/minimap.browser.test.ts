@@ -1,5 +1,5 @@
 import { describe, expect, it } from 'vitest'
-import { createOrgChart } from './index.js'
+import { createKlados } from './index.js'
 
 function buildOrg(target: number): { id: string; parentId?: string; name: string }[] {
   const data: { id: string; parentId?: string; name: string }[] = [{ id: 'root', name: 'Root' }]
@@ -39,13 +39,13 @@ const nextFrame = () => new Promise((r) => requestAnimationFrame(() => r(null)))
 describe('minimap', () => {
   it('is absent by default', async () => {
     const el = host()
-    const chart = createOrgChart(el, {
+    const chart = createKlados(el, {
       data: SMALL_DATA,
       nodeSize: { w: 120, h: 48 },
       worker: false,
     })
     await nextFrame()
-    expect(el.querySelector('.orgchart-minimap')).toBeNull()
+    expect(el.querySelector('.klados-minimap')).toBeNull()
     // Only the main chart canvas exists.
     expect(el.querySelectorAll('canvas').length).toBe(1)
     chart.destroy()
@@ -53,7 +53,7 @@ describe('minimap', () => {
 
   it('paints a non-empty silhouette once data is laid out', async () => {
     const el = host()
-    const chart = createOrgChart(el, {
+    const chart = createKlados(el, {
       data: buildOrg(300),
       nodeSize: { w: 120, h: 48 },
       worker: false,
@@ -79,7 +79,7 @@ describe('minimap', () => {
 
   it('paints the silhouette in a requested colour, and keeps its coverage as the alpha', async () => {
     const el = host()
-    const chart = createOrgChart(el, {
+    const chart = createKlados(el, {
       data: buildOrg(300),
       nodeSize: { w: 120, h: 48 },
       worker: false,
@@ -110,7 +110,7 @@ describe('minimap', () => {
 
   it('falls back to the default silhouette colour when handed nonsense', async () => {
     const el = host()
-    const chart = createOrgChart(el, {
+    const chart = createKlados(el, {
       data: buildOrg(300),
       nodeSize: { w: 120, h: 48 },
       worker: false,
@@ -147,7 +147,7 @@ describe('minimap', () => {
 
   it('respects a custom size and position', async () => {
     const el = host()
-    const chart = createOrgChart(el, {
+    const chart = createKlados(el, {
       data: SMALL_DATA,
       nodeSize: { w: 120, h: 48 },
       worker: false,
@@ -164,7 +164,7 @@ describe('minimap', () => {
 
   it('can be toggled on and off via update()', async () => {
     const el = host()
-    const chart = createOrgChart(el, {
+    const chart = createKlados(el, {
       data: SMALL_DATA,
       nodeSize: { w: 120, h: 48 },
       worker: false,
@@ -185,7 +185,7 @@ describe('minimap', () => {
 
   it('clicking inside the minimap pans the camera', async () => {
     const el = host()
-    const chart = createOrgChart(el, {
+    const chart = createKlados(el, {
       data: buildOrg(300),
       nodeSize: { w: 120, h: 48 },
       worker: false,
@@ -195,7 +195,7 @@ describe('minimap', () => {
     await nextFrame()
 
     const before = chart.api.getState().camera
-    const minimapRoot = el.querySelector<HTMLElement>('.orgchart-minimap')!
+    const minimapRoot = el.querySelector<HTMLElement>('.klados-minimap')!
     const rect = minimapRoot.getBoundingClientRect()
 
     minimapRoot.dispatchEvent(
@@ -221,7 +221,7 @@ describe('minimap', () => {
     // with a CSS transform only, never repaint the silhouette. If this test
     // ever fails, something is doing per-frame work that should be per-relayout.
     const el = host()
-    const chart = createOrgChart(el, {
+    const chart = createKlados(el, {
       data: buildOrg(2_000),
       nodeSize: { w: 120, h: 48 },
       worker: false,
@@ -257,7 +257,7 @@ describe('minimap', () => {
 
   it('clamps the viewport rectangle to the minimap bounds when panned past the tree edge', async () => {
     const el = host()
-    const chart = createOrgChart(el, {
+    const chart = createKlados(el, {
       data: buildOrg(300),
       nodeSize: { w: 120, h: 48 },
       worker: false,
@@ -266,7 +266,7 @@ describe('minimap', () => {
     await nextFrame()
     await nextFrame()
 
-    const minimapRoot = el.querySelector<HTMLElement>('.orgchart-minimap')!
+    const minimapRoot = el.querySelector<HTMLElement>('.klados-minimap')!
     // The viewport-rectangle overlay is the minimap's only other child
     // (see createMinimap: canvas appended first, this div second).
     const viewportEl = minimapRoot.children[1] as HTMLElement
@@ -316,7 +316,7 @@ describe('minimap', () => {
     // out further than fit needs" floor in recomputeLimits ever binds, so
     // zoomTo can actually push the viewport far larger than the tree bounds
     // through the public API, no internal reach-in required.
-    const chart = createOrgChart(el, {
+    const chart = createKlados(el, {
       data: SMALL_DATA,
       nodeSize: { w: 120, h: 48 },
       worker: false,
@@ -325,7 +325,7 @@ describe('minimap', () => {
     await nextFrame()
     await nextFrame()
 
-    const minimapRoot = el.querySelector<HTMLElement>('.orgchart-minimap')!
+    const minimapRoot = el.querySelector<HTMLElement>('.klados-minimap')!
     const viewportEl = minimapRoot.children[1] as HTMLElement
 
     chart.api.zoomTo(0.05)
@@ -355,7 +355,7 @@ describe('minimap', () => {
   // across the whole minimap as the camera caught up.
   it('takes up a toggle’s new layout only once its transition has finished', async () => {
     const el = host()
-    const chart = createOrgChart(el, {
+    const chart = createKlados(el, {
       data: buildOrg(300),
       nodeSize: { w: 120, h: 48 },
       worker: false,
@@ -400,7 +400,7 @@ describe('minimap', () => {
   // measured differently by the two, lands the rectangle off to one side.
   it('round-trips a click at its centre back to a rectangle centred on it', async () => {
     const el = host()
-    const chart = createOrgChart(el, {
+    const chart = createKlados(el, {
       data: buildOrg(300),
       nodeSize: { w: 120, h: 48 },
       worker: false,
@@ -409,7 +409,7 @@ describe('minimap', () => {
     await new Promise((r) => setTimeout(r, 260))
     await nextFrame()
 
-    const minimapRoot = el.querySelector<HTMLElement>('.orgchart-minimap')!
+    const minimapRoot = el.querySelector<HTMLElement>('.klados-minimap')!
     const widget = minimapRoot.getBoundingClientRect()
     minimapRoot.dispatchEvent(
       new PointerEvent('pointerdown', {
@@ -448,7 +448,7 @@ describe('minimap', () => {
   // and only refitted when a layout genuinely no longer fits inside it.
   it('holds its scale across a toggle instead of refitting to the collapsed bounds', async () => {
     const el = host()
-    const chart = createOrgChart(el, {
+    const chart = createKlados(el, {
       data: buildOrg(300),
       nodeSize: { w: 120, h: 48 },
       worker: false,
@@ -461,7 +461,7 @@ describe('minimap', () => {
     await new Promise((r) => setTimeout(r, 260))
     await nextFrame()
 
-    const minimapRoot = el.querySelector<HTMLElement>('.orgchart-minimap')!
+    const minimapRoot = el.querySelector<HTMLElement>('.klados-minimap')!
     const viewportEl = minimapRoot.querySelector('div') as HTMLElement
     const rectWidth = (): number => parseFloat(viewportEl.style.width)
 
@@ -493,7 +493,7 @@ describe('minimap', () => {
   // this one assertion covers both.
   it('leaves the viewport rectangle where it was after a root toggle', async () => {
     const el = host()
-    const chart = createOrgChart(el, {
+    const chart = createKlados(el, {
       data: buildOrg(300),
       nodeSize: { w: 120, h: 48 },
       worker: false,
@@ -503,7 +503,7 @@ describe('minimap', () => {
     await new Promise((r) => setTimeout(r, 260))
     await nextFrame()
 
-    const minimapRoot = el.querySelector<HTMLElement>('.orgchart-minimap')!
+    const minimapRoot = el.querySelector<HTMLElement>('.klados-minimap')!
     const viewportEl = minimapRoot.children[1] as HTMLElement
     const readRect = (): { x: number; y: number; w: number; h: number } => {
       const m = /translate\(([-\d.]+)px,\s*([-\d.]+)px\)/.exec(viewportEl.style.transform)!
@@ -541,7 +541,7 @@ describe('minimap', () => {
   // catches that.
   it('holds the viewport rectangle still for every frame of a root toggle', async () => {
     const el = host()
-    const chart = createOrgChart(el, {
+    const chart = createKlados(el, {
       data: buildOrg(300),
       nodeSize: { w: 120, h: 48 },
       worker: false,
@@ -551,7 +551,7 @@ describe('minimap', () => {
     await new Promise((r) => setTimeout(r, 260))
     await nextFrame()
 
-    const minimapRoot = el.querySelector<HTMLElement>('.orgchart-minimap')!
+    const minimapRoot = el.querySelector<HTMLElement>('.klados-minimap')!
     const viewportEl = minimapRoot.children[1] as HTMLElement
     const readX = (): number => {
       const m = /translate\(([-\d.]+)px,\s*([-\d.]+)px\)/.exec(viewportEl.style.transform)!
@@ -575,7 +575,7 @@ describe('minimap', () => {
 
   it('destroy() removes the minimap element', async () => {
     const el = host()
-    const chart = createOrgChart(el, {
+    const chart = createKlados(el, {
       data: SMALL_DATA,
       nodeSize: { w: 120, h: 48 },
       worker: false,

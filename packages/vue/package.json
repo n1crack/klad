@@ -1,6 +1,28 @@
 {
-  "name": "@n1crack/orgchart-vue",
+  "name": "@klados/vue",
   "version": "1.0.0-alpha.0",
+  "description": "Vue 3 adapter for Klados — a <Klados> component with a #node scoped slot.",
+  "keywords": [
+    "org-chart",
+    "orgchart",
+    "organization-chart",
+    "tree",
+    "hierarchy",
+    "canvas",
+    "klados",
+    "vue",
+    "vue3"
+  ],
+  "homepage": "https://n1crack.github.io/klados/",
+  "repository": {
+    "type": "git",
+    "url": "git+https://github.com/n1crack/klados.git",
+    "directory": "packages/vue"
+  },
+  "bugs": {
+    "url": "https://github.com/n1crack/klados/issues"
+  },
+  "author": "Yusuf Özdemir",
   "type": "module",
   "license": "AGPL-3.0-or-later",
   "sideEffects": false,
@@ -26,8 +48,8 @@
   ],
   "//dependencies": "orgchart-core is a DIRECT dependency, not merely a transitive one through orgchart: this package's own published .d.ts names types declared there (NodeData, and through it every event payload), so a consumer's TypeScript has to be able to resolve it. Under a strict node_modules layout a transitive dependency is not resolvable from here.",
   "dependencies": {
-    "@n1crack/orgchart": "workspace:*",
-    "@n1crack/orgchart-core": "workspace:*"
+    "klados": "workspace:*",
+    "@klados/core": "workspace:*"
   },
   "peerDependencies": {
     "vue": ">=3.5 <4"

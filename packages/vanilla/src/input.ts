@@ -1,4 +1,4 @@
-import { pan, screenToWorld, zoomAt, type Camera, type ZoomLimits } from '@n1crack/orgchart-core'
+import { pan, screenToWorld, zoomAt, type Camera, type ZoomLimits } from '@klados/core'
 
 export interface InputCallbacks {
   getCamera(): Camera

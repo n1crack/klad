@@ -181,12 +181,12 @@ function vanilla(snapshot: ConfigSnapshot): string {
   const content = snapshot.hasNodeContent
     ? `\n  renderNode: (element, context) => {\n    element.textContent = String(context.item.name ?? '')\n  },`
     : ''
-  return `import { createOrgChart } from '@n1crack/orgchart'
+  return `import { createKlados } from 'klados'
 
 ${DATA_NOTE}
 ${nodeContentNote(snapshot.hasNodeContent)}
 
-const chart = createOrgChart(host, {
+const chart = createKlados(host, {
 ${optionLines(snapshot, '  ')}${content}
 })
 `
@@ -200,7 +200,7 @@ function vue(snapshot: ConfigSnapshot): string {
     </template>`
     : ''
   return `<script setup lang="ts">
-import { OrgChart, type Options } from '@n1crack/orgchart-vue'
+import { Klados, type Options } from '@klados/vue'
 
 ${DATA_NOTE}
 ${nodeContentNote(snapshot.hasNodeContent)}
@@ -211,8 +211,8 @@ ${optionLines(snapshot, '  ')}
 </script>
 
 <template>
-  <OrgChart :options="options">${slot}
-  </OrgChart>
+  <Klados :options="options">${slot}
+  </Klados>
 </template>
 `
 }
@@ -221,10 +221,10 @@ function react(snapshot: ConfigSnapshot): string {
   const children = snapshot.hasNodeContent
     ? `>
       {(context) => <div className="card">{String(context.item.name ?? '')}</div>}
-    </OrgChart>`
+    </Klados>`
     : ' />'
   return `import { useMemo } from 'react'
-import { OrgChart, type Options } from '@n1crack/orgchart-react'
+import { Klados, type Options } from '@klados/react'
 
 ${DATA_NOTE}
 ${nodeContentNote(snapshot.hasNodeContent)}
@@ -238,7 +238,7 @@ ${optionLines(snapshot, '      ')}
   )
 
   return (
-    <OrgChart options={options}${children}
+    <Klados options={options}${children}
   )
 }
 `

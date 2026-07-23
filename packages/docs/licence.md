@@ -1,6 +1,6 @@
 # Licence
 
-OrgChart is dual-licensed.
+Klados is dual-licensed.
 
 ## GNU AGPL v3 or later
 

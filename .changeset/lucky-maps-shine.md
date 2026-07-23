@@ -1,5 +1,5 @@
 ---
-'@n1crack/orgchart': minor
+'klados': minor
 ---
 
 New `minimap.silhouetteColour` option. The plate, border and viewport rectangle

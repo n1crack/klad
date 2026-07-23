@@ -1,4 +1,4 @@
-import { createOrgChart, type Options, type OrgChartApi } from '@n1crack/orgchart'
+import { createKlados, type Options, type KladosApi } from 'klados'
 import {
   DEPARTMENT_COLOR,
   EDGE_RADIUS_DEFAULT,
@@ -441,7 +441,7 @@ const RENDERERS: Record<NodeContentKind, RenderNode | null> = {
 
 /** Imperative handle main.ts uses to drive the mounted vanilla chart's live controls. */
 export interface VanillaDemoHandle {
-  readonly api: OrgChartApi
+  readonly api: KladosApi
   destroy(): void
   setMinimap(on: boolean): void
   setMinimapPosition(position: MinimapPosition): void
@@ -463,7 +463,7 @@ export interface VanillaDemoHandle {
  * values is current.
  *
  * `setEdgeRadius`/`setNodeFill` go straight through `chart.api.setTheme`
- * instead — `OrgChartApi.setTheme` (packages/vanilla/src/index.ts) merges a
+ * instead — `KladosApi.setTheme` (packages/vanilla/src/index.ts) merges a
  * partial theme over whatever the chart is already showing, re-resolves it,
  * and repaints, all without touching tree/layout state. Before that method
  * existed, the only way to change a theme token post-construction was to
@@ -475,7 +475,7 @@ export function mountVanilla(
   host: HTMLElement,
   example: Example,
   mode: ThemeMode,
-  onApiChange: (api: OrgChartApi) => void,
+  onApiChange: (api: KladosApi) => void,
 ): VanillaDemoHandle {
   const renderNode = RENDERERS[example.content]
   let currentMode = mode
@@ -494,7 +494,7 @@ export function mountVanilla(
     }
   }
 
-  const chart = createOrgChart(host, buildOptions())
+  const chart = createKlados(host, buildOptions())
   onApiChange(chart.api)
 
   /**

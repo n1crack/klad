@@ -1,6 +1,28 @@
 {
-  "name": "@n1crack/orgchart-core",
+  "name": "@klados/core",
   "version": "1.0.0-alpha.0",
+  "description": "Layout, viewport maths, spatial index, canvas renderer and worker protocol for Klados. No DOM.",
+  "keywords": [
+    "org-chart",
+    "orgchart",
+    "organization-chart",
+    "tree",
+    "hierarchy",
+    "canvas",
+    "klados",
+    "layout",
+    "tidy-tree"
+  ],
+  "homepage": "https://n1crack.github.io/klados/",
+  "repository": {
+    "type": "git",
+    "url": "git+https://github.com/n1crack/klados.git",
+    "directory": "packages/core"
+  },
+  "bugs": {
+    "url": "https://github.com/n1crack/klados/issues"
+  },
+  "author": "Yusuf Özdemir",
   "type": "module",
   "license": "AGPL-3.0-or-later",
   "sideEffects": false,
@@ -27,7 +49,11 @@
       }
     }
   },
-  "files": ["dist", "LICENSE", "LICENSE-COMMERCIAL.md"],
+  "files": [
+    "dist",
+    "LICENSE",
+    "LICENSE-COMMERCIAL.md"
+  ],
   "scripts": {
     "build": "node ../../scripts/copy-license.mjs && tsdown",
     "test": "vitest run",

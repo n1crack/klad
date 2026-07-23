@@ -1,5 +1,5 @@
 {
-  "name": "orgchart-monorepo",
+  "name": "klados-monorepo",
   "private": true,
   "license": "AGPL-3.0-or-later",
   "type": "module",
@@ -8,8 +8,8 @@
     "node": ">=22.12.0"
   },
   "scripts": {
-    "dev": "pnpm --filter @n1crack/orgchart-playground dev",
-    "docs": "pnpm --filter @n1crack/orgchart-docs dev",
+    "dev": "pnpm --filter @klados/playground dev",
+    "docs": "pnpm --filter @klados/docs dev",
     "build": "turbo run build",
     "test": "turbo run test",
     "typecheck": "turbo run typecheck",

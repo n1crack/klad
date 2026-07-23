@@ -17,7 +17,7 @@ thousand times.
 == Vanilla
 
 ```ts
-createOrgChart(host, {
+createKlados(host, {
   ...options,
   renderNode(element, context) {
     // `element` is a pooled div, reused across frames and across NODES. Build
@@ -40,7 +40,7 @@ createOrgChart(host, {
 
 ```vue
 <template>
-  <OrgChart :options="options">
+  <Klados :options="options">
     <template #node="{ item, hasChildren, open, toggle }">
       <div class="card">
         <strong>{{ item.name }}</strong>
@@ -50,14 +50,14 @@ createOrgChart(host, {
         </button>
       </div>
     </template>
-  </OrgChart>
+  </Klados>
 </template>
 ```
 
 == React
 
 ```tsx
-<OrgChart options={options}>
+<Klados options={options}>
   {({ item, hasChildren, open, toggle }) => (
     <div className="card">
       <strong>{String(item.name)}</strong>
@@ -69,7 +69,7 @@ createOrgChart(host, {
       )}
     </div>
   )}
-</OrgChart>
+</Klados>
 ```
 
 :::

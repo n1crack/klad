@@ -1,4 +1,4 @@
-# OrgChart — remaining work (resume from `dev`)
+# Klados — remaining work (resume from `dev`)
 
 Written before a context clear. This is the authoritative to-do for the next session.
 Work continues on the `dev` branch. The full design is
@@ -8,8 +8,8 @@ Work continues on the `dev` branch. The full design is
 
 ## Where things stand
 
-Five packages, all green (423 tests): `@n1crack/orgchart-core`, `@n1crack/orgchart`
-(vanilla), `@n1crack/orgchart-vue`, `@n1crack/orgchart-react`, plus a private playground.
+Five packages, all green (423 tests): `@klados/core`, `klados`
+(vanilla), `@klados/vue`, `@klados/react`, plus a private playground.
 Everything runs from source through the pnpm workspace — no build step yet. `pnpm dev`
 serves the playground; `pnpm test` / `pnpm typecheck` / `pnpm lint` from the root.
 
@@ -45,14 +45,16 @@ The pipeline itself is built (see below); what remains needs the npm account,
 so it happens from the machine that has it:
 
 - Add an **`NPM_TOKEN`** repository secret (an npm automation token with
-  publish rights on the `@n1crack` scope). Nothing else is missing — the
+  publish rights on the `klados` package and the `@klados` scope). Nothing else is missing — the
   release workflow is already written against it.
-- Confirm the `@n1crack` scope exists and the four package names are free.
+- Confirm the `@klados` scope exists and the four package names are free
+  (`klados`, `@klados/core`, `@klados/vue`, `@klados/react` all read as
+  unpublished on the registry as of the rename).
 - Decide the first published version. Everything currently sits at
   `1.0.0-alpha.0`; `pnpm changeset` then `pnpm version-packages` is what moves
   it.
 - Optional: one last release of the OLD `vue3-org-chart` npm package whose
-  README points at `@n1crack/orgchart-*`.
+  README points at `klados-*`.
 
 ### What is already in place
 
@@ -66,7 +68,7 @@ so it happens from the machine that has it:
   sibling's SOURCE path, and every cross-package type silently became
   `undefined` in the shipped `.d.ts` — `NodeData`, and with it the payload of
   every event a consumer handles. Pointing at the siblings' built declarations
-  fixes it; turbo's `^build` guarantees they exist. `@n1crack/orgchart-core`
+  fixes it; turbo's `^build` guarantees they exist. `@klados/core`
   is a direct dependency of the Vue package for the same reason: its published
   types name it.
 - **Licence files copied into each package at build time**

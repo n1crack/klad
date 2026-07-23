@@ -11,7 +11,7 @@
  *
  * Rendered at 2× and checked in: a crawler needs the card at a stable URL, and
  * regenerating on every build would churn a binary for no change. Re-run with
- * `pnpm --filter @n1crack/orgchart-docs images` after changing the scene.
+ * `pnpm --filter @klados/docs images` after changing the scene.
  */
 import { chromium } from 'playwright'
 import { writeFile } from 'node:fs/promises'
@@ -206,7 +206,7 @@ const browser = await chromium.launch()
   `
   const body = `
     <div class="copy">
-      <h1>OrgChart</h1>
+      <h1>Klados</h1>
       <div class="rule"></div>
       <p>A fast org chart for very large trees</p>
     </div>

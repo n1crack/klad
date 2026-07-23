@@ -1,5 +1,5 @@
 ---
-'@n1crack/orgchart': minor
+'klados': minor
 ---
 
 Pointer and touch fixes.

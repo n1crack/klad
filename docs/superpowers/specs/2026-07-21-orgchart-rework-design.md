@@ -1,4 +1,4 @@
-# OrgChart v1.0 — Framework-Agnostic Rework
+# Klados v1.0 — Framework-Agnostic Rework
 
 **Date:** 2026-07-21
 **Status:** Approved design, ready for implementation planning
@@ -79,10 +79,10 @@ later without touching the core.
 
 ```
 packages/
-  core/          @n1crack/orgchart-core    pure TS, no DOM, worker-safe, zero deps
-  vanilla/       @n1crack/orgchart         DOM binding layer, no framework
-  vue/           @n1crack/orgchart-vue     peer: vue >=3.5 <4
-  react/         @n1crack/orgchart-react   peer: react >=19        (spec 2)
+  core/          @klados/core    pure TS, no DOM, worker-safe, zero deps
+  vanilla/       klados         DOM binding layer, no framework
+  vue/           @klados/vue     peer: vue >=3.5 <4
+  react/         @klados/react   peer: react >=19        (spec 2)
   playground/    vite 8 demo, private
 ```
 
@@ -134,18 +134,18 @@ nothing about canvas, workers, or frameworks.
 `vanilla` exports one factory. This is the whole frameworkless API:
 
 ```ts
-function createOrgChart(host: HTMLElement, options: Options): OrgChartInstance
+function createKlados(host: HTMLElement, options: Options): KladosInstance
 
-interface OrgChartInstance {
+interface KladosInstance {
   destroy(): void
   update(data: NodeData[], opts: Partial<Options>): void
   subscribe(cb: (s: ChartState) => void): () => void
   on<E extends keyof Events>(event: E, cb: Events[E]): () => void
-  readonly api: OrgChartApi
+  readonly api: KladosApi
 }
 ```
 
-`createOrgChart` creates the canvas inside `host`, starts the worker, and attaches
+`createKlados` creates the canvas inside `host`, starts the worker, and attaches
 input handling. A user with no framework calls it directly and is done.
 
 Framework adapters bind to this and nothing else. Vue uses `shallowRef` +
@@ -277,7 +277,7 @@ interface Options {
   worker?: boolean                                    // default true; off for CSP/tests
 }
 
-interface OrgChartApi {
+interface KladosApi {
   // camera
   zoomTo(k: number, opts?: ZoomOpts): void
   zoomIn(): void
@@ -425,15 +425,15 @@ A `MIGRATION.md` covering:
 
 | v0.2.5 | v1.0 |
 |---|---|
-| `<vue3-org-chart :data json minimap>` | `<OrgChart :options="{ data, nodeSize, ... }">` |
-| `inject('api')` | `useOrgChart()` composable / `ref` on the component |
+| `<vue3-org-chart :data json minimap>` | `<Klados :options="{ data, nodeSize, ... }">` |
+| `inject('api')` | `useKlados()` composable / `ref` on the component |
 | `#node` scoped slot | `#node` scoped slot (same name, `NodeContext` shape) |
 | CSS variables for lines | `theme` option (canvas tokens) + CSS vars for the overlay |
 | `panzoom` behaviour | in-house viewport, same gestures |
 | implicit node sizing | **required** `nodeSize` |
 
 The existing `vue3-org-chart` npm package is not renamed or transferred. It receives one
-final release whose README points at `@n1crack/orgchart-vue` and links `MIGRATION.md`,
+final release whose README points at `@klados/vue` and links `MIGRATION.md`,
 then stops receiving updates. The GitHub repository is already renamed to
 `n1crack/orgchart`.
 

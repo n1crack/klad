@@ -1,16 +1,16 @@
-export { OrgChart } from './OrgChart.js'
-export type { OrgChartHandle, OrgChartProps } from './OrgChart.js'
-export { useOrgChart } from './useOrgChart.js'
-export type { OrgChartContextValue } from './useOrgChart.js'
+export { Klados } from './Klados.js'
+export type { KladosHandle, KladosProps } from './Klados.js'
+export { useKlados } from './useKlados.js'
+export type { KladosContextValue } from './useKlados.js'
 export type {
   ChartState,
   NodeContext,
   Options,
-  OrgChartApi,
+  KladosApi,
   SearchResult,
-} from '@n1crack/orgchart'
+} from 'klados'
 
 // A host doing light/dark needs the palettes, and should not have to add the
 // vanilla package as a dependency to name them.
-export { DARK_THEME, DEFAULT_THEME } from '@n1crack/orgchart'
-export type { Theme } from '@n1crack/orgchart'
+export { DARK_THEME, DEFAULT_THEME } from 'klados'
+export type { Theme } from 'klados'

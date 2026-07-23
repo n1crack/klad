@@ -1,15 +1,15 @@
 # Chart API
 
-The imperative handle. `createOrgChart` returns an instance whose `.api` is
-this; in Vue reach it with `useOrgChart()` or a `ref` on the component, in
-React with a `ref` on `<OrgChart>`.
+The imperative handle. `createKlados` returns an instance whose `.api` is
+this; in Vue reach it with `useKlados()` or a `ref` on the component, in
+React with a `ref` on `<Klados>`.
 
 ::: tabs key:stack
 
 == Vanilla
 
 ```ts
-const chart = createOrgChart(host, options)
+const chart = createKlados(host, options)
 chart.api.fit()
 ```
 
@@ -17,9 +17,9 @@ chart.api.fit()
 
 ```vue
 <script setup lang="ts">
-import { useOrgChart } from '@n1crack/orgchart-vue'
+import { useKlados } from '@klados/vue'
 
-const { api, state } = useOrgChart() // both shallowRefs
+const { api, state } = useKlados() // both shallowRefs
 api.value?.fit()
 </script>
 ```
@@ -27,7 +27,7 @@ api.value?.fit()
 == React
 
 ```tsx
-const chartRef = useRef<OrgChartHandle>(null)
+const chartRef = useRef<KladosHandle>(null)
 // ...
 chartRef.current?.api?.fit()
 ```

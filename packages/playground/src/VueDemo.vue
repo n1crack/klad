@@ -1,6 +1,6 @@
 <script setup lang="ts">
-import { OrgChart } from '@n1crack/orgchart-vue'
-import type { NodeContext, Options, OrgChartApi } from '@n1crack/orgchart-vue'
+import { Klados } from '@klados/vue'
+import type { NodeContext, Options, KladosApi } from '@klados/vue'
 import { computed, ref } from 'vue'
 import {
   DEPARTMENT_COLOR,
@@ -19,9 +19,9 @@ import {
 import type { ThemeMode } from './theme.js'
 
 const props = defineProps<{ example: Example; mode: ThemeMode }>()
-const emit = defineEmits<{ ready: [OrgChartApi] }>()
+const emit = defineEmits<{ ready: [KladosApi] }>()
 
-const chartRef = ref<{ api: OrgChartApi | null } | null>(null)
+const chartRef = ref<{ api: KladosApi | null } | null>(null)
 
 const DEFAULT_NODE_SIZE = { w: 180, h: 64 }
 
@@ -34,7 +34,7 @@ type Item = NodeContext['item']
  * starts the fresh chart with the current values baked in), but reading a
  * plain variable inside `computed` does not register it as a reactive
  * dependency. If it did — if these were refs — then changing either one
- * would recompute `options` to a new object, which OrgChart.vue's own
+ * would recompute `options` to a new object, which Klados.vue's own
  * `watch(() => props.options, ..., { deep: true })` would see as a prop
  * change and respond to with `chart.update()`, which calls `initOpen()` and
  * resets every node's open/closed state. That is exactly the reset
@@ -91,9 +91,9 @@ function setMinimapPosition(position: MinimapPosition): void {
 
 /**
  * `edgeCornerRadius` lives under `theme`, and used to require a full
- * `<OrgChart :key="...">` remount to change post-construction (theme was
- * resolved exactly once, at `createOrgChart`, and `chart.update()` never
- * re-resolved it). `OrgChartApi.setTheme` (packages/vanilla/src/index.ts)
+ * `<Klados :key="...">` remount to change post-construction (theme was
+ * resolved exactly once, at `createKlados`, and `chart.update()` never
+ * re-resolved it). `KladosApi.setTheme` (packages/vanilla/src/index.ts)
  * fixes that: it merges a partial theme over whatever the chart is already
  * showing, re-resolves it, and repaints — paint-only, so this no longer
  * resets camera position or expand/collapse state the way the remount used
@@ -135,7 +135,7 @@ function setEdgeWidth(width: number): void {
   chartRef.value?.api?.setTheme({ edgeWidth: width, edgeHighlightWidth: highlightWidthFor(width) })
 }
 
-/** `OrgChartApi.setRing` — NOT a theme token, so it goes through its own
+/** `KladosApi.setRing` — NOT a theme token, so it goes through its own
  * method rather than `setTheme`; see `Options.ring`'s docblock in
  * packages/vanilla/src/index.ts. */
 function setRingEnabled(enabled: boolean): void {
@@ -189,7 +189,7 @@ function headcountOf(item: Item): number {
 </script>
 
 <template>
-  <OrgChart ref="chartRef" :options="options" class="chart-host" @ready="handleReady">
+  <Klados ref="chartRef" :options="options" class="chart-host" @ready="handleReady">
     <!--
       One `#node` slot, branching on `example.content` — the same tag the
       vanilla demo switches on to pick a render function. `v-if` directly on
@@ -260,5 +260,5 @@ function headcountOf(item: Item): number {
         </button>
       </div>
     </template>
-  </OrgChart>
+  </Klados>
 </template>

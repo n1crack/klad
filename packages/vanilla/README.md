@@ -1,6 +1,6 @@
-# @n1crack/orgchart
+# klados
 
-The frameworkless API for [OrgChart](https://github.com/n1crack/orgchart) — an
+The frameworkless API for [Klados](https://github.com/n1crack/klados) — an
 org chart library that renders 5,000–50,000 nodes at 60fps by laying out and
 drawing the tree on a `<canvas>` inside a Web Worker, overlaying real DOM only
 for the nodes currently on screen and zoomed in far enough to read.
@@ -8,11 +8,11 @@ for the nodes currently on screen and zoomed in far enough to read.
 This package is one function.
 
 ```bash
-npm install @n1crack/orgchart
+npm install klados
 ```
 
 ```ts
-import { createOrgChart, type Options } from '@n1crack/orgchart'
+import { createKlados, type Options } from 'klados'
 
 const options: Options = {
   data: [
@@ -26,16 +26,16 @@ const options: Options = {
   },
 }
 
-const chart = createOrgChart(document.getElementById('chart')!, options)
+const chart = createKlados(document.getElementById('chart')!, options)
 chart.on('nodeClick', ({ id, item }) => console.log(id, item))
 // chart.destroy() when done
 ```
 
-Using Vue? Use [`@n1crack/orgchart-vue`](https://www.npmjs.com/package/@n1crack/orgchart-vue)
+Using Vue? Use [`@klados/vue`](https://www.npmjs.com/package/@klados/vue)
 instead — it's built on this package and adds a `#node` scoped slot.
 
 Guide, API reference and roadmap:
-[the documentation](https://github.com/n1crack/orgchart).
+[the documentation](https://github.com/n1crack/klados).
 
 ## Licence
 

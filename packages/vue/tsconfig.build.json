@@ -7,9 +7,9 @@ Pointing at the siblings' built declarations instead makes the emitted imports n
   "extends": "./tsconfig.json",
   "compilerOptions": {
     "paths": {
-      "@n1crack/orgchart": ["../vanilla/dist/index.d.ts"],
-      "@n1crack/orgchart-core": ["../core/dist/index.d.ts"],
-      "@n1crack/orgchart-core/host": ["../core/dist/worker/host.d.ts"]
+      "klados": ["../vanilla/dist/index.d.ts"],
+      "@klados/core": ["../core/dist/index.d.ts"],
+      "@klados/core/host": ["../core/dist/worker/host.d.ts"]
     }
   }
 }

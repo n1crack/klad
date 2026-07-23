@@ -1,10 +1,10 @@
-# OrgChart Render Pipeline and Adapters Implementation Plan
+# Klados Render Pipeline and Adapters Implementation Plan
 
 > **For agentic workers:** REQUIRED SUB-SKILL: Use superpowers:subagent-driven-development (recommended) or superpowers:executing-plans to implement this plan task-by-task. Steps use checkbox (`- [ ]`) syntax for tracking.
 
 **Goal:** Put a real org chart on screen — rasterized in a Web Worker, with framework slots overlaid on top — usable from plain TypeScript and from Vue.
 
-**Architecture:** `packages/core` gains a transport-agnostic `ChartEngine` that owns tree, open/closed state, layout, and the spatial index, plus a `Renderer` interface with a Canvas2D backend. A Web Worker wraps the engine and draws to an `OffscreenCanvas` transferred from the main thread; a main-thread host drives the identical engine when workers are unavailable. `packages/vanilla` owns every piece of DOM work — canvas creation, pointer input, the node overlay, the accessibility tree — and exposes `createOrgChart`. `packages/vue` binds that to Vue reactivity and scoped slots, and adds nothing else.
+**Architecture:** `packages/core` gains a transport-agnostic `ChartEngine` that owns tree, open/closed state, layout, and the spatial index, plus a `Renderer` interface with a Canvas2D backend. A Web Worker wraps the engine and draws to an `OffscreenCanvas` transferred from the main thread; a main-thread host drives the identical engine when workers are unavailable. `packages/vanilla` owns every piece of DOM work — canvas creation, pointer input, the node overlay, the accessibility tree — and exposes `createKlados`. `packages/vue` binds that to Vue reactivity and scoped slots, and adds nothing else.
 
 **Tech Stack:** TypeScript 5.9, pnpm workspaces, turbo, vitest 4 (node + browser mode), tsdown, oxlint, Vue 3.5.
 
@@ -19,7 +19,7 @@
 - `noUncheckedIndexedAccess: true` and `exactOptionalPropertyTypes: true` are on.
 - **Worker bundling:** `new Worker(new URL('./chart.worker.js', import.meta.url), { type: 'module' })`. No blob inlining, no consumer bundler configuration.
 - **Performance budget:** frame time under 16ms at p95 with 50,000 nodes. A cold 50k layout is already under 400ms (measured ~21ms).
-- Package names: `@n1crack/orgchart-core`, `@n1crack/orgchart` (vanilla), `@n1crack/orgchart-vue`.
+- Package names: `@klados/core`, `klados` (vanilla), `@klados/vue`.
 - Spec of record: `docs/superpowers/specs/2026-07-21-orgchart-rework-design.md`.
 
 ## What already exists
@@ -63,15 +63,15 @@ packages/core/src/
   worker/host.ts         # main-thread side; worker or in-process        (Task 6)
 
 packages/vanilla/src/
-  index.ts               # createOrgChart, public types                  (Task 7)
+  index.ts               # createKlados, public types                  (Task 7)
   input.ts               # pointer, wheel, touch -> camera               (Task 7)
   overlay.ts             # pooled DOM node overlay                       (Task 7)
   a11y.ts                # hidden role=tree mirror + keyboard nav        (Task 8)
 
 packages/vue/src/
   index.ts               # plugin + exports                              (Task 9)
-  OrgChart.vue           # component, scoped #node slot                  (Task 9)
-  useOrgChart.ts         # imperative API composable                     (Task 9)
+  Klados.vue           # component, scoped #node slot                  (Task 9)
+  useKlados.ts         # imperative API composable                     (Task 9)
 
 packages/playground/     # vite 8 demo, vanilla + vue tabs                (Task 9)
 ```
@@ -192,7 +192,7 @@ describe('pruneToVisible', () => {
 
 - [ ] **Step 2: Run the test to verify it fails**
 
-Run: `pnpm --filter @n1crack/orgchart-core test`
+Run: `pnpm --filter @klados/core test`
 Expected: FAIL — `Failed to resolve import "./visible.js"`.
 
 - [ ] **Step 3: Write the implementation**
@@ -300,7 +300,7 @@ export { pruneToVisible } from './visible.js'
 
 - [ ] **Step 5: Run the tests**
 
-Run: `pnpm --filter @n1crack/orgchart-core test && pnpm typecheck && pnpm lint`
+Run: `pnpm --filter @klados/core test && pnpm typecheck && pnpm lint`
 Expected: all pass, exit 0.
 
 - [ ] **Step 6: Commit**
@@ -424,7 +424,7 @@ describe('createTextMeasurer', () => {
 
 - [ ] **Step 2: Run the test to verify it fails**
 
-Run: `pnpm --filter @n1crack/orgchart-core test`
+Run: `pnpm --filter @klados/core test`
 Expected: FAIL — `Failed to resolve import "./measure.js"`.
 
 - [ ] **Step 3: Write the implementation**
@@ -516,7 +516,7 @@ export { createTextMeasurer } from './text/measure.js'
 
 - [ ] **Step 5: Run the tests**
 
-Run: `pnpm --filter @n1crack/orgchart-core test && pnpm typecheck && pnpm lint`
+Run: `pnpm --filter @klados/core test && pnpm typecheck && pnpm lint`
 Expected: all pass.
 
 - [ ] **Step 6: Commit**
@@ -619,7 +619,7 @@ describe('resolveTheme', () => {
 
 - [ ] **Step 2: Run the test to verify it fails**
 
-Run: `pnpm --filter @n1crack/orgchart-core test`
+Run: `pnpm --filter @klados/core test`
 Expected: FAIL — `Failed to resolve import "./lod.js"`.
 
 - [ ] **Step 3: Write the implementations**
@@ -711,7 +711,7 @@ export { DEFAULT_LOD, lodFor, overlayEnabled } from './render/lod.js'
 
 - [ ] **Step 5: Run the tests**
 
-Run: `pnpm --filter @n1crack/orgchart-core test && pnpm typecheck && pnpm lint`
+Run: `pnpm --filter @klados/core test && pnpm typecheck && pnpm lint`
 Expected: all pass.
 
 - [ ] **Step 6: Commit**
@@ -948,7 +948,7 @@ describe('createCanvas2DRenderer', () => {
 
 - [ ] **Step 3: Run the test to verify it fails**
 
-Run: `pnpm --filter @n1crack/orgchart-core test`
+Run: `pnpm --filter @klados/core test`
 Expected: FAIL — `Failed to resolve import "./canvas2d.js"`. The browser project should start Chromium; if Playwright reports a missing browser, rerun `pnpm exec playwright install chromium`.
 
 - [ ] **Step 4: Write the renderer interface**
@@ -1072,7 +1072,7 @@ export function createCanvas2DRenderer(
   measurerFor: (font: string) => TextMeasurer,
 ): Renderer {
   const ctx = surface.getContext('2d')
-  if (ctx === null) throw new Error('OrgChart: 2D canvas context unavailable')
+  if (ctx === null) throw new Error('Klados: 2D canvas context unavailable')
 
   const measurer = measurerFor(theme.labelFont)
   let cssWidth = 0
@@ -1220,7 +1220,7 @@ export { createCanvas2DRenderer } from './render/canvas2d.js'
 
 - [ ] **Step 7: Run the tests**
 
-Run: `pnpm --filter @n1crack/orgchart-core test && pnpm typecheck && pnpm lint`
+Run: `pnpm --filter @klados/core test && pnpm typecheck && pnpm lint`
 Expected: the node project keeps passing and the browser project runs the seven canvas cases in Chromium.
 
 - [ ] **Step 8: Commit**
@@ -1425,7 +1425,7 @@ describe('ChartEngine', () => {
 
 - [ ] **Step 2: Run the test to verify it fails**
 
-Run: `pnpm --filter @n1crack/orgchart-core test`
+Run: `pnpm --filter @klados/core test`
 Expected: FAIL — `Failed to resolve import "./engine.js"`.
 
 - [ ] **Step 3: Write the protocol**
@@ -1753,7 +1753,7 @@ export { toWireTree, wireTreeToTree } from './worker/protocol.js'
 
 - [ ] **Step 6: Run the tests**
 
-Run: `pnpm --filter @n1crack/orgchart-core test && pnpm typecheck && pnpm lint`
+Run: `pnpm --filter @klados/core test && pnpm typecheck && pnpm lint`
 Expected: all pass.
 
 - [ ] **Step 7: Commit**
@@ -1894,7 +1894,7 @@ describe('createChartHost with a worker', () => {
 
 - [ ] **Step 2: Run the test to verify it fails**
 
-Run: `pnpm --filter @n1crack/orgchart-core test`
+Run: `pnpm --filter @klados/core test`
 Expected: FAIL — `Failed to resolve import "./host.js"`.
 
 - [ ] **Step 3: Write the worker entry**
@@ -2059,7 +2059,7 @@ export function createChartHost(
           bounds = message.bounds
           quad = buildQuadTree(message.boxes, message.bounds)
         } else if (message.t === 'error') {
-          console.error(`OrgChart worker: ${message.message}`)
+          console.error(`Klados worker: ${message.message}`)
         }
       }
       const init: MainToWorker = {
@@ -2072,7 +2072,7 @@ export function createChartHost(
       }
       worker.postMessage(init, [offscreen as unknown as Transferable])
     } catch (error) {
-      console.warn('OrgChart: worker unavailable, rendering on the main thread.', error)
+      console.warn('Klados: worker unavailable, rendering on the main thread.', error)
       worker = null
     }
   }
@@ -2080,7 +2080,7 @@ export function createChartHost(
   if (worker === null) {
     const renderer = createCanvas2DRenderer(canvas as unknown as RenderSurface, theme, (font) => {
       const probe = document.createElement('canvas').getContext('2d')
-      if (probe === null) throw new Error('OrgChart: 2D canvas context unavailable')
+      if (probe === null) throw new Error('Klados: 2D canvas context unavailable')
       probe.font = font
       return createTextMeasurer({ measureWidth: (t) => probe.measureText(t).width })
     })
@@ -2187,12 +2187,12 @@ Add to `packages/core/src/index.ts`:
 //
 //   "./host": { "types": "./src/worker/host.ts", "import": "./src/worker/host.ts" }
 //
-// Consumers reach it at `@n1crack/orgchart-core/host`.
+// Consumers reach it at `@klados/core/host`.
 ```
 
 - [ ] **Step 6: Run the tests**
 
-Run: `pnpm --filter @n1crack/orgchart-core test && pnpm typecheck && pnpm lint`
+Run: `pnpm --filter @klados/core test && pnpm typecheck && pnpm lint`
 Expected: the browser project exercises both the worker and in-process paths, and the "same drawn set" case proves they agree.
 
 If the worker fails to resolve under vitest browser mode, the cause is almost always the `new URL(...)` specifier not being statically analysable — keep it exactly as written, a literal relative path inside `new URL`, or bundlers will silently stop emitting the worker chunk.
@@ -2208,7 +2208,7 @@ git commit -m "feat(core): worker entry and host with main-thread fallback"
 
 ### Task 7: The vanilla package
 
-Every piece of DOM work lives here, once. `createOrgChart` is the frameworkless API and the base both framework adapters sit on.
+Every piece of DOM work lives here, once. `createKlados` is the frameworkless API and the base both framework adapters sit on.
 
 **Files:**
 - Create: `packages/vanilla/package.json`
@@ -2224,9 +2224,9 @@ Every piece of DOM work lives here, once. `createOrgChart` is the frameworkless 
 - Produces:
   - `interface NodeContext { id: string; item: NodeData; open: boolean; hasChildren: boolean; toggle(): void }`
   - `interface Options { data, nodeSize, label?, orientation?, rtl?, spacing?, lodThresholds?, collapsedByDefault?, theme?, worker?, renderNode? }`
-  - `interface OrgChartApi { zoomTo, zoomIn, zoomOut, fit, reset, focus, expand, collapse, expandAll, collapseAll, expandTo, search, highlight, getState }`
-  - `interface OrgChartInstance { destroy(); update(data, opts?); subscribe(cb); on(event, cb); readonly api: OrgChartApi }`
-  - `function createOrgChart(host: HTMLElement, options: Options): OrgChartInstance`
+  - `interface KladosApi { zoomTo, zoomIn, zoomOut, fit, reset, focus, expand, collapse, expandAll, collapseAll, expandTo, search, highlight, getState }`
+  - `interface KladosInstance { destroy(); update(data, opts?); subscribe(cb); on(event, cb); readonly api: KladosApi }`
+  - `function createKlados(host: HTMLElement, options: Options): KladosInstance`
 
 `nodeSize` and `label` are evaluated on the main thread into a `Float64Array` and a `string[]` before anything crosses to the worker — functions are not transferable, and this is where that boundary is enforced.
 
@@ -2236,7 +2236,7 @@ Every piece of DOM work lives here, once. `createOrgChart` is the frameworkless 
 
 ```json
 {
-  "name": "@n1crack/orgchart",
+  "name": "klados",
   "version": "1.0.0-alpha.0",
   "type": "module",
   "license": "MIT",
@@ -2249,7 +2249,7 @@ Every piece of DOM work lives here, once. `createOrgChart` is the frameworkless 
   },
   "files": ["dist"],
   "dependencies": {
-    "@n1crack/orgchart-core": "workspace:*"
+    "@klados/core": "workspace:*"
   },
   "scripts": {
     "test": "vitest run",
@@ -2299,7 +2299,7 @@ export default defineConfig({
 
 ```ts
 import { describe, expect, it } from 'vitest'
-import { createOrgChart } from './index.js'
+import { createKlados } from './index.js'
 
 const DATA = [
   { id: 'a', name: 'Root' },
@@ -2317,7 +2317,7 @@ function host(): HTMLElement {
 }
 
 function make(overrides: Record<string, unknown> = {}) {
-  return createOrgChart(host(), {
+  return createKlados(host(), {
     data: DATA,
     nodeSize: { w: 120, h: 48 },
     label: (item) => String(item.name ?? ''),
@@ -2328,16 +2328,16 @@ function make(overrides: Record<string, unknown> = {}) {
 
 const nextFrame = () => new Promise((r) => requestAnimationFrame(() => r(null)))
 
-describe('createOrgChart', () => {
+describe('createKlados', () => {
   it('creates a canvas inside the host', () => {
     const el = host()
-    createOrgChart(el, { data: DATA, nodeSize: { w: 120, h: 48 }, worker: false })
+    createKlados(el, { data: DATA, nodeSize: { w: 120, h: 48 }, worker: false })
     expect(el.querySelector('canvas')).not.toBeNull()
   })
 
   it('removes everything it created on destroy', () => {
     const el = host()
-    const chart = createOrgChart(el, { data: DATA, nodeSize: { w: 120, h: 48 }, worker: false })
+    const chart = createKlados(el, { data: DATA, nodeSize: { w: 120, h: 48 }, worker: false })
     chart.destroy()
     expect(el.querySelector('canvas')).toBeNull()
   })
@@ -2445,10 +2445,10 @@ describe('createOrgChart', () => {
     const chart = make({ renderNode: (el: HTMLElement, ctx: { id: string }) => (el.textContent = ctx.id) })
     chart.api.zoomTo(1)
     await nextFrame()
-    expect(document.querySelectorAll('.orgchart-overlay-node').length).toBeGreaterThan(0)
+    expect(document.querySelectorAll('.klados-overlay-node').length).toBeGreaterThan(0)
     chart.api.zoomTo(0.1)
     await nextFrame()
-    expect(document.querySelectorAll('.orgchart-overlay-node').length).toBe(0)
+    expect(document.querySelectorAll('.klados-overlay-node').length).toBe(0)
     chart.destroy()
   })
 
@@ -2456,16 +2456,16 @@ describe('createOrgChart', () => {
     const chart = make({ renderNode: (el: HTMLElement, ctx: { id: string }) => (el.textContent = ctx.id) })
     chart.api.zoomTo(1)
     await nextFrame()
-    const first = document.querySelector('.orgchart-overlay-node')
+    const first = document.querySelector('.klados-overlay-node')
     chart.api.zoomTo(1.01)
     await nextFrame()
-    expect(document.querySelector('.orgchart-overlay-node')).toBe(first)
+    expect(document.querySelector('.klados-overlay-node')).toBe(first)
     chart.destroy()
   })
 
   it('warns instead of throwing on unresolvable parents', async () => {
     const warnings: unknown[] = []
-    const chart = createOrgChart(host(), {
+    const chart = createKlados(host(), {
       data: [{ id: 'a' }, { id: 'x', parentId: 'ghost' }],
       nodeSize: { w: 100, h: 40 },
       worker: false,
@@ -2480,7 +2480,7 @@ describe('createOrgChart', () => {
 
 - [ ] **Step 3: Run the test to verify it fails**
 
-Run: `pnpm --filter @n1crack/orgchart test`
+Run: `pnpm --filter klados test`
 Expected: FAIL — `Failed to resolve import "./index.js"`.
 
 - [ ] **Step 4: Write the input module**
@@ -2488,7 +2488,7 @@ Expected: FAIL — `Failed to resolve import "./index.js"`.
 `packages/vanilla/src/input.ts`:
 
 ```ts
-import { pan, screenToWorld, zoomAt, type Camera, type ZoomLimits } from '@n1crack/orgchart-core'
+import { pan, screenToWorld, zoomAt, type Camera, type ZoomLimits } from '@klados/core'
 
 export interface InputCallbacks {
   getCamera(): Camera
@@ -2617,7 +2617,7 @@ export { screenToWorld }
 `packages/vanilla/src/overlay.ts`:
 
 ```ts
-import { worldToScreen, type Camera } from '@n1crack/orgchart-core'
+import { worldToScreen, type Camera } from '@klados/core'
 
 export interface OverlayItem {
   /** Source node index. */
@@ -2644,7 +2644,7 @@ export function createOverlay(container: HTMLElement, callbacks: OverlayCallback
     const existing = pool[activeCount]
     if (existing !== undefined) return existing
     const element = document.createElement('div')
-    element.className = 'orgchart-overlay-node'
+    element.className = 'klados-overlay-node'
     element.style.position = 'absolute'
     element.style.top = '0'
     element.style.left = '0'
@@ -2691,12 +2691,12 @@ export function createOverlay(container: HTMLElement, callbacks: OverlayCallback
 }
 ```
 
-- [ ] **Step 6: Write `createOrgChart`**
+- [ ] **Step 6: Write `createKlados`**
 
 `packages/vanilla/src/index.ts` — the module is long, so it is given in one block:
 
 ```ts
-import { createChartHost, type ChartHost } from '@n1crack/orgchart-core/host'
+import { createChartHost, type ChartHost } from '@klados/core/host'
 import {
   DEFAULT_LOD,
   fit as fitCamera,
@@ -2716,7 +2716,7 @@ import {
   type Tree,
   type Warning,
   type ZoomLimits,
-} from '@n1crack/orgchart-core'
+} from '@klados/core'
 import { attachInput } from './input.js'
 import { createOverlay } from './overlay.js'
 
@@ -2758,7 +2758,7 @@ export interface ChartState {
   rootScreenCentre: { x: number; y: number }
 }
 
-export interface OrgChartEvents {
+export interface KladosEvents {
   nodeClick: (event: { id: string; item: NodeData }) => void
   toggle: (event: { id: string; open: boolean }) => void
   viewportChange: (event: { camera: Camera }) => void
@@ -2766,7 +2766,7 @@ export interface OrgChartEvents {
   ready: () => void
 }
 
-export interface OrgChartApi {
+export interface KladosApi {
   zoomTo(k: number): void
   zoomIn(): void
   zoomOut(): void
@@ -2783,17 +2783,17 @@ export interface OrgChartApi {
   getState(): ChartState
 }
 
-export interface OrgChartInstance {
+export interface KladosInstance {
   destroy(): void
   update(data: NodeData[], options?: Partial<Options>): void
   subscribe(callback: (state: ChartState) => void): () => void
-  on<E extends keyof OrgChartEvents>(event: E, callback: OrgChartEvents[E]): () => void
-  readonly api: OrgChartApi
+  on<E extends keyof KladosEvents>(event: E, callback: KladosEvents[E]): () => void
+  readonly api: KladosApi
 }
 
 const DEFAULT_LIMITS: ZoomLimits = { minK: 0.05, maxK: 4 }
 
-export function createOrgChart(host: HTMLElement, options: Options): OrgChartInstance {
+export function createKlados(host: HTMLElement, options: Options): KladosInstance {
   const theme = resolveTheme(options.theme)
   const limits = options.zoomLimits ?? DEFAULT_LIMITS
   const lod = options.lodThresholds ?? DEFAULT_LOD
@@ -2808,7 +2808,7 @@ export function createOrgChart(host: HTMLElement, options: Options): OrgChartIns
   host.appendChild(canvas)
 
   const overlayRoot = document.createElement('div')
-  overlayRoot.className = 'orgchart-overlay'
+  overlayRoot.className = 'klados-overlay'
   overlayRoot.style.position = 'absolute'
   overlayRoot.style.inset = '0'
   overlayRoot.style.pointerEvents = 'none'
@@ -2828,9 +2828,9 @@ export function createOrgChart(host: HTMLElement, options: Options): OrgChartIns
   const stateListeners = new Set<(state: ChartState) => void>()
   const eventListeners = new Map<string, Set<(payload: never) => void>>()
 
-  const emit = <E extends keyof OrgChartEvents>(
+  const emit = <E extends keyof KladosEvents>(
     event: E,
-    ...payload: Parameters<OrgChartEvents[E]>
+    ...payload: Parameters<KladosEvents[E]>
   ): void => {
     for (const listener of eventListeners.get(event) ?? []) {
       ;(listener as (...args: unknown[]) => void)(...payload)
@@ -3003,7 +3003,7 @@ export function createOrgChart(host: HTMLElement, options: Options): OrgChartIns
     },
   })
 
-  const api: OrgChartApi = {
+  const api: KladosApi = {
     zoomTo(k) {
       const rect = host.getBoundingClientRect()
       setCamera(zoomAt(camera, rect.width / 2, rect.height / 2, k / camera.k, limits))
@@ -3187,7 +3187,7 @@ Run:
 
 ```bash
 pnpm install
-pnpm --filter @n1crack/orgchart test
+pnpm --filter klados test
 pnpm typecheck
 pnpm lint
 ```
@@ -3198,7 +3198,7 @@ Expected: all pass.
 
 ```bash
 git add packages/vanilla pnpm-lock.yaml
-git commit -m "feat(vanilla): createOrgChart with pointer input and pooled node overlay"
+git commit -m "feat(vanilla): createKlados with pointer input and pooled node overlay"
 ```
 
 ---
@@ -3213,7 +3213,7 @@ A canvas is invisible to a screen reader. This adds a real DOM tree beside it ca
 - Modify: `packages/vanilla/src/index.ts`
 
 **Interfaces:**
-- Consumes: `Tree` from core; `OrgChartApi` from `./index.js`.
+- Consumes: `Tree` from core; `KladosApi` from `./index.js`.
 - Produces:
   - `interface A11yTree { update(tree: Tree, open: Uint8Array, labelOf: (index: number) => string): void; focusNode(id: string): void; destroy(): void }`
   - `function createA11yTree(container: HTMLElement, callbacks: { onActivate(id: string): void; onFocus(id: string): void }): A11yTree`
@@ -3226,7 +3226,7 @@ The mirror is visually hidden but focusable — not `display: none`, which would
 
 ```ts
 import { describe, expect, it } from 'vitest'
-import { createOrgChart } from './index.js'
+import { createKlados } from './index.js'
 
 const DATA = [
   { id: 'a', name: 'Root' },
@@ -3240,7 +3240,7 @@ function make() {
   el.style.width = '800px'
   el.style.height = '600px'
   document.body.appendChild(el)
-  return createOrgChart(el, {
+  return createKlados(el, {
     data: DATA,
     nodeSize: { w: 120, h: 48 },
     label: (item) => String(item.name ?? ''),
@@ -3352,7 +3352,7 @@ describe('accessibility tree', () => {
 
 - [ ] **Step 2: Run the test to verify it fails**
 
-Run: `pnpm --filter @n1crack/orgchart test`
+Run: `pnpm --filter klados test`
 Expected: FAIL — no `[role="tree"]` in the document.
 
 - [ ] **Step 3: Write the accessibility module**
@@ -3360,7 +3360,7 @@ Expected: FAIL — no `[role="tree"]` in the document.
 `packages/vanilla/src/a11y.ts`:
 
 ```ts
-import type { Tree } from '@n1crack/orgchart-core'
+import type { Tree } from '@klados/core'
 
 export interface A11yTree {
   update(tree: Tree, open: Uint8Array, labelOf: (index: number) => string): void
@@ -3477,7 +3477,7 @@ export function createA11yTree(container: HTMLElement, callbacks: A11yCallbacks)
 }
 ```
 
-- [ ] **Step 4: Wire it into `createOrgChart`**
+- [ ] **Step 4: Wire it into `createKlados`**
 
 In `packages/vanilla/src/index.ts`, import it and create it beside the overlay:
 
@@ -3500,7 +3500,7 @@ Call `a11y.update(tree, open, (index) => labelOf(itemFor(index)))` at the end of
 
 - [ ] **Step 5: Run the tests**
 
-Run: `pnpm --filter @n1crack/orgchart test && pnpm typecheck && pnpm lint`
+Run: `pnpm --filter klados test && pnpm typecheck && pnpm lint`
 Expected: all pass.
 
 - [ ] **Step 6: Commit**
@@ -3520,8 +3520,8 @@ The adapter binds `subscribe` to Vue reactivity and routes the `#node` scoped sl
 - Create: `packages/vue/package.json`
 - Create: `packages/vue/tsconfig.json`
 - Create: `packages/vue/vitest.config.ts`
-- Create: `packages/vue/src/OrgChart.vue`
-- Create: `packages/vue/src/useOrgChart.ts`
+- Create: `packages/vue/src/Klados.vue`
+- Create: `packages/vue/src/useKlados.ts`
 - Create: `packages/vue/src/index.ts`
 - Create: `packages/vue/src/orgchart.browser.test.ts`
 - Create: `packages/playground/package.json`
@@ -3533,11 +3533,11 @@ The adapter binds `subscribe` to Vue reactivity and routes the `#node` scoped sl
 - Create: `packages/playground/src/data.ts`
 
 **Interfaces:**
-- Consumes: `createOrgChart`, `Options`, `NodeContext`, `OrgChartApi`, `ChartState` from `@n1crack/orgchart`.
+- Consumes: `createKlados`, `Options`, `NodeContext`, `KladosApi`, `ChartState` from `klados`.
 - Produces:
-  - Vue component `OrgChart` with props `options: Options`, exposing `api`, emitting `nodeClick`, `toggle`, `ready`, `warning`; scoped slot `#node` receiving `NodeContext`.
-  - `function useOrgChart(): { api: ShallowRef<OrgChartApi | null>; state: ShallowRef<ChartState | null> }` for use inside the component's subtree.
-  - `const Vue3OrgChartPlugin: Plugin`.
+  - Vue component `Klados` with props `options: Options`, exposing `api`, emitting `nodeClick`, `toggle`, `ready`, `warning`; scoped slot `#node` receiving `NodeContext`.
+  - `function useKlados(): { api: ShallowRef<KladosApi | null>; state: ShallowRef<ChartState | null> }` for use inside the component's subtree.
+  - `const KladosPlugin: Plugin`.
 
 - [ ] **Step 1: Scaffold the Vue package**
 
@@ -3545,7 +3545,7 @@ The adapter binds `subscribe` to Vue reactivity and routes the `#node` scoped sl
 
 ```json
 {
-  "name": "@n1crack/orgchart-vue",
+  "name": "@klados/vue",
   "version": "1.0.0-alpha.0",
   "type": "module",
   "license": "MIT",
@@ -3558,7 +3558,7 @@ The adapter binds `subscribe` to Vue reactivity and routes the `#node` scoped sl
   },
   "files": ["dist"],
   "dependencies": {
-    "@n1crack/orgchart": "workspace:*"
+    "klados": "workspace:*"
   },
   "peerDependencies": {
     "vue": ">=3.5 <4"
@@ -3573,7 +3573,7 @@ The adapter binds `subscribe` to Vue reactivity and routes the `#node` scoped sl
 Install the dev dependencies:
 
 ```bash
-pnpm --filter @n1crack/orgchart-vue add -D vue @vitejs/plugin-vue vue-tsc
+pnpm --filter @klados/vue add -D vue @vitejs/plugin-vue vue-tsc
 ```
 
 `packages/vue/tsconfig.json`:
@@ -3619,7 +3619,7 @@ export default defineConfig({
 ```ts
 import { describe, expect, it } from 'vitest'
 import { createApp, defineComponent, h, ref } from 'vue'
-import OrgChart from './OrgChart.vue'
+import Klados from './Klados.vue'
 
 const DATA = [
   { id: 'a', name: 'Root' },
@@ -3639,10 +3639,10 @@ function mount(setup: () => unknown) {
   return { app, el }
 }
 
-describe('OrgChart.vue', () => {
+describe('Klados.vue', () => {
   it('renders a canvas', async () => {
     const { app, el } = mount(() => () =>
-      h(OrgChart, { options: { data: DATA, nodeSize: { w: 120, h: 48 }, worker: false } }),
+      h(Klados, { options: { data: DATA, nodeSize: { w: 120, h: 48 }, worker: false } }),
     )
     await nextFrame()
     expect(el.querySelector('canvas')).not.toBeNull()
@@ -3653,7 +3653,7 @@ describe('OrgChart.vue', () => {
     const chartRef = ref<{ api: { zoomTo(k: number): void } } | null>(null)
     const { app, el } = mount(() => () =>
       h(
-        OrgChart,
+        Klados,
         {
           ref: chartRef,
           options: {
@@ -3677,7 +3677,7 @@ describe('OrgChart.vue', () => {
   it('emits nodeClick', async () => {
     const seen: string[] = []
     const { app } = mount(() => () =>
-      h(OrgChart, {
+      h(Klados, {
         options: { data: DATA, nodeSize: { w: 120, h: 48 }, worker: false },
         onNodeClick: (event: { id: string }) => seen.push(event.id),
       }),
@@ -3693,7 +3693,7 @@ describe('OrgChart.vue', () => {
     const data = ref(DATA)
     const chartRef = ref<{ api: { getState(): { nodeCount: number } } } | null>(null)
     const { app } = mount(() => () =>
-      h(OrgChart, {
+      h(Klados, {
         ref: chartRef,
         options: { data: data.value, nodeSize: { w: 120, h: 48 }, worker: false },
       }),
@@ -3709,7 +3709,7 @@ describe('OrgChart.vue', () => {
 
   it('destroys the chart on unmount', async () => {
     const { app, el } = mount(() => () =>
-      h(OrgChart, { options: { data: DATA, nodeSize: { w: 120, h: 48 }, worker: false } }),
+      h(Klados, { options: { data: DATA, nodeSize: { w: 120, h: 48 }, worker: false } }),
     )
     await nextFrame()
     app.unmount()
@@ -3720,16 +3720,16 @@ describe('OrgChart.vue', () => {
 
 - [ ] **Step 3: Run the test to verify it fails**
 
-Run: `pnpm --filter @n1crack/orgchart-vue test`
-Expected: FAIL — `Failed to resolve import "./OrgChart.vue"`.
+Run: `pnpm --filter @klados/vue test`
+Expected: FAIL — `Failed to resolve import "./Klados.vue"`.
 
 - [ ] **Step 4: Write the component**
 
-`packages/vue/src/OrgChart.vue`:
+`packages/vue/src/Klados.vue`:
 
 ```vue
 <script setup lang="ts">
-import { createOrgChart, type ChartState, type NodeContext, type Options, type OrgChartApi } from '@n1crack/orgchart'
+import { createKlados, type ChartState, type NodeContext, type Options, type KladosApi } from 'klados'
 import { onBeforeUnmount, onMounted, provide, render, shallowRef, watch, h, type VNode } from 'vue'
 
 const props = defineProps<{ options: Options }>()
@@ -3743,10 +3743,10 @@ const emit = defineEmits<{
 const slots = defineSlots<{ node?: (context: NodeContext) => VNode[] }>()
 
 const hostRef = shallowRef<HTMLElement | null>(null)
-const api = shallowRef<OrgChartApi | null>(null)
+const api = shallowRef<KladosApi | null>(null)
 const state = shallowRef<ChartState | null>(null)
 
-let chart: ReturnType<typeof createOrgChart> | null = null
+let chart: ReturnType<typeof createKlados> | null = null
 
 /**
  * Slot content is rendered into each overlay element with `render()`, and the
@@ -3764,7 +3764,7 @@ function renderNode(element: HTMLElement, context: NodeContext): void {
 
 onMounted(() => {
   if (hostRef.value === null) return
-  chart = createOrgChart(hostRef.value, { ...props.options, renderNode })
+  chart = createKlados(hostRef.value, { ...props.options, renderNode })
   api.value = chart.api
   chart.subscribe((next) => (state.value = next))
   chart.on('nodeClick', (event) => emit('nodeClick', event))
@@ -3796,20 +3796,20 @@ defineExpose({ api })
 
 - [ ] **Step 5: Write the composable and entry**
 
-`packages/vue/src/useOrgChart.ts`:
+`packages/vue/src/useKlados.ts`:
 
 ```ts
 import { inject, shallowRef, type ShallowRef } from 'vue'
-import type { ChartState, OrgChartApi } from '@n1crack/orgchart'
+import type { ChartState, KladosApi } from 'klados'
 
-export interface OrgChartContext {
-  api: ShallowRef<OrgChartApi | null>
+export interface KladosContext {
+  api: ShallowRef<KladosApi | null>
   state: ShallowRef<ChartState | null>
 }
 
-/** Reads the chart context provided by the nearest `OrgChart` ancestor. */
-export function useOrgChart(): OrgChartContext {
-  return inject<OrgChartContext>('orgchart', {
+/** Reads the chart context provided by the nearest `Klados` ancestor. */
+export function useKlados(): KladosContext {
+  return inject<KladosContext>('orgchart', {
     api: shallowRef(null),
     state: shallowRef(null),
   })
@@ -3820,22 +3820,22 @@ export function useOrgChart(): OrgChartContext {
 
 ```ts
 import type { Plugin } from 'vue'
-import OrgChart from './OrgChart.vue'
+import Klados from './Klados.vue'
 
-export { OrgChart }
-export { useOrgChart } from './useOrgChart.js'
-export type { OrgChartContext } from './useOrgChart.js'
+export { Klados }
+export { useKlados } from './useKlados.js'
+export type { KladosContext } from './useKlados.js'
 export type {
   ChartState,
   NodeContext,
   Options,
-  OrgChartApi,
+  KladosApi,
   SearchResult,
-} from '@n1crack/orgchart'
+} from 'klados'
 
-export const Vue3OrgChartPlugin: Plugin = {
+export const KladosPlugin: Plugin = {
   install(app) {
-    app.component('OrgChart', OrgChart)
+    app.component('Klados', Klados)
   },
 }
 ```
@@ -3846,7 +3846,7 @@ export const Vue3OrgChartPlugin: Plugin = {
 
 ```json
 {
-  "name": "@n1crack/orgchart-playground",
+  "name": "@klados/playground",
   "private": true,
   "type": "module",
   "scripts": {
@@ -3854,8 +3854,8 @@ export const Vue3OrgChartPlugin: Plugin = {
     "build": "vite build"
   },
   "dependencies": {
-    "@n1crack/orgchart": "workspace:*",
-    "@n1crack/orgchart-vue": "workspace:*"
+    "klados": "workspace:*",
+    "@klados/vue": "workspace:*"
   }
 }
 ```
@@ -3863,7 +3863,7 @@ export const Vue3OrgChartPlugin: Plugin = {
 Install its dev dependencies:
 
 ```bash
-pnpm --filter @n1crack/orgchart-playground add -D vite @vitejs/plugin-vue vue
+pnpm --filter @klados/playground add -D vite @vitejs/plugin-vue vue
 ```
 
 `packages/playground/vite.config.ts`:
@@ -3885,7 +3885,7 @@ export default defineConfig({ plugins: [vue()] })
 `packages/playground/src/data.ts`:
 
 ```ts
-import type { NodeData } from '@n1crack/orgchart'
+import type { NodeData } from 'klados'
 
 /** Builds a branching org chart of roughly `target` nodes. */
 export function buildOrg(target: number): NodeData[] {
@@ -3910,11 +3910,11 @@ export function buildOrg(target: number): NodeData[] {
 `packages/playground/src/vanilla-demo.ts`:
 
 ```ts
-import { createOrgChart } from '@n1crack/orgchart'
+import { createKlados } from 'klados'
 import { buildOrg } from './data.js'
 
 export function mountVanilla(host: HTMLElement, count: number) {
-  return createOrgChart(host, {
+  return createKlados(host, {
     data: buildOrg(count),
     nodeSize: { w: 180, h: 64 },
     label: (item) => String(item.name ?? ''),
@@ -3929,7 +3929,7 @@ export function mountVanilla(host: HTMLElement, count: number) {
 
 ```vue
 <script setup lang="ts">
-import { OrgChart } from '@n1crack/orgchart-vue'
+import { Klados } from '@klados/vue'
 import { buildOrg } from './data.js'
 
 const options = {
@@ -3940,7 +3940,7 @@ const options = {
 </script>
 
 <template>
-  <OrgChart :options="options" style="height: 80vh">
+  <Klados :options="options" style="height: 80vh">
     <template #node="{ item, open, hasChildren, toggle }">
       <div class="card">
         <strong>{{ item.name }}</strong>
@@ -3948,7 +3948,7 @@ const options = {
         <button v-if="hasChildren" @click="toggle">{{ open ? '−' : '+' }}</button>
       </div>
     </template>
-  </OrgChart>
+  </Klados>
 </template>
 ```
 
@@ -3999,7 +3999,7 @@ pnpm install
 pnpm test
 pnpm typecheck
 pnpm lint
-pnpm --filter @n1crack/orgchart-playground dev
+pnpm --filter @klados/playground dev
 ```
 
 Expected: all suites pass, and the playground serves a chart that pans, zooms, collapses, and shows Vue-rendered cards when zoomed in. Verify by hand that a 5,000-node vanilla chart pans smoothly.

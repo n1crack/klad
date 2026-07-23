@@ -18,7 +18,7 @@ import { tabsMarkdownPlugin } from 'vitepress-plugin-tabs'
 // Origin only — the path comes from `BASE`, and putting it in both is how you
 // get `/orgchart/orgchart/` in every canonical link.
 const SITE_URL = (process.env.DOCS_URL ?? 'https://n1crack.github.io').replace(/\/$/, '')
-const BASE = process.env.DOCS_BASE ?? '/orgchart/'
+const BASE = process.env.DOCS_BASE ?? '/klados/'
 
 const DESCRIPTION =
   'A framework-agnostic org chart that renders 50,000 nodes at 60fps. Canvas in a Web Worker; your Vue, React or plain-DOM components mounted only where they can be read.'
@@ -56,7 +56,7 @@ function servePlaygroundInDev(base: string) {
           // Not built yet — say so plainly rather than showing a 404 that
           // suggests the route itself is wrong.
           res.setHeader('Content-Type', 'text/html')
-          res.end('<p>The playground has not been built yet. Run <code>pnpm --filter @n1crack/orgchart-docs build</code>, or start the docs with <code>pnpm docs</code>, which builds it first.</p>')
+          res.end('<p>The playground has not been built yet. Run <code>pnpm --filter @klados/docs build</code>, or start the docs with <code>pnpm docs</code>, which builds it first.</p>')
         }
       })
     },
@@ -64,7 +64,7 @@ function servePlaygroundInDev(base: string) {
 }
 
 export default defineConfig({
-  title: 'OrgChart',
+  title: 'Klados',
   description: DESCRIPTION,
   base: BASE,
   cleanUrls: true,
@@ -79,11 +79,11 @@ export default defineConfig({
     ['meta', { name: 'theme-color', content: '#2563eb' }],
 
     ['meta', { property: 'og:type', content: 'website' }],
-    ['meta', { property: 'og:site_name', content: 'OrgChart' }],
+    ['meta', { property: 'og:site_name', content: 'Klados' }],
     ['meta', { property: 'og:image', content: `${SITE_URL}${BASE}og.png` }],
     ['meta', { property: 'og:image:width', content: '1200' }],
     ['meta', { property: 'og:image:height', content: '630' }],
-    ['meta', { property: 'og:image:alt', content: 'OrgChart — 50,000 nodes. 60fps.' }],
+    ['meta', { property: 'og:image:alt', content: 'Klados — 50,000 nodes. 60fps.' }],
 
     // `summary_large_image` is what makes the card render the image full
     // width rather than as a thumbnail beside the text.
@@ -102,11 +102,11 @@ export default defineConfig({
   transformPageData(pageData) {
     // `pageData.title` is an empty string on a layout: home page, not
     // `undefined` — so `??` alone would leave the site's own name off the
-    // card and preview it as " · OrgChart".
-    const title = pageData.frontmatter.title || pageData.title || 'OrgChart'
+    // card and preview it as " · Klados".
+    const title = pageData.frontmatter.title || pageData.title || 'Klados'
     const description = pageData.frontmatter.description ?? DESCRIPTION
     const url = `${SITE_URL}${BASE}${pageData.relativePath.replace(/(index)?\.md$/, '')}`
-    const ogTitle = title === 'OrgChart' ? 'OrgChart' : `${title} · OrgChart`
+    const ogTitle = title === 'Klados' ? 'Klados' : `${title} · Klados`
 
     pageData.frontmatter.head ??= []
     pageData.frontmatter.head.push(
@@ -168,7 +168,7 @@ export default defineConfig({
       ],
     },
 
-    socialLinks: [{ icon: 'github', link: 'https://github.com/n1crack/orgchart' }],
+    socialLinks: [{ icon: 'github', link: 'https://github.com/n1crack/klados' }],
 
     footer: {
       message: 'AGPL-3.0-or-later, with a commercial licence available.',

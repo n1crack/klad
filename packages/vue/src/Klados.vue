@@ -1,32 +1,32 @@
 <script setup lang="ts">
 import {
-  createOrgChart,
+  createKlados,
   type ChartState,
   type NodeContext,
   type Options,
-  type OrgChartApi,
-  type OrgChartEvents,
-} from '@n1crack/orgchart'
+  type KladosApi,
+  type KladosEvents,
+} from 'klados'
 import { h, onBeforeUnmount, onMounted, provide, render, shallowRef, watch, type VNode } from 'vue'
-import { ORG_CHART_KEY } from './useOrgChart.js'
+import { ORG_CHART_KEY } from './useKlados.js'
 
 const props = defineProps<{ options: Options }>()
 const emit = defineEmits<{
-  nodeClick: Parameters<OrgChartEvents['nodeClick']>
-  nodeHover: Parameters<OrgChartEvents['nodeHover']>
-  nodeDblClick: Parameters<OrgChartEvents['nodeDblClick']>
-  toggle: Parameters<OrgChartEvents['toggle']>
-  warning: Parameters<OrgChartEvents['warning']>
-  ready: Parameters<OrgChartEvents['ready']>
+  nodeClick: Parameters<KladosEvents['nodeClick']>
+  nodeHover: Parameters<KladosEvents['nodeHover']>
+  nodeDblClick: Parameters<KladosEvents['nodeDblClick']>
+  toggle: Parameters<KladosEvents['toggle']>
+  warning: Parameters<KladosEvents['warning']>
+  ready: Parameters<KladosEvents['ready']>
 }>()
 
 const slots = defineSlots<{ node?: (context: NodeContext) => VNode[] }>()
 
 const hostRef = shallowRef<HTMLElement | null>(null)
-const api = shallowRef<OrgChartApi | null>(null)
+const api = shallowRef<KladosApi | null>(null)
 const state = shallowRef<ChartState | null>(null)
 
-let chart: ReturnType<typeof createOrgChart> | null = null
+let chart: ReturnType<typeof createKlados> | null = null
 
 /**
  * Slot content is rendered into each pooled overlay element with Vue's
@@ -71,7 +71,7 @@ onMounted(() => {
   // an element per visible node to hand to a callback that returns immediately —
   // so a Vue consumer who wants the plain canvas chart would still pay for DOM
   // that a frameworkless consumer does not. Same tier, either way.
-  chart = createOrgChart(hostRef.value, withRenderNode(props.options))
+  chart = createKlados(hostRef.value, withRenderNode(props.options))
   api.value = chart.api
   chart.subscribe((next) => (state.value = next))
   chart.on('nodeClick', (event) => emit('nodeClick', event))

@@ -1,18 +1,18 @@
 {
-  "name": "@n1crack/orgchart-docs",
+  "name": "@klados/docs",
   "private": true,
   "type": "module",
   "scripts": {
     "dev": "node scripts/bundle-playground.mjs && vitepress dev .",
     "build": "node scripts/bundle-playground.mjs && vitepress build .",
     "preview": "vitepress preview .",
-    "//playground": "The embedded playground is a build artefact, not source: it is rebuilt for this site's base path on every docs build and gitignored. `pnpm --filter @n1crack/orgchart-playground dev` is still the way to work on it.",
+    "//playground": "The embedded playground is a build artefact, not source: it is rebuilt for this site's base path on every docs build and gitignored. `pnpm --filter @klados/playground dev` is still the way to work on it.",
     "//images": "Regenerate the hero and link-preview PNGs after changing the scene. Checked in rather than built on deploy: a crawler needs the card at a stable URL, and rebuilding every time would churn a binary in git for no change.",
     "images": "node scripts/build-images.mjs"
   },
   "//devDependencies": "The playground is listed so turbo knows this package depends on it: the docs build rebuilds it for this site's base path, and without the edge a playground-only change would leave a stale docs build in the cache.",
   "devDependencies": {
-    "@n1crack/orgchart-playground": "workspace:*",
+    "@klados/playground": "workspace:*",
     "vitepress": "^1.6.4",
     "vitepress-plugin-tabs": "^0.9.1"
   }

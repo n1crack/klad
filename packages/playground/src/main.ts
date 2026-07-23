@@ -1,7 +1,7 @@
 import { createApp } from 'vue'
 import { createElement } from 'react'
 import { createRoot, type Root } from 'react-dom/client'
-import type { OrgChartApi } from '@n1crack/orgchart'
+import type { KladosApi } from 'klados'
 import {
   BLOCK_FILL_SEED,
   EDGE_RADIUS_DEFAULT,
@@ -88,7 +88,7 @@ const appTitle = document.createElement('div')
 appTitle.className = 'app-title'
 const appName = document.createElement('span')
 appName.className = 'app-name'
-appName.textContent = 'OrgChart Playground'
+appName.textContent = 'Klados Playground'
 const appTagline = document.createElement('span')
 appTagline.className = 'app-tagline'
 appTagline.textContent = 'One dataset, three framework adapters, one canvas underneath'
@@ -246,7 +246,7 @@ const demoGroup = sidebarGroup('Demo', stackField, exampleField)
 
 // --- "View" group: camera + tree-shape controls, shared by every mounted chart ---
 
-let currentApi: OrgChartApi | null = null
+let currentApi: KladosApi | null = null
 
 const viewGroup = sidebarGroup(
   'View',
@@ -517,7 +517,7 @@ updateRingEnabledButton()
 // — it never paints a background of its own, so whatever colour shows behind the
 // nodes and connectors is just the host element's CSS background showing through
 // a transparent canvas. `surface` (below) is that host for the vanilla stack
-// directly, and the common ancestor of the "chart-host" div OrgChart.vue/OrgChart.tsx
+// directly, and the common ancestor of the "chart-host" div Klados.vue/Klados.tsx
 // create for Vue/React (neither of which sets an opaque background of its own) — so
 // setting `surface.style.backgroundColor` recolours the area behind the nodes for
 // all three stacks with no core/adapter change at all. There is no `theme.background`
@@ -837,7 +837,7 @@ const PANELS: { id: string; label: string; body: HTMLElement }[] = [
   { id: 'code', label: 'Code', body: codeGroup },
 ]
 
-const PANEL_KEY = 'orgchart-playground-panel'
+const PANEL_KEY = 'klados-playground-panel'
 const rail = document.createElement('div')
 rail.className = 'rail'
 rail.setAttribute('role', 'tablist')
@@ -1072,7 +1072,7 @@ function show(stack: Stack, exampleId: string): void {
     const app = createApp(VueDemo, {
       example,
       mode,
-      onReady: (api: OrgChartApi) => {
+      onReady: (api: KladosApi) => {
         currentApi = api
       },
     })
@@ -1108,7 +1108,7 @@ function show(stack: Stack, exampleId: string): void {
       createElement(ReactDemo, {
         example,
         mode,
-        onReady: (api: OrgChartApi) => {
+        onReady: (api: KladosApi) => {
           currentApi = api
         },
         ref: reactHandle,

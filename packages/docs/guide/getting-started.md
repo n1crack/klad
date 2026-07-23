@@ -10,13 +10,13 @@ there is never a second package to remember.
 == Vanilla
 
 ```bash
-npm install @n1crack/orgchart
+npm install klados
 ```
 
 == Vue
 
 ```bash
-npm install @n1crack/orgchart-vue
+npm install @klados/vue
 ```
 
 Vue 3.5 or newer, as a peer dependency.
@@ -24,14 +24,14 @@ Vue 3.5 or newer, as a peer dependency.
 == React
 
 ```bash
-npm install @n1crack/orgchart-react
+npm install @klados/react
 ```
 
 React 18 or newer, as a peer dependency.
 
 :::
 
-There is a fourth package, `@n1crack/orgchart-core`, but you only install it
+There is a fourth package, `@klados/core`, but you only install it
 directly to write a binding for a framework that does not have one. It is the
 pure-logic layer — layout, viewport maths, the quadtree, the renderer, the
 worker protocol — and it touches no DOM.
@@ -43,7 +43,7 @@ worker protocol — and it touches no DOM.
 == Vanilla
 
 ```ts
-import { createOrgChart, type Options } from '@n1crack/orgchart'
+import { createKlados, type Options } from 'klados'
 
 const options: Options = {
   data: [
@@ -55,7 +55,7 @@ const options: Options = {
   label: (item) => String(item.name ?? ''),
 }
 
-const chart = createOrgChart(document.getElementById('chart')!, options)
+const chart = createKlados(document.getElementById('chart')!, options)
 
 chart.on('nodeClick', ({ id, item }) => console.log('clicked', id, item))
 
@@ -67,7 +67,7 @@ chart.destroy()
 
 ```vue
 <script setup lang="ts">
-import { OrgChart, type Options } from '@n1crack/orgchart-vue'
+import { Klados, type Options } from '@klados/vue'
 
 const options: Options = {
   data: [
@@ -81,7 +81,7 @@ const options: Options = {
 </script>
 
 <template>
-  <OrgChart
+  <Klados
     :options="options"
     style="width: 100%; height: 100vh"
     @node-click="({ id }) => console.log('clicked', id)"
@@ -92,7 +92,7 @@ const options: Options = {
 == React
 
 ```tsx
-import { OrgChart, type Options } from '@n1crack/orgchart-react'
+import { Klados, type Options } from '@klados/react'
 
 const options: Options = {
   data: [
@@ -106,7 +106,7 @@ const options: Options = {
 
 export function Chart() {
   return (
-    <OrgChart
+    <Klados
       options={options}
       style={{ width: '100%', height: '100vh' }}
       onNodeClick={({ id }) => console.log('clicked', id)}

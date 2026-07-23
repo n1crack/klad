@@ -1,6 +1,27 @@
 {
-  "name": "@n1crack/orgchart-react",
+  "name": "@klados/react",
   "version": "1.0.0-alpha.0",
+  "description": "React adapter for Klados — <Klados> with a render prop and a ref handle.",
+  "keywords": [
+    "org-chart",
+    "orgchart",
+    "organization-chart",
+    "tree",
+    "hierarchy",
+    "canvas",
+    "klados",
+    "react"
+  ],
+  "homepage": "https://n1crack.github.io/klados/",
+  "repository": {
+    "type": "git",
+    "url": "git+https://github.com/n1crack/klados.git",
+    "directory": "packages/react"
+  },
+  "bugs": {
+    "url": "https://github.com/n1crack/klados/issues"
+  },
+  "author": "Yusuf Özdemir",
   "type": "module",
   "license": "AGPL-3.0-or-later",
   "sideEffects": false,
@@ -19,9 +40,13 @@
       }
     }
   },
-  "files": ["dist", "LICENSE", "LICENSE-COMMERCIAL.md"],
+  "files": [
+    "dist",
+    "LICENSE",
+    "LICENSE-COMMERCIAL.md"
+  ],
   "dependencies": {
-    "@n1crack/orgchart": "workspace:*"
+    "klados": "workspace:*"
   },
   "peerDependencies": {
     "react": ">=19",

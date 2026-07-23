@@ -1,5 +1,5 @@
 import { describe, expect, it } from 'vitest'
-import { createOrgChart } from './index.js'
+import { createKlados } from './index.js'
 
 const DATA = [
   { id: 'a', name: 'Root' },
@@ -17,7 +17,7 @@ function host(): HTMLElement {
 }
 
 function make(overrides: Record<string, unknown> = {}) {
-  return createOrgChart(host(), {
+  return createKlados(host(), {
     data: DATA,
     nodeSize: { w: 120, h: 48 },
     label: (item) => String(item.name ?? ''),
@@ -47,16 +47,16 @@ const settle = () => new Promise<void>((resolve) => setTimeout(() => resolve(), 
 // not just a tween.
 const settleTransition = () => new Promise<void>((resolve) => setTimeout(() => resolve(), 550))
 
-describe('createOrgChart', () => {
+describe('createKlados', () => {
   it('creates a canvas inside the host', () => {
     const el = host()
-    createOrgChart(el, { data: DATA, nodeSize: { w: 120, h: 48 }, worker: false })
+    createKlados(el, { data: DATA, nodeSize: { w: 120, h: 48 }, worker: false })
     expect(el.querySelector('canvas')).not.toBeNull()
   })
 
   it('removes everything it created on destroy', () => {
     const el = host()
-    const chart = createOrgChart(el, { data: DATA, nodeSize: { w: 120, h: 48 }, worker: false })
+    const chart = createKlados(el, { data: DATA, nodeSize: { w: 120, h: 48 }, worker: false })
     chart.destroy()
     expect(el.querySelector('canvas')).toBeNull()
   })
@@ -112,7 +112,7 @@ describe('createOrgChart', () => {
     const before = chart.api.getState()
 
     // Spy on the canvas 2D context's `fillStyle` SETTER (not a mock context —
-    // the real one `createOrgChart` created) so this test can tell the new
+    // the real one `createKlados` created) so this test can tell the new
     // theme actually reached the paint, the same signal a human eye would
     // use, rather than just trusting `setTheme` didn't throw.
     const canvas = document.querySelector('canvas')!
@@ -138,7 +138,7 @@ describe('createOrgChart', () => {
 
     // Paint-only: none of the layout-derived state moved. `bounds` and
     // `visibleCount` are the closest thing the public API exposes to "the
-    // layout boxes" (raw boxes aren't part of `OrgChartApi`'s surface) — both
+    // layout boxes" (raw boxes aren't part of `KladosApi`'s surface) — both
     // are pure functions of the tree/layout, never of theme, so either
     // moving would mean a relayout snuck in.
     const after = chart.api.getState()
@@ -281,7 +281,7 @@ describe('createOrgChart', () => {
 
   it("claims the host's touch gestures while mounted, and hands them back on destroy", async () => {
     const el = host()
-    const chart = createOrgChart(el, { data: DATA, nodeSize: { w: 120, h: 48 }, worker: false })
+    const chart = createKlados(el, { data: DATA, nodeSize: { w: 120, h: 48 }, worker: false })
     await nextFrame()
     // Without this the browser's own scroll/pinch consumes the same gestures
     // the chart is trying to pan and zoom with — a one-finger drag scrolls the
@@ -327,11 +327,11 @@ describe('createOrgChart', () => {
     const chart = make({ renderNode: (el: HTMLElement, ctx: { id: string }) => (el.textContent = ctx.id) })
     chart.api.zoomTo(1)
     await nextFrame()
-    expect(document.querySelectorAll('.orgchart-overlay-node').length).toBeGreaterThan(0)
+    expect(document.querySelectorAll('.klados-overlay-node').length).toBeGreaterThan(0)
     chart.api.zoomTo(0.1)
     await settle()
     await nextFrame()
-    expect(document.querySelectorAll('.orgchart-overlay-node').length).toBe(0)
+    expect(document.querySelectorAll('.klados-overlay-node').length).toBe(0)
     chart.destroy()
   })
 
@@ -339,10 +339,10 @@ describe('createOrgChart', () => {
     const chart = make({ renderNode: (el: HTMLElement, ctx: { id: string }) => (el.textContent = ctx.id) })
     chart.api.zoomTo(1)
     await nextFrame()
-    const first = document.querySelector('.orgchart-overlay-node')
+    const first = document.querySelector('.klados-overlay-node')
     chart.api.zoomTo(1.01)
     await nextFrame()
-    expect(document.querySelector('.orgchart-overlay-node')).toBe(first)
+    expect(document.querySelector('.klados-overlay-node')).toBe(first)
     chart.destroy()
   })
 
@@ -379,7 +379,7 @@ describe('createOrgChart', () => {
     el.style.width = '800px'
     el.style.height = '600px'
     document.body.appendChild(el)
-    const chart = createOrgChart(el, {
+    const chart = createKlados(el, {
       data: wide,
       nodeSize: { w: 120, h: 48 },
       worker: false,
@@ -402,7 +402,7 @@ describe('createOrgChart', () => {
 
   it('warns instead of throwing on unresolvable parents', async () => {
     const warnings: unknown[] = []
-    const chart = createOrgChart(host(), {
+    const chart = createKlados(host(), {
       data: [{ id: 'a' }, { id: 'x', parentId: 'ghost' }],
       nodeSize: { w: 100, h: 40 },
       worker: false,
@@ -1317,7 +1317,7 @@ describe('createOrgChart', () => {
     await settle()
     await nextFrame()
 
-    const card = document.querySelector('.orgchart-overlay-node') as HTMLElement
+    const card = document.querySelector('.klados-overlay-node') as HTMLElement
     expect(card).not.toBeNull()
     const rect = card.getBoundingClientRect()
     const startX = rect.left + rect.width / 2
@@ -1356,7 +1356,7 @@ describe('createOrgChart', () => {
     await settle()
     await nextFrame()
 
-    const button = document.querySelector('.orgchart-overlay-node button') as HTMLButtonElement
+    const button = document.querySelector('.klados-overlay-node button') as HTMLButtonElement
     expect(button).not.toBeNull()
     const rect = button.getBoundingClientRect()
     const cx = rect.left + rect.width / 2
@@ -1380,7 +1380,7 @@ describe('createOrgChart', () => {
     await settle()
     await nextFrame()
 
-    const card = document.querySelector('.orgchart-overlay-node') as HTMLElement
+    const card = document.querySelector('.klados-overlay-node') as HTMLElement
     expect(card).not.toBeNull()
     const rect = card.getBoundingClientRect()
     const before = chart.api.getState().camera.k
@@ -1462,7 +1462,7 @@ describe('createOrgChart', () => {
     await settle()
     await nextFrame()
 
-    const cards = Array.from(document.querySelectorAll<HTMLElement>('.orgchart-overlay-node'))
+    const cards = Array.from(document.querySelectorAll<HTMLElement>('.klados-overlay-node'))
     const leafCard = cards.find((el) => el.textContent === 'c') // 'c' has no children
     expect(leafCard).not.toBeUndefined()
 
@@ -1512,7 +1512,7 @@ describe('createOrgChart', () => {
     // above — found by its label, since 'b' also has children (and so also
     // has a button) and document order among pooled overlay nodes isn't
     // guaranteed to put 'a' first.
-    const cards = Array.from(document.querySelectorAll<HTMLElement>('.orgchart-overlay-node'))
+    const cards = Array.from(document.querySelectorAll<HTMLElement>('.klados-overlay-node'))
     const rootCard = cards.find((el) => el.querySelector('span')?.textContent === 'a')
     expect(rootCard).not.toBeUndefined()
     const button = rootCard!.querySelector('button') as HTMLButtonElement

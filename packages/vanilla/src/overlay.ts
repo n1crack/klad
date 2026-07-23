@@ -1,4 +1,4 @@
-import { worldToScreen, type Camera } from '@n1crack/orgchart-core'
+import { worldToScreen, type Camera } from '@klados/core'
 
 export interface OverlayItem {
   /** Source node index. */
@@ -32,7 +32,7 @@ export function createOverlay(container: HTMLElement, callbacks: OverlayCallback
       return existing
     }
     const element = document.createElement('div')
-    element.className = 'orgchart-overlay-node'
+    element.className = 'klados-overlay-node'
     element.style.position = 'absolute'
     element.style.top = '0'
     element.style.left = '0'
@@ -73,7 +73,7 @@ export function createOverlay(container: HTMLElement, callbacks: OverlayCallback
         // Cleared to '' rather than '1' at full opacity so a card that is not
         // fading carries no inline opacity at all — the steady state leaves
         // the element exactly as it was before this feature existed, and a
-        // host styling `.orgchart-overlay-node` opacity itself is not
+        // host styling `.klados-overlay-node` opacity itself is not
         // overridden by an inline rule on every frame.
         const alpha = alphaOf(item.index)
         element.style.opacity = alpha >= 1 ? '' : String(alpha)

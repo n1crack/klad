@@ -1,8 +1,8 @@
 ---
-'@n1crack/orgchart-core': minor
-'@n1crack/orgchart': minor
-'@n1crack/orgchart-vue': minor
-'@n1crack/orgchart-react': minor
+'@klados/core': minor
+'klados': minor
+'@klados/vue': minor
+'@klados/react': minor
 ---
 
 New `DARK_THEME` export — the same `Theme` shape as `DEFAULT_THEME`, with the

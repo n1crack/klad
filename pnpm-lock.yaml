@@ -46,7 +46,7 @@ importers:
 
   packages/docs:
     devDependencies:
-      '@n1crack/orgchart-playground':
+      '@klados/playground':
         specifier: workspace:*
         version: link:../playground
       vitepress:
@@ -58,15 +58,15 @@ importers:
 
   packages/playground:
     dependencies:
-      '@n1crack/orgchart':
-        specifier: workspace:*
-        version: link:../vanilla
-      '@n1crack/orgchart-react':
+      '@klados/react':
         specifier: workspace:*
         version: link:../react
-      '@n1crack/orgchart-vue':
+      '@klados/vue':
         specifier: workspace:*
         version: link:../vue
+      klados:
+        specifier: workspace:*
+        version: link:../vanilla
       react:
         specifier: ^19.2.0
         version: 19.2.7
@@ -98,7 +98,7 @@ importers:
 
   packages/react:
     dependencies:
-      '@n1crack/orgchart':
+      klados:
         specifier: workspace:*
         version: link:../vanilla
     devDependencies:
@@ -120,18 +120,18 @@ importers:
 
   packages/vanilla:
     dependencies:
-      '@n1crack/orgchart-core':
+      '@klados/core':
         specifier: workspace:*
         version: link:../core
 
   packages/vue:
     dependencies:
-      '@n1crack/orgchart':
-        specifier: workspace:*
-        version: link:../vanilla
-      '@n1crack/orgchart-core':
+      '@klados/core':
         specifier: workspace:*
         version: link:../core
+      klados:
+        specifier: workspace:*
+        version: link:../vanilla
     devDependencies:
       '@vitejs/plugin-vue':
         specifier: ^6.0.0

@@ -1,7 +1,7 @@
-import { DEFAULT_THEME, type MinimapPosition, type Options } from '@n1crack/orgchart'
+import { DEFAULT_THEME, type MinimapPosition, type Options } from 'klados'
 import { chartTokens, silhouetteColour, type ThemeMode } from './theme.js'
 
-export type { MinimapPosition } from '@n1crack/orgchart'
+export type { MinimapPosition } from 'klados'
 
 /**
  * Whether `example`'s own declared options already turn the minimap on —
@@ -165,7 +165,7 @@ export const MINIMAP_POSITIONS: { value: MinimapPosition; label: string }[] = [
 ]
 
 /**
- * `NodeData` itself is not re-exported from `@n1crack/orgchart`'s public
+ * `NodeData` itself is not re-exported from `klados`'s public
  * surface (only the interfaces that reference it are). Deriving the item
  * type from `Options['data'][number]` gets the same structural type —
  * `{ id: string; parentId?: string | null; [key: string]: unknown }` —

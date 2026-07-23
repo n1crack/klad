@@ -1,6 +1,6 @@
 /** @jsxImportSource react */
 import { useCallback, useImperativeHandle, useMemo, useRef, type CSSProperties, type ReactNode, type Ref } from 'react'
-import { OrgChart, type NodeContext, type OrgChartApi, type OrgChartHandle, type Options } from '@n1crack/orgchart-react'
+import { Klados, type NodeContext, type KladosApi, type KladosHandle, type Options } from '@klados/react'
 import {
   DEPARTMENT_COLOR,
   EDGE_RADIUS_DEFAULT,
@@ -161,7 +161,7 @@ export interface ReactDemoHandle {
 export interface ReactDemoProps {
   example: Example
   mode: ThemeMode
-  onReady?: (api: OrgChartApi) => void
+  onReady?: (api: KladosApi) => void
   ref?: Ref<ReactDemoHandle>
 }
 
@@ -175,7 +175,7 @@ export interface ReactDemoProps {
  * doesn't need — matching the vanilla and Vue "canvas only" behaviour.
  */
 export function ReactDemo({ example, mode, onReady, ref }: ReactDemoProps): ReactNode {
-  const chartRef = useRef<OrgChartHandle>(null)
+  const chartRef = useRef<KladosHandle>(null)
 
   /**
    * Whether the minimap is on, and which corner it's in, for THIS mounted
@@ -188,7 +188,7 @@ export function ReactDemo({ example, mode, onReady, ref }: ReactDemoProps): Reac
    * If these were state instead — as they were in an earlier version of this
    * file, caught by hand rather than by a type error — then changing either
    * one would re-render with a new `options` object (a new dependency-array
-   * entry), which the effect in OrgChart.tsx (`instance.update(options.data,
+   * entry), which the effect in Klados.tsx (`instance.update(options.data,
    * ...)`, watching `options` by identity) would treat as a prop change and
    * respond to with `instance.update()`, which calls `initOpen()` and resets
    * every node's open/closed state. That is exactly the reset
@@ -249,8 +249,8 @@ export function ReactDemo({ example, mode, onReady, ref }: ReactDemoProps): Reac
       },
       // `edgeCornerRadius`/`nodeFill` both live under `theme`, which used to
       // require a full `key={...}` remount to change post-construction
-      // (theme was resolved exactly once, at `createOrgChart`, and
-      // `instance.update()` never re-resolved it). `OrgChartApi.setTheme`
+      // (theme was resolved exactly once, at `createKlados`, and
+      // `instance.update()` never re-resolved it). `KladosApi.setTheme`
       // (packages/vanilla/src/index.ts) fixes that: it merges a partial
       // theme over whatever the chart is already showing, re-resolves it,
       // and repaints — paint-only, so this no longer resets camera position
@@ -280,7 +280,7 @@ export function ReactDemo({ example, mode, onReady, ref }: ReactDemoProps): Reac
           edgeHighlightWidth: highlightWidthFor(width),
         })
       },
-      // `OrgChartApi.setRing` — NOT a theme token, so it goes through its own
+      // `KladosApi.setRing` — NOT a theme token, so it goes through its own
       // method rather than `setTheme`; see `Options.ring`'s docblock in
       // packages/vanilla/src/index.ts.
       setRingEnabled: (enabled: boolean) => {
@@ -307,13 +307,13 @@ export function ReactDemo({ example, mode, onReady, ref }: ReactDemoProps): Reac
   )
 
   if (example.content === 'none') {
-    return <OrgChart ref={chartRef} className="chart-host" options={options} onReady={handleReady} />
+    return <Klados ref={chartRef} className="chart-host" options={options} onReady={handleReady} />
   }
 
   const render = RENDERERS[example.content]
   return (
-    <OrgChart ref={chartRef} className="chart-host" options={options} onReady={handleReady}>
+    <Klados ref={chartRef} className="chart-host" options={options} onReady={handleReady}>
       {render}
-    </OrgChart>
+    </Klados>
   )
 }

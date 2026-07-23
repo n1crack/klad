@@ -1,6 +1,28 @@
 {
-  "name": "@n1crack/orgchart",
+  "name": "klados",
   "version": "1.0.0-alpha.0",
+  "description": "Klados — a canvas org chart for tens of thousands of nodes, with a DOM overlay for your own node content. Frameworkless.",
+  "keywords": [
+    "org-chart",
+    "orgchart",
+    "organization-chart",
+    "tree",
+    "hierarchy",
+    "canvas",
+    "klados",
+    "vanilla",
+    "typescript"
+  ],
+  "homepage": "https://n1crack.github.io/klados/",
+  "repository": {
+    "type": "git",
+    "url": "git+https://github.com/n1crack/klados.git",
+    "directory": "packages/vanilla"
+  },
+  "bugs": {
+    "url": "https://github.com/n1crack/klados/issues"
+  },
+  "author": "Yusuf Özdemir",
   "type": "module",
   "license": "AGPL-3.0-or-later",
   "sideEffects": false,
@@ -19,9 +41,13 @@
       }
     }
   },
-  "files": ["dist", "LICENSE", "LICENSE-COMMERCIAL.md"],
+  "files": [
+    "dist",
+    "LICENSE",
+    "LICENSE-COMMERCIAL.md"
+  ],
   "dependencies": {
-    "@n1crack/orgchart-core": "workspace:*"
+    "@klados/core": "workspace:*"
   },
   "scripts": {
     "build": "node ../../scripts/copy-license.mjs && tsdown",

@@ -1,4 +1,4 @@
-import { DARK_THEME, DEFAULT_THEME, type Theme } from '@n1crack/orgchart'
+import { DARK_THEME, DEFAULT_THEME, type Theme } from 'klados'
 
 /**
  * Light/dark for the whole playground — the shell's chrome AND the chart's own
@@ -118,7 +118,7 @@ const SHELL_TOKENS: Record<ThemeMode, Record<string, string>> = {
 
 /**
  * The minimap silhouette's fill per mode. The widget's plate and border are
- * DOM and follow the shell's own CSS (see `.orgchart-minimap` in style.css);
+ * DOM and follow the shell's own CSS (see `.klados-minimap` in style.css);
  * the silhouette is pixels, so it can only follow the theme through the
  * library's own `minimap.silhouetteColour` option. The default slate is
  * legible on a light plate and all but invisible on a dark one, which is the

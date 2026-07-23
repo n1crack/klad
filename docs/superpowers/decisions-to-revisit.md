@@ -152,7 +152,7 @@ the other in a confusing way.
 ### 21. Overlay idle slots detach from the DOM instead of hiding
 **Chosen:** an overlay element that is no longer needed is `remove()`d and re-appended
 later, rather than kept in place with `display: none`.
-**Why:** honestly, because a test counts elements with `querySelectorAll('.orgchart-overlay-node')`
+**Why:** honestly, because a test counts elements with `querySelectorAll('.klados-overlay-node')`
 and expected zero at low zoom. The pooled element objects still survive, so identity
 across frames holds — but a fluctuating visible set now pays append/remove churn that
 `display: none` avoided.
@@ -161,7 +161,7 @@ visible* elements in the test rather than reshape the implementation around it.
 **This is a case of a test driving a design change — worth a second look.**
 
 ### 22. Warnings are emitted on a microtask, not synchronously
-**Chosen:** `createOrgChart` defers `warning` events so a caller can attach
+**Chosen:** `createKlados` defers `warning` events so a caller can attach
 `chart.on('warning', ...)` after construction and still receive them.
 **Why:** emitting during construction meant nobody could ever hear them.
 **Wrong if:** a consumer expects warnings to be readable synchronously after the

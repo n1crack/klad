@@ -1,8 +1,8 @@
-# OrgChart Core Foundation Implementation Plan
+# Klados Core Foundation Implementation Plan
 
 > **For agentic workers:** REQUIRED SUB-SKILL: Use superpowers:subagent-driven-development (recommended) or superpowers:executing-plans to implement this plan task-by-task. Steps use checkbox (`- [ ]`) syntax for tracking.
 
-**Goal:** Build the headless, framework-agnostic layout engine for OrgChart v1.0 — tree normalization, linear-time tidy layout, orientations, spatial indexing, and the pan/zoom viewport — all pure TypeScript with no DOM.
+**Goal:** Build the headless, framework-agnostic layout engine for Klados v1.0 — tree normalization, linear-time tidy layout, orientations, spatial indexing, and the pan/zoom viewport — all pure TypeScript with no DOM.
 
 **Architecture:** A pnpm monorepo. `packages/core` holds pure TypeScript with zero runtime dependencies. Every module in this plan is DOM-free and worker-safe, so it tests directly in Node. Node data is stored in flat typed arrays indexed by a dense `uint32` node index; the user's string ids exist only at the API boundary. Tree walks are iterative with explicit ordering arrays, never recursive, so a 50,000-node chain cannot overflow the stack.
 
@@ -16,7 +16,7 @@
 - **No DOM, no `window`, no `document`** anywhere in `packages/core/src`. These modules must run inside a Web Worker.
 - **No recursion over tree nodes.** Depth can reach 50,000. Use explicit ordering arrays or stacks.
 - **Public API uses `string` ids. Internals use dense `uint32` indices.** `tree.ts` owns the mapping and is the only module aware of both.
-- **Node package scope:** `@n1crack/orgchart-core`.
+- **Node package scope:** `@klados/core`.
 - **Performance budget:** 50,000-node cold layout under 400ms. Enforced by a test in Task 3.
 - Spec of record: `docs/superpowers/specs/2026-07-21-orgchart-rework-design.md`.
 
@@ -42,7 +42,7 @@ Replaces the v0.2.5 single-package layout with a pnpm workspace. The old `src/` 
 
 **Interfaces:**
 - Consumes: nothing.
-- Produces: a working `pnpm test` at the repo root; the `@n1crack/orgchart-core` package that every later task adds files to.
+- Produces: a working `pnpm test` at the repo root; the `@klados/core` package that every later task adds files to.
 
 - [ ] **Step 1: Remove the v0.2.5 source tree**
 
@@ -74,7 +74,7 @@ auto-install-peers=false
 
 ```json
 {
-  "name": "orgchart-monorepo",
+  "name": "klados-monorepo",
   "private": true,
   "type": "module",
   "packageManager": "pnpm@10.13.1",
@@ -157,7 +157,7 @@ dist/
 
 ```json
 {
-  "name": "@n1crack/orgchart-core",
+  "name": "@klados/core",
   "version": "1.0.0-alpha.0",
   "type": "module",
   "license": "MIT",
@@ -236,7 +236,7 @@ pnpm install
 pnpm test
 ```
 
-Expected: turbo runs `@n1crack/orgchart-core#test`, vitest reports `1 passed`.
+Expected: turbo runs `@klados/core#test`, vitest reports `1 passed`.
 
 If `pnpm install` reports the lockfile is for a different workspace shape, delete `pnpm-lock.yaml` and rerun — the old lockfile describes the deleted single-package layout.
 
@@ -436,7 +436,7 @@ describe('wouldCreateCycle', () => {
 Run:
 
 ```bash
-pnpm --filter @n1crack/orgchart-core test
+pnpm --filter @klados/core test
 ```
 
 Expected: FAIL — `Failed to resolve import "./tree.js"`.
@@ -656,7 +656,7 @@ export { normalize, subtreeOf, wouldCreateCycle } from './tree.js'
 Run:
 
 ```bash
-pnpm --filter @n1crack/orgchart-core test
+pnpm --filter @klados/core test
 pnpm typecheck
 ```
 
@@ -884,7 +884,7 @@ describe('layout performance budget', () => {
 Run:
 
 ```bash
-pnpm --filter @n1crack/orgchart-core test
+pnpm --filter @klados/core test
 ```
 
 Expected: FAIL — `Failed to resolve import "./tidy.js"`.
@@ -1185,7 +1185,7 @@ export { layout } from './layout/tidy.js'
 Run:
 
 ```bash
-pnpm --filter @n1crack/orgchart-core test
+pnpm --filter @klados/core test
 ```
 
 Expected: every `tidy.test.ts` case passes, including the no-overlap property test, and `tidy.bench.test.ts` reports the 50k layout under 400ms.
@@ -1302,7 +1302,7 @@ describe('applyOrientation', () => {
 Run:
 
 ```bash
-pnpm --filter @n1crack/orgchart-core test
+pnpm --filter @klados/core test
 ```
 
 Expected: FAIL — `Failed to resolve import "./orientation.js"`.
@@ -1387,7 +1387,7 @@ export { applyOrientation } from './layout/orientation.js'
 Run:
 
 ```bash
-pnpm --filter @n1crack/orgchart-core test
+pnpm --filter @klados/core test
 pnpm typecheck
 ```
 
@@ -1537,7 +1537,7 @@ describe('buildQuadTree', () => {
 Run:
 
 ```bash
-pnpm --filter @n1crack/orgchart-core test
+pnpm --filter @klados/core test
 ```
 
 Expected: FAIL — `Failed to resolve import "./quadtree.js"`.
@@ -1715,7 +1715,7 @@ export { buildQuadTree } from './spatial/quadtree.js'
 Run:
 
 ```bash
-pnpm --filter @n1crack/orgchart-core test
+pnpm --filter @klados/core test
 pnpm typecheck
 ```
 
@@ -1930,7 +1930,7 @@ describe('easeInOutCubic', () => {
 Run:
 
 ```bash
-pnpm --filter @n1crack/orgchart-core test
+pnpm --filter @klados/core test
 ```
 
 Expected: FAIL — `Failed to resolve import "./viewport.js"`.
@@ -2100,7 +2100,7 @@ git commit -m "feat(core): pan/zoom viewport maths, replacing the panzoom depend
 
 Deliberately deferred, each with its own plan:
 
-- **Plan 2 — render pipeline, vanilla layer, and Vue adapter:** `render/renderer.ts`, `render/canvas2d.ts`, `text/measure.ts`, `worker/protocol.ts`, `worker/chart.worker.ts`, LOD tiers, the `packages/vanilla` DOM binding layer (`createOrgChart`, canvas creation, pointer input, worker bootstrap, overlay host), `OrgChart.vue` on top of it, the `OrgChartInstance` contract, tsdown builds, and vitest browser mode.
+- **Plan 2 — render pipeline, vanilla layer, and Vue adapter:** `render/renderer.ts`, `render/canvas2d.ts`, `text/measure.ts`, `worker/protocol.ts`, `worker/chart.worker.ts`, LOD tiers, the `packages/vanilla` DOM binding layer (`createKlados`, canvas creation, pointer input, worker bootstrap, overlay host), `Klados.vue` on top of it, the `KladosInstance` contract, tsdown builds, and vitest browser mode.
 - **Plan 3 — features:** drag-drop reparenting, search and focus, SVG/PNG export, the hidden a11y tree, keyboard navigation, minimap, incremental dirty-subtree relayout, and `MIGRATION.md`.
 
 Incremental relayout is Plan 3 rather than Plan 1 on purpose: the full layout must be correct and benchmarked before an incremental path has anything to be verified against.

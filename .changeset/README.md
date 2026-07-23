@@ -9,7 +9,7 @@ Two settings here are deliberate:
 
 - **`fixed`** keeps the four published packages on one version number. They are
   one library split across an engine and three bindings, and a consumer pairing
-  `@n1crack/orgchart-vue@1.2.0` with `@n1crack/orgchart@1.0.4` has to work out
+  `@klados/vue@1.2.0` with `klados@1.0.4` has to work out
   which combinations were ever tested together. One number means there is
   nothing to work out.
 - **`ignore`** leaves the playground out: it is a private app, never published.

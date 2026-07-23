@@ -1,12 +1,12 @@
 import {
-  createOrgChart,
+  createKlados,
   type ChartState,
   type NodeContext,
   type Options,
-  type OrgChartApi,
-  type OrgChartEvents,
-  type OrgChartInstance,
-} from '@n1crack/orgchart'
+  type KladosApi,
+  type KladosEvents,
+  type KladosInstance,
+} from 'klados'
 import {
   useCallback,
   useEffect,
@@ -21,13 +21,13 @@ import {
   type Ref,
 } from 'react'
 import { createPortal } from 'react-dom'
-import { OrgChartContext } from './useOrgChart.js'
+import { KladosContext } from './useKlados.js'
 
-export interface OrgChartHandle {
-  api: OrgChartApi | null
+export interface KladosHandle {
+  api: KladosApi | null
 }
 
-export interface OrgChartProps {
+export interface KladosProps {
   options: Options
   /**
    * Render prop for node content — React's equivalent of the vanilla layer's
@@ -40,13 +40,13 @@ export interface OrgChartProps {
   children?: (context: NodeContext) => ReactNode
   className?: string
   style?: CSSProperties
-  ref?: Ref<OrgChartHandle>
-  onNodeClick?: OrgChartEvents['nodeClick']
-  onNodeHover?: OrgChartEvents['nodeHover']
-  onNodeDblClick?: OrgChartEvents['nodeDblClick']
-  onToggle?: OrgChartEvents['toggle']
-  onWarning?: OrgChartEvents['warning']
-  onReady?: OrgChartEvents['ready']
+  ref?: Ref<KladosHandle>
+  onNodeClick?: KladosEvents['nodeClick']
+  onNodeHover?: KladosEvents['nodeHover']
+  onNodeDblClick?: KladosEvents['nodeDblClick']
+  onToggle?: KladosEvents['toggle']
+  onWarning?: KladosEvents['warning']
+  onReady?: KladosEvents['ready']
 }
 
 /**
@@ -74,24 +74,24 @@ interface Slot {
  * on the consumer's card has nothing to resolve against and the card
  * collapses to its content — leaving the canvas-drawn box visible
  * underneath. Vanilla has no such wrapper, so omitting this would make this
- * adapter disagree with vanilla and Vue. Mirrors OrgChart.vue's
+ * adapter disagree with vanilla and Vue. Mirrors Klados.vue's
  * `WRAPPER_STYLE` exactly.
  */
 const WRAPPER_STYLE: CSSProperties = { display: 'block', boxSizing: 'border-box', width: '100%', height: '100%' }
 
 /**
- * Binds React to `@n1crack/orgchart`. Every chart behaviour — layout, canvas
+ * Binds React to `klados`. Every chart behaviour — layout, canvas
  * drawing, hit-testing, pointer/keyboard input, the worker — lives in the
  * vanilla layer; this component only creates it, keeps it in sync with
  * props, and renders node content through portals into the overlay elements
  * the vanilla layer hands back.
  */
-export function OrgChart(props: OrgChartProps): ReactNode {
+export function Klados(props: KladosProps): ReactNode {
   const { options, children, className, style, ref } = props
 
   const hostRef = useRef<HTMLDivElement | null>(null)
-  const [instance, setInstance] = useState<OrgChartInstance | null>(null)
-  const [api, setApi] = useState<OrgChartApi | null>(null)
+  const [instance, setInstance] = useState<KladosInstance | null>(null)
+  const [api, setApi] = useState<KladosApi | null>(null)
 
   // Read by the stable `renderNode` callback below, so a new render-prop
   // function identity (an inline arrow function is a new identity on every
@@ -171,7 +171,7 @@ export function OrgChart(props: OrgChartProps): ReactNode {
     if (host === null) return
 
     skipNextUpdateRef.current = true
-    const chart = createOrgChart(host, withRenderNode(options))
+    const chart = createKlados(host, withRenderNode(options))
     setInstance(chart)
     setApi(chart.api)
 
@@ -235,12 +235,12 @@ export function OrgChart(props: OrgChartProps): ReactNode {
 
   const slots = Array.from(slotsRef.current.values())
   // Fixed "orgchart" marker class plus whatever the consumer passed, mirroring
-  // OrgChart.vue's template (`class="orgchart"` on its root, with Vue's
+  // Klados.vue's template (`class="orgchart"` on its root, with Vue's
   // automatic fallthrough merging in the caller's own `class`).
   const hostClassName = className === undefined ? 'orgchart' : `orgchart ${className}`
 
   return (
-    <OrgChartContext.Provider value={{ api, state }}>
+    <KladosContext.Provider value={{ api, state }}>
       <div ref={hostRef} className={hostClassName} style={style} />
       {hasChildren
         ? slots.map((slot) =>
@@ -253,6 +253,6 @@ export function OrgChart(props: OrgChartProps): ReactNode {
             ),
           )
         : null}
-    </OrgChartContext.Provider>
+    </KladosContext.Provider>
   )
 }

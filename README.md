@@ -1,4 +1,6 @@
-# OrgChart
+# Klados
+
+*κλάδος — Greek for “branch”.*
 
 A framework-agnostic org chart. The tree is laid out and drawn on a `<canvas>`
 inside a Web Worker; real framework components are mounted only for the handful
@@ -9,35 +11,36 @@ cannot get there — 50,000 component instances plus as many connector elements
 exhaust memory and layout time long before. Nothing here creates DOM for a node
 unless that node is both visible and legible.
 
-📖 **[Documentation](https://github.com/n1crack/orgchart)** — guide, API
-reference and roadmap. Run it locally with `pnpm docs`.
+📖 **[Documentation](https://n1crack.github.io/klados/)** — guide, API
+reference, and a playground you can dial a chart in with. Run it locally with
+`pnpm docs`.
 
 ## Packages
 
 | Package | For |
 |---|---|
-| [`@n1crack/orgchart`](packages/vanilla) | The frameworkless API. One function, `createOrgChart`. Use it directly, or read it as the reference for a new binding. |
-| [`@n1crack/orgchart-vue`](packages/vue) | Vue 3: an `<OrgChart>` component with a `#node` scoped slot, plus `useOrgChart()`. |
-| [`@n1crack/orgchart-react`](packages/react) | React: `<OrgChart>` with a render prop and a ref handle. |
-| [`@n1crack/orgchart-core`](packages/core) | Layout, viewport maths, spatial index, renderer, worker protocol. No DOM. Only needed to build a new binding. |
+| [`klados`](packages/vanilla) | The frameworkless API. One function, `createKlados`. Use it directly, or read it as the reference for a new binding. |
+| [`@klados/vue`](packages/vue) | Vue 3: a `<Klados>` component with a `#node` scoped slot, plus `useKlados()`. |
+| [`@klados/react`](packages/react) | React: `<Klados>` with a render prop and a ref handle. |
+| [`@klados/core`](packages/core) | Layout, viewport maths, spatial index, renderer, worker protocol. No DOM. Only needed to build a new binding. |
 
 Each depends on the layers beneath it, so installing one is enough — you never
-also install `@n1crack/orgchart` to use the Vue adapter.
+also install `klados` to use the Vue adapter.
 
 ## Install
 
 ```bash
-npm install @n1crack/orgchart        # frameworkless
-npm install @n1crack/orgchart-vue    # Vue 3 (>=3.5 <4)
-npm install @n1crack/orgchart-react  # React (>=18)
+npm install klados         # frameworkless
+npm install @klados/vue    # Vue 3 (>=3.5 <4)
+npm install @klados/react  # React (>=18)
 ```
 
 ## Quick start
 
 ```ts
-import { createOrgChart } from '@n1crack/orgchart'
+import { createKlados } from 'klados'
 
-const chart = createOrgChart(document.getElementById('chart')!, {
+const chart = createKlados(document.getElementById('chart')!, {
   data: [
     { id: 'ceo', name: 'Jamie Fox', title: 'CEO' },
     { id: 'cto', parentId: 'ceo', name: 'Amy Chen', title: 'CTO' },

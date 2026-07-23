@@ -15,7 +15,7 @@ off()
 == Vue
 
 ```vue
-<OrgChart
+<Klados
   :options="options"
   @node-click="onNodeClick"
   @toggle="onToggle"
@@ -26,7 +26,7 @@ off()
 == React
 
 ```tsx
-<OrgChart options={options} onNodeClick={onNodeClick} onToggle={onToggle} />
+<Klados options={options} onNodeClick={onNodeClick} onToggle={onToggle} />
 ```
 
 :::

@@ -1,6 +1,6 @@
 # Options
 
-The object passed to `createOrgChart` (or the `options` prop on the Vue and
+The object passed to `createKlados` (or the `options` prop on the Vue and
 React components). Only `data` and `nodeSize` are required.
 
 ## Data

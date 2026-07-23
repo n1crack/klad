@@ -1235,7 +1235,7 @@ body {
 
 /*
  * Minimap contrast, strengthened at this call site. The library sets its own
- * inline background/border on `.orgchart-minimap` (near-white at low opacity,
+ * inline background/border on `.klados-minimap` (near-white at low opacity,
  * a very faint border) — reasonable in isolation, but easy to lose against a
  * light page background, especially once the surrounding chart is also mostly
  * white. `!important` is deliberate: it overrides the widget's own inline
@@ -1255,7 +1255,7 @@ body {
  * library now sets inline right back to something heavy. Softened here too,
  * in step with minimap.ts's own change, so the host doesn't undo it.
  */
-.orgchart-minimap {
+.klados-minimap {
   background: color-mix(in srgb, canvas 97%, canvastext 3%) !important;
   border: 2px solid color-mix(in srgb, canvastext 55%, canvas 45%) !important;
   box-shadow:
@@ -1266,7 +1266,7 @@ body {
 /* The viewport-rectangle overlay — the library's only other child element in
    here, a plain positioned `<div>` with no class of its own. A touch thicker
    so it stays legible even on the smallest minimap size an example asks for. */
-.orgchart-minimap > div {
+.klados-minimap > div {
   border-width: 2px !important;
 }
 

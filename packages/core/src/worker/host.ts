@@ -25,7 +25,7 @@ export interface ChartHost {
    * Paint-only theme swap, effective from the next `render()` on either path
    * — see `Renderer.setTheme`'s docblock for why this never touches layout
    * or hit-testing. Takes an already-resolved `Theme`, not a partial: the
-   * caller (`OrgChartApi.setTheme` in packages/vanilla) owns merging a
+   * caller (`KladosApi.setTheme` in packages/vanilla) owns merging a
    * caller-supplied partial over the current theme and re-resolving it, so
    * this layer only ever forwards a complete, ready-to-paint theme.
    */
@@ -179,7 +179,7 @@ export function createChartHost(
           bounds = message.bounds
           quad = buildQuadTree(message.boxes, message.bounds)
         } else if (message.t === 'error') {
-          console.error(`OrgChart worker: ${message.message}`)
+          console.error(`Klados worker: ${message.message}`)
         }
       }
       post(
@@ -194,7 +194,7 @@ export function createChartHost(
         [offscreen as unknown as Transferable],
       )
     } catch (error) {
-      console.warn('OrgChart: worker unavailable, rendering on the main thread.', error)
+      console.warn('Klados: worker unavailable, rendering on the main thread.', error)
       worker = null
     }
   }
@@ -202,7 +202,7 @@ export function createChartHost(
   if (worker === null) {
     renderer = createCanvas2DRenderer(canvas as unknown as RenderSurface, theme, (font) => {
       const probe = document.createElement('canvas').getContext('2d')
-      if (probe === null) throw new Error('OrgChart: 2D canvas context unavailable')
+      if (probe === null) throw new Error('Klados: 2D canvas context unavailable')
       probe.font = font
       return createTextMeasurer({ measureWidth: (t) => probe.measureText(t).width })
     })

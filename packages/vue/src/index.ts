@@ -1,24 +1,24 @@
 import type { Plugin } from 'vue'
-import OrgChart from './OrgChart.vue'
+import Klados from './Klados.vue'
 
-export { OrgChart }
-export { useOrgChart } from './useOrgChart.js'
-export type { OrgChartContext } from './useOrgChart.js'
+export { Klados }
+export { useKlados } from './useKlados.js'
+export type { KladosContext } from './useKlados.js'
 export type {
   ChartState,
   NodeContext,
   Options,
-  OrgChartApi,
+  KladosApi,
   SearchResult,
-} from '@n1crack/orgchart'
+} from 'klados'
 
 // A host doing light/dark needs the palettes, and should not have to add the
 // vanilla package as a dependency to name them.
-export { DARK_THEME, DEFAULT_THEME } from '@n1crack/orgchart'
-export type { Theme } from '@n1crack/orgchart'
+export { DARK_THEME, DEFAULT_THEME } from 'klados'
+export type { Theme } from 'klados'
 
-export const Vue3OrgChartPlugin: Plugin = {
+export const KladosPlugin: Plugin = {
   install(app) {
-    app.component('OrgChart', OrgChart)
+    app.component('Klados', Klados)
   },
 }
