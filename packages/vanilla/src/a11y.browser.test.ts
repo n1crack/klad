@@ -600,3 +600,113 @@ describe('pooled update performance', () => {
   })
 
 })
+
+describe('accessibility tree windowing', () => {
+  const WINDOW = 100 // must match WINDOW_MAX_ROWS in a11y.ts
+
+  // A wide, shallow tree of ~`n` nodes so all are visible at once.
+  function wideTree(n: number) {
+    const data: { id: string; parentId?: string; name: string }[] = [{ id: 'r', name: 'r' }]
+    let i = 0
+    let frontier = ['r']
+    while (data.length < n) {
+      const next: string[] = []
+      for (const p of frontier) {
+        for (let c = 0; c < 6 && data.length < n; c++) {
+          const id = `n${i++}`
+          data.push({ id, parentId: p, name: id })
+          next.push(id)
+        }
+      }
+      frontier = next
+    }
+    return normalize(data)
+  }
+
+  function mountA11y(tree: ReturnType<typeof normalize>) {
+    const container = document.createElement('div')
+    document.body.appendChild(container)
+    const focused: string[] = []
+    const a11y = createA11yTree(container, { onActivate: () => {}, onFocus: (id) => focused.push(id) })
+    const open = new Uint8Array(tree.count).fill(1)
+    a11y.update(tree, open, (idx) => tree.indexToId[idx]!, -1)
+    return { container, a11y, tree, open, focused }
+  }
+
+  function rows(container: HTMLElement) {
+    return Array.from(container.querySelectorAll('[role="treeitem"]')) as HTMLElement[]
+  }
+
+  it('caps the DOM at WINDOW_MAX_ROWS for a large tree', () => {
+    const { container, a11y } = mountA11y(wideTree(500))
+    const attached = rows(container).filter((r) => r.isConnected)
+    expect(attached.length).toBe(WINDOW)
+    expect(attached[0]!.getAttribute('aria-setsize')).toBe('500')
+    expect(attached[0]!.hasAttribute('aria-posinset')).toBe(true)
+    a11y.destroy()
+  })
+
+  it('leaves a small tree unchanged: full rows, no setsize/posinset', () => {
+    const tree = wideTree(20)
+    const { container, a11y } = mountA11y(tree)
+    const attached = rows(container).filter((r) => r.isConnected)
+    // preorder-visible count == tree.count here (all open, all visible)
+    expect(attached.length).toBe(tree.count)
+    expect(attached[0]!.hasAttribute('aria-setsize')).toBe(false)
+    expect(attached[0]!.hasAttribute('aria-posinset')).toBe(false)
+    a11y.destroy()
+  })
+
+  it('ArrowDown across the window edge re-windows and focuses the next node', () => {
+    const { container, a11y, tree, focused } = mountA11y(wideTree(500))
+    // Focus the last row currently in the window, then ArrowDown past the edge.
+    const attached = rows(container).filter((r) => r.isConnected)
+    const lastInWindow = attached[attached.length - 1]!
+    const lastId = lastInWindow.dataset.orgchartId!
+    lastInWindow.focus()
+    lastInWindow.dispatchEvent(new KeyboardEvent('keydown', { key: 'ArrowDown', bubbles: true }))
+    // The node after lastId in the visible preorder must now be focused and in the DOM.
+    const order = tree.order
+    // Find preorder index of lastId, then the next visible node's id.
+    const idAt = (k: number) => tree.indexToId[order[k]!]!
+    let kLast = 0
+    for (let k = 0; k < tree.count; k++) if (idAt(k) === lastId) { kLast = k; break }
+    const expectedNextId = idAt(kLast + 1)
+    const active = document.activeElement as HTMLElement
+    expect(active.dataset.orgchartId).toBe(expectedNextId)
+    expect(active.isConnected).toBe(true)
+    expect(focused[focused.length - 1]).toBe(expectedNextId)
+    a11y.destroy()
+  })
+
+  it('End focuses the last visible node, re-windowing to the tail', () => {
+    const { container, a11y, tree } = mountA11y(wideTree(500))
+    const first = (rows(container).filter((r) => r.isConnected))[0]!
+    first.focus()
+    first.dispatchEvent(new KeyboardEvent('keydown', { key: 'End', bubbles: true }))
+    const lastVisibleId = tree.indexToId[tree.order[tree.count - 1]!]!
+    const active = document.activeElement as HTMLElement
+    expect(active.dataset.orgchartId).toBe(lastVisibleId)
+    expect(active.isConnected).toBe(true)
+    a11y.destroy()
+  })
+
+  it('focusNode re-windows to an id outside the current window', () => {
+    const { container, a11y, tree } = mountA11y(wideTree(500))
+    const targetId = tree.indexToId[tree.order[400]!]! // well past the initial window
+    a11y.focusNode(targetId)
+    const active = document.activeElement as HTMLElement
+    expect(active.dataset.orgchartId).toBe(targetId)
+    expect(active.isConnected).toBe(true)
+    // DOM still capped.
+    expect(rows(container).filter((r) => r.isConnected).length).toBe(WINDOW)
+    a11y.destroy()
+  })
+
+  it('keeps exactly one row in the tab order (roving tabindex)', () => {
+    const { container, a11y } = mountA11y(wideTree(500))
+    const tabbable = rows(container).filter((r) => r.isConnected && r.tabIndex === 0)
+    expect(tabbable.length).toBe(1)
+    a11y.destroy()
+  })
+})
