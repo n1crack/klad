@@ -129,6 +129,9 @@ pnpm build
 variable node sizes, nine card treatments, subtree counts, a go-to-node combo
 box, and a 20,000-node stress test.
 
+See [CONTRIBUTING.md](CONTRIBUTING.md) for how the packages fit together and
+how a release is cut.
+
 ## Roadmap
 - 1.1 drag-and-drop reparenting
 - 1.2 cross-links

@@ -209,6 +209,12 @@ export function createChartHost(
       return createTextMeasurer({ measureWidth: (t) => probe.measureText(t).width })
     })
     engine = createChartEngine(renderer)
+    // Main-thread path: cap zoomed-out (block-tier) drawing to one node/edge per
+    // ~2 device-px cell, so a huge tree stays smooth without a worker. The
+    // worker's own engine (chart.worker.ts) never sets this, so the
+    // worker/desktop path is unchanged. See render/decimate.ts and
+    // EngineOptions.blockDecimation.
+    engine.setOptions({ blockDecimation: 2 })
   }
 
   return {

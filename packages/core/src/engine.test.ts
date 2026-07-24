@@ -2,6 +2,8 @@ import { describe, expect, it, vi } from 'vitest'
 import { createChartEngine } from './engine.js'
 import { toWireTree, wireTreeToTree } from './worker/protocol.js'
 import { normalize } from './tree.js'
+import { fit } from './viewport.js'
+import { gridSizeFor } from './render/decimate.js'
 import type { Frame, Renderer } from './render/renderer.js'
 import type { NodeData } from './types.js'
 
@@ -293,6 +295,33 @@ describe('ChartEngine', () => {
     engine.setCamera({ x: 0, y: 0, k: 1 })
     expect(() => engine.render()).not.toThrow()
     expect(renderer.frames.at(-1)!.visibleCount).toBe(0)
+  })
+})
+
+describe('blockDecimation option', () => {
+  it('defaults to off: full-tier draw count is unaffected by toggling it', () => {
+    const r = fakeRenderer()
+    const { engine } = seed(r)
+    engine.setCamera({ x: 0, y: 0, k: 1 }) // full tier (k >= 0.6)
+    const before = engine.render(0).length
+    engine.setOptions({ blockDecimation: 2 })
+    const after = engine.render(0).length
+    expect(after).toBe(before)
+  })
+
+  it('does not dirty layout (no relayout on change)', () => {
+    const r = fakeRenderer()
+    const { engine } = seed(r)
+    engine.render(0)
+    const framesBefore = r.frames.length
+    engine.setOptions({ blockDecimation: 2 })
+    // A pure paint-time option: the next render still works and the tree is the
+    // same size (no crash, same visible count at the same camera).
+    const n1 = engine.render(0).length
+    engine.setOptions({ blockDecimation: 0 })
+    const n2 = engine.render(0).length
+    expect(n1).toBe(n2)
+    expect(r.frames.length).toBeGreaterThan(framesBefore)
   })
 })
 
@@ -1609,5 +1638,111 @@ describe('ChartEngine open-length reconciliation (F6)', () => {
     engine.setCamera({ x: 0, y: 0, k: 1 })
     const drawn = engine.render()
     expect(drawn.length).toBe(2)
+  })
+})
+
+/** A wide, shallow tree of ~`target` nodes so the block-tier draw set is large. */
+function bushy(target: number): NodeData[] {
+  const data: NodeData[] = [{ id: 'r' }]
+  let frontier = ['r']
+  let counter = 0
+  while (data.length < target) {
+    const next: string[] = []
+    for (const p of frontier) {
+      for (let i = 0; i < 4 && data.length < target; i++) {
+        const id = `n${counter++}`
+        data.push({ id, parentId: p })
+        next.push(id)
+      }
+    }
+    frontier = next
+  }
+  return data
+}
+
+function seedBushy(renderer: Renderer, target = 300) {
+  const engine = createChartEngine(renderer)
+  const tree = normalize(bushy(target))
+  const labels = tree.indexToId.slice()
+  engine.setViewport(200, 200, 1)
+  engine.setData(toWireTree(tree), sizesFor(tree.count), labels, new Uint8Array(tree.count).fill(1))
+  return { engine, tree }
+}
+
+/** Frames the whole chart into the viewport at the engine's current bounds. */
+function frameAll(engine: ReturnType<typeof createChartEngine>, w: number, h: number) {
+  engine.render(0) // ensure layout/bounds are up to date
+  const cam = fit(engine.bounds, { width: w, height: h }, 20, { minK: 1e-6, maxK: 4 })
+  engine.setCamera(cam)
+}
+
+describe('block-tier decimation in render()', () => {
+  it('reduces the block-tier draw set and bounds it by the grid', () => {
+    const r = fakeRenderer()
+    const { engine } = seedBushy(r, 300)
+    frameAll(engine, 200, 200)
+
+    engine.setOptions({ blockDecimation: 0 })
+    const full = engine.render(0).length
+    expect(full).toBeGreaterThan(0)
+
+    engine.setOptions({ blockDecimation: 2 })
+    const decimated = engine.render(0).length
+    expect(decimated).toBeLessThan(full)
+    expect(decimated).toBeLessThanOrEqual(gridSizeFor({ width: 200, height: 200, dpr: 1 }, 2))
+  })
+
+  it('also decimates the edge draw set', () => {
+    const r = fakeRenderer()
+    const { engine } = seedBushy(r, 300)
+    frameAll(engine, 200, 200)
+
+    engine.setOptions({ blockDecimation: 0 })
+    engine.render(0)
+    const fullEdges = r.frames[r.frames.length - 1]!.edgeCount
+
+    engine.setOptions({ blockDecimation: 2 })
+    engine.render(0)
+    const decEdges = r.frames[r.frames.length - 1]!.edgeCount
+    expect(decEdges).toBeLessThan(fullEdges)
+  })
+
+  it('leaves the full tier untouched', () => {
+    const r = fakeRenderer()
+    const { engine } = seedBushy(r, 300)
+    engine.setCamera({ x: 0, y: 0, k: 1 }) // full tier
+
+    engine.setOptions({ blockDecimation: 0 })
+    const full = engine.render(0).length
+    engine.setOptions({ blockDecimation: 2 })
+    const on = engine.render(0).length
+    expect(on).toBe(full)
+  })
+
+  it('is bypassed while a transition is running', () => {
+    const r = fakeRenderer()
+    const { engine, tree } = seedBushy(r, 300)
+    engine.setAnimate(true)
+    engine.setOptions({ blockDecimation: 2 })
+    frameAll(engine, 200, 200)
+
+    // Toggling a node starts a transition; during it, the drawn set is the full
+    // culled set (decimation is steady-state only). Close the root's first child.
+    const child = tree.idToIndex.get('n0')!
+    engine.setOpen(child, false)
+    const duringTransition = engine.render(1).length
+
+    // Once the transition has run its course (TRANSITION_DURATION_MS ~450ms),
+    // the engine falls back to the steady state and — blockDecimation still
+    // being on — decimation kicks back in at this same post-toggle camera.
+    // A `during` count that is NOT smaller than this settled, decimated count
+    // would mean decimation never actually got bypassed mid-transition.
+    const afterTransition = engine.render(10_000).length
+    expect(duringTransition).toBeGreaterThan(afterTransition)
+
+    engine.setAnimate(false)
+    engine.setOptions({ blockDecimation: 0 })
+    const fullSteady = engine.render(10_001).length
+    expect(fullSteady).toBeGreaterThan(0)
   })
 })

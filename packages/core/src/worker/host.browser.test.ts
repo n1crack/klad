@@ -3,8 +3,41 @@ import { createChartHost } from './host.js'
 import { toWireTree } from './protocol.js'
 import { normalize } from '../tree.js'
 import { DEFAULT_THEME } from '../render/theme.js'
+import { fit } from '../viewport.js'
+import { gridSizeFor } from '../render/decimate.js'
+import type { NodeData } from '../types.js'
 
 const DATA = [{ id: 'a' }, { id: 'b', parentId: 'a' }, { id: 'c', parentId: 'a' }]
+
+/** A wide, shallow tree of ~`target` nodes so the block-tier draw set is large. */
+function bushy(target: number): NodeData[] {
+  const data: NodeData[] = [{ id: 'r' }]
+  let frontier = ['r']
+  let counter = 0
+  while (data.length < target) {
+    const next: string[] = []
+    for (const p of frontier) {
+      for (let i = 0; i < 4 && data.length < target; i++) {
+        const id = `n${counter++}`
+        data.push({ id, parentId: p })
+        next.push(id)
+      }
+    }
+    frontier = next
+  }
+  return data
+}
+
+function bushyWire(target: number) {
+  const tree = normalize(bushy(target))
+  const labels = tree.indexToId.slice()
+  return {
+    tree: toWireTree(tree),
+    sizes: sizes(tree.count),
+    labels,
+    open: new Uint8Array(tree.count).fill(1),
+  }
+}
 
 function sizes(count: number): Float64Array {
   const s = new Float64Array(count * 2)
@@ -56,6 +89,27 @@ describe('createChartHost in-process', () => {
     const cy = host.boxes[pruned * 4 + 1]! + host.boxes[pruned * 4 + 3]! / 2
     expect(await host.hitTest(cx, cy)).toBe(rootIndex)
     expect(await host.hitTest(-999, -999)).toBe(-1)
+    host.destroy()
+  })
+
+  it('decimates the block-tier draw set on a large clustered tree', async () => {
+    const host = createChartHost(mount(), DEFAULT_THEME, false)
+    expect(host.usingWorker).toBe(false)
+
+    const { tree, sizes: boxSizes, labels, open } = bushyWire(400)
+    host.setViewport(200, 200, 1)
+    host.setData(tree, boxSizes, labels, open)
+
+    // Populate host.bounds before framing the whole chart into view.
+    await host.render(0)
+    const cam = fit(host.bounds, { width: 200, height: 200 }, 20, { minK: 1e-6, maxK: 4 })
+    expect(cam.k).toBeLessThan(0.25) // must actually land in the block tier
+    host.setCamera(cam)
+
+    const drawn = await host.render(0)
+    expect(drawn.length).toBeGreaterThan(0)
+    expect(drawn.length).toBeLessThan(400)
+    expect(drawn.length).toBeLessThanOrEqual(gridSizeFor({ width: 200, height: 200, dpr: 1 }, 2))
     host.destroy()
   })
 })

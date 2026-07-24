@@ -63,6 +63,14 @@ export interface EngineOptions {
   orientation: Orientation
   rtl: boolean
   lod: LodThresholds
+  /**
+   * Device-pixel cell size for block-tier occupancy-grid decimation, or `0` to
+   * disable (the default). When > 0, `render()` draws at most one node and one
+   * edge per cell at the `block` LOD tier — a main-thread-path optimisation for
+   * huge trees. Enabled by the host only on the in-process engine; the worker's
+   * engine keeps `0`, so the worker path is unchanged. See `render/decimate.ts`.
+   */
+  blockDecimation: number
 }
 
 /**

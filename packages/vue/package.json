@@ -26,7 +26,6 @@
   "type": "module",
   "license": "AGPL-3.0-or-later",
   "sideEffects": false,
-  "//": "exports point at source during development so the workspace resolves without a build step; publishConfig.exports replaces them with the built dist paths at publish time.",
   "exports": {
     ".": {
       "types": "./src/index.ts",
@@ -46,7 +45,6 @@
     "LICENSE",
     "LICENSE-COMMERCIAL.md"
   ],
-  "//dependencies": "orgchart-core is a DIRECT dependency, not merely a transitive one through orgchart: this package's own published .d.ts names types declared there (NodeData, and through it every event payload), so a consumer's TypeScript has to be able to resolve it. Under a strict node_modules layout a transitive dependency is not resolvable from here.",
   "dependencies": {
     "@klad/core": "workspace:*",
     "@klad/engine": "workspace:*"
