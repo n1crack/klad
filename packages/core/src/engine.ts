@@ -10,6 +10,7 @@ import { applyOrientation } from './layout/orientation.js'
 import { buildQuadTree, type QuadTree } from './spatial/quadtree.js'
 import { visibleRect, easeOutCubic, easeInOutCubic } from './viewport.js'
 import { DEFAULT_LOD, lodFor } from './render/lod.js'
+import { decimateByCell, gridSizeFor } from './render/decimate.js'
 import type { Tree } from './tree.js'
 
 // `performance.now()` is available in browsers, Web Workers, and Node (this
@@ -202,6 +203,7 @@ const DEFAULT_OPTIONS: EngineOptions = {
   orientation: 'tb',
   rtl: false,
   lod: DEFAULT_LOD,
+  blockDecimation: 0,
 }
 
 const EMPTY_BOUNDS: Bounds = { minX: 0, minY: 0, maxX: 0, maxY: 0 }
@@ -1098,6 +1100,9 @@ export function createChartEngine(renderer: Renderer): ChartEngine {
   let edgeQueryBuffer = new Uint32Array(0)
   let edgeDrawBuffer = new Uint32Array(0)
   let highlightBuffer: Uint8Array | null = null
+  // Reused-and-grown occupancy grid for block-tier decimation (see
+  // render/decimate.ts). Sized on demand to gridSizeFor(viewport, cell).
+  let decimationGrid = new Uint8Array(0)
 
   // --- expand/collapse transition state ---
   let animate = false
@@ -1296,6 +1301,29 @@ export function createChartEngine(renderer: Renderer): ChartEngine {
         for (let i = 0; i < written; i++) edgeDrawBuffer[i] = edgeChild[edgeQueryBuffer[i]!]!
         edgeDrawCount = written
       }
+    }
+
+    const tier = lodFor(camera.k, options.lod)
+
+    // Block-tier decimation (main-thread path only; the option is off by
+    // default and enabled by the host solely on the in-process engine). At the
+    // zoomed-out block tier nodes render at ~1px, so drawing every one is
+    // invisible waste; cap the drawn node and edge sets to one per screen cell.
+    // Steady state only: during a transition the tween loops below rely on the
+    // full culled set, and whole-chart toggles are rare and brief. `boxes` and
+    // `renderBoxes` are the same array here (transition === null), so decimating
+    // `cullBuffer`/`edgeDrawBuffer` now also shrinks the tween/paint work.
+    if (
+      options.blockDecimation > 0 &&
+      tier === 'block' &&
+      transition === null &&
+      viewport.width > 0 &&
+      viewport.height > 0
+    ) {
+      const need = gridSizeFor(viewport, options.blockDecimation)
+      if (decimationGrid.length < need) decimationGrid = new Uint8Array(need)
+      nodeCount = decimateByCell(boxes, cullBuffer, nodeCount, camera, viewport, options.blockDecimation, decimationGrid)
+      edgeDrawCount = decimateByCell(boxes, edgeDrawBuffer, edgeDrawCount, camera, viewport, options.blockDecimation, decimationGrid)
     }
 
     // --- expand/collapse transition ---
@@ -1510,7 +1538,6 @@ export function createChartEngine(renderer: Renderer): ChartEngine {
       }
     }
 
-    const tier = lodFor(camera.k, options.lod)
     renderer.draw({
       boxes: renderBoxes,
       parent: prunedParent,
