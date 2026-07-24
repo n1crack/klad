@@ -1,5 +1,18 @@
 import type { Tree } from '@klad/engine'
 
+/**
+ * The mirror materialises at most this many rows at once. A tree with more than
+ * this many VISIBLE nodes is windowed: only a slice of this size, centred on the
+ * tab-stop row, is in the DOM at any moment, and keyboard navigation slides the
+ * window. iOS WebKit chokes on tens of thousands of persistent DOM nodes (the
+ * former behaviour: one row per visible node — 20k rows froze first open and
+ * every toggle for ~30s); bounding the DOM is what fixes it. Trees at or below
+ * this size are rendered in full, exactly as before.
+ */
+const WINDOW_MAX_ROWS = 100
+
+const clamp = (v: number, lo: number, hi: number): number => (v < lo ? lo : v > hi ? hi : v)
+
 export interface A11yTree {
   /**
    * `isolate` is the source index the chart is currently re-rooted at, or -1.
@@ -69,6 +82,8 @@ export function createA11yTree(container: HTMLElement, callbacks: A11yCallbacks)
     expanded: string | undefined
     label: string
     tabIndex: 0 | -1
+    posinset: string | undefined
+    setsize: string | undefined
   }
   const slotState: (SlotState | undefined)[] = []
 
@@ -94,6 +109,15 @@ export function createA11yTree(container: HTMLElement, callbacks: A11yCallbacks)
    * itself. */
   let currentTree: Tree | undefined
   let currentOpen: Uint8Array | undefined
+  let currentLabelOf: ((index: number) => string) | undefined
+  let currentIsolate = -1
+  // The visible nodes in preorder, and each node id's position in that sequence.
+  // Rebuilt by the cheap pass in `update()`; read by keyboard nav to re-window.
+  let visibleSeq: number[] = []
+  const seqPosById = new Map<string, number>()
+  // The slice of `visibleSeq` currently materialised in the DOM: [windowStart, windowEnd).
+  let windowStart = 0
+  let windowEnd = 0
 
   /**
    * `isNew` tells the caller whether the row was just created. A brand new
@@ -124,11 +148,106 @@ export function createA11yTree(container: HTMLElement, callbacks: A11yCallbacks)
     return { row, isNew: true }
   }
 
+  /**
+   * Renders exactly visibleSeq[start..end) into pooled rows, diff-writing each
+   * row's attributes, shrinking any surplus, and recording [windowStart,
+   * windowEnd). `windowed` gates aria-setsize/aria-posinset: written when the
+   * tree is windowed (so a screen reader learns the full size and this row's
+   * position), removed when it is not. Does NOT touch browser focus — callers
+   * (`update`, `focusSeqPos`) handle focus after.
+   */
+  const materialiseWindow = (start: number, end: number, total: number, windowed: boolean): void => {
+    activeCount = 0
+    ordered = []
+    rowsById.clear()
+
+    for (let pos = start; pos < end; pos++) {
+      const index = visibleSeq[pos]!
+      const id = currentTree!.indexToId[index]!
+      const hasChildren = currentTree!.childStart[index + 1]! > currentTree!.childStart[index]!
+      const level = String(currentTree!.depth[index]! + 1)
+      const label = currentLabelOf!(index) || id
+      const expanded = hasChildren ? (currentOpen![index] === 1 ? 'true' : 'false') : undefined
+      const tabIndexValue: 0 | -1 = id === tabbableId ? 0 : -1
+      const posinset = windowed ? String(pos + 1) : undefined
+      const setsize = windowed ? String(total) : undefined
+
+      const slotIndex = activeCount
+      const { row, isNew } = acquire()
+      const prev = isNew ? undefined : slotState[slotIndex]
+
+      if (prev === undefined) {
+        row.dataset.orgchartId = id
+        row.setAttribute('aria-level', level)
+        if (expanded !== undefined) row.setAttribute('aria-expanded', expanded)
+        if (setsize !== undefined) row.setAttribute('aria-setsize', setsize)
+        if (posinset !== undefined) row.setAttribute('aria-posinset', posinset)
+        row.textContent = label
+        row.tabIndex = tabIndexValue
+      } else {
+        if (prev.id !== id) row.dataset.orgchartId = id
+        if (prev.level !== level) row.setAttribute('aria-level', level)
+        if (prev.expanded !== expanded) {
+          if (expanded !== undefined) row.setAttribute('aria-expanded', expanded)
+          else row.removeAttribute('aria-expanded')
+        }
+        if (prev.setsize !== setsize) {
+          if (setsize !== undefined) row.setAttribute('aria-setsize', setsize)
+          else row.removeAttribute('aria-setsize')
+        }
+        if (prev.posinset !== posinset) {
+          if (posinset !== undefined) row.setAttribute('aria-posinset', posinset)
+          else row.removeAttribute('aria-posinset')
+        }
+        if (prev.label !== label) row.textContent = label
+        if (prev.tabIndex !== tabIndexValue) row.tabIndex = tabIndexValue
+      }
+
+      slotState[slotIndex] = { id, level, expanded, label, tabIndex: tabIndexValue, posinset, setsize }
+      rowsById.set(id, row)
+      ordered.push(row)
+      activeCount++
+    }
+
+    for (let i = activeCount; i < pool.length; i++) pool[i]!.remove()
+    windowStart = start
+    windowEnd = end
+  }
+
+  /**
+   * Chooses a window of up to WINDOW_MAX_ROWS centred on `anchorPos` and returns
+   * its [start, end). Below the threshold the window is the whole sequence.
+   */
+  const windowFor = (anchorPos: number, total: number): { start: number; end: number; windowed: boolean } => {
+    if (total <= WINDOW_MAX_ROWS) return { start: 0, end: total, windowed: false }
+    const start = clamp(anchorPos - (WINDOW_MAX_ROWS >> 1), 0, total - WINDOW_MAX_ROWS)
+    return { start, end: start + WINDOW_MAX_ROWS, windowed: true }
+  }
+
+  /**
+   * Moves focus to the node at sequence position `pos`, re-windowing first if that
+   * node is outside the currently materialised window. This is what lets keyboard
+   * navigation traverse the entire visible sequence when only a window is ever in
+   * the DOM.
+   */
+  const focusSeqPos = (pos: number): void => {
+    if (currentTree === undefined) return
+    const total = visibleSeq.length
+    if (total === 0) return
+    const p = clamp(pos, 0, total - 1)
+    if (p < windowStart || p >= windowEnd) {
+      const w = windowFor(p, total)
+      materialiseWindow(w.start, w.end, total, w.windowed)
+    }
+    const id = currentTree.indexToId[visibleSeq[p]!]!
+    rowsById.get(id)?.focus()
+  }
+
   const onKeyDown = (event: KeyboardEvent): void => {
     const target = event.target as HTMLElement
     const id = target.dataset.orgchartId
     if (id === undefined) return
-    const position = ordered.indexOf(target)
+    const pos = seqPosById.get(id)
 
     switch (event.key) {
       case 'Enter':
@@ -138,19 +257,19 @@ export function createA11yTree(container: HTMLElement, callbacks: A11yCallbacks)
         break
       case 'ArrowDown':
         event.preventDefault()
-        ordered[Math.min(ordered.length - 1, position + 1)]?.focus()
+        if (pos !== undefined) focusSeqPos(pos + 1)
         break
       case 'ArrowUp':
         event.preventDefault()
-        ordered[Math.max(0, position - 1)]?.focus()
+        if (pos !== undefined) focusSeqPos(pos - 1)
         break
       case 'Home':
         event.preventDefault()
-        ordered[0]?.focus()
+        focusSeqPos(0)
         break
       case 'End':
         event.preventDefault()
-        ordered[ordered.length - 1]?.focus()
+        focusSeqPos(visibleSeq.length - 1)
         break
       case 'ArrowRight':
         event.preventDefault()
@@ -196,7 +315,8 @@ export function createA11yTree(container: HTMLElement, callbacks: A11yCallbacks)
     const firstChild = currentTree.childIndex[currentTree.childStart[index]!]
     if (firstChild === undefined) return
     const childId = currentTree.indexToId[firstChild]!
-    rowsById.get(childId)?.focus()
+    const childPos = seqPosById.get(childId)
+    if (childPos !== undefined) focusSeqPos(childPos)
   }
 
   /**
@@ -220,7 +340,8 @@ export function createA11yTree(container: HTMLElement, callbacks: A11yCallbacks)
     const parentIndex = currentTree.parent[index]!
     if (parentIndex === -1) return // a root has no parent
     const parentId = currentTree.indexToId[parentIndex]!
-    rowsById.get(parentId)?.focus()
+    const parentPos = seqPosById.get(parentId)
+    if (parentPos !== undefined) focusSeqPos(parentPos)
   }
 
   const onFocusIn = (event: FocusEvent): void => {
@@ -264,6 +385,8 @@ export function createA11yTree(container: HTMLElement, callbacks: A11yCallbacks)
 
       currentTree = tree
       currentOpen = open
+      currentLabelOf = labelOf
+      currentIsolate = isolate
 
       // Roving tabindex target for this render: keep whatever node last held
       // the tab stop, provided it still exists in this tree — otherwise fall
@@ -277,18 +400,17 @@ export function createA11yTree(container: HTMLElement, callbacks: A11yCallbacks)
             : undefined
       tabbableId = effectiveTabbableId
 
-      activeCount = 0
-      ordered = []
-      rowsById.clear()
-
-      // A collapsed node's descendants must not appear in the mirror at all.
-      // Leaving them in while flipping only `aria-expanded` makes the mirror
-      // contradict itself: a screen reader announces the node as collapsed and
-      // then reads the children it just said were hidden. Costs nothing extra —
-      // this loop already walks every node, and preorder guarantees a parent is
-      // decided before its children, so visibility resolves in the same pass.
+      // Cheap pass: visibility + the visible preorder sequence, no DOM. A
+      // collapsed node's descendants must not appear in the mirror at all —
+      // leaving them in while flipping only `aria-expanded` makes the mirror
+      // contradict itself: a screen reader announces the node as collapsed
+      // and then reads the children it just said were hidden. Costs nothing
+      // extra — this loop already walks every node, and preorder guarantees
+      // a parent is decided before its children, so visibility resolves in
+      // the same pass.
+      visibleSeq = []
+      seqPosById.clear()
       const visible = new Uint8Array(tree.count)
-
       for (let k = 0; k < tree.count; k++) {
         const index = tree.order[k]!
         const parent = tree.parent[index]!
@@ -303,56 +425,14 @@ export function createA11yTree(container: HTMLElement, callbacks: A11yCallbacks)
               : visible[parent] === 1 && open[parent] === 1
         visible[index] = isVisible ? 1 : 0
         if (!isVisible) continue
-
-        const id = tree.indexToId[index]!
-        const hasChildren = tree.childStart[index + 1]! > tree.childStart[index]!
-        const level = String(tree.depth[index]! + 1)
-        const label = labelOf(index) || id
-        const expanded = hasChildren ? (open[index] === 1 ? 'true' : 'false') : undefined
-        const tabIndexValue: 0 | -1 = id === effectiveTabbableId ? 0 : -1
-
-        const slotIndex = activeCount
-        const { row, isNew } = acquire()
-        const prev = isNew ? undefined : slotState[slotIndex]
-
-        if (prev === undefined) {
-          // Nothing to diff against yet — either the row was just created,
-          // or (defensively) its slot state wasn't recorded — so every field
-          // is being set for the first time. Write straight through rather
-          // than reading each one back first only to find it unset.
-          row.dataset.orgchartId = id
-          row.setAttribute('aria-level', level)
-          if (expanded !== undefined) row.setAttribute('aria-expanded', expanded)
-          row.textContent = label
-          row.tabIndex = tabIndexValue
-        } else {
-          if (prev.id !== id) row.dataset.orgchartId = id
-          if (prev.level !== level) row.setAttribute('aria-level', level)
-          if (prev.expanded !== expanded) {
-            if (expanded !== undefined) {
-              row.setAttribute('aria-expanded', expanded)
-            } else {
-              // A leaf claiming to be collapsible misleads a screen reader
-              // user; this only fires when a node actually lost its children.
-              row.removeAttribute('aria-expanded')
-            }
-          }
-          if (prev.label !== label) row.textContent = label
-          if (prev.tabIndex !== tabIndexValue) row.tabIndex = tabIndexValue
-        }
-
-        slotState[slotIndex] = { id, level, expanded, label, tabIndex: tabIndexValue }
-        rowsById.set(id, row)
-        ordered.push(row)
-        activeCount++
+        seqPosById.set(tree.indexToId[index]!, visibleSeq.length)
+        visibleSeq.push(index)
       }
 
-      // Shrink: detach the surplus rather than discard it. `acquire` reclaims
-      // these same elements the next time the tree grows, exactly as
-      // `overlay.ts` reclaims its idle slots.
-      for (let i = activeCount; i < pool.length; i++) {
-        pool[i]!.remove()
-      }
+      const total = visibleSeq.length
+      const anchorPos = effectiveTabbableId !== undefined ? (seqPosById.get(effectiveTabbableId) ?? 0) : 0
+      const w = windowFor(anchorPos, total)
+      materialiseWindow(w.start, w.end, total, w.windowed)
 
       if (focusedId !== undefined) {
         const nextRow = rowsById.get(focusedId)
@@ -372,7 +452,8 @@ export function createA11yTree(container: HTMLElement, callbacks: A11yCallbacks)
     },
 
     focusNode(id) {
-      rowsById.get(id)?.focus()
+      const pos = seqPosById.get(id)
+      if (pos !== undefined) focusSeqPos(pos)
     },
 
     destroy() {
@@ -387,6 +468,12 @@ export function createA11yTree(container: HTMLElement, callbacks: A11yCallbacks)
       tabbableId = undefined
       currentTree = undefined
       currentOpen = undefined
+      currentLabelOf = undefined
+      currentIsolate = -1
+      visibleSeq = []
+      seqPosById.clear()
+      windowStart = 0
+      windowEnd = 0
     },
   }
 }
