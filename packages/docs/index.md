@@ -1,5 +1,10 @@
 ---
 layout: home
+# SEO <title> for the home page (the hero above is separate). `titleTemplate:
+# false` keeps VitePress from appending "| Klad" on top of a title that already
+# starts with the name.
+title: Klad — Canvas org chart for very large trees
+titleTemplate: false
 
 hero:
   name: Klad
@@ -21,7 +26,7 @@ hero:
 
 features:
   - title: ⚡ Built for Large Trees
-    details: Renders 5,000–50,000 nodes at 60fps. Layout and drawing run on a canvas inside a Web Worker, so the main thread stays free. No DOM per node, ever.
+    details: Renders very large trees smoothly. Layout and drawing run on a canvas inside a Web Worker, so the main thread stays free. No DOM per node, ever.
   - title: 🧩 Your Components on Top
     details: A Vue slot, a React render prop, or plain DOM. Real components mount only for the nodes on screen and zoomed in far enough to read — about fifty at a time, pooled and reused.
   - title: 🛠️ Developer-Friendly
@@ -111,8 +116,36 @@ so the array from your API is usually already the right shape.
 
 `nodeSize` is declared, not measured. Layout runs in a Web Worker, where there
 is no element to call `getBoundingClientRect()` on — that is what buys the
-50,000. Your content fits the box you declare.
+scale. Your content fits the box you declare — more in [Sizing](/guide/sizing).
 
-If your chart is a hundred nodes and every card is a different height decided
-by its content, use a DOM-based chart instead. [Sizing](/guide/sizing) has the
-whole trade.
+<p class="home-support">
+  If you like this library, please consider giving it a
+  <a href="https://github.com/n1crack/klad" target="_blank" rel="noopener">star on GitHub</a>
+  or <a href="https://github.com/sponsors/n1crack" target="_blank" rel="noopener">sponsoring the project</a>.
+</p>
+
+<style>
+/* Scoped under .vp-doc so it out-specifies VitePress's own `.vp-doc p` margin
+   rule — otherwise `margin-left/right: 0` from that rule wins and the box sticks
+   to the left instead of centring. */
+.vp-doc .home-support {
+  margin: 3.5rem auto 1rem;
+  max-width: 560px;
+  padding: 0.9rem 1.25rem;
+  text-align: center;
+  font-size: 0.9rem;
+  line-height: 1.6;
+  color: var(--vp-c-text-2);
+  background: var(--vp-c-bg-soft);
+  border: 1px solid var(--vp-c-divider);
+  border-radius: 12px;
+}
+.vp-doc .home-support a {
+  font-weight: 500;
+  color: var(--vp-c-brand-1);
+  text-decoration: none;
+}
+.vp-doc .home-support a:hover {
+  text-decoration: underline;
+}
+</style>

@@ -2,7 +2,7 @@
 
 Out of the box a node is drawn by the canvas: a rounded box with a truncated
 label. That is all a node ever gets when it is small on screen, and it is why
-a 50,000-node chart is possible at all.
+a very large chart is possible at all.
 
 Zoom past the overlay threshold and the chart mounts your own content over the
 canvas — but only for the nodes actually in the viewport, roughly fifty of

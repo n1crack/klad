@@ -17,9 +17,14 @@ out to be. This one cannot, and that is not an oversight.
 
 Layout runs inside a Web Worker. There is no DOM there: no element to mount,
 nothing to measure, no `getBoundingClientRect` to call. Moving layout off the
-main thread is a large part of why a 50,000-node tree stays interactive, and
+main thread is a large part of why a very large tree stays interactive, and
 declaring sizes is the price. Your content fits the box you declare; it does
 not decide it.
+
+If your chart is small and every card is a different height decided by its own
+content, that price isn't worth paying: a DOM-based chart that measures each
+node is the better fit. Declaring sizes earns its keep once the tree is large
+enough that laying it out on the main thread would stutter.
 
 ## One size, or a size per node
 

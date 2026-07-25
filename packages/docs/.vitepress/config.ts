@@ -51,7 +51,50 @@ gtag('config', '${GA_ID}')`,
     : []
 
 const DESCRIPTION =
-  'A framework-agnostic org chart that renders 50,000 nodes at 60fps. Canvas in a Web Worker; your Vue, React or plain-DOM components mounted only where they can be read.'
+  'A framework-agnostic org chart for very large trees. Canvas in a Web Worker; your Vue, React or plain-DOM components mounted only where they can be read.'
+
+/**
+ * Schema.org structured data (JSON-LD), site-wide. It does not by itself change
+ * how the page looks in a search result — title/description/URL do that — but it
+ * tells Google what the site, the software and its author ARE, which is what
+ * makes the page eligible for richer treatment and cleaner entity handling.
+ * Three linked nodes: the site, the person who publishes it, and Klad as a
+ * (free) developer application. A `SearchAction` is deliberately omitted: the
+ * docs search is client-side, with no query URL for Google to call.
+ */
+const STRUCTURED_DATA = JSON.stringify({
+  '@context': 'https://schema.org',
+  '@graph': [
+    {
+      '@type': 'WebSite',
+      '@id': `${SITE_URL}${BASE}#website`,
+      url: `${SITE_URL}${BASE}`,
+      name: 'Klad',
+      description: DESCRIPTION,
+      inLanguage: 'en',
+      publisher: { '@id': `${SITE_URL}${BASE}#person` },
+    },
+    {
+      '@type': 'Person',
+      '@id': `${SITE_URL}${BASE}#person`,
+      name: 'Yusuf Özdemir',
+      url: 'https://ozdemir.be',
+    },
+    {
+      '@type': 'SoftwareApplication',
+      '@id': `${SITE_URL}${BASE}#software`,
+      name: 'Klad',
+      description: DESCRIPTION,
+      url: `${SITE_URL}${BASE}`,
+      applicationCategory: 'DeveloperApplication',
+      operatingSystem: 'Web browser',
+      author: { '@id': `${SITE_URL}${BASE}#person` },
+      offers: { '@type': 'Offer', price: '0', priceCurrency: 'USD' },
+      license: 'https://www.gnu.org/licenses/agpl-3.0.html',
+      softwareRequirements: 'A modern web browser with Web Worker support',
+    },
+  ],
+})
 
 /**
  * Serves the embedded playground's own `index.html` in DEV.
@@ -114,12 +157,14 @@ export default defineConfig({
     ['meta', { property: 'og:image', content: `${SITE_URL}${BASE}og.png` }],
     ['meta', { property: 'og:image:width', content: '1200' }],
     ['meta', { property: 'og:image:height', content: '630' }],
-    ['meta', { property: 'og:image:alt', content: 'Klad — 50,000 nodes. 60fps.' }],
+    ['meta', { property: 'og:image:alt', content: 'Klad — a fast org chart for very large trees.' }],
 
     // `summary_large_image` is what makes the card render the image full
     // width rather than as a thumbnail beside the text.
     ['meta', { name: 'twitter:card', content: 'summary_large_image' }],
     ['meta', { name: 'twitter:image', content: `${SITE_URL}${BASE}og.png` }],
+
+    ['script', { type: 'application/ld+json' }, STRUCTURED_DATA],
   ],
 
   /**
@@ -137,7 +182,9 @@ export default defineConfig({
     const title = pageData.frontmatter.title || pageData.title || 'Klad'
     const description = pageData.frontmatter.description ?? DESCRIPTION
     const url = `${SITE_URL}${BASE}${pageData.relativePath.replace(/(index)?\.md$/, '')}`
-    const ogTitle = title === 'Klad' ? 'Klad' : `${title} · Klad`
+    // A title that already opens with the brand (the home page's own SEO title,
+    // or the bare site name) stands alone; every other page gets "Page · Klad".
+    const ogTitle = title.startsWith('Klad') ? title : `${title} · Klad`
 
     pageData.frontmatter.head ??= []
     pageData.frontmatter.head.push(
