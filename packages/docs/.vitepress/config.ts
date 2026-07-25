@@ -203,7 +203,9 @@ export default defineConfig({
 
     footer: {
       message: 'AGPL-3.0-or-later, with a commercial licence available.',
-      copyright: '© Yusuf Özdemir',
+      // VitePress renders the copyright as HTML, so the name links out.
+      copyright:
+        '© 2026 <a href="https://ozdemir.be" target="_blank" rel="noopener">Yusuf Özdemir</a>',
     },
 
     search: { provider: 'local' },
