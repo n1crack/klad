@@ -63,6 +63,65 @@ function renderCard(element: HTMLElement, context: NodeContext): void {
   syncToggleButton(card, context)
 }
 
+/**
+ * One row of a file explorer: a disclosure chevron, an icon, the name, and the
+ * size on the right.
+ *
+ * Everything about the row is DOM — the `file` layout's job was to work out
+ * where the row goes and how far in it is indented, and it draws nothing. The
+ * canvas underneath is left transparent (see the example's theme) so there is
+ * no box behind the row and no second copy of the name; what the canvas DOES
+ * still draw is the folder guide lines connecting a parent to its children,
+ * which is exactly the part a DOM row cannot do without a element per line.
+ */
+function renderFileRow(element: HTMLElement, context: NodeContext): void {
+  let row = element.firstElementChild as HTMLDivElement | null
+  if (row === null) {
+    row = document.createElement('div')
+    row.className = 'file-row'
+    const chevron = document.createElement('button')
+    chevron.type = 'button'
+    chevron.className = 'file-chevron'
+    const icon = document.createElement('span')
+    icon.className = 'file-icon'
+    const name = document.createElement('span')
+    name.className = 'file-name'
+    const size = document.createElement('span')
+    size.className = 'file-size'
+    row.append(chevron, icon, name, size)
+    element.append(row)
+  }
+  const item = context.item
+  const isFolder = item.kind === 'folder'
+  const chevron = row.querySelector<HTMLButtonElement>('.file-chevron')!
+  // A leaf keeps the chevron's WIDTH but not its glyph, so every name in a run
+  // of siblings starts at the same x — a file list where files and folders
+  // begin at different offsets reads as broken indentation.
+  chevron.textContent = context.hasChildren ? '▸' : ''
+  chevron.classList.toggle('is-open', context.open)
+  chevron.disabled = !context.hasChildren
+  chevron.setAttribute('aria-hidden', context.hasChildren ? 'false' : 'true')
+  chevron.onclick = (event) => {
+    event.stopPropagation()
+    context.toggle()
+  }
+  row.querySelector<HTMLSpanElement>('.file-icon')!.textContent = isFolder
+    ? context.open
+      ? '📂'
+      : '📁'
+    : '📄'
+  row.querySelector<HTMLSpanElement>('.file-name')!.textContent = String(item.name ?? item.id)
+  row.querySelector<HTMLSpanElement>('.file-size')!.textContent = formatSize(Number(item.sizeKb ?? 0))
+  row.classList.toggle('is-folder', isFolder)
+}
+
+/** `1240` -> `1.2 MB`. Sizes are stored in KB; a file list that prints six
+ * digits for every entry is a wall of numbers, not a column you can scan. */
+function formatSize(kb: number): string {
+  if (kb <= 0) return ''
+  return kb < 1024 ? `${kb} KB` : `${(kb / 1024).toFixed(1)} MB`
+}
+
 /** Circular initials monogram + name + role. */
 function renderAvatar(element: HTMLElement, context: NodeContext): void {
   let card = element.firstElementChild as HTMLDivElement | null
@@ -426,6 +485,7 @@ function renderActions(element: HTMLElement, context: NodeContext): void {
 }
 
 const RENDERERS: Record<NodeContentKind, RenderNode | null> = {
+  file: renderFileRow,
   card: renderCard,
   counts: renderCounts,
   dropdown: renderDropdown,
@@ -585,6 +645,36 @@ export function mountVanilla(
     chart.api.focus(id, { ring: true })
   }
 
+  /**
+   * The sunburst's drill-down, wired from the library's primitives rather than
+   * built into it: `setCentre` moves the wheel, `nodeClick` says what was hit,
+   * and the parent lookup is the page's own data. Four lines of app code, and
+   * every part of it is something an app would want to control — which is why
+   * the library ships the pieces rather than the behaviour.
+   *
+   * Two gestures, and the second is the one that makes it navigable: clicking
+   * a segment drills INTO it, and clicking the segment already at the centre
+   * steps back OUT to its parent. So the hub is always "go up", which is where
+   * a viewer will look for it.
+   */
+  let stopDrill: (() => void) | null = null
+  if (example.centreControl === true) {
+    const parentOf = new Map<string, string | null>()
+    for (const item of example.data) parentOf.set(String(item.id), (item.parentId as string | null) ?? null)
+
+    stopDrill = chart.on('nodeClick', ({ id }) => {
+      const centre = chart.api.getCentre() ?? (example.data[0] ? String(example.data[0].id) : null)
+      // Clicking the hub steps out. At the root there is nowhere further out,
+      // so it stays put rather than blanking the wheel.
+      const next = id === centre ? (parentOf.get(id) ?? null) : id
+      if (next === null && id === centre) return
+      chart.api.setCentre(next)
+      host.dispatchEvent(
+        new CustomEvent('playground:centrechange', { detail: { id: chart.api.getCentre() }, bubbles: true }),
+      )
+    })
+  }
+
   host.addEventListener('playground:repaint', onRepaint)
   host.addEventListener('playground:relayout', onRelayout)
   host.addEventListener('playground:slide', onSlide)
@@ -600,6 +690,7 @@ export function mountVanilla(
       host.removeEventListener('playground:slide', onSlide)
       if (slideHandle !== null) cancelAnimationFrame(slideHandle)
       host.removeEventListener('playground:goto', onGoto)
+      stopDrill?.()
       chart.destroy()
     },
     setMinimap(on) {

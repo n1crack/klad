@@ -68,7 +68,20 @@ describe('toSVG size and performance at 50k nodes', () => {
 
     const result = layout(tree, sizes, { spacingX: 16, spacingY: 48 })
     const bounds = applyOrientation(result.boxes, result.bounds, 'tb', false)
-    const data: ExportData = { boxes: result.boxes, parent: tree.parent, labels, bounds, horizontal: false }
+    const data: ExportData = {
+      boxes: result.boxes,
+      parent: tree.parent,
+      labels,
+      bounds,
+      horizontal: false,
+      rtl: false,
+      edgeStyle: 'tiered',
+      labelSpace: 0,
+      sectors: null,
+      angles: null,
+      branchOf: null,
+      branchDepth: null,
+    }
 
     // Warm up so the measured run isn't dominated by first-call JIT compilation.
     toSVG(data)

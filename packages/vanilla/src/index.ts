@@ -3,6 +3,9 @@ import {
   applyOrientation,
   centreOn,
   createCanvas2DRenderer,
+  edgeStyleForLayout,
+  isPolarLayout,
+  resolveLayout,
   createTextMeasurer,
   DEFAULT_LOD,
   easeInOutCubic,
@@ -25,6 +28,7 @@ import {
   type Camera,
   type ExportData,
   type Frame,
+  type LayoutName,
   type LodThresholds,
   type NodeData,
   type Orientation,
@@ -106,6 +110,53 @@ export interface Options {
    */
   label?: (item: NodeData) => string
   orientation?: Orientation
+  /**
+   * Which shape the tree is drawn in. Defaults to `'tidy'`, the tiered org
+   * chart.
+   *
+   *  - `'tidy'`     — tiered, the 1.0 chart. The only one `orientation`
+   *                   applies to.
+   *  - `'file'`     — a file explorer: one indented row per node, with folder
+   *                   guide lines. The one layout whose width does not grow
+   *                   with the tree.
+   *  - `'radial'`   — the root at the centre, generations as rings, names
+   *                   radiating outward. For trees that are wide and shallow.
+   *  - `'sunburst'` — the tree as a wheel of nested arc segments, coloured by
+   *                   branch. Click a segment to drill into it; see `centre`.
+   */
+  layout?: LayoutName
+  /**
+   * Per-level step in world units, whose meaning depends on the layout: the
+   * `file` indent, or the `radial`/`sunburst` ring thickness. Omitted, each
+   * layout derives one from your `nodeSize`, so it scales with the cards.
+   */
+  layoutStep?: number
+  /** `file` only: the gap between consecutive rows. Defaults to `spacing.y`. */
+  rowGap?: number
+  /**
+   * `sunburst` only: the id of the node at the centre of the wheel, or `null`
+   * (the default) for the root.
+   *
+   * Changing it — through this option or `setCentre` — is the drill-down: the
+   * chosen branch widens to the full circle and travels inward to the centre
+   * while everything else closes at the seam, and the frame does not move. It
+   * is NOT `isolate`: nothing is pruned, so every node has somewhere to travel
+   * and the change animates rather than cuts.
+   */
+  centre?: string | null
+  /**
+   * `sunburst` only: how many rings are drawn around the centre. Deeper nodes
+   * are still there — drilling in reveals them — but are not drawn, so the
+   * outermost ring stays thick enough to carry a label. Defaults to 3.
+   */
+  maxRings?: number
+  /**
+   * Fill each node with its top-level branch's colour from `theme.palette`.
+   * Omitted, the layout decides: on for `sunburst`, whose segments have
+   * neither position nor connectors to carry structure, and off for every
+   * other layout, where a plain card lets your own `renderNode` styling show.
+   */
+  colourBranches?: boolean
   rtl?: boolean
   spacing?: { x?: number; y?: number }
   lodThresholds?: LodThresholds
@@ -345,6 +396,22 @@ export interface KladApi {
    * The host is left to say where the viewer is — `pathTo(id)` returns the
    * chain from the real root, which is a breadcrumb.
    */
+  /**
+   * Centres a sunburst on one node — the drill-down — or `null` for the root.
+   *
+   * The chosen branch widens to the whole circle and travels inward while
+   * everything else closes at the seam, over about 600ms. Nothing is pruned
+   * and the camera does not move: a sunburst's frame is the same square
+   * whatever is at its centre, which is what makes this read as zooming into
+   * the chart rather than as loading a different one.
+   *
+   * A no-op on every other layout, and on an id this chart doesn't have.
+   * Pair it with `getCentre` and each node's ancestor chain to build a
+   * breadcrumb.
+   */
+  setCentre(id: string | null): void
+  /** The id currently at the centre of the wheel, or `null` for the root. */
+  getCentre(): string | null
   isolate(id: string | null): void
   reset(): void
   /**
@@ -691,14 +758,32 @@ export function createKlad(host: HTMLElement, options: Options): KladInstance {
       sizes[i * 2 + 1] = size.h
       labels[i] = labelOf(item)
     }
-    chartHost.setData(toWireTree(tree), sizes, labels, open)
+    // Options FIRST, then the data. The order matters on the very first pass:
+    // each of these relayouts, and whichever runs last is the geometry the
+    // mount-time `fit()` frames. Sending the data first laid the tree out with
+    // the DEFAULT layout, published those bounds, and only then switched to
+    // the one the caller actually asked for — so a chart that opened as, say,
+    // a sunburst was fitted to the bounds of a tidy tree it never drew, and
+    // came up off-centre and at the wrong zoom until something else forced a
+    // refit.
     chartHost.setOptions({
       spacingX: currentOptions.spacing?.x ?? 16,
       spacingY: currentOptions.spacing?.y ?? 48,
       orientation: currentOptions.orientation ?? 'tb',
       rtl: currentOptions.rtl ?? false,
+      layout: currentOptions.layout ?? 'tidy',
+      layoutStep: currentOptions.layoutStep,
+      rowGap: currentOptions.rowGap,
+      maxRings: currentOptions.maxRings,
+      colourBranches: currentOptions.colourBranches,
+      // Resolved here rather than in the engine because the engine addresses
+      // nodes by index and a caller names them by id. An id this chart doesn't
+      // have resolves to -1, the default centre, which is also what `null`
+      // means — a wheel is never left centred on nothing.
+      focus: centreIndex(),
       lod,
     })
+    chartHost.setData(toWireTree(tree), sizes, labels, open)
     // Deferred: applyData() runs synchronously inside createKlad, before the
     // caller has had a chance to attach a 'warning' listener via `on()`. Emitting
     // here directly would drop every warning raised on the initial load. Queuing
@@ -712,6 +797,14 @@ export function createKlad(host: HTMLElement, options: Options): KladInstance {
       })
     }
     a11y?.update(tree, open, (index) => labelOf(itemFor(index)), isolatedIndex)
+  }
+
+  /** `options.centre` as a source index, or -1 for "the default centre" —
+   * which covers `null`, an omitted option, and an id this chart doesn't
+   * have. */
+  const centreIndex = (): number => {
+    const id = currentOptions.centre
+    return id === undefined || id === null ? -1 : (tree.idToIndex.get(id) ?? -1)
   }
 
   const initOpen = (): void => {
@@ -888,28 +981,79 @@ export function createKlad(host: HTMLElement, options: Options): KladInstance {
     // taken while the screen showed a department.
     const visible = pruneToVisible(tree, open, isolatedIndex)
     const n = visible.tree.count
+    const layoutName = currentOptions.layout ?? 'tidy'
+    const orientation = currentOptions.orientation ?? 'tb'
+    const rtl = currentOptions.rtl ?? false
+    // Every one of these mirrors a decision `engine.ts`'s `relayout` makes. It
+    // has to: an export that laid the tree out by different rules from the one
+    // on screen would be a picture of a chart nobody is looking at.
+    const tidyLayout = layoutName === 'tidy'
+    const horizontal = tidyLayout && (orientation === 'lr' || orientation === 'rl')
+
     const sizes: Float64Array = new Float64Array(n * 2)
     const labels: string[] = Array.from({ length: n })
     for (let i = 0; i < n; i++) {
       const src = visible.toSource[i]!
       const item = itemFor(src)
       const size = sizeOf(item)
-      sizes[i * 2] = size.w
-      sizes[i * 2 + 1] = size.h
+      // Transposed for a horizontal tidy tree, exactly as the engine does —
+      // the layout always works in a top-down space and `applyOrientation`
+      // swaps back. Without this an `lr` export drew every card rotated.
+      sizes[i * 2] = horizontal ? size.h : size.w
+      sizes[i * 2 + 1] = horizontal ? size.w : size.h
       labels[i] = labelOf(item)
     }
     const spacingX = currentOptions.spacing?.x ?? 16
     const spacingY = currentOptions.spacing?.y ?? 48
-    const result = layout(visible.tree, sizes, { spacingX, spacingY })
-    const orientation = currentOptions.orientation ?? 'tb'
-    const rtl = currentOptions.rtl ?? false
-    const exportBounds = applyOrientation(result.boxes, result.bounds, orientation, rtl)
+    const centre = centreIndex()
+    const result = resolveLayout(layoutName)(visible.tree, sizes, {
+      spacingX: horizontal ? spacingY : spacingX,
+      spacingY: horizontal ? spacingX : spacingY,
+      step: currentOptions.layoutStep,
+      rowGap: currentOptions.rowGap,
+      focus: centre === -1 ? -1 : (visible.fromSource[centre] ?? -1),
+      maxRings: currentOptions.maxRings,
+    })
+    const exportBounds = isPolarLayout(layoutName)
+      ? result.bounds
+      : applyOrientation(result.boxes, result.bounds, tidyLayout ? orientation : 'tb', rtl)
+
+    let branchOf: Int32Array | null = null
+    let branchDepth: Int32Array | null = null
+    if (currentOptions.colourBranches ?? layoutName === 'sunburst') {
+      const of = new Int32Array(n)
+      const bd = new Int32Array(n)
+      for (let k = 0; k < n; k++) {
+        const i = visible.tree.order[k]!
+        const p = visible.tree.parent[i]!
+        if (p === -1) {
+          of[i] = -1
+          bd[i] = 0
+        } else if (of[p] === -1) {
+          of[i] = i
+          bd[i] = 0
+        } else {
+          of[i] = of[p]!
+          bd[i] = bd[p]! + 1
+        }
+      }
+      branchOf = of
+      branchDepth = bd
+    }
+
     return {
       boxes: result.boxes,
       parent: visible.tree.parent,
       labels,
       bounds: exportBounds,
-      horizontal: orientation === 'lr' || orientation === 'rl',
+      horizontal,
+      rtl,
+      edgeStyle: edgeStyleForLayout(layoutName),
+      sectors: result.sectors ?? null,
+      angles: result.angles ?? null,
+      labelSpace: result.labelSpace ?? 0,
+      branchOf,
+      branchDepth,
     }
   }
 
@@ -932,6 +1076,15 @@ export function createKlad(host: HTMLElement, options: Options): KladInstance {
     const rect = host.getBoundingClientRect()
     const size = { width: rect.width, height: rect.height }
     const fitted = fitCamera(bounds, size, FIT_PADDING, limits)
+    // A wheel opens FITTED, not at 1:1 with its root pinned to the top. The
+    // rule below is about a tree that grows downward off the bottom of the
+    // screen — "start at the top, at a readable size, and let them scroll" —
+    // and a radial chart or a sunburst has no such direction: it is a single
+    // round object read from the middle outward, and showing the top-left
+    // quarter of one at 1:1 is showing a viewer an arc they cannot place.
+    // Its own bounds are already a square with the centre in the middle, so
+    // the fit is the correct opening view by construction.
+    if (isPolarLayout(currentOptions.layout)) return fitted
     // 1:1. Not the fit scale — on a wide chart that is a tiny number, which is the
     // whole problem this avoids.
     const k = 1
@@ -939,6 +1092,21 @@ export function createKlad(host: HTMLElement, options: Options): KladInstance {
     const rootIndex = tree.roots[0]
     const rootBox = rootIndex === undefined ? null : boxOfSource(rootIndex)
     if (rootBox === null) return fitted
+
+    // A file list opens at its top-LEFT corner, not with its root centred.
+    // Centring is right for a tiered tree, whose children fan out to both
+    // sides of the root; a file list only ever grows to the right, so
+    // centring its one-row-wide root leaves the whole list sitting in the
+    // right-hand half of the screen with an empty left margin as wide as the
+    // deepest indent it will ever reach. (RTL mirrors, so it opens at the
+    // top-right instead.)
+    if (currentOptions.layout === 'file') {
+      return {
+        x: currentOptions.rtl === true ? size.width - FIT_PADDING - (rootBox.x + rootBox.w) * k : FIT_PADDING - rootBox.x * k,
+        y: FIT_PADDING - rootBox.y * k,
+        k,
+      }
+    }
 
     return {
       x: size.width / 2 - (rootBox.x + rootBox.w / 2) * k,
@@ -1865,6 +2033,24 @@ export function createKlad(host: HTMLElement, options: Options): KladInstance {
         fitCamera({ minX, minY, maxX, maxY }, { width: rect.width, height: rect.height }, FIT_PADDING, limits),
       )
     },
+    setCentre(id) {
+      const next = id === null ? -1 : (tree.idToIndex.get(id) ?? -1)
+      if (next === centreIndex()) return
+      currentOptions = { ...currentOptions, centre: id }
+      chartHost.setFocus(next)
+      a11yDirty = true
+      // Deliberately no fit and no camera move at all, unlike `isolate`. A
+      // sunburst's bounds do not depend on which node is centred — the wheel
+      // is always the same square with the hub at its middle — so the whole
+      // drill-down happens inside a frame that never shifts. Refitting here
+      // would add a camera animation on top of the geometry animation and
+      // undo the one thing that makes this read as zooming into the chart
+      // rather than replacing it.
+      scheduleFrame()
+    },
+    getCentre() {
+      return currentOptions.centre ?? null
+    },
     isolate(id) {
       const next = id === null ? -1 : (tree.idToIndex.get(id) ?? -1)
       if (next === isolatedIndex) return
@@ -2100,7 +2286,17 @@ export function createKlad(host: HTMLElement, options: Options): KladInstance {
         camera: { x: EXPORT_PADDING - data.bounds.minX, y: EXPORT_PADDING - data.bounds.minY, k: 1 },
         dpr: scale,
         tier: 'full',
+        // Straight from `buildExportData`, which mirrored the engine's own
+        // layout decisions — so the PNG path draws the same shapes, the same
+        // connectors and the same branch colours the canvas does.
+        edgeStyle: data.edgeStyle,
+        sectors: data.sectors,
+        angles: data.angles,
+        labelSpace: data.labelSpace,
+        branchOf: data.branchOf,
+        branchDepth: data.branchDepth,
         horizontal: data.horizontal,
+        rtl: data.rtl,
         // Neither highlight nor selection: an export is a picture of the
         // CHART, and both of those are states of the person looking at it.
         // A PNG that arrives with someone else's selection outlined on it is

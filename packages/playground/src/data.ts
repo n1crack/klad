@@ -319,6 +319,7 @@ export function buildOrg(target: number, fanOut: FanOut = wideFanOut): NodeItem[
  * - 'none'     — no overlay content at all: canvas-only, frameworkless cost.
  */
 export type NodeContentKind =
+  | 'file'
   | 'card'
   | 'avatar'
   | 'monogram'
@@ -360,6 +361,13 @@ export interface Example {
    * top of a selection. Per-example, like the others.
    */
   selectionControl?: boolean
+  /**
+   * Shows the sunburst's breadcrumb bar over the canvas — the trail from the
+   * root to whatever is currently at the centre, each step clickable. Same
+   * per-example opt-in as the others: it is the point of exactly one example,
+   * and on any other layout it would name a "centre" that does not exist.
+   */
+  centreControl?: boolean
 }
 
 // Shared by every example except "Large", which needs its own scale and its
@@ -397,6 +405,158 @@ function largeData(): NodeItem[] {
   largeDataCache ??= buildOrg(20_000, narrowFanOut)
   return largeDataCache
 }
+
+// ---------------------------------------------------------------------------
+// A source tree, for the three layouts that are about something other than an
+// org chart.
+//
+// The org data every other example shares is the wrong shape for these: a
+// generated hierarchy of "Person 41" reporting to "Person 12" tells you nothing
+// about whether a file explorer looks right, and a sunburst of it is a wheel of
+// interchangeable names. A directory tree has what these layouts are for — real
+// nesting depth, wildly uneven branch sizes, and leaves that carry a magnitude
+// (bytes) the geometry can be read against.
+// ---------------------------------------------------------------------------
+
+/** One directory's contents, as `[name, children]` or a leaf `[name, sizeKb]`. */
+type FileSpec = [string, FileSpec[] | number]
+
+const PROJECT: FileSpec[] = [
+  [
+    'src',
+    [
+      [
+        'components',
+        [
+          ['Button.tsx', 14],
+          ['Card.tsx', 22],
+          ['Dialog.tsx', 41],
+          ['Table.tsx', 68],
+          ['Toolbar.tsx', 19],
+        ],
+      ],
+      [
+        'hooks',
+        [
+          ['useChart.ts', 31],
+          ['useTheme.ts', 9],
+          ['useViewport.ts', 17],
+        ],
+      ],
+      [
+        'lib',
+        [
+          [
+            'render',
+            [
+              ['canvas.ts', 112],
+              ['svg.ts', 87],
+              ['palette.ts', 24],
+            ],
+          ],
+          [
+            'layout',
+            [
+              ['tidy.ts', 96],
+              ['radial.ts', 38],
+              ['sunburst.ts', 44],
+            ],
+          ],
+          ['tree.ts', 53],
+          ['viewport.ts', 28],
+        ],
+      ],
+      ['index.ts', 6],
+      ['main.tsx', 11],
+    ],
+  ],
+  [
+    'tests',
+    [
+      ['layout.test.ts', 64],
+      ['render.test.ts', 78],
+      ['tree.test.ts', 33],
+      [
+        'fixtures',
+        [
+          ['small.json', 4],
+          ['large.json', 210],
+        ],
+      ],
+    ],
+  ],
+  [
+    'docs',
+    [
+      ['getting-started.md', 12],
+      ['api.md', 46],
+      ['roadmap.md', 8],
+    ],
+  ],
+  [
+    'public',
+    [
+      ['favicon.svg', 2],
+      ['logo.svg', 5],
+    ],
+  ],
+  ['package.json', 3],
+  ['tsconfig.json', 2],
+  ['README.md', 9],
+]
+
+/**
+ * Flattens {@link PROJECT} into the flat `{ id, parentId, ... }` rows Klad
+ * takes. Each node carries `kind` (folder or file) and `sizeKb` — a folder's
+ * size being the sum of its contents, which is what makes the sunburst's
+ * segments mean something rather than just being equal slices.
+ */
+function buildFileTree(): NodeItem[] {
+  const rows: NodeItem[] = []
+  rows.push({ id: 'root', name: 'my-project', kind: 'folder', sizeKb: 0, ext: '' })
+
+  const walk = (specs: FileSpec[], parentId: string, path: string): number => {
+    let total = 0
+    for (const [name, contents] of specs) {
+      const id = `${path}/${name}`
+      if (typeof contents === 'number') {
+        rows.push({ id, parentId, name, kind: 'file', sizeKb: contents, ext: name.split('.').pop() ?? '' })
+        total += contents
+        continue
+      }
+      // Pushed before its children are walked so the row order stays preorder
+      // — which is the order a file explorer lists them in — then patched with
+      // the total once they are known.
+      const row: NodeItem = { id, parentId, name, kind: 'folder', sizeKb: 0, ext: '' }
+      rows.push(row)
+      const size = walk(contents, id, id)
+      row.sizeKb = size
+      total += size
+    }
+    return total
+  }
+
+  const rootRow = rows[0]!
+  rootRow.sizeKb = walk(PROJECT, 'root', '')
+  return rows
+}
+
+export const FILE_DATA: NodeItem[] = buildFileTree()
+
+/** Row height for the file-explorer example, and the width every row shares.
+ * A file list is a list: uniform rows, one column, the indent doing the work. */
+export const FILE_ROW = { w: 300, h: 30 }
+
+/**
+ * Node sizes for the wheel layouts. Neither draws these as cards — a radial
+ * chart puts a small marker at each ring position and radiates the name out
+ * from it, and a sunburst draws sectors and ignores the box entirely — so what
+ * these numbers actually control is the derived ring spacing and, for radial,
+ * how much room the layout reserves outside the last ring for labels. See
+ * `LayoutOptions.step`.
+ */
+export const RADIAL_NODE = { w: 18, h: 18 }
+export const SUNBURST_NODE = { w: 40, h: 40 }
 
 export const EXAMPLES: Example[] = [
   {
@@ -572,6 +732,64 @@ export const EXAMPLES: Example[] = [
     data: SHARED_DATA,
     options: {},
     content: 'none',
+  },
+  {
+    id: 'file-tree',
+    name: 'File tree',
+    description:
+      'The file-explorer shape: one indented row per node, folder guide lines down the gutter, and a size on every row. The only layout whose width does not grow as the tree does — a thousand siblings cost a thousand rows, not a thousand columns.',
+    data: FILE_DATA,
+    options: {
+      layout: 'file',
+      nodeSize: FILE_ROW,
+      rowGap: 2,
+      layoutStep: 18,
+      label: () => '',
+      // The rows are DOM cards (icon, name, size), so the canvas underneath
+      // them draws nothing of its own — no box behind the row, no label to
+      // double up with the card's.
+      theme: { nodeFill: 'transparent', nodeStroke: 'transparent' },
+      toggleOnNodeClick: true,
+      collapsedByDefault: (item) => String(item.id).split('/').length > 2,
+    },
+    content: 'file',
+  },
+  {
+    id: 'radial',
+    name: 'Radial',
+    description:
+      'Root at the centre, each generation a ring further out, and every name turned to run along its own spoke — flipped on the left-hand side so nothing reads upside down. For trees that are wide and shallow, where a tiered chart runs off the side of the screen.',
+    data: SHARED_DATA,
+    options: {
+      layout: 'radial',
+      nodeSize: RADIAL_NODE,
+      layoutStep: 190,
+      // A dot per node, coloured by branch, with the name doing the talking.
+      // A full-size card at every ring position is what makes a radial chart
+      // look cluttered: the cards collide long before the labels do, and they
+      // repeat information the label already carries. Shrinking the node to a
+      // marker leaves the ring spacing free to be set by how much room the
+      // NAMES need, which is the actual constraint.
+      colourBranches: true,
+      theme: { cornerRadius: RADIAL_NODE.w / 2, nodeStroke: 'transparent' },
+      minimap: true,
+    },
+    content: 'none',
+  },
+  {
+    id: 'sunburst',
+    name: 'Sunburst',
+    description:
+      'The same file tree as a wheel, each segment sized by what it holds and coloured by which top-level folder it belongs to. Click a segment to drill into it: it widens to the full circle and travels inward while the rest closes at the seam. Click the centre to come back out.',
+    data: FILE_DATA,
+    options: {
+      layout: 'sunburst',
+      nodeSize: SUNBURST_NODE,
+      layoutStep: 74,
+      maxRings: 3,
+    },
+    content: 'none',
+    centreControl: true,
   },
   {
     id: 'large',

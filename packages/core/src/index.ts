@@ -4,8 +4,13 @@ export type { NodeData, Warning, WarningCode, Size, Bounds } from './types.js'
 export type { Tree, SubtreeStats } from './tree.js'
 export { normalize, subtreeOf, wouldCreateCycle, computeSubtreeStats } from './tree.js'
 
-export type { LayoutOptions, LayoutResult } from './layout/tidy.js'
+export type { LayoutFn, LayoutOptions, LayoutResult } from './layout/types.js'
 export { layout } from './layout/tidy.js'
+export type { LayoutName } from './layout/index.js'
+export { LAYOUTS, edgeStyleForLayout, isPolarLayout, resolveLayout } from './layout/index.js'
+export { file } from './layout/file.js'
+export { radial } from './layout/radial.js'
+export { hitTestSector, sunburst } from './layout/sunburst.js'
 
 export type { Orientation } from './layout/orientation.js'
 export { applyOrientation } from './layout/orientation.js'
@@ -46,11 +51,13 @@ export { createTextMeasurer } from './text/measure.js'
 
 export type { Theme } from './render/theme.js'
 export { DARK_THEME, DEFAULT_THEME, resolveTheme } from './render/theme.js'
+export { DARK_PALETTE, DEFAULT_PALETTE, computeNodeFills, depthStep, inkOn } from './render/palette.js'
 export type { LodThresholds, LodTier } from './render/lod.js'
 export { DEFAULT_LOD, lodFor, overlayEnabled } from './render/lod.js'
 
 export type {
   DrawCallStats,
+  EdgeStyle,
   Frame,
   Renderer,
   RenderContext2D,

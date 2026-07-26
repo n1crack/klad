@@ -1084,6 +1084,93 @@ const syncSelectionSoon = (): void => {
   requestAnimationFrame(step)
 }
 
+/**
+ * The sunburst's breadcrumb: the trail from the root to whatever is at the
+ * centre of the wheel, each step clickable.
+ *
+ * A drill-down without one is a chart you can get lost in. The wheel shows the
+ * three rings below wherever you are and nothing above it, so once you are two
+ * levels in there is no on-screen evidence of what you drilled through — and
+ * "click the middle to go up" only tells you how to take one step back, not
+ * how far back there is to go. The trail is the missing half of the
+ * navigation, and clicking a step jumps straight there with the same animation
+ * a click on the wheel gives.
+ */
+const centreTrail = document.createElement('div')
+centreTrail.className = 'centre-trail'
+
+const centreField = document.createElement('div')
+centreField.className = 'surface-panel surface-panel-trail'
+centreField.append(centreTrail)
+
+for (const type of ['pointerdown', 'wheel'] as const) {
+  centreField.addEventListener(type, (event) => event.stopPropagation())
+}
+
+/** Renders the root-to-`centreId` trail. `null` means the root itself. */
+function renderCentreTrail(example: Example, centreId: string | null): void {
+  const byId = new Map(example.data.map((item) => [String(item.id), item]))
+  const rootId = example.data[0] === undefined ? null : String(example.data[0].id)
+  const path: string[] = []
+  let cursor = centreId ?? rootId
+  while (cursor !== null && byId.has(cursor)) {
+    path.unshift(cursor)
+    const parent = byId.get(cursor)!.parentId
+    cursor = parent === undefined || parent === null ? null : String(parent)
+  }
+
+  centreTrail.innerHTML = ''
+  path.forEach((id, index) => {
+    if (index > 0) {
+      const sep = document.createElement('span')
+      sep.className = 'centre-sep'
+      sep.textContent = '/'
+      centreTrail.append(sep)
+    }
+    const step = document.createElement('button')
+    step.type = 'button'
+    step.className = 'centre-step'
+    step.textContent = String(byId.get(id)!.name ?? id)
+    // The last step IS the centre — a button that would navigate to where you
+    // already are is a dead control, so it is marked as the current position
+    // instead.
+    const isCurrent = index === path.length - 1
+    step.classList.toggle('is-current', isCurrent)
+    step.disabled = isCurrent
+    step.onclick = () => {
+      currentApi?.setCentre(index === 0 ? null : id)
+      renderCentreTrail(example, index === 0 ? null : id)
+    }
+    centreTrail.append(step)
+  })
+}
+
+/** The example the breadcrumb is currently describing — it needs the data to
+ * walk parent links, and only the example that owns the trail has it. */
+let centreExample: Example | null = null
+let centreListenerBound = false
+
+/** Shows the breadcrumb for the example that asked for it. */
+function syncCentreControl(example: Example): void {
+  centreField.remove()
+  centreExample = null
+  if (example.centreControl !== true) return
+  centreExample = example
+  surface.append(centreField)
+  renderCentreTrail(example, example.options.centre ?? null)
+  if (!centreListenerBound) {
+    centreListenerBound = true
+    // Emitted by the demo's own drill-down handler (see vanilla-demo.ts), so
+    // the trail follows a click on the wheel as well as a click on itself.
+    // Bound lazily, like the selection panel's listeners, because `surface`
+    // is created further down this module.
+    surface.addEventListener('playground:centrechange', (event) => {
+      if (centreExample === null) return
+      renderCentreTrail(centreExample, (event as CustomEvent<{ id: string | null }>).detail.id)
+    })
+  }
+}
+
 let selectionListenersBound = false
 
 /** Shows the selection panel for the example that asked for it. */
@@ -1619,6 +1706,13 @@ function show(stack: Stack, exampleId: string): void {
   syncGotoControl(example)
   syncViewControl(example)
   syncSelectionControl(example)
+  syncCentreControl(example)
+  // Per-layout CSS hooks. The overlay cards a layout expects are its own
+  // business — a file row is not an org card — and scoping their styles to
+  // these classes is what keeps each example's look from leaking into the
+  // others.
+  surface.classList.toggle('is-file', example.options.layout === 'file')
+  surface.classList.toggle('is-wheel', example.options.layout === 'sunburst' || example.options.layout === 'radial')
   descriptionText.textContent = example.description
   description.classList.remove('is-expanded')
 

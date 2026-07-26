@@ -162,6 +162,12 @@ function photoGradient(item: Item): string {
 function headcountOf(item: Item): number {
   return Number(item.headcount ?? 0)
 }
+/** Sizes are stored in KB; six digits on every row is a wall of numbers. */
+function fileSize(item: Item): string {
+  const kb = Number(item.sizeKb ?? 0)
+  if (kb <= 0) return ''
+  return kb < 1024 ? `${kb} KB` : `${(kb / 1024).toFixed(1)} MB`
+}
 </script>
 
 <template>
@@ -226,6 +232,31 @@ function headcountOf(item: Item): number {
         <button v-if="hasChildren" type="button" class="toggle-btn" @click="toggle">
           {{ open ? '−' : '+' }}
         </button>
+      </div>
+
+      <!--
+        One file-explorer row. See `renderFileRow` in vanilla-demo.ts for what
+        each part does; the chevron keeps its width on a leaf so every name in
+        a run of siblings starts at the same x.
+      -->
+      <div
+        v-else-if="example.content === 'file'"
+        class="file-row"
+        :class="{ 'is-folder': item.kind === 'folder' }"
+      >
+        <button
+          type="button"
+          class="file-chevron"
+          :class="{ 'is-open': open }"
+          :disabled="!hasChildren"
+          :aria-hidden="!hasChildren"
+          @click.stop="toggle"
+        >
+          {{ hasChildren ? '▸' : '' }}
+        </button>
+        <span class="file-icon">{{ item.kind === 'folder' ? (open ? '📂' : '📁') : '📄' }}</span>
+        <span class="file-name">{{ String(item.name ?? item.id) }}</span>
+        <span class="file-size">{{ fileSize(item) }}</span>
       </div>
 
       <div v-else class="card">

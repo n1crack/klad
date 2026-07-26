@@ -73,10 +73,18 @@ function makeRecorder(): {
     font: '',
     globalAlpha: 1,
     textBaseline: '',
+    textAlign: '',
     save() {},
     restore() {},
     scale() {},
     translate() {},
+    // The cross-check fixtures are all rectangular tiered layouts, so nothing
+    // in this file ever reaches the polar drawing paths. Present to satisfy
+    // the interface; a sunburst's own geometry is asserted in sector.test.ts,
+    // against the shared placement functions rather than through a recorder.
+    rotate() {},
+    arc() {},
+    closePath() {},
     setTransform() {},
     clearRect() {},
     beginPath() {
@@ -193,7 +201,14 @@ function frameFrom(built: Built): Frame {
     camera: { x: 0, y: 0, k: 1 },
     dpr: 1,
     tier: 'full',
+    edgeStyle: 'tiered',
+    labelSpace: 0,
+    sectors: null,
+    angles: null,
+    branchOf: null,
+    branchDepth: null,
     horizontal: built.horizontal,
+    rtl: false,
     highlight: null,
     selected: null,
     dragIndex: -1,
@@ -214,6 +229,13 @@ function exportDataFrom(built: Built): ExportData {
     labels: built.labels,
     bounds: built.bounds,
     horizontal: built.horizontal,
+    rtl: false,
+    edgeStyle: 'tiered',
+    labelSpace: 0,
+    sectors: null,
+    angles: null,
+    branchOf: null,
+    branchDepth: null,
   }
 }
 
@@ -405,6 +427,13 @@ describe('edge corner radius clamps against a short connector', () => {
     labels: ['Root', 'Child'],
     bounds: { minX: 0, minY: 0, maxX: 110, maxY: 250 },
     horizontal: false,
+    rtl: false,
+    edgeStyle: 'tiered',
+    labelSpace: 0,
+    sectors: null,
+    angles: null,
+    branchOf: null,
+    branchDepth: null,
   }
 
   it('does not throw and clamps the two arcs to meet, not cross, at the crossbar midpoint', () => {
@@ -450,6 +479,13 @@ describe('edge corner radius clamps against a short connector', () => {
       labels: ['Root', 'Child'],
       bounds: { minX: 0, minY: 0, maxX: 100, maxY: 250 },
       horizontal: false,
+      rtl: false,
+      edgeStyle: 'tiered',
+      labelSpace: 0,
+      sectors: null,
+      angles: null,
+      branchOf: null,
+      branchDepth: null,
     }
     const theme = { ...DEFAULT_THEME, edgeCornerRadius: 100 }
     const svg = toSVG(zeroCrossbar, { padding: 0, theme })
@@ -475,6 +511,13 @@ describe('edge corner radius clamps against a short connector', () => {
       dpr: 1,
       tier: 'full',
       horizontal: false,
+      rtl: false,
+      edgeStyle: 'tiered',
+      labelSpace: 0,
+      sectors: null,
+      angles: null,
+      branchOf: null,
+      branchDepth: null,
       highlight: null,
     selected: null,
       dragIndex: -1,
@@ -509,6 +552,13 @@ describe('toSVG text handling', () => {
       labels: [longLabel],
       bounds: { minX: 0, minY: 0, maxX: 20, maxY: 20 },
       horizontal: false,
+      rtl: false,
+      edgeStyle: 'tiered',
+      labelSpace: 0,
+      sectors: null,
+      angles: null,
+      branchOf: null,
+      branchDepth: null,
     }
     const svg = toSVG(data)
     expect(svg).toContain(longLabel)
@@ -521,6 +571,13 @@ describe('toSVG text handling', () => {
       labels: ['', 'Second'],
       bounds: { minX: 0, minY: 0, maxX: 50, maxY: 20 },
       horizontal: false,
+      rtl: false,
+      edgeStyle: 'tiered',
+      labelSpace: 0,
+      sectors: null,
+      angles: null,
+      branchOf: null,
+      branchDepth: null,
     }
     const svg = toSVG(data)
     expect(svg.match(/<text/g) ?? []).toHaveLength(1)
@@ -536,6 +593,13 @@ describe('toSVG escaping (hostile labels)', () => {
       labels: [label],
       bounds: { minX: 0, minY: 0, maxX: 100, maxY: 40 },
       horizontal: false,
+      rtl: false,
+      edgeStyle: 'tiered',
+      labelSpace: 0,
+      sectors: null,
+      angles: null,
+      branchOf: null,
+      branchDepth: null,
     }
     return toSVG(data)
   }
@@ -611,6 +675,13 @@ describe('toSVG document shape', () => {
       labels: ['Root'],
       bounds: { minX: 0, minY: 0, maxX: 100, maxY: 40 },
       horizontal: false,
+      rtl: false,
+      edgeStyle: 'tiered',
+      labelSpace: 0,
+      sectors: null,
+      angles: null,
+      branchOf: null,
+      branchDepth: null,
     }
     const svg = toSVG(data, { padding: 10 })
     expect(svg.startsWith('<svg')).toBe(true)
@@ -625,6 +696,13 @@ describe('toSVG document shape', () => {
       labels: ['Root'],
       bounds: { minX: 0, minY: 0, maxX: 100, maxY: 40 },
       horizontal: false,
+      rtl: false,
+      edgeStyle: 'tiered',
+      labelSpace: 0,
+      sectors: null,
+      angles: null,
+      branchOf: null,
+      branchDepth: null,
     }
     const svg = toSVG(data)
     expect(svg).not.toContain('<path')
@@ -637,6 +715,13 @@ describe('toSVG document shape', () => {
       labels: [],
       bounds: { minX: 0, minY: 0, maxX: 0, maxY: 0 },
       horizontal: false,
+      rtl: false,
+      edgeStyle: 'tiered',
+      labelSpace: 0,
+      sectors: null,
+      angles: null,
+      branchOf: null,
+      branchDepth: null,
     }
     expect(() => toSVG(data)).not.toThrow()
   })
@@ -652,6 +737,13 @@ describe('toSVG document shape', () => {
         labels: ['Root'],
         bounds: { minX: 0, minY: 0, maxX: 100, maxY: 50 },
         horizontal: false,
+        rtl: false,
+        edgeStyle: 'tiered',
+        labelSpace: 0,
+        sectors: null,
+        angles: null,
+        branchOf: null,
+        branchDepth: null,
       },
       { theme: { ...DEFAULT_THEME, nodeFill: '</style><script>alert(1)</script>' } },
     )

@@ -131,6 +131,34 @@ function renderPhoto(context: NodeContext): ReactNode {
   )
 }
 
+/** One file-explorer row — see `renderFileRow` in vanilla-demo.ts for what
+ * each part is doing and why the canvas underneath draws nothing. */
+function renderFileRow(context: NodeContext): ReactNode {
+  const item = context.item
+  const isFolder = item.kind === 'folder'
+  const kb = Number(item.sizeKb ?? 0)
+  const size = kb <= 0 ? '' : kb < 1024 ? `${kb} KB` : `${(kb / 1024).toFixed(1)} MB`
+  return (
+    <div className={`file-row${isFolder ? ' is-folder' : ''}`}>
+      <button
+        type="button"
+        className={`file-chevron${context.open ? ' is-open' : ''}`}
+        disabled={!context.hasChildren}
+        aria-hidden={!context.hasChildren}
+        onClick={(event) => {
+          event.stopPropagation()
+          context.toggle()
+        }}
+      >
+        {context.hasChildren ? '▸' : ''}
+      </button>
+      <span className="file-icon">{isFolder ? (context.open ? '📂' : '📁') : '📄'}</span>
+      <span className="file-name">{String(item.name ?? item.id)}</span>
+      <span className="file-size">{size}</span>
+    </div>
+  )
+}
+
 const RENDERERS: Record<Exclude<Example['content'], 'none'>, (context: NodeContext) => ReactNode> = {
   card: renderCard,
   avatar: renderAvatar,
@@ -149,6 +177,7 @@ const RENDERERS: Record<Exclude<Example['content'], 'none'>, (context: NodeConte
   dropdown: renderCard,
   accordion: renderCard,
   actions: renderCard,
+  file: renderFileRow,
 }
 
 /** Imperative handle main.ts uses to drive the mounted React chart's live controls. */

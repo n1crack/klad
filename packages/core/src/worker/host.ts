@@ -2,6 +2,7 @@ import { createChartEngine, type ChartEngine } from '../engine.js'
 import { createCanvas2DRenderer } from '../render/canvas2d.js'
 import { createTextMeasurer } from '../text/measure.js'
 import { buildQuadTree, type QuadTree } from '../spatial/quadtree.js'
+import { hitTestSector } from '../layout/sunburst.js'
 import type { Renderer, RenderSurface } from '../render/renderer.js'
 import type { Theme } from '../render/theme.js'
 import type { Camera } from '../viewport.js'
@@ -20,6 +21,9 @@ export interface ChartHost {
   setViewport(width: number, height: number, dpr: number): void
   setHighlight(ids: Uint32Array | null): void
   setIsolate(index: number): void
+  /** Centres a sunburst on one node, with the drill-down animation — see
+   * `ChartEngine.setFocus`. `-1` for the default centre. */
+  setFocus(index: number): void
   setSelection(ids: Uint32Array | null): void
   setDrag(index: number): void
   setAnimate(enabled: boolean): void
@@ -110,6 +114,13 @@ export function createChartHost(
   // Main-thread mirror used for hit-testing in worker mode, and for the overlay
   // on both paths.
   let quad: QuadTree | null = null
+  /**
+   * Mirror of the worker engine's sunburst geometry, `null` for every other
+   * layout. Only `hitTest` reads it, and only in worker mode — in-process the
+   * engine answers directly. Without it a click on a wheel would resolve
+   * against `quad`, whose sector bounding boxes overlap near the centre.
+   */
+  let sectors: Float64Array | null = null
   let visibleToSource: Int32Array = new Int32Array(0)
   let boxes: Float64Array = new Float64Array(0)
   let bounds: Bounds = { minX: 0, minY: 0, maxX: 0, maxY: 0 }
@@ -179,6 +190,7 @@ export function createChartHost(
           visibleToSource = message.visibleToSource
           boxes = message.boxes
           bounds = message.bounds
+          sectors = message.sectors
           quad = buildQuadTree(message.boxes, message.bounds)
         } else if (message.t === 'error') {
           console.error(`Klad worker: ${message.message}`)
@@ -250,6 +262,10 @@ export function createChartHost(
       engine?.setIsolate(index)
       post({ t: 'isolate', index })
     },
+    setFocus(index) {
+      engine?.setFocus(index)
+      post({ t: 'focus', index })
+    },
     setHighlight(ids) {
       engine?.setHighlight(ids)
       post({ t: 'highlight', ids })
@@ -288,6 +304,17 @@ export function createChartHost(
 
     hitTest(worldX, worldY) {
       if (engine !== null) return Promise.resolve(engine.hitTest(worldX, worldY))
+      // Worker mode runs its own hit-test here rather than asking the worker,
+      // to keep a pointer move off the message queue. That means this branch
+      // has to make the SAME decision the engine's `hitTest` makes, including
+      // the polar one: a sunburst's bounding boxes overlap near the centre, so
+      // resolving a click there against the quadtree returns whichever box the
+      // tree happens to reach first. Both sides call `hitTestSector`, which is
+      // why it lives in `layout/sunburst.ts` and not inside the engine.
+      if (sectors !== null) {
+        const pruned = hitTestSector(sectors, visibleToSource.length, worldX, worldY)
+        return Promise.resolve(pruned === -1 ? -1 : (visibleToSource[pruned] ?? -1))
+      }
       if (quad === null) return Promise.resolve(-1)
       const pruned = quad.hitTest(worldX, worldY)
       return Promise.resolve(pruned === -1 ? -1 : (visibleToSource[pruned] ?? -1))

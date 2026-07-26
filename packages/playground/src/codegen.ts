@@ -56,7 +56,24 @@ function optionsOf(snapshot: ConfigSnapshot): [key: string, value: unknown][] {
   const declared = example.options as Record<string, unknown>
   const entries: [string, unknown][] = [['data', RAW('data')]]
 
-  for (const key of ['nodeSize', 'label', 'orientation', 'rtl', 'collapsedByDefault', 'toggleOnNodeClick']) {
+  // `layout` and its tuning knobs sit with `orientation`: they are all "how
+  // the tree is arranged", and a snippet that showed a sunburst example
+  // without the one option that makes it a sunburst would not reproduce what
+  // the viewer is looking at.
+  for (const key of [
+    'nodeSize',
+    'label',
+    'layout',
+    'layoutStep',
+    'rowGap',
+    'maxRings',
+    'centre',
+    'colourBranches',
+    'orientation',
+    'rtl',
+    'collapsedByDefault',
+    'toggleOnNodeClick',
+  ]) {
     if (declared[key] !== undefined) entries.push([key, declared[key]])
   }
   if (declared.nodeSize === undefined) entries.push(['nodeSize', { w: 180, h: 64 }])

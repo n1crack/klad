@@ -1,11 +1,13 @@
 import type { Bounds } from './types.js'
 import type { Camera } from './viewport.js'
-import type { Renderer } from './render/renderer.js'
+import type { EdgeStyle, Renderer } from './render/renderer.js'
+import { edgeAnchors, edgeBBox, edgeStyleDrawsConnectors } from './render/edge-geometry.js'
 import type { ExportData } from './render/svg.js'
 import type { EngineOptions, WireTree } from './worker/protocol.js'
 import { wireTreeToTree } from './worker/protocol.js'
 import { pruneToVisible } from './visible.js'
-import { layout } from './layout/tidy.js'
+import { edgeStyleForLayout, isPolarLayout, resolveLayout } from './layout/index.js'
+import { hitTestSector } from './layout/sunburst.js'
 import { applyOrientation } from './layout/orientation.js'
 import { buildQuadTree, type QuadTree } from './spatial/quadtree.js'
 import { visibleRect, easeOutCubic, easeInOutCubic } from './viewport.js'
@@ -69,6 +71,23 @@ export interface ChartEngine {
    * downstream is concerned; it is not a filter applied at draw time.
    */
   setIsolate(sourceIndex: number): void
+  /**
+   * Centres a sunburst on one node — the drill-down. `sourceIndex` is a SOURCE
+   * index, or `-1` for the default centre.
+   *
+   * Relayouts AND animates, which is the pair that makes this different from
+   * every other option: `sunburst`'s focus keeps every node in the tree and
+   * only changes its geometry (see `LayoutOptions.focus`), so the layout before
+   * and after are the same nodes in the same index space, and the engine
+   * interpolates between them in polar space. Nothing is pruned and the frame
+   * does not move.
+   *
+   * A no-op on every other layout — they have no sectors and so nothing this
+   * could mean. Setting the same focus twice is also a no-op, so a host can
+   * call it unconditionally from a click handler without restarting an
+   * animation that is already running.
+   */
+  setFocus(sourceIndex: number): void
   setDrag(sourceIndex: number): void
   /**
    * Enables or disables the expand/collapse layout transition. Disabling
@@ -178,6 +197,17 @@ export interface ChartEngine {
    */
   readonly lastDrawnAlpha: Float32Array | null
   readonly bounds: Bounds
+  /**
+   * Polar geometry per pruned node — `[cx, cy, innerR, outerR, a0, a1]` — for
+   * a sunburst, `null` for every other layout. Always the FINAL layout, like
+   * `boxes`, never a drill-down's interpolated state.
+   *
+   * Exposed for one caller: the worker host, which hit-tests on the main
+   * thread and so cannot reach this engine's own `hitTest`. A wheel's bounding
+   * boxes overlap near the centre, so the host needs the sectors to resolve a
+   * click the same way this engine does — see `hitTestSector`.
+   */
+  readonly sectors: Float64Array | null
   /** Pruned index -> source index. */
   readonly visibleToSource: Int32Array
   /** World-space hit test; returns a SOURCE index or -1. Always resolves
@@ -202,6 +232,7 @@ const DEFAULT_OPTIONS: EngineOptions = {
   spacingY: 48,
   orientation: 'tb',
   rtl: false,
+  layout: 'tidy',
   lod: DEFAULT_LOD,
   blockDecimation: 0,
 }
@@ -278,7 +309,14 @@ function buildEdgeIndex(
   parent: Int32Array,
   bounds: Bounds,
   horizontal: boolean,
+  style: EdgeStyle,
+  rtl: boolean,
 ): { quad: QuadTree | null; child: Int32Array } {
+  // A style that draws nothing needs no index. Skipping here rather than
+  // letting the renderer ignore a built one saves an O(pruned count) pass and
+  // a whole quadtree per relayout on every sunburst.
+  if (!edgeStyleDrawsConnectors(style)) return { quad: null, child: new Int32Array(0) }
+
   const n = parent.length
   let count = 0
   for (let i = 0; i < n; i++) if (parent[i]! !== -1) count++
@@ -292,30 +330,29 @@ function buildEdgeIndex(
     if (p === -1) continue
     const io = i * 4
     const po = p * 4
-    let cx: number
-    let cy: number
-    const exit = exitPointXY(boxes[po]!, boxes[po + 1]!, boxes[po + 2]!, boxes[po + 3]!, horizontal)
-    const px = exit.x
-    const py = exit.y
-    if (horizontal) {
-      // Growth axis is x: leave the parent's right edge, enter the child's
-      // left edge. Matches canvas2d.ts's `horizontal` branch exactly.
-      cx = boxes[io]!
-      cy = boxes[io + 1]! + boxes[io + 3]! / 2
-    } else {
-      // Matches canvas2d.ts's non-`horizontal` branch exactly.
-      cx = boxes[io]! + boxes[io + 2]! / 2
-      cy = boxes[io + 1]!
-    }
-    const x0 = px < cx ? px : cx
-    const x1 = px > cx ? px : cx
-    const y0 = py < cy ? py : cy
-    const y1 = py > cy ? py : cy
+    // Shared with both renderers — see `render/edge-geometry.ts`. This box has
+    // to describe the same path canvas2d/svg actually paint, or the culler
+    // either drops connectors that are drawn or invents ones that aren't.
+    const box = edgeBBox(
+      edgeAnchors(
+        style,
+        horizontal,
+        rtl,
+        boxes[po]!,
+        boxes[po + 1]!,
+        boxes[po + 2]!,
+        boxes[po + 3]!,
+        boxes[io]!,
+        boxes[io + 1]!,
+        boxes[io + 2]!,
+        boxes[io + 3]!,
+      ),
+    )
     const o = e * 4
-    edgeBoxes[o] = x0
-    edgeBoxes[o + 1] = y0
-    edgeBoxes[o + 2] = x1 - x0
-    edgeBoxes[o + 3] = y1 - y0
+    edgeBoxes[o] = box.x
+    edgeBoxes[o + 1] = box.y
+    edgeBoxes[o + 2] = box.w
+    edgeBoxes[o + 3] = box.h
     child[e] = i
     e++
   }
@@ -704,6 +741,57 @@ export function transitionAnchorProgress(startedAt: number, now: number, opening
   return easeInOutCubic(repositionRaw(overall, opening))
 }
 
+// ---------------------------------------------------------------------------
+// Polar transition — the sunburst's drill-down.
+//
+// A wheel cannot use the box transition above, and not for a tuning reason: a
+// sector is defined by two radii and two angles, and the straight line between
+// the CORNERS OF ITS BOUNDING BOX passes through none of the arcs in between.
+// Interpolate boxes and a sector visibly leaves its own ring, crosses the disc
+// as a rectangle-shaped smear, and arrives back on an arc. So this tweens the
+// polar coordinates themselves, and the drawn shape is an arc at every instant
+// of the way.
+//
+// What that buys is the whole interaction. Because `sunburst`'s `focus` keeps
+// every node in the tree — collapsing the out-of-focus ones to zero width
+// rather than removing them (see its docblock) — the layout before a click and
+// the layout after it are the same nodes at different geometry, and every one
+// of them has somewhere to travel. The branch you picked widens to the full
+// turn and walks inward to the centre; its children follow it in; everything
+// else closes at the seam. Nothing is pruned, nothing is re-rooted, the frame
+// does not move, and there is no moment where the chart is redrawn rather than
+// animated.
+// ---------------------------------------------------------------------------
+
+/**
+ * Longer than `TRANSITION_DURATION_MS`, because it is a bigger move: an
+ * expand nudges its neighbours aside, while a drill-down rearranges the entire
+ * wheel at once and re-scales every angle on screen. Run at the toggle's
+ * duration it reads as a jump-cut with a blur rather than as a camera move.
+ * Kept under two-thirds of a second all the same — this is a navigation step,
+ * and a viewer drilling three levels down should not be waiting on it.
+ */
+const POLAR_DURATION_MS = 620
+
+/** One node's polar geometry, as captured at the instant a focus change
+ * landed: the "from" side of the tween. */
+interface PolarFrom {
+  innerR: number
+  outerR: number
+  a0: number
+  a1: number
+}
+
+interface PolarTransition extends TimedAnimation {
+  /**
+   * Keyed by SOURCE index, for the same reason `Transition.fromBySource` is: a
+   * focus change alone leaves the pruned index space untouched, but a focus
+   * change ARRIVING while a branch is also being expanded does not, and a
+   * pruned index is only meaningful within the relayout that produced it.
+   */
+  fromBySource: Map<number, PolarFrom>
+}
+
 /**
  * Deliberately much longer than `TRANSITION_DURATION_MS`. The first attempt
  * matched the layout transition at 350ms and was reported as imperceptible —
@@ -1050,6 +1138,36 @@ export function createChartEngine(renderer: Renderer): ChartEngine {
   let options: EngineOptions = { ...DEFAULT_OPTIONS }
 
   let boxes: Float64Array = new Float64Array(0)
+  /**
+   * Polar geometry for a sunburst — `[cx, cy, innerR, outerR, a0, a1]` per
+   * pruned node — or `null` for every rectangular layout, which is also the
+   * flag the renderer and the hit-test read to decide whether they are looking
+   * at a wheel at all. Always the FINAL layout, exactly like `boxes`; the
+   * per-frame interpolated copy is `renderSectors`.
+   */
+  let sectors: Float64Array | null = null
+  /** Per-node outward facing angle for a `radial` layout, so labels can be
+   * turned to follow the ring; `null` for every layout whose text is simply
+   * horizontal. Never interpolated — a node's angle is where its label points,
+   * and that is settled by the layout, not by a transition. */
+  let angles: Float64Array | null = null
+  /** World-unit label reserve this layout asked for — see
+   * `LayoutResult.labelSpace`. 0 for every layout that keeps its text inside
+   * the node box. */
+  let labelSpace = 0
+  /**
+   * The sectors actually handed to the renderer this frame. Aliases `sectors`
+   * (zero extra cost) whenever no focus transition is running; a real mutable
+   * copy, rewritten per frame, while one is. Exactly the relationship
+   * `renderBoxes` has to `boxes`, and for the same reason — the drawn geometry
+   * and the settled geometry are different questions.
+   */
+  let renderSectors: Float64Array | null = null
+  /** Branch structure for the renderer's palette — see `Frame.branchOf`. Both
+   * `null` when this layout doesn't colour by branch. Recomputed once per
+   * relayout, never per frame, and independent of the theme. */
+  let branchOf: Int32Array | null = null
+  let branchDepth: Int32Array | null = null
   // Copy, not the module singleton itself — EMPTY_BOUNDS has no readonly fields,
   // and every engine returning the same object would let one engine's mutation
   // (or a caller's) corrupt every other engine's `bounds` before the first relayout.
@@ -1072,6 +1190,10 @@ export function createChartEngine(renderer: Renderer): ChartEngine {
    * array (one entry per non-root node), not pruned indices directly, so
    * this translates. */
   let edgeChild: Int32Array = new Int32Array(0)
+  /** The connector shape this layout asks for — resolved once per relayout and
+   * handed to the renderer on every `Frame`, so the drawn path, the cull box
+   * and the SVG export are all keyed off one decision. */
+  let edgeStyle: EdgeStyle = 'tiered'
 
   let camera: Camera = { x: 0, y: 0, k: 1 }
   let viewport = { width: 0, height: 0, dpr: 1 }
@@ -1117,6 +1239,14 @@ export function createChartEngine(renderer: Renderer): ChartEngine {
   // value left over from an earlier toggle is never mistakenly consulted.
   let pendingTransitionOpening = true
   let transition: Transition | null = null
+  /** The running drill-down, or `null`. Independent of `transition`: a
+   * sunburst uses this INSTEAD of the box transition, never both. */
+  let polar: PolarTransition | null = null
+  /** Set by `setFocus` when it actually changes the focus; consumed by the
+   * next `relayout`. Separate from `pendingTransition` because a focus change
+   * touches no open state, so nothing else in the toggle machinery should
+   * treat it as a toggle — no ring, no reveal, no ghosts. */
+  let pendingFocus = false
   // The boxes actually handed to the renderer. Aliases `boxes` (zero extra
   // cost) whenever no transition is running; a real mutable copy, selectively
   // overwritten per frame for only the near-viewport entries, while one is.
@@ -1159,11 +1289,57 @@ export function createChartEngine(renderer: Renderer): ChartEngine {
   // Reused each frame instead of allocating — at most one ring is ever live.
   let ringBoxBuffer = new Float64Array(4)
 
+  /**
+   * Every currently-laid-out node's polar geometry AS OF `now` — interpolated
+   * if a drill-down is already in flight, the settled geometry otherwise —
+   * keyed by source index. `null` when this layout has no sectors, which is
+   * also the signal that there is nothing to animate from.
+   *
+   * Reading the LIVE position rather than the settled one is what makes a
+   * click that lands mid-animation continue smoothly: the new tween starts
+   * from exactly the frame that was last painted. Snapshotting the final
+   * layout instead would jump the wheel back to where it was heading before
+   * starting over.
+   */
+  const capturePolar = (now: number): Map<number, PolarFrom> | null => {
+    if (sectors === null) return null
+    const out = new Map<number, PolarFrom>()
+    const t = polar === null ? 1 : easeInOutCubic(progressOf(polar, now))
+    for (let i = 0; i < visibleToSource.length; i++) {
+      const src = visibleToSource[i]!
+      const o = i * 6
+      const to: PolarFrom = {
+        innerR: sectors[o + 2]!,
+        outerR: sectors[o + 3]!,
+        a0: sectors[o + 4]!,
+        a1: sectors[o + 5]!,
+      }
+      const from = polar === null ? undefined : polar.fromBySource.get(src)
+      out.set(
+        src,
+        from === undefined
+          ? to
+          : {
+              innerR: from.innerR + (to.innerR - from.innerR) * t,
+              outerR: from.outerR + (to.outerR - from.outerR) * t,
+              a0: from.a0 + (to.a0 - from.a0) * t,
+              a1: from.a1 + (to.a1 - from.a1) * t,
+            },
+      )
+    }
+    return out
+  }
+
   const relayout = (now: number): void => {
     const prevBoxes = boxes
     const prevVisibleToSource = visibleToSource
     const prevParent = prunedParent
     const prevTransition = transition
+    // Captured before `sectors` is replaced below, and read as of `now` rather
+    // than as of where the previous transition started, so a second click
+    // landing mid-drill retargets from wherever the wheel actually is instead
+    // of snapping back to the layout it left.
+    const prevPolarFrom = capturePolar(now)
 
     const pruned = pruneToVisible(sourceTree, open, isolateSource)
     visibleToSource = pruned.toSource
@@ -1174,11 +1350,20 @@ export function createChartEngine(renderer: Renderer): ChartEngine {
     const sizes = new Float64Array(n * 2)
     prunedLabels = Array.from({ length: n })
 
-    // For lr/rl the tree grows along x, so the layout — which always works in a
-    // top-down space — must be told each node's extent along that growth axis. Feed
-    // it width and height swapped; `applyOrientation`'s transpose then swaps them
-    // back, leaving a card the shape the caller asked for rather than a rotated one.
-    const horizontal = options.orientation === 'lr' || options.orientation === 'rl'
+    // Orientation is TIDY'S concern and nothing else's. A file list has one
+    // reading direction, and a wheel has none at all, so for every other
+    // layout the growth axis is fixed and `applyOrientation` is skipped rather
+    // than applied as a no-op — the swap below would otherwise hand `file`
+    // its rows' widths as heights.
+    //
+    // For lr/rl the tidy tree grows along x, so the layout — which always works
+    // in a top-down space — must be told each node's extent along that growth
+    // axis. Feed it width and height swapped; `applyOrientation`'s transpose
+    // then swaps them back, leaving a card the shape the caller asked for
+    // rather than a rotated one.
+    const tidyLayout = options.layout === 'tidy'
+    const horizontal = tidyLayout && (options.orientation === 'lr' || options.orientation === 'rl')
+    const polarLayout = isPolarLayout(options.layout)
 
     for (let i = 0; i < n; i++) {
       const src = visibleToSource[i]!
@@ -1189,20 +1374,104 @@ export function createChartEngine(renderer: Renderer): ChartEngine {
       prunedLabels[i] = sourceLabels[src] ?? ''
     }
 
-    const result = layout(pruned.tree, sizes, {
+    // `options.focus` is a SOURCE index — it has to be, since it survives
+    // relayouts and the caller names a node, not a position in a pruned array
+    // that changes every time a branch opens. The layout works in pruned index
+    // space, so translate here. A focus on a node that is currently collapsed
+    // away resolves to -1, i.e. the default centre, rather than to some
+    // unrelated node that happens to hold that index now.
+    const focusPruned =
+      options.focus === undefined || options.focus < 0 ? -1 : (prunedFromSource[options.focus] ?? -1)
+
+    const result = resolveLayout(options.layout)(pruned.tree, sizes, {
       spacingX: horizontal ? options.spacingY : options.spacingX,
       spacingY: horizontal ? options.spacingX : options.spacingY,
+      step: options.layoutStep,
+      rowGap: options.rowGap,
+      focus: focusPruned,
+      maxRings: options.maxRings,
     })
     boxes = result.boxes
-    bounds = applyOrientation(boxes, result.bounds, options.orientation, options.rtl)
+    sectors = result.sectors ?? null
+    angles = result.angles ?? null
+    labelSpace = result.labelSpace ?? 0
+
+    // Branch colours. Defaults on for the sunburst — its sectors have no
+    // position or connector to carry structure, so colour is the only thing
+    // separating one branch from the next — and off everywhere else, where
+    // a plain bordered card is the better-looking default and colour would be
+    // decoration. Either way the host can say so explicitly.
+    const colourBranches = options.colourBranches ?? options.layout === 'sunburst'
+    if (!colourBranches) {
+      branchOf = null
+      branchDepth = null
+    } else {
+      // A node's branch is its top-level ancestor, and its ramp position is
+      // how deep it sits below that ancestor. One preorder pass; `order` puts
+      // every parent before its children, so each lookup below is already
+      // filled in.
+      const of = new Int32Array(n)
+      const bd = new Int32Array(n)
+      for (let k = 0; k < n; k++) {
+        const i = pruned.tree.order[k]!
+        const p = prunedParent[i]!
+        if (p === -1) {
+          of[i] = -1
+          bd[i] = 0
+        } else if (of[p] === -1) {
+          of[i] = i // a child of a root: this node IS a branch
+          bd[i] = 0
+        } else {
+          of[i] = of[p]!
+          bd[i] = bd[p]! + 1
+        }
+      }
+      branchOf = of
+      branchDepth = bd
+    }
+    // A polar layout is symmetric and already centres itself; there is no
+    // reading direction to mirror and no axis to transpose, so its own bounds
+    // stand. Every rectangular layout still goes through orientation — tidy
+    // for all four directions, the rest for the RTL mirror only (`horizontal`
+    // is false for them, so the transpose branch is never taken).
+    bounds = polarLayout
+      ? result.bounds
+      : applyOrientation(boxes, result.bounds, tidyLayout ? options.orientation : 'tb', options.rtl)
     quad = buildQuadTree(boxes, bounds)
-    const edgeIndex = buildEdgeIndex(boxes, prunedParent, bounds, horizontal)
+    edgeStyle = edgeStyleForLayout(options.layout)
+    const edgeIndex = buildEdgeIndex(boxes, prunedParent, bounds, horizontal, edgeStyle, options.rtl)
     edgeQuad = edgeIndex.quad
     edgeChild = edgeIndex.child
 
     if (cullBuffer.length < n) cullBuffer = new Uint32Array(n)
     if (edgeQueryBuffer.length < edgeChild.length) edgeQueryBuffer = new Uint32Array(edgeChild.length)
     if (edgeDrawBuffer.length < edgeChild.length) edgeDrawBuffer = new Uint32Array(edgeChild.length)
+
+    // A wheel animates in polar space and nowhere else — see the
+    // "Polar transition" block above for why the box tween cannot describe an
+    // arc. Both a drill-down (`pendingFocus`) and an ordinary expand/collapse
+    // go through here when the layout has sectors, since either one changes
+    // the same four numbers per node; there is no second code path for the
+    // toggle case and so no way for the two to disagree.
+    if (sectors !== null) {
+      polar =
+        animate && (pendingFocus || pendingTransition) && prevPolarFrom !== null
+          ? { startedAt: now, duration: POLAR_DURATION_MS, fromBySource: prevPolarFrom }
+          : null
+      renderSectors = polar === null ? sectors : sectors.slice()
+      // The box machinery stays out of it entirely: `boxes` on a sunburst are
+      // derived bounding boxes, and tweening them would fight the sector tween
+      // rather than add to it.
+      transition = null
+      renderBoxes = boxes
+      pendingTransition = false
+      pendingFocus = false
+      layoutDirty = false
+      return
+    }
+    polar = null
+    renderSectors = null
+    pendingFocus = false
 
     // Start (or continue) a transition only for a toggle-triggered relayout,
     // only when animation is enabled, and only when there was a previous
@@ -1267,6 +1536,47 @@ export function createChartEngine(renderer: Renderer): ChartEngine {
       // Done: fall back to the zero-overhead steady state.
       transition = null
       renderBoxes = boxes
+    }
+
+    // The drill-down tween. Resolved and applied here, before the cull, so the
+    // geometry the renderer is handed is the geometry this frame is actually
+    // at.
+    //
+    // Unlike the box transition, this writes EVERY pruned node rather than
+    // only the near-viewport ones, and deliberately: a sunburst's bounds are
+    // fixed and root-centred, so in practice the whole wheel is on screen and
+    // a partial write would be the more complicated of the two for no saving.
+    // The cost is four multiply-adds per node per frame, for the ~600ms a
+    // drill-down runs and never otherwise.
+    if (polar !== null && sectors !== null) {
+      const raw = progressOf(polar, now)
+      if (raw >= 1) {
+        polar = null
+        renderSectors = sectors
+      } else {
+        const t = easeInOutCubic(raw)
+        const target = renderSectors === null || renderSectors === sectors ? sectors.slice() : renderSectors
+        renderSectors = target
+        for (let i = 0; i < n; i++) {
+          const o = i * 6
+          const from = polar.fromBySource.get(visibleToSource[i]!)
+          if (from === undefined) {
+            // No prior geometry — a node revealed by an expand that landed in
+            // the same relayout. It snaps to its final sector rather than
+            // growing from nowhere in particular; the ring it appears on is
+            // already being uncovered by everything else moving.
+            target[o + 2] = sectors[o + 2]!
+            target[o + 3] = sectors[o + 3]!
+            target[o + 4] = sectors[o + 4]!
+            target[o + 5] = sectors[o + 5]!
+            continue
+          }
+          target[o + 2] = from.innerR + (sectors[o + 2]! - from.innerR) * t
+          target[o + 3] = from.outerR + (sectors[o + 3]! - from.outerR) * t
+          target[o + 4] = from.a0 + (sectors[o + 4]! - from.a0) * t
+          target[o + 5] = from.a1 + (sectors[o + 5]! - from.a1) * t
+        }
+      }
     }
 
     // `nodeCount`: the exact-viewport node query, drives fill/stroke/label
@@ -1549,7 +1859,21 @@ export function createChartEngine(renderer: Renderer): ChartEngine {
       camera,
       dpr: viewport.dpr,
       tier,
-      horizontal: options.orientation === 'lr' || options.orientation === 'rl',
+      edgeStyle,
+      // `renderSectors` aliases `sectors` outside a focus transition, so this
+      // is the final geometry in the steady state and the interpolated
+      // geometry while a drill-down is in flight — the same discipline
+      // `renderBoxes` follows for rectangular layouts.
+      sectors: renderSectors,
+      angles,
+      labelSpace,
+      branchOf,
+      branchDepth,
+      // Only tidy grows along a caller-chosen axis; see `relayout`. A file
+      // list under `orientation: 'lr'` is still a vertical list of rows, and
+      // telling the renderer otherwise would elbow its connectors sideways.
+      horizontal: options.layout === 'tidy' && (options.orientation === 'lr' || options.orientation === 'rl'),
+      rtl: options.rtl,
       highlight: highlightBuffer,
       selected: selectionBuffer,
       dragIndex: dragPruned,
@@ -1640,17 +1964,30 @@ export function createChartEngine(renderer: Renderer): ChartEngine {
     },
     setOptions(partial) {
       const next = { ...options, ...partial }
-      // `lod` only feeds `lodFor` in `render()` — it has no influence on
-      // pruneToVisible/layout/applyOrientation/buildQuadTree, so it must not
-      // dirty the layout. Only these keys actually change relayout output.
+      // `lod` and `blockDecimation` only feed `render()` — they have no
+      // influence on pruneToVisible/layout/applyOrientation/buildQuadTree, so
+      // they must not dirty the layout. Every OTHER key here does change
+      // relayout output, so this list has to grow with the option set; a new
+      // layout knob missing from it silently does nothing until some unrelated
+      // change happens to trigger a relayout.
       if (
         next.spacingX !== options.spacingX ||
         next.spacingY !== options.spacingY ||
         next.orientation !== options.orientation ||
-        next.rtl !== options.rtl
+        next.rtl !== options.rtl ||
+        next.layout !== options.layout ||
+        next.layoutStep !== options.layoutStep ||
+        next.rowGap !== options.rowGap ||
+        next.maxRings !== options.maxRings ||
+        next.colourBranches !== options.colourBranches ||
+        next.focus !== options.focus
       ) {
         layoutDirty = true
       }
+      // A focus change arriving through here — a host that sets it as an
+      // option rather than calling `setFocus` — animates exactly the same
+      // way. There is one drill-down, however it was asked for.
+      if (next.focus !== options.focus) pendingFocus = true
       options = next
     },
     // Third parameter named `wantsRing`, not `ring`, purely to avoid shadowing
@@ -1700,6 +2037,17 @@ export function createChartEngine(renderer: Renderer): ChartEngine {
       // A relayout, not a repaint: the set of nodes that exist just changed.
       layoutDirty = true
     },
+    setFocus(sourceIndex) {
+      const next = sourceIndex < 0 ? -1 : sourceIndex
+      if ((options.focus ?? -1) === next) return
+      options = { ...options, focus: next }
+      // Arms the polar tween as well as the relayout. Unlike `setIsolate`,
+      // which changes WHICH nodes exist and so can only cut, this changes only
+      // their geometry — every node has a before and an after, which is what
+      // there is to animate.
+      pendingFocus = true
+      layoutDirty = true
+    },
     setSelection(ids) {
       selectionSource = ids
     },
@@ -1723,7 +2071,10 @@ export function createChartEngine(renderer: Renderer): ChartEngine {
     },
     render,
     get transitioning() {
-      return transition !== null
+      // Either kind. A host drives its frame loop off this, and a drill-down
+      // that reported "not transitioning" would be painted once and then
+      // frozen partway through.
+      return transition !== null || polar !== null
     },
     get transitionStartedAt() {
       return transition === null ? null : transition.startedAt
@@ -1746,6 +2097,9 @@ export function createChartEngine(renderer: Renderer): ChartEngine {
     get bounds() {
       return bounds
     },
+    get sectors() {
+      return sectors
+    },
     get visibleToSource() {
       return visibleToSource
     },
@@ -1757,6 +2111,15 @@ export function createChartEngine(renderer: Renderer): ChartEngine {
       // transition's `startedAt` reference in the rare case a toggle's
       // relayout is triggered by a hit-test rather than a render.
       if (layoutDirty) relayout(performance.now())
+      // On a wheel the answer has to come from the polar geometry, not the
+      // quadtree: sector bounding boxes overlap heavily near the centre — an
+      // inner ring's box contains most of the disc — so a box hit-test there
+      // reliably returns the wrong node. `hitTestSector` walks the sectors
+      // instead, where "which wedge is this point in" has one answer.
+      if (sectors !== null) {
+        const pruned = hitTestSector(sectors, visibleToSource.length, worldX, worldY)
+        return pruned === -1 ? -1 : visibleToSource[pruned]!
+      }
       if (quad === null) return -1
       const pruned = quad.hitTest(worldX, worldY)
       return pruned === -1 ? -1 : visibleToSource[pruned]!
@@ -1768,7 +2131,19 @@ export function createChartEngine(renderer: Renderer): ChartEngine {
         parent: prunedParent,
         labels: prunedLabels,
         bounds,
-        horizontal: options.orientation === 'lr' || options.orientation === 'rl',
+        // The FINAL geometry throughout, never a transition's interpolated
+        // state — same discipline as `boxes` above. Exporting mid-drill-down
+        // would produce a still of a wheel caught between two layouts, which
+        // is nobody's intent when they press export.
+        sectors,
+        angles,
+        labelSpace,
+        branchOf,
+        branchDepth,
+        edgeStyle,
+        rtl: options.rtl,
+        horizontal:
+          options.layout === 'tidy' && (options.orientation === 'lr' || options.orientation === 'rl'),
       }
     },
   }
