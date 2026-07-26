@@ -23,15 +23,28 @@ export interface RenderContext2D {
   font: string
   globalAlpha: number
   textBaseline: string
+  /** `'left' | 'center' | 'right'` — widened for the same reason `fillStyle`
+   * is. Sector and radial labels are centred on a point rather than inset from
+   * a box edge, so they set this; every rectangular layout leaves it alone. */
+  textAlign: string
   save(): void
   restore(): void
   scale(x: number, y: number): void
   translate(x: number, y: number): void
+  /** Radians, clockwise. Used to turn a label to follow the geometry under it —
+   * a radial chart's outward-radiating names, a sunburst's along-the-arc
+   * labels. Always inside a `save()`/`restore()` pair. */
+  rotate(angle: number): void
   setTransform(a: number, b: number, c: number, d: number, e: number, f: number): void
   clearRect(x: number, y: number, w: number, h: number): void
   beginPath(): void
   moveTo(x: number, y: number): void
   lineTo(x: number, y: number): void
+  /** Used to trace a sunburst sector's two arcs. `counterclockwise` is what
+   * lets the inner arc run back the other way so the sector closes into a
+   * single ring segment rather than a bow tie. */
+  arc(x: number, y: number, radius: number, startAngle: number, endAngle: number, counterclockwise?: boolean): void
+  closePath(): void
   /** Used to round the two bends of a connector elbow when `theme.edgeCornerRadius` is
    * greater than 0 — see canvas2d.ts's edge-drawing loop. */
   quadraticCurveTo(cpx: number, cpy: number, x: number, y: number): void
@@ -48,6 +61,26 @@ export interface RenderSurface {
   height: number
   getContext(id: '2d'): RenderContext2D | null
 }
+
+/**
+ * How a connector between a parent and child is shaped. One per layout — see
+ * `layout/index.ts`'s `edgeStyleForLayout` — because the elbow that reads
+ * correctly on a tiered chart reads as a mistake on a file list and as noise
+ * on a wheel.
+ *
+ *  - `tiered`   — the orthogonal elbow of the 1.0 chart: out of the parent's
+ *                 bottom (or side) edge, across, and into the child's top. The
+ *                 only style that honours `Frame.horizontal`.
+ *  - `folder`   — the file-explorer spine: straight down the gutter under the
+ *                 parent, then a short stub right into each child's left edge.
+ *  - `spoke`    — a straight line from the parent's centre to the child's, for
+ *                 a radial chart, where the shortest path between two rings IS
+ *                 the relationship.
+ *  - `none`     — no connectors at all. A sunburst's sectors are already
+ *                 adjacent to their parent's; a line between them would draw a
+ *                 relationship the geometry has already stated.
+ */
+export type EdgeStyle = 'tiered' | 'folder' | 'spoke' | 'none'
 
 /** Everything the renderer needs for one frame. Nothing is derived internally. */
 export interface Frame {
@@ -82,12 +115,67 @@ export interface Frame {
   camera: Camera
   dpr: number
   tier: LodTier
+  /** How to shape a connector between a parent and child — see `EdgeStyle`.
+   * Fixed by the layout, resolved once per relayout by the engine. */
+  edgeStyle: EdgeStyle
+  /**
+   * Polar geometry for a sunburst — `[cx, cy, innerR, outerR, a0, a1]` per node
+   * index, in world units — or `null` for every rectangular layout. When
+   * present the renderer draws sectors INSTEAD of boxes; `boxes` still holds
+   * each sector's bounding box, and is still what the cull in `visible` was
+   * computed against.
+   *
+   * Interpolated during a focus transition, unlike `boxes`: a wheel drilling in
+   * has to travel in polar space, because linearly interpolating the corners of
+   * a sector's bounding box does not describe any arc along the way.
+   */
+  sectors: Float64Array | null
+  /**
+   * Per-node outward angle in radians for a radial chart, so a label can be
+   * turned to run along its own ray; `null` for every layout whose text is
+   * horizontal. Not interpolated — where a label points is settled by the
+   * layout, not by a transition.
+   */
+  angles: Float64Array | null
+  /**
+   * World-unit room the layout reserved outside each node for its label — see
+   * `LayoutResult.labelSpace`. `0` for every layout whose text sits inside the
+   * node box, which is all of them but `radial`.
+   */
+  labelSpace: number
+  /**
+   * Which branch each node belongs to, as the node index of its own top-level
+   * ancestor (`-1` for a root itself) — and how deep it sits below that
+   * ancestor. Together these are everything `render/palette.ts` needs to give a
+   * node its colour. `null` on both for a layout that does not colour by
+   * branch, which is the whole steady state of an ordinary org chart.
+   *
+   * Deliberately the STRUCTURE rather than the finished colours. Colour is a
+   * paint concern: `setTheme` is documented as paint-only and must not be able
+   * to trigger a relayout, which is exactly what an engine that had baked the
+   * palette into a string per node would be forced into on every theme change.
+   * These two arrays depend only on the tree, so the engine computes them once
+   * per relayout and a theme swap re-derives colours from them for free.
+   *
+   * A highlighted or selected node still wins over the branch colour: an accent
+   * means "the chart is answering you", and a branch colour is ambient.
+   */
+  branchOf: Int32Array | null
+  branchDepth: Int32Array | null
   /**
    * True for `lr`/`rl`. Connectors elbow along the tree's growth axis, which is
    * horizontal for those orientations and vertical otherwise — splitting on the
    * wrong axis makes the routing cross through node boxes.
    */
   horizontal: boolean
+  /**
+   * True when the chart reads right-to-left. Only the `folder` connector style
+   * consults it — its spine drops under the row's leading edge, and which edge
+   * that is flips with the reading direction. Every other style is already
+   * mirrored by the time it gets here, because `applyOrientation` mirrored the
+   * BOXES the anchors are derived from.
+   */
+  rtl: boolean
   /** 1 per highlighted node index, or null when nothing is highlighted. */
   highlight: Uint8Array | null
   /**

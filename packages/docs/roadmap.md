@@ -27,18 +27,28 @@ go-to-node with the route marked.
 
 ## 1.2 — more layouts
 
-Layout becomes something you choose, and can supply yourself. First up:
-**indented**, the file-explorer shape, and the one layout whose width does not
-explode as a tree grows. Children can be loaded on demand as branches open.
+Layout is something you choose. `layout: 'file' | 'radial' | 'sunburst'`
+alongside the tiered default, each with the connector style, label placement
+and colour treatment that shape actually needs:
+
+- **file** — the file-explorer shape, and the one layout whose width does not
+  explode as a tree grows. Indented rows, folder guide lines down the gutter.
+- **radial** — root at the centre, generations as rings, names turned to run
+  along their own spoke. For trees that are wide and shallow.
+- **sunburst** — the tree as a wheel of nested arc segments, coloured by
+  branch from a validated categorical palette. Click a segment to drill into
+  it: it widens to the full circle and travels inward while the rest closes at
+  the seam, and the frame never moves.
+
+Children loaded on demand as branches open is still to come.
 
 ## 1.3 — drag and drop
 
 Drag a node, or a selection, onto a new parent. A drop that would make a cycle
 is refused and reported. Only the subtree that changed is laid out again.
 
-## 1.4 — radial layout and custom edges
+## 1.4 — custom edges
 
-Root at the centre, generations as rings — for trees that are wide and shallow.
 Edge shape becomes yours to supply, with motion along a link for charts that
 show flow as well as structure.
 

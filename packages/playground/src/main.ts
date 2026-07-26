@@ -1,7 +1,7 @@
 import { createApp } from 'vue'
 import { createElement } from 'react'
 import { createRoot, type Root } from 'react-dom/client'
-import type { ChartView, KladApi, Theme } from '@klad/core'
+import type { ChartView, KladApi, LayoutSettings, Theme } from '@klad/core'
 import {
   BLOCK_FILL_SEED,
   EDGE_RADIUS_MAX,
@@ -15,7 +15,15 @@ import {
   MINIMAP_POSITIONS,
   minimapDefaultOn,
   minimapDefaultPosition,
+  centreControlFor,
+  contentForLayout,
+  defaultLayoutOf,
+  LAYOUT_LABELS,
+  LAYOUT_ORDER,
+  LAYOUT_PRESETS,
+  optionsForLayout,
   type Example,
+  type LayoutName,
   type MinimapPosition,
 } from './data.js'
 import {
@@ -323,11 +331,185 @@ const exampleSelect = radioPicker(
   'example',
   'list',
   EXAMPLES.map((example) => ({ value: example.id, label: example.name })),
+  (id) => {
+    setControlsOpen(false)
+    // Snap the layout back to the one this example is ABOUT. The picker stays
+    // free afterwards — that is the point of it — but arriving at "Sunburst"
+    // and being shown a tiered chart because the last example happened to be
+    // tidy would be answering a question nobody asked.
+    layoutSelect.value = defaultLayoutOf(findExample(id))
+    refresh()
+  },
+)
+
+/**
+ * The shape the current example is drawn in.
+ *
+ * A picker rather than a per-example fixture because the library's actual
+ * claim is that these are four views of the SAME tree, and a viewer can only
+ * check that by switching one while the data stays put. What makes every
+ * combination worth looking at is that the presentation a shape needs — node
+ * size, content treatment, colour — travels with the LAYOUT rather than with
+ * the example; see `LAYOUT_PRESETS` in data.ts.
+ *
+ * Changing it remounts the demo, which is why this is a plain picker and not
+ * a live `setOptions` call: the content treatment changes with the shape, and
+ * that is chosen at construction in all three adapters.
+ */
+const layoutSelect = radioPicker(
+  'layout',
+  'segmented',
+  LAYOUT_ORDER.map((name) => ({ value: name, label: LAYOUT_LABELS[name] })),
   () => {
     setControlsOpen(false)
     refresh()
   },
 )
+
+const layoutBlurb = document.createElement('p')
+layoutBlurb.className = 'field-note'
+
+// --- the current layout's own knobs -----------------------------------------
+//
+// Every layout has a couple of numbers that decide how it reads, and they are
+// different numbers per layout: a file list has an indent and a row gap, a
+// wheel has a ring thickness and a ring count. So this is not one fixed set of
+// sliders — it is whichever ones the CURRENT shape actually has, rebuilt when
+// the shape changes.
+//
+// All of them go through `setLayoutOptions`, which relayouts without touching
+// the tree's open state or the camera. Routing them through a remount (or
+// through `update()`, which is what a caller reaches for by instinct) would
+// collapse the branches the viewer had opened on every tick of a slider,
+// which makes a slider useless as a way to find a value you like.
+
+/** What the sidebar currently has each layout knob set to. Persisted across a
+ * remount, so switching example or stack does not silently reset a value the
+ * viewer chose — the same discipline `themeState` follows for the theme. */
+const layoutState: LayoutSettings = {}
+
+const layoutKnobFields = document.createElement('div')
+layoutKnobFields.className = 'sidebar-subgroup-body'
+
+function applyLayoutSettings(partial: LayoutSettings, fit = false): void {
+  Object.assign(layoutState, partial)
+  currentSetLayoutOptions?.(partial, fit)
+  refreshCode()
+}
+
+/**
+ * One slider bound to a layout option rather than a theme token. Its `write`
+ * returns a patch so a knob can drive more than one key where that is what the
+ * viewer means by one number.
+ */
+function layoutRange(
+  labelText: string,
+  id: string,
+  bounds: { min: number; max: number; step: number },
+  initial: number,
+  write: (value: number) => LayoutSettings,
+): HTMLElement {
+  const input = document.createElement('input')
+  input.type = 'range'
+  input.id = id
+  input.min = String(bounds.min)
+  input.max = String(bounds.max)
+  input.step = String(bounds.step)
+  input.value = String(initial)
+  const out = readout()
+  out.setAttribute('for', id)
+  out.textContent = String(initial)
+  input.oninput = () => {
+    out.textContent = input.value
+    applyLayoutSettings(write(Number(input.value)))
+  }
+  // Refit when the drag ENDS, not on every tick.
+  //
+  // Every one of these knobs changes how big the drawing is — an indent widens
+  // it, a ring thickness grows its radius — so a camera left where it was
+  // eventually has the chart wandering off the edge of the viewport, which is
+  // what a slider must not do. But `fit()` animates, so refitting per `input`
+  // event means a 200ms camera tween restarting every few milliseconds for the
+  // whole drag: the chart pulses and the value you are trying to judge is
+  // never on screen still. Live geometry while dragging, one settle at the
+  // end, is the pattern that lets a viewer actually see what they picked.
+  input.onchange = () => applyLayoutSettings(write(Number(input.value)), true)
+  const wrapper = field(labelText, input, out)
+  wrapper.classList.add('field-range')
+  return wrapper
+}
+
+function layoutToggle(labelText: string, initial: boolean, write: (on: boolean) => LayoutSettings): HTMLElement {
+  const input = document.createElement('input')
+  input.type = 'checkbox'
+  input.checked = initial
+  input.onchange = () => applyLayoutSettings(write(input.checked))
+  const label = document.createElement('label')
+  label.className = 'field-check'
+  const text = document.createElement('span')
+  text.textContent = labelText
+  label.append(input, text)
+  return label
+}
+
+/**
+ * Rebuilds the knob list for `layout`, seeded from what the chart is actually
+ * showing: the layout's own preset, with anything the viewer has already
+ * chosen over the top.
+ */
+function syncLayoutKnobs(example: Example, layout: LayoutName): void {
+  layoutKnobFields.innerHTML = ''
+  const preset = optionsForLayout(example, layout)
+  const step = layoutState.layoutStep ?? preset.layoutStep
+  const knobs: HTMLElement[] = []
+
+  if (layout === 'file') {
+    knobs.push(
+      layoutRange('Indent', 'layout-indent', { min: 4, max: 48, step: 1 }, step ?? 18, (v) => ({ layoutStep: v })),
+      layoutRange('Row gap', 'layout-rowgap', { min: 0, max: 24, step: 1 }, layoutState.rowGap ?? preset.rowGap ?? 2, (v) => ({
+        rowGap: v,
+      })),
+    )
+  } else if (layout === 'radial' || layout === 'sunburst') {
+    knobs.push(
+      layoutRange(
+        layout === 'radial' ? 'Ring spacing' : 'Ring thickness',
+        'layout-ring',
+        { min: 20, max: 300, step: 2 },
+        step ?? 100,
+        (v) => ({ layoutStep: v }),
+      ),
+    )
+    if (layout === 'sunburst') {
+      knobs.push(
+        layoutRange('Rings shown', 'layout-rings', { min: 1, max: 8, step: 1 }, layoutState.maxRings ?? preset.maxRings ?? 3, (v) => ({
+          maxRings: v,
+        })),
+      )
+    }
+  } else {
+    knobs.push(
+      layoutRange('Sibling gap', 'layout-gapx', { min: 4, max: 80, step: 2 }, layoutState.spacing?.x ?? 16, (v) => ({
+        spacing: { ...layoutState.spacing, x: v },
+      })),
+      layoutRange('Level gap', 'layout-gapy', { min: 16, max: 200, step: 4 }, layoutState.spacing?.y ?? 48, (v) => ({
+        spacing: { ...layoutState.spacing, y: v },
+      })),
+    )
+  }
+
+  // Branch colour is the one knob every layout has, because every tree has
+  // branches. It defaults differently per layout (on for the sunburst, whose
+  // segments have nothing else to carry structure), so the checkbox is seeded
+  // from what the chart is actually doing rather than from a fixed `false`.
+  knobs.push(
+    layoutToggle('Colour by branch', layoutState.colourBranches ?? preset.colourBranches ?? layout === 'sunburst', (on) => ({
+      colourBranches: on,
+    })),
+  )
+
+  layoutKnobFields.append(...knobs)
+}
 
 const demoGroup = sidebarGroup(
   'Demo',
@@ -368,6 +550,12 @@ function keyHint(keys: string, what: string): HTMLDivElement {
 
 const viewGroup = sidebarGroup(
   'View',
+  // The shape of the tree belongs here rather than under Demo. Demo is "which
+  // example, in which framework" — a fixed pair of pickers. Layout is
+  // something a viewer changes WHILE looking at a chart, alongside zoom and
+  // expand/collapse, and its knobs are the same kind of control as the ones
+  // below them.
+  subGroup('Layout', layoutSelect.element, layoutBlurb, layoutKnobFields),
   sidebarButton('Zoom In', () => currentApi?.zoomIn()),
   sidebarButton('Zoom Out', () => currentApi?.zoomOut()),
   sidebarButton('Fit', () => currentApi?.fit()),
@@ -468,6 +656,8 @@ const minimapGroup = sidebarGroup(
 // colour behind the nodes is the host element's own CSS (see `applyCanvasBg`).
 let currentSetTheme: ((partial: Partial<Theme>) => void) | null = null
 let currentSetRingEnabled: ((enabled: boolean) => void) | null = null
+/** The mounted chart's live layout tuning — see `KladApi.setLayoutOptions`. */
+let currentSetLayoutOptions: ((settings: LayoutSettings, fit: boolean) => void) | null = null
 let currentSetMinimapSilhouette: ((colour: string) => void) | null = null
 /**
  * Pushes a light/dark switch into whichever stack is mounted. Like every
@@ -749,7 +939,7 @@ const ALL_THEME_CONTROLS = THEME_CONTROLS.flatMap((section) => section.controls)
 
 /** Points every control at the theme the chart is actually showing. */
 function syncThemeControls(example: Example): void {
-  const theme = effectiveTheme(example, mode, themeState)
+  const theme = effectiveTheme(example, layoutSelect.value as LayoutName, mode, themeState)
   for (const control of ALL_THEME_CONTROLS) control.sync(theme)
 }
 
@@ -1084,6 +1274,93 @@ const syncSelectionSoon = (): void => {
   requestAnimationFrame(step)
 }
 
+/**
+ * The sunburst's breadcrumb: the trail from the root to whatever is at the
+ * centre of the wheel, each step clickable.
+ *
+ * A drill-down without one is a chart you can get lost in. The wheel shows the
+ * three rings below wherever you are and nothing above it, so once you are two
+ * levels in there is no on-screen evidence of what you drilled through — and
+ * "click the middle to go up" only tells you how to take one step back, not
+ * how far back there is to go. The trail is the missing half of the
+ * navigation, and clicking a step jumps straight there with the same animation
+ * a click on the wheel gives.
+ */
+const centreTrail = document.createElement('div')
+centreTrail.className = 'centre-trail'
+
+const centreField = document.createElement('div')
+centreField.className = 'surface-panel surface-panel-trail'
+centreField.append(centreTrail)
+
+for (const type of ['pointerdown', 'wheel'] as const) {
+  centreField.addEventListener(type, (event) => event.stopPropagation())
+}
+
+/** Renders the root-to-`centreId` trail. `null` means the root itself. */
+function renderCentreTrail(example: Example, centreId: string | null): void {
+  const byId = new Map(example.data.map((item) => [String(item.id), item]))
+  const rootId = example.data[0] === undefined ? null : String(example.data[0].id)
+  const path: string[] = []
+  let cursor = centreId ?? rootId
+  while (cursor !== null && byId.has(cursor)) {
+    path.unshift(cursor)
+    const parent = byId.get(cursor)!.parentId
+    cursor = parent === undefined || parent === null ? null : String(parent)
+  }
+
+  centreTrail.innerHTML = ''
+  path.forEach((id, index) => {
+    if (index > 0) {
+      const sep = document.createElement('span')
+      sep.className = 'centre-sep'
+      sep.textContent = '/'
+      centreTrail.append(sep)
+    }
+    const step = document.createElement('button')
+    step.type = 'button'
+    step.className = 'centre-step'
+    step.textContent = String(byId.get(id)!.name ?? id)
+    // The last step IS the centre — a button that would navigate to where you
+    // already are is a dead control, so it is marked as the current position
+    // instead.
+    const isCurrent = index === path.length - 1
+    step.classList.toggle('is-current', isCurrent)
+    step.disabled = isCurrent
+    step.onclick = () => {
+      currentApi?.setCentre(index === 0 ? null : id)
+      renderCentreTrail(example, index === 0 ? null : id)
+    }
+    centreTrail.append(step)
+  })
+}
+
+/** The example the breadcrumb is currently describing — it needs the data to
+ * walk parent links, and only the example that owns the trail has it. */
+let centreExample: Example | null = null
+let centreListenerBound = false
+
+/** Shows the breadcrumb when the current LAYOUT is one that has a centre. */
+function syncCentreControl(example: Example, layout: LayoutName): void {
+  centreField.remove()
+  centreExample = null
+  if (!centreControlFor(layout)) return
+  centreExample = example
+  surface.append(centreField)
+  renderCentreTrail(example, example.options.centre ?? null)
+  if (!centreListenerBound) {
+    centreListenerBound = true
+    // Emitted by the demo's own drill-down handler (see vanilla-demo.ts), so
+    // the trail follows a click on the wheel as well as a click on itself.
+    // Bound lazily, like the selection panel's listeners, because `surface`
+    // is created further down this module.
+    surface.addEventListener('playground:centrechange', (event) => {
+      if (centreExample === null) return
+      renderCentreTrail(centreExample, (event as CustomEvent<{ id: string | null }>).detail.id)
+    })
+  }
+}
+
 let selectionListenersBound = false
 
 /** Shows the selection panel for the example that asked for it. */
@@ -1384,6 +1661,7 @@ function snapshot(): ConfigSnapshot {
   const example = findExample(exampleSelect.value)
   return {
     example,
+    layout: layoutSelect.value as LayoutName,
     mode,
     minimapOn,
     minimapPosition: minimapPositionSelect.value as MinimapPosition,
@@ -1393,7 +1671,7 @@ function snapshot(): ConfigSnapshot {
     // the defaults are what the reader gets for free by omitting them.
     theme: { ...themeState },
     ringEnabled,
-    hasNodeContent: example.content !== 'none',
+    hasNodeContent: contentForLayout(example, layoutSelect.value as LayoutName) !== 'none',
   }
 }
 
@@ -1600,7 +1878,7 @@ function findExample(id: string): Example {
   return EXAMPLES.find((example) => example.id === id) ?? EXAMPLES[0]!
 }
 
-function show(stack: Stack, exampleId: string): void {
+function show(stack: Stack, exampleId: string, layout: LayoutName): void {
   // Tear the previous demo down properly before mounting the next one: the
   // vanilla chart via chart.destroy(), the Vue one via app.unmount() —
   // otherwise listeners and canvases from the old demo leak.
@@ -1612,13 +1890,23 @@ function show(stack: Stack, exampleId: string): void {
   currentSetMinimapSilhouette = null
   currentSetTheme = null
   currentSetRingEnabled = null
+  currentSetLayoutOptions = null
   currentSetMode = null
   surface.innerHTML = ''
 
   const example = findExample(exampleId)
+  layoutBlurb.textContent = LAYOUT_PRESETS[layout]!.blurb
+  syncLayoutKnobs(example, layout)
   syncGotoControl(example)
   syncViewControl(example)
   syncSelectionControl(example)
+  syncCentreControl(example, layout)
+  // Per-layout CSS hooks. The overlay cards a layout expects are its own
+  // business — a file row is not an org card — and scoping their styles to
+  // these classes is what keeps each example's look from leaking into the
+  // others.
+  surface.classList.toggle('is-file', layout === 'file')
+  surface.classList.toggle('is-wheel', layout === 'sunburst' || layout === 'radial')
   descriptionText.textContent = example.description
   description.classList.remove('is-expanded')
 
@@ -1639,9 +1927,16 @@ function show(stack: Stack, exampleId: string): void {
   syncMinimapSilhouette()
   ringEnabled = true
   updateRingEnabledButton()
+  // A knob the viewer set stays set across a remount — but only the ones that
+  // still mean something in the shape they are now looking at. Carrying a
+  // file list's 18px indent into a sunburst would set its ring thickness from
+  // a number chosen for something else entirely.
+  for (const key of Object.keys(layoutState) as (keyof LayoutSettings)[]) {
+    if (key !== 'colourBranches') delete layoutState[key]
+  }
 
   if (stack === 'vanilla') {
-    const chart: VanillaDemoHandle = mountVanilla(surface, example, mode, (api) => {
+    const chart: VanillaDemoHandle = mountVanilla(surface, example, layout, mode, (api) => {
       currentApi = api
     })
     currentSetMinimap = (on) => chart.setMinimap(on)
@@ -1649,11 +1944,13 @@ function show(stack: Stack, exampleId: string): void {
     currentSetMinimapSilhouette = (colour) => chart.setMinimapSilhouette(colour)
     currentSetTheme = (partial) => chart.setTheme(partial)
     currentSetRingEnabled = (enabled) => chart.setRingEnabled(enabled)
+    currentSetLayoutOptions = (settings, fit) => chart.setLayoutOptions(settings, fit)
     currentSetMode = (next) => chart.setMode(next)
     teardown = () => chart.destroy()
   } else if (stack === 'vue') {
     const app = createApp(VueDemo, {
       example,
+      layout,
       mode,
       onReady: (api: KladApi) => {
         currentApi = api
@@ -1669,6 +1966,7 @@ function show(stack: Stack, exampleId: string): void {
       setMinimapSilhouette: (colour: string) => void
       setTheme: (partial: Partial<Theme>) => void
       setRingEnabled: (enabled: boolean) => void
+      setLayoutOptions: (settings: LayoutSettings, fit: boolean) => void
       setMode: (mode: ThemeMode) => void
     }
     currentSetMinimap = (on) => instance.setMinimap(on)
@@ -1676,6 +1974,7 @@ function show(stack: Stack, exampleId: string): void {
     currentSetMinimapSilhouette = (colour) => instance.setMinimapSilhouette(colour)
     currentSetTheme = (partial) => instance.setTheme(partial)
     currentSetRingEnabled = (enabled) => instance.setRingEnabled(enabled)
+    currentSetLayoutOptions = (settings, fit) => instance.setLayoutOptions(settings, fit)
     currentSetMode = (next) => instance.setMode(next)
     teardown = () => app.unmount()
   } else {
@@ -1684,6 +1983,7 @@ function show(stack: Stack, exampleId: string): void {
     root.render(
       createElement(ReactDemo, {
         example,
+        layout,
         mode,
         onReady: (api: KladApi) => {
           currentApi = api
@@ -1696,13 +1996,14 @@ function show(stack: Stack, exampleId: string): void {
     currentSetMinimapSilhouette = (colour) => reactHandle.current?.setMinimapSilhouette(colour)
     currentSetTheme = (partial) => reactHandle.current?.setTheme(partial)
     currentSetRingEnabled = (enabled) => reactHandle.current?.setRingEnabled(enabled)
+    currentSetLayoutOptions = (settings, fit) => reactHandle.current?.setLayoutOptions(settings, fit)
     currentSetMode = (next) => reactHandle.current?.setMode(next)
     teardown = () => root.unmount()
   }
 }
 
 function refresh(): void {
-  show(stackSelect.value as Stack, exampleSelect.value)
+  show(stackSelect.value as Stack, exampleSelect.value, layoutSelect.value as LayoutName)
   refreshCode()
 }
 
@@ -1737,6 +2038,7 @@ window.addEventListener('keydown', (event) => {
 
 stackSelect.value = 'vanilla'
 exampleSelect.value = EXAMPLES[0]!.id
+layoutSelect.value = defaultLayoutOf(EXAMPLES[0]!)
 refresh()
 
 /**

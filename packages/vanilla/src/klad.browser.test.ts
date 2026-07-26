@@ -2018,3 +2018,62 @@ describe('createKlad', () => {
     chart.destroy()
   })
 })
+
+describe('setLayoutOptions', () => {
+  it('changes the shape without resetting the tree', async () => {
+    // The whole reason this exists rather than routing through `update()`:
+    // `update` replaces the data and calls `initOpen()`, so every branch the
+    // viewer had collapsed springs back open. A slider that did that on every
+    // tick would be unusable.
+    const chart = make()
+    await nextFrame()
+    chart.api.collapse('b')
+    await settleTransition()
+    expect(chart.api.getState().visibleCount).toBe(3)
+
+    chart.api.setLayoutOptions({ layout: 'file', layoutStep: 20 })
+    await nextFrame()
+    await nextFrame()
+
+    // Still three: the collapse survived the shape change, which is the
+    // whole point of this method existing.
+    expect(chart.api.getState().visibleCount).toBe(3)
+    chart.destroy()
+  })
+
+  it('leaves the camera alone by default, and settles it when asked', async () => {
+    const chart = make()
+    await nextFrame()
+    await settle()
+    const before = chart.api.getState().camera
+
+    chart.api.setLayoutOptions({ spacing: { x: 64, y: 120 } })
+    await nextFrame()
+    await nextFrame()
+    expect(chart.api.getState().camera).toEqual(before)
+
+    // `{ fit: true }` is queued rather than applied here and now — the
+    // relayout it should be measured against has not run yet.
+    chart.api.setLayoutOptions({ spacing: { x: 8, y: 200 } }, { fit: true })
+    await nextFrame()
+    await settle()
+    expect(chart.api.getState().camera).not.toEqual(before)
+    chart.destroy()
+  })
+
+  it('drives the sunburst’s own knobs', async () => {
+    const chart = make({ layout: 'sunburst', layoutStep: 20, maxRings: 2 })
+    await nextFrame()
+    await settle()
+    const twoRings = chart.api.getState().camera.k
+
+    // More rings is a bigger wheel in the same viewport, so a refit has to
+    // come back at a smaller zoom. That is the observable consequence of the
+    // knob having reached the layout at all.
+    chart.api.setLayoutOptions({ maxRings: 6 }, { fit: true })
+    await nextFrame()
+    await settle()
+    expect(chart.api.getState().camera.k).toBeLessThan(twoRings)
+    chart.destroy()
+  })
+})

@@ -1,6 +1,7 @@
 import type { Tree } from '../tree.js'
 import type { Camera } from '../viewport.js'
 import type { Orientation } from '../layout/orientation.js'
+import type { LayoutName } from '../layout/index.js'
 import type { LodThresholds } from '../render/lod.js'
 import type { Bounds } from '../types.js'
 
@@ -62,6 +63,43 @@ export interface EngineOptions {
   spacingY: number
   orientation: Orientation
   rtl: boolean
+  /**
+   * Which layout to lay the tree out with, by NAME — see `layout/index.ts`'s
+   * `LAYOUTS`. A name rather than a `LayoutFn` because this interface is the
+   * worker's wire format and a function cannot survive `postMessage`; a caller
+   * with a layout of their own drives `resolveLayout` from the pure core
+   * instead. Defaults to `'tidy'`, the 1.0 behaviour.
+   */
+  layout: LayoutName
+  /**
+   * Per-level step in world units, whose meaning is per-layout — the `file`
+   * indent, the `radial`/`sunburst` ring thickness. `undefined` lets each
+   * layout derive one from the node sizes it was handed. See
+   * `LayoutOptions.step`.
+   */
+  layoutStep?: number | undefined
+  /** `file` only: gap between consecutive rows; defaults to `spacingY`. */
+  rowGap?: number | undefined
+  /**
+   * `sunburst` only: SOURCE index of the node the wheel is centred on, or `-1`
+   * for the default centre. Changing it relayouts, and — unlike every other
+   * option — animates, because the two layouts it sits between are the same
+   * nodes in the same index space at different geometry. See
+   * `LayoutOptions.focus` and the engine's polar transition.
+   */
+  focus?: number | undefined
+  /** `sunburst` only: how many rings below the hub are drawn. See
+   * `LayoutOptions.maxRings`. */
+  maxRings?: number | undefined
+  /**
+   * Whether nodes are filled by which top-level branch they belong to, from
+   * `Theme.palette`. Omitted, the layout decides: on for `sunburst`, whose
+   * sectors have neither position nor connectors to carry structure and so
+   * need colour to do it, and off for everything else, where a plain bordered
+   * card is both the better default and the one that lets a host's own card
+   * styling show. See `render/palette.ts` for the rules the colours follow.
+   */
+  colourBranches?: boolean | undefined
   lod: LodThresholds
   /**
    * Device-pixel cell size for block-tier occupancy-grid decimation, or `0` to
@@ -103,6 +141,9 @@ export type MainToWorkerMessage =
   | { t: 'resize'; width: number; height: number; dpr: number }
   | { t: 'highlight'; ids: Uint32Array | null }
   | { t: 'isolate'; index: number }
+  /** Centres a sunburst on one node — see `ChartEngine.setFocus`. `-1` for the
+   * default centre. */
+  | { t: 'focus'; index: number }
   | { t: 'selection'; ids: Uint32Array | null }
   | { t: 'drag'; index: number }
   | { t: 'animate'; enabled: boolean }
@@ -142,7 +183,23 @@ export type MainToWorkerMessage =
 export type MainToWorker = MainToWorkerMessage & { now: number }
 
 export type WorkerToMain =
-  | { t: 'layout'; boxes: Float64Array; bounds: Bounds; visibleToSource: Int32Array }
+  /**
+   * `sectors` mirrors `ChartEngine.sectors`: the polar geometry of a sunburst
+   * layout, `null` for every rectangular one. It has to cross the boundary
+   * because the main-thread host runs its OWN hit-test against the boxes it
+   * was sent — it never calls the worker engine's — and a sunburst's bounding
+   * boxes overlap heavily near the centre, so a box hit-test there resolves to
+   * the wrong node. The host feeds this to the same `hitTestSector` the engine
+   * uses, which is exactly why that function lives in `layout/sunburst.ts`
+   * rather than inside the engine.
+   */
+  | {
+      t: 'layout'
+      boxes: Float64Array
+      bounds: Bounds
+      visibleToSource: Int32Array
+      sectors: Float64Array | null
+    }
   /** `transitioning`/`ringActive` mirror `ChartEngine.transitioning` /
    * `ChartEngine.ringActive` at the moment this frame was drawn, so the
    * main-thread host can tell a caller whether to keep scheduling frames

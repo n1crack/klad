@@ -1,7 +1,7 @@
-import { DEFAULT_THEME, type MinimapPosition, type Options, type Theme } from '@klad/core'
+import { DEFAULT_THEME, type LayoutName, type MinimapPosition, type Options, type Theme } from '@klad/core'
 import { baseTheme, chartTokens, silhouetteColour, type ThemeMode } from './theme.js'
 
-export type { MinimapPosition } from '@klad/core'
+export type { LayoutName, MinimapPosition } from '@klad/core'
 
 /**
  * Whether `example`'s own declared options already turn the minimap on —
@@ -139,10 +139,11 @@ export const RING_STROKE_DEFAULT = '#f59e0b'
  */
 export function themeFor(
   example: Example,
+  layout: LayoutName,
   edgeCornerRadius: number,
   mode: ThemeMode,
 ): NonNullable<Options['theme']> {
-  return { ...chartTokens(mode), ...example.options.theme, edgeCornerRadius }
+  return { ...chartTokens(mode), ...LAYOUT_PRESETS[layout]!.theme, ...example.options.theme, edgeCornerRadius }
 }
 
 /**
@@ -152,8 +153,13 @@ export function themeFor(
  * remembering one of its own, so a control cannot drift out of step with the
  * chart — switching example, stack or mode re-syncs all of them from one call.
  */
-export function effectiveTheme(example: Example, mode: ThemeMode, applied: Partial<Theme>): Theme {
-  return { ...baseTheme(mode), ...example.options.theme, ...applied }
+export function effectiveTheme(
+  example: Example,
+  layout: LayoutName,
+  mode: ThemeMode,
+  applied: Partial<Theme>,
+): Theme {
+  return { ...baseTheme(mode), ...LAYOUT_PRESETS[layout]!.theme, ...example.options.theme, ...applied }
 }
 
 /**
@@ -163,8 +169,12 @@ export function effectiveTheme(example: Example, mode: ThemeMode, applied: Parti
  * `api.setTheme` (see each demo's `setMode`), so switching mode never touches
  * camera, expand/collapse or highlight state.
  */
-export function modeThemeFor(example: Example, mode: ThemeMode): NonNullable<Options['theme']> {
-  return { ...chartTokens(mode), ...example.options.theme }
+export function modeThemeFor(
+  example: Example,
+  layout: LayoutName,
+  mode: ThemeMode,
+): NonNullable<Options['theme']> {
+  return { ...chartTokens(mode), ...LAYOUT_PRESETS[layout]!.theme, ...example.options.theme }
 }
 
 /** Options for the minimap-corner `<select>`, in on-screen order. */
@@ -319,6 +329,7 @@ export function buildOrg(target: number, fanOut: FanOut = wideFanOut): NodeItem[
  * - 'none'     — no overlay content at all: canvas-only, frameworkless cost.
  */
 export type NodeContentKind =
+  | 'row'
   | 'card'
   | 'avatar'
   | 'monogram'
@@ -396,6 +407,390 @@ let largeDataCache: NodeItem[] | null = null
 function largeData(): NodeItem[] {
   largeDataCache ??= buildOrg(20_000, narrowFanOut)
   return largeDataCache
+}
+
+// ---------------------------------------------------------------------------
+// A source tree, for the three layouts that are about something other than an
+// org chart.
+//
+// The org data every other example shares is the wrong shape for these: a
+// generated hierarchy of "Person 41" reporting to "Person 12" tells you nothing
+// about whether a file explorer looks right, and a sunburst of it is a wheel of
+// interchangeable names. A directory tree has what these layouts are for — real
+// nesting depth, wildly uneven branch sizes, and leaves that carry a magnitude
+// (bytes) the geometry can be read against.
+// ---------------------------------------------------------------------------
+
+/** One directory's contents, as `[name, children]` or a leaf `[name, sizeKb]`. */
+type FileSpec = [string, FileSpec[] | number]
+
+const PROJECT: FileSpec[] = [
+  [
+    'src',
+    [
+      [
+        'components',
+        [
+          ['Button.tsx', 14],
+          ['Card.tsx', 22],
+          ['Dialog.tsx', 41],
+          ['Table.tsx', 68],
+          ['Toolbar.tsx', 19],
+        ],
+      ],
+      [
+        'hooks',
+        [
+          ['useChart.ts', 31],
+          ['useTheme.ts', 9],
+          ['useViewport.ts', 17],
+        ],
+      ],
+      [
+        'lib',
+        [
+          [
+            'render',
+            [
+              ['canvas.ts', 112],
+              ['svg.ts', 87],
+              ['palette.ts', 24],
+            ],
+          ],
+          [
+            'layout',
+            [
+              ['tidy.ts', 96],
+              ['radial.ts', 38],
+              ['sunburst.ts', 44],
+            ],
+          ],
+          ['tree.ts', 53],
+          ['viewport.ts', 28],
+        ],
+      ],
+      ['index.ts', 6],
+      ['main.tsx', 11],
+    ],
+  ],
+  [
+    'tests',
+    [
+      ['layout.test.ts', 64],
+      ['render.test.ts', 78],
+      ['tree.test.ts', 33],
+      [
+        'fixtures',
+        [
+          ['small.json', 4],
+          ['large.json', 210],
+        ],
+      ],
+    ],
+  ],
+  [
+    'docs',
+    [
+      ['getting-started.md', 12],
+      ['api.md', 46],
+      ['roadmap.md', 8],
+    ],
+  ],
+  [
+    'public',
+    [
+      ['favicon.svg', 2],
+      ['logo.svg', 5],
+    ],
+  ],
+  ['package.json', 3],
+  ['tsconfig.json', 2],
+  ['README.md', 9],
+]
+
+/**
+ * Flattens {@link PROJECT} into the flat `{ id, parentId, ... }` rows Klad
+ * takes. Each node carries `kind` (folder or file) and `sizeKb` — a folder's
+ * size being the sum of its contents, which is what makes the sunburst's
+ * segments mean something rather than just being equal slices.
+ */
+function buildFileTree(): NodeItem[] {
+  const rows: NodeItem[] = []
+  rows.push({ id: 'root', name: 'my-project', kind: 'folder', sizeKb: 0, ext: '' })
+
+  const walk = (specs: FileSpec[], parentId: string, path: string): number => {
+    let total = 0
+    for (const [name, contents] of specs) {
+      const id = `${path}/${name}`
+      if (typeof contents === 'number') {
+        rows.push({ id, parentId, name, kind: 'file', sizeKb: contents, ext: name.split('.').pop() ?? '' })
+        total += contents
+        continue
+      }
+      // Pushed before its children are walked so the row order stays preorder
+      // — which is the order a file explorer lists them in — then patched with
+      // the total once they are known.
+      const row: NodeItem = { id, parentId, name, kind: 'folder', sizeKb: 0, ext: '' }
+      rows.push(row)
+      const size = walk(contents, id, id)
+      row.sizeKb = size
+      total += size
+    }
+    return total
+  }
+
+  const rootRow = rows[0]!
+  rootRow.sizeKb = walk(PROJECT, 'root', '')
+  return rows
+}
+
+export const FILE_DATA: NodeItem[] = buildFileTree()
+
+/** Row height for the file-explorer example, and the width every row shares.
+ * A file list is a list: uniform rows, one column, the indent doing the work. */
+export const FILE_ROW = { w: 340, h: 30 }
+
+/** Horizontal step per depth level in the file layout, and the amount each
+ * row's own width shrinks by so they all end at the same x. */
+export const FILE_INDENT = 18
+
+/** The narrowest a row gets, however deep it sits — enough for a chevron, an
+ * icon, a readable name and its trailing value. */
+export const FILE_ROW_MIN = 190
+
+/**
+ * Node sizes for the wheel layouts. Neither draws these as cards — a radial
+ * chart puts a small marker at each ring position and radiates the name out
+ * from it, and a sunburst draws sectors and ignores the box entirely — so what
+ * these numbers actually control is the derived ring spacing and, for radial,
+ * how much room the layout reserves outside the last ring for labels. See
+ * `LayoutOptions.step`.
+ */
+export const RADIAL_NODE = { w: 18, h: 18 }
+export const SUNBURST_NODE = { w: 40, h: 40 }
+
+// ---------------------------------------------------------------------------
+// Presentation follows the LAYOUT, not the example.
+//
+// Every example is a tree, and all four layouts can draw any tree — so in
+// principle the layout picker should be free. In practice it wasn't: each
+// example carried its own node size, content treatment and theme overrides,
+// and those are the things that stop making sense when the shape changes.
+// File-explorer rows fanned out around a circle are nonsense. Org cards under
+// a sunburst are worse than nonsense — sectors ignore the DOM overlay
+// entirely, so the cards just hang over the wheel unattached to anything.
+//
+// So the presentation a layout REQUIRES lives here, keyed by layout, and is
+// merged over whatever the example itself declared. An example then only says
+// what it is ABOUT — its data, and any behaviour peculiar to it — and every
+// combination of example and layout produces something worth looking at.
+// Which is the library's actual claim: the same tree, drawn four ways.
+// ---------------------------------------------------------------------------
+
+export interface LayoutPreset {
+  /**
+   * Merged over the example's own options — so a preset wins where the two
+   * disagree, which is the whole point of it.
+   *
+   * A function when the preset needs to know the DATA: the file layout sizes
+   * each row against its own depth, which it can only do per-dataset.
+   */
+  options: Partial<Options> | ((example: Example) => Partial<Options>)
+  /**
+   * The node-content treatment this layout needs, or `null` to keep whatever
+   * the example asked for.
+   *
+   * `'none'` for the two wheel layouts is not an omission: they draw their own
+   * text on the canvas, positioned against geometry a DOM element cannot
+   * follow (turned along a spoke, laid on an arc). An overlay card there would
+   * be a second, unaligned copy of the same name.
+   */
+  content: NodeContentKind | null
+  /** Theme tokens the layout needs, merged under the example's own. */
+  theme?: Partial<Theme>
+  /** Shown under the layout picker as what this shape is FOR. */
+  blurb: string
+}
+
+export const LAYOUT_PRESETS: Record<LayoutName, LayoutPreset> = {
+  tidy: {
+    options: {},
+    content: null, // the example's own card — this is the 1.0 chart
+    blurb: 'Tiered, the classic org chart. The only layout `orientation` applies to.',
+  },
+  file: {
+    options: (example) => ({
+      // Rows END at a common right edge rather than all being the same width:
+      // an indented row that keeps its full width pushes its trailing column
+      // right along with it, so the sizes come out as a staircase instead of a
+      // column you can scan down. Shrinking each row by its own indent is what
+      // every file explorer does, and it is only expressible as a function of
+      // the node — which is why `LayoutPreset.options` can be one.
+      // ...but never below `FILE_ROW_MIN`. A deep tree eventually indents
+      // past the point where there is any name left to show — the Large
+      // example is a chain 127 levels deep, which at a bare
+      // `width - depth * indent` reaches zero around level nineteen and goes
+      // NEGATIVE after that: rows with no room for their own text, marching
+      // off to the right. Past the floor a row simply keeps its minimum and
+      // the list grows sideways, which is what a real explorer does too (and
+      // is why it has a horizontal scrollbar).
+      nodeSize: (item) => ({
+        w: Math.max(FILE_ROW_MIN, FILE_ROW.w - depthOf(example.data, String(item.id)) * FILE_INDENT),
+        h: FILE_ROW.h,
+      }),
+      rowGap: 2,
+      layoutStep: FILE_INDENT,
+      // The row is a DOM element and draws its own text; the canvas underneath
+      // contributes only the folder guide lines.
+      label: () => '',
+      toggleOnNodeClick: true,
+    }),
+    content: 'row',
+    theme: { nodeFill: 'transparent', nodeStroke: 'transparent' },
+    blurb: 'One indented row per node. The only layout whose width does not grow with the tree.',
+  },
+  radial: {
+    options: {
+      nodeSize: RADIAL_NODE,
+      layoutStep: 190,
+      colourBranches: true,
+    },
+    content: 'none',
+    // A marker, not a card: the name radiating out of it carries the content,
+    // which is what leaves the ring spacing free to be set by how much room
+    // the NAMES need rather than by how wide a card is.
+    theme: { cornerRadius: RADIAL_NODE.w / 2, nodeStroke: 'transparent' },
+    blurb: 'Root at the centre, generations as rings. For trees that are wide and shallow.',
+  },
+  sunburst: {
+    options: {
+      nodeSize: SUNBURST_NODE,
+      layoutStep: 74,
+      maxRings: 3,
+    },
+    content: 'none',
+    blurb: 'Nested arc segments, coloured by branch. Click a segment to drill into it.',
+  },
+}
+
+/** The layout picker's own order and labels — the order they were added to
+ * the library, which is also roughly least to most specialised. */
+export const LAYOUT_ORDER: LayoutName[] = ['tidy', 'file', 'radial', 'sunburst']
+
+export const LAYOUT_LABELS: Record<LayoutName, string> = {
+  tidy: 'Tidy',
+  file: 'File',
+  radial: 'Radial',
+  sunburst: 'Sunburst',
+}
+
+/**
+ * What one indented row shows, for ANY of the playground's datasets.
+ *
+ * The `file` layout is a shape, not a subject — "one indented row per node" is
+ * as true of a reporting line as of a directory — so the row that fills it has
+ * to work for whatever tree the viewer picked, or half the layout picker's
+ * combinations produce rows reading `undefined`. Both datasets have the same
+ * three things to say: something to identify the node at a glance, its name,
+ * and one number or phrase about it.
+ */
+export interface RowFields {
+  /** A short glyph or monogram. */
+  icon: string
+  /** A colour for the icon chip, or `''` to leave it unstyled — a file tree's
+   * emoji icons carry their own colour; an org monogram needs one. */
+  iconColour: string
+  primary: string
+  secondary: string
+}
+
+export function rowFields(item: NodeItem, open: boolean): RowFields {
+  // A directory tree announces itself with `kind`; anything else is people.
+  if (item.kind === 'folder' || item.kind === 'file') {
+    const kb = Number(item.sizeKb ?? 0)
+    return {
+      icon: item.kind === 'folder' ? (open ? '📂' : '📁') : '📄',
+      iconColour: '',
+      primary: String(item.name ?? item.id),
+      // Sizes are stored in KB; six digits on every row is a wall of numbers
+      // rather than a column you can scan.
+      secondary: kb <= 0 ? '' : kb < 1024 ? `${kb} KB` : `${(kb / 1024).toFixed(1)} MB`,
+    }
+  }
+  const department = (item.department as Department | undefined) ?? 'Executive'
+  return {
+    icon: initials(String(item.name ?? '')),
+    iconColour: DEPARTMENT_COLOR[department],
+    primary: String(item.name ?? item.id),
+    secondary: String(item.title ?? ''),
+  }
+}
+
+/** True for a row that should read as a container — bolder, like a folder. */
+export function isBranchRow(item: NodeItem, hasChildren: boolean): boolean {
+  return item.kind === 'folder' || (item.kind === undefined && hasChildren)
+}
+
+/** Which layout an example draws in by default. */
+export function defaultLayoutOf(example: Example): LayoutName {
+  return example.options.layout ?? 'tidy'
+}
+
+/**
+ * The example's options as they should actually be handed to the chart, for a
+ * given layout: the example's own, then the layout's preset over the top, then
+ * the layout name itself.
+ *
+ * Deliberately preset-over-example rather than the other way round. An example
+ * that declared `nodeSize: { w: 224, h: 96 }` for its avatar card means "this
+ * card needs that much room", and that statement is about the CARD — under a
+ * sunburst there is no card, and honouring it would only set the ring
+ * thickness from a number chosen for something that isn't being drawn.
+ */
+export function optionsForLayout(example: Example, layout: LayoutName): Partial<Options> {
+  const preset = LAYOUT_PRESETS[layout]!
+  const options = typeof preset.options === 'function' ? preset.options(example) : preset.options
+  return { ...example.options, ...options, layout }
+}
+
+/**
+ * Depth of every node in a dataset, computed once per dataset and cached
+ * against the array itself.
+ *
+ * `nodeSize` is called for every node on every relayout, so it cannot walk
+ * parent links each time — on the 20k example that is 20,000 walks per layout
+ * pass. The cache is a `WeakMap` keyed by the data array so it costs nothing
+ * once the example is switched away from.
+ */
+const DEPTH_CACHE = new WeakMap<NodeItem[], Map<string, number>>()
+
+function depthOf(data: NodeItem[], id: string): number {
+  let depths = DEPTH_CACHE.get(data)
+  if (depths === undefined) {
+    depths = new Map<string, number>()
+    // One pass in source order. The datasets here are all written parent-first
+    // (a tree is built top-down), so a parent's depth is already known; a row
+    // whose parent hasn't been seen falls back to 0, which is what an orphan
+    // is anyway.
+    for (const item of data) {
+      const parentId = item.parentId
+      const parent = parentId === undefined || parentId === null ? null : String(parentId)
+      depths.set(String(item.id), parent === null ? 0 : (depths.get(parent) ?? -1) + 1)
+    }
+    DEPTH_CACHE.set(data, depths)
+  }
+  return depths.get(id) ?? 0
+}
+
+/** The node-content treatment for an example under a given layout. */
+export function contentForLayout(example: Example, layout: LayoutName): NodeContentKind {
+  return LAYOUT_PRESETS[layout]!.content ?? example.content
+}
+
+/** Whether the sunburst's breadcrumb belongs on screen — a function of the
+ * LAYOUT, since "what is at the centre" only means something on a wheel. */
+export function centreControlFor(layout: LayoutName): boolean {
+  return layout === 'sunburst'
 }
 
 export const EXAMPLES: Example[] = [
@@ -571,6 +966,39 @@ export const EXAMPLES: Example[] = [
       'No cards at all — what the canvas draws by itself. The lightest the chart gets.',
     data: SHARED_DATA,
     options: {},
+    content: 'none',
+  },
+  {
+    id: 'file-tree',
+    name: 'File tree',
+    description:
+      'The file-explorer shape: one indented row per node, folder guide lines down the gutter, and a size on every row. The only layout whose width does not grow as the tree does — a thousand siblings cost a thousand rows, not a thousand columns.',
+    data: FILE_DATA,
+    options: {
+      layout: 'file',
+      // Everything else the shape needs comes from LAYOUT_PRESETS. What is
+      // left here is the one thing peculiar to THIS example: a source tree
+      // opens with its top-level folders showing and the rest closed.
+      collapsedByDefault: (item) => String(item.id).split('/').length > 2,
+    },
+    content: 'row',
+  },
+  {
+    id: 'radial',
+    name: 'Radial',
+    description:
+      'Root at the centre, each generation a ring further out, and every name turned to run along its own spoke — flipped on the left-hand side so nothing reads upside down. For trees that are wide and shallow, where a tiered chart runs off the side of the screen.',
+    data: SHARED_DATA,
+    options: { layout: 'radial', minimap: true },
+    content: 'none',
+  },
+  {
+    id: 'sunburst',
+    name: 'Sunburst',
+    description:
+      'The same file tree as a wheel, each segment sized by what it holds and coloured by which top-level folder it belongs to. Click a segment to drill into it: it widens to the full circle and travels inward while the rest closes at the seam. Click the centre to come back out.',
+    data: FILE_DATA,
+    options: { layout: 'sunburst' },
     content: 'none',
   },
   {

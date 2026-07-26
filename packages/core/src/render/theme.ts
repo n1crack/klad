@@ -1,3 +1,5 @@
+import { DARK_PALETTE, DEFAULT_PALETTE } from './palette.js'
+
 /** Drawing tokens for the canvas layers. Colours are any CSS colour string. */
 export interface Theme {
   nodeFill: string
@@ -71,6 +73,50 @@ export interface Theme {
    */
   selectionStroke: string
   selectionStrokeWidth: number
+  /**
+   * Categorical hues for the layouts that fill their nodes by branch — the
+   * sunburst's sectors, and a radial chart's cards when asked. Slot order is
+   * meaningful and the list is never cycled; see `render/palette.ts` for the
+   * rules and for what happens past the last slot.
+   */
+  palette: readonly string[]
+  /** The one colour every branch past the last palette slot shares. Neutral on
+   * purpose: "not one of the named branches" is exactly what it means, and a
+   * ninth hue would say something the palette can't back up. */
+  paletteOther: string
+  /**
+   * Fill for a root — a sunburst's centre hub, the top of a file list. Neutral
+   * rather than a palette slot: the root is what the branches hang off, not one
+   * of them, and giving it slot 1 makes the first branch look like the root's
+   * continuation.
+   */
+  hubFill: string
+  /**
+   * The colour BEHIND the chart — the page or panel the canvas sits on.
+   *
+   * The renderer never fills the whole canvas with it (the canvas stays
+   * transparent, so a host's own background shows through). It is here because
+   * a sunburst's sectors tile the disc with no space between them, and the
+   * separation between neighbours is drawn as a hairline in this colour: a gap
+   * that reads as the surface showing through, rather than as a border drawn
+   * around each sector. Get it wrong and the "gaps" are visible lines in the
+   * wrong colour.
+   */
+  surface: string
+  /**
+   * Width of that separation, in screen pixels — constant at any zoom, like
+   * `ringStrokeWidth`, since it is a visual gap rather than part of the
+   * geometry. Set to 0 for a continuous disc with no separation at all.
+   */
+  sectorGap: number
+  /**
+   * The label colour used where `labelColour` would be unreadable — on a dark
+   * sector fill, under a light-mode theme. Sector labels pick whichever of the
+   * two has more contrast against the fill actually behind them, per sector;
+   * see `inkOn` in `render/palette.ts`. Nothing outside the filled layouts
+   * consults it.
+   */
+  labelColourInverse: string
   /** Colour of the one-shot expand/collapse confirmation ring. */
   ringStroke: string
   /**
@@ -119,6 +165,12 @@ export const DEFAULT_THEME: Readonly<Theme> = Object.freeze({
   edgeHighlightStroke: '#f59e0b',
   edgeHighlightWidth: 2.5,
   dragGhostAlpha: 0.6,
+  palette: DEFAULT_PALETTE,
+  paletteOther: '#9c9c96',
+  hubFill: '#f0efec',
+  surface: '#ffffff',
+  sectorGap: 1.5,
+  labelColourInverse: '#ffffff',
   // Reuses the highlight accent rather than introducing a new hue — the
   // ring and the highlight both mean "this node", so sharing a colour
   // keeps the palette's visual vocabulary small.
@@ -159,6 +211,16 @@ export const DARK_THEME: Readonly<Theme> = Object.freeze({
   edgeStroke: '#3a4453',
   labelColour: '#e7eaf0',
   highlightFill: '#4a3a12',
+  // The same eight hues, stepped for a dark surface — see `DARK_PALETTE`.
+  palette: DARK_PALETTE,
+  paletteOther: '#6b6b66',
+  hubFill: '#2a3140',
+  // Must match the host's own panel colour, not merely "some dark" — this is
+  // what a sunburst's sector gaps are drawn in, and a gap in the wrong dark
+  // reads as a drawn border rather than as space. Drive it from the same CSS
+  // custom property the page's background uses, exactly like `nodeFill`.
+  surface: '#111318',
+  labelColourInverse: '#0b0b0b',
 })
 
 /** Assigns `value` into `target[key]` only when it is not `undefined`. */

@@ -4,6 +4,7 @@ import {
   Klad,
   type KladApi,
   type KladHandle,
+  type LayoutSettings,
   type NodeContext,
   type Options,
   type Theme,
@@ -16,9 +17,14 @@ import {
   minimapDefaultPosition,
   minimapOptionFor,
   modeThemeFor,
+  rowFields,
+  isBranchRow,
+  optionsForLayout,
+  contentForLayout,
   themeFor,
   type Department,
   type Example,
+  type LayoutName,
   type MinimapPosition,
 } from './data.js'
 import type { ThemeMode } from './theme.js'
@@ -131,6 +137,37 @@ function renderPhoto(context: NodeContext): ReactNode {
   )
 }
 
+/** One indented row — see `renderRow` in vanilla-demo.ts for what each part
+ * does and why the canvas underneath draws nothing. Fields come from
+ * `rowFields` so any dataset the layout picker points at renders sensibly. */
+function renderRow(context: NodeContext): ReactNode {
+  const fields = rowFields(context.item, context.open)
+  return (
+    <div className={`file-row${isBranchRow(context.item, context.hasChildren) ? ' is-folder' : ''}`}>
+      <button
+        type="button"
+        className={`file-chevron${context.open ? ' is-open' : ''}`}
+        disabled={!context.hasChildren}
+        aria-hidden={!context.hasChildren}
+        onClick={(event) => {
+          event.stopPropagation()
+          context.toggle()
+        }}
+      >
+        {context.hasChildren ? '▸' : ''}
+      </button>
+      <span
+        className={`file-icon${fields.iconColour === '' ? '' : ' is-chip'}`}
+        style={fields.iconColour === '' ? undefined : { background: fields.iconColour }}
+      >
+        {fields.icon}
+      </span>
+      <span className="file-name">{fields.primary}</span>
+      <span className="file-size">{fields.secondary}</span>
+    </div>
+  )
+}
+
 const RENDERERS: Record<Exclude<Example['content'], 'none'>, (context: NodeContext) => ReactNode> = {
   card: renderCard,
   avatar: renderAvatar,
@@ -149,6 +186,7 @@ const RENDERERS: Record<Exclude<Example['content'], 'none'>, (context: NodeConte
   dropdown: renderCard,
   accordion: renderCard,
   actions: renderCard,
+  row: renderRow,
 }
 
 /** Imperative handle main.ts uses to drive the mounted React chart's live controls. */
@@ -159,11 +197,17 @@ export interface ReactDemoHandle {
   /** One door for every theme token the sidebar owns — see the vanilla demo. */
   setTheme(partial: Partial<Theme>): void
   setRingEnabled(enabled: boolean): void
+  /** Live layout tuning — see `KladApi.setLayoutOptions`. */
+  setLayoutOptions(settings: LayoutSettings, fit: boolean): void
   setMode(mode: ThemeMode): void
 }
 
 export interface ReactDemoProps {
   example: Example
+  /** Which shape to draw in. Changing it remounts (see main.ts's `show`) —
+   * the content treatment changes with it, and that is a construction-time
+   * choice. */
+  layout: LayoutName
   mode: ThemeMode
   onReady?: (api: KladApi) => void
   ref?: Ref<ReactDemoHandle>
@@ -178,7 +222,7 @@ export interface ReactDemoProps {
  * function that returns null) so this adapter never claims overlay DOM it
  * doesn't need — matching the vanilla and Vue "canvas only" behaviour.
  */
-export function ReactDemo({ example, mode, onReady, ref }: ReactDemoProps): ReactNode {
+export function ReactDemo({ example, layout, mode, onReady, ref }: ReactDemoProps): ReactNode {
   const chartRef = useRef<KladHandle>(null)
 
   /**
@@ -235,11 +279,11 @@ export function ReactDemo({ example, mode, onReady, ref }: ReactDemoProps): Reac
       data: example.data,
       nodeSize: DEFAULT_NODE_SIZE,
       label: (item) => String(item.name ?? ''),
-      ...example.options,
-      theme: themeFor(example, EDGE_RADIUS_DEFAULT, mountedModeRef.current),
+      ...optionsForLayout(example, layout),
+      theme: themeFor(example, layout, EDGE_RADIUS_DEFAULT, mountedModeRef.current),
       minimap: minimapOptionFor(example, minimapOnRef.current, minimapPositionRef.current, mountedModeRef.current),
     }),
-    [example],
+    [example, layout],
   )
 
   const handleReady = useCallback(() => {
@@ -278,13 +322,16 @@ export function ReactDemo({ example, mode, onReady, ref }: ReactDemoProps): Reac
       setRingEnabled: (enabled: boolean) => {
         chartRef.current?.api?.setRing(enabled)
       },
+      setLayoutOptions: (settings: LayoutSettings, fit: boolean) => {
+        chartRef.current?.api?.setLayoutOptions(settings, { fit })
+      },
       // Light/dark, on the same paint-only `setTheme` path as everything
       // above: the canvas's node fill and stroke have to move with the CSS
       // the cards over them use, or the canvas box shows around each card's
       // edges (see theme.ts).
       setMode: (next: ThemeMode) => {
         modeRef.current = next
-        chartRef.current?.api?.setTheme(modeThemeFor(example, next))
+        chartRef.current?.api?.setTheme(modeThemeFor(example, layout, next))
         // The silhouette is the one piece of the minimap a host stylesheet
         // cannot reach (see `silhouetteColour` in theme.ts), so it is
         // re-applied through the option — only while the widget is showing.
@@ -294,11 +341,16 @@ export function ReactDemo({ example, mode, onReady, ref }: ReactDemoProps): Reac
     [example, minimapOption],
   )
 
-  if (example.content === 'none') {
+  // Content follows the LAYOUT, not the example — see `LAYOUT_PRESETS` in
+  // data.ts. The wheel layouts draw their own text on the canvas, so they omit
+  // the render prop entirely rather than passing one that returns null: that
+  // is what stops this adapter claiming overlay DOM it does not need.
+  const content = contentForLayout(example, layout)
+  if (content === 'none') {
     return <Klad ref={chartRef} className="chart-host" options={options} onReady={handleReady} />
   }
 
-  const render = RENDERERS[example.content]
+  const render = RENDERERS[content]
   return (
     <Klad ref={chartRef} className="chart-host" options={options} onReady={handleReady}>
       {render}

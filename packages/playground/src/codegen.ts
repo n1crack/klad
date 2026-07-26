@@ -1,5 +1,5 @@
 import type { Theme } from '@klad/core'
-import { minimapOptionFor, type Example, type MinimapPosition } from './data.js'
+import { minimapOptionFor, optionsForLayout, type Example, type LayoutName, type MinimapPosition } from './data.js'
 import type { ThemeMode } from './theme.js'
 
 /**
@@ -22,6 +22,8 @@ export type Stack = 'vanilla' | 'vue' | 'react'
 export interface ConfigSnapshot {
   example: Example
   mode: ThemeMode
+  /** The shape the chart is currently drawn in. */
+  layout: LayoutName
   minimapOn: boolean
   minimapPosition: MinimapPosition
   /** The viewer's own silhouette colour, or `null` while the mode's default applies. */
@@ -53,10 +55,31 @@ function themeOf(snapshot: ConfigSnapshot): Partial<Theme> {
  */
 function optionsOf(snapshot: ConfigSnapshot): [key: string, value: unknown][] {
   const example = snapshot.example
-  const declared = example.options as Record<string, unknown>
+  // The options as the chart ACTUALLY received them — the example's own with
+  // the layout's presentation preset over the top (see `LAYOUT_PRESETS`).
+  // Printing only what the example declared would omit the node size and
+  // content settings that make the shape on screen look the way it does.
+  const declared = optionsForLayout(example, snapshot.layout) as Record<string, unknown>
   const entries: [string, unknown][] = [['data', RAW('data')]]
 
-  for (const key of ['nodeSize', 'label', 'orientation', 'rtl', 'collapsedByDefault', 'toggleOnNodeClick']) {
+  // `layout` and its tuning knobs sit with `orientation`: they are all "how
+  // the tree is arranged", and a snippet that showed a sunburst example
+  // without the one option that makes it a sunburst would not reproduce what
+  // the viewer is looking at.
+  for (const key of [
+    'nodeSize',
+    'label',
+    'layout',
+    'layoutStep',
+    'rowGap',
+    'maxRings',
+    'centre',
+    'colourBranches',
+    'orientation',
+    'rtl',
+    'collapsedByDefault',
+    'toggleOnNodeClick',
+  ]) {
     if (declared[key] !== undefined) entries.push([key, declared[key]])
   }
   if (declared.nodeSize === undefined) entries.push(['nodeSize', { w: 180, h: 64 }])

@@ -60,6 +60,9 @@ self.onmessage = (event: MessageEvent<MainToWorker>): void => {
       case 'isolate':
         engine?.setIsolate(message.index)
         break
+      case 'focus':
+        engine?.setFocus(message.index)
+        break
       case 'selection':
         engine?.setSelection(message.ids)
         break
@@ -125,14 +128,21 @@ self.onmessage = (event: MessageEvent<MainToWorker>): void => {
       message.t === 'data' ||
       message.t === 'options' ||
       message.t === 'open' ||
-      message.t === 'isolate'
+      message.t === 'isolate' ||
+      message.t === 'focus'
     ) {
       const boxes = engine.boxes.slice()
       const map = engine.visibleToSource.slice()
-      post({ t: 'layout', boxes, bounds: engine.bounds, visibleToSource: map }, [
-        boxes.buffer,
-        map.buffer,
-      ])
+      // Sunburst only. The main thread runs its OWN hit-test and cannot call
+      // this engine's, so without the sectors it would fall back to the
+      // bounding-box quadtree — which near the centre of a wheel returns
+      // whichever overlapping box it finds first, not the sector under the
+      // pointer. See `WorkerToMain`'s `layout` case.
+      const engineSectors = engine.sectors
+      const sectors = engineSectors === null ? null : engineSectors.slice()
+      const transferLayout: Transferable[] = [boxes.buffer, map.buffer]
+      if (sectors !== null) transferLayout.push(sectors.buffer)
+      post({ t: 'layout', boxes, bounds: engine.bounds, visibleToSource: map, sectors }, transferLayout)
     }
   } catch (error) {
     post({ t: 'error', message: error instanceof Error ? error.message : String(error) })

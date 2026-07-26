@@ -1,6 +1,6 @@
 <script setup lang="ts">
 import { Klad } from '@klad/vue'
-import type { KladApi, NodeContext, Options, Theme } from '@klad/vue'
+import type { KladApi, LayoutSettings, NodeContext, Options, Theme } from '@klad/vue'
 import { computed, ref } from 'vue'
 import {
   DEPARTMENT_COLOR,
@@ -10,14 +10,19 @@ import {
   minimapDefaultPosition,
   minimapOptionFor,
   modeThemeFor,
+  rowFields,
+  isBranchRow,
+  optionsForLayout,
+  contentForLayout,
   themeFor,
   type Department,
   type Example,
+  type LayoutName,
   type MinimapPosition,
 } from './data.js'
 import type { ThemeMode } from './theme.js'
 
-const props = defineProps<{ example: Example; mode: ThemeMode }>()
+const props = defineProps<{ example: Example; layout: LayoutName; mode: ThemeMode }>()
 const emit = defineEmits<{ ready: [KladApi] }>()
 
 const chartRef = ref<{ api: KladApi | null } | null>(null)
@@ -67,6 +72,15 @@ function minimapOption(): NonNullable<Options['minimap']> {
  */
 const mountedMode: ThemeMode = props.mode
 
+/**
+ * The node-content treatment for this example under this LAYOUT — see
+ * `LAYOUT_PRESETS` in data.ts. Read once, like `mountedMode`: changing the
+ * layout remounts the demo (main.ts's `show`), so this never needs to be
+ * reactive, and making it so would feed `options` a change the adapter
+ * answers with a full `update()`.
+ */
+const content = contentForLayout(props.example, props.layout)
+
 /** The mode the chart is in NOW — `mountedMode` moved on by `setMode` below. */
 let currentMode: ThemeMode = mountedMode
 
@@ -74,8 +88,8 @@ const options = computed<Options>(() => ({
   data: props.example.data,
   nodeSize: DEFAULT_NODE_SIZE,
   label: (item) => String(item.name ?? ''),
-  ...props.example.options,
-  theme: themeFor(props.example, EDGE_RADIUS_DEFAULT, mountedMode),
+  ...optionsForLayout(props.example, props.layout),
+  theme: themeFor(props.example, props.layout, EDGE_RADIUS_DEFAULT, mountedMode),
   minimap: minimapOption(),
 }))
 
@@ -123,6 +137,12 @@ function setRingEnabled(enabled: boolean): void {
   chartRef.value?.api?.setRing(enabled)
 }
 
+/** Live layout tuning — see `KladApi.setLayoutOptions`. Straight through the
+ * API like every other control here, so a slider drag never resets the tree. */
+function setLayoutOptions(settings: LayoutSettings, fit: boolean): void {
+  chartRef.value?.api?.setLayoutOptions(settings, { fit })
+}
+
 /**
  * Light/dark. Same paint-only `setTheme` path as every control above — the
  * canvas's node fill and stroke must move with the CSS the cards over them
@@ -130,7 +150,7 @@ function setRingEnabled(enabled: boolean): void {
  */
 function setMode(mode: ThemeMode): void {
   currentMode = mode
-  chartRef.value?.api?.setTheme(modeThemeFor(props.example, mode))
+  chartRef.value?.api?.setTheme(modeThemeFor(props.example, props.layout, mode))
   // The silhouette is the one piece of the minimap a host stylesheet cannot
   // reach (see `silhouetteColour` in theme.ts), so it is re-applied through
   // the option — only while the widget is actually showing.
@@ -143,6 +163,7 @@ defineExpose({
   setMinimapSilhouette,
   setTheme,
   setRingEnabled,
+  setLayoutOptions,
   setMode,
 })
 
@@ -167,15 +188,15 @@ function headcountOf(item: Item): number {
 <template>
   <Klad ref="chartRef" :options="options" class="chart-host" @ready="handleReady">
     <!--
-      One `#node` slot, branching on `example.content` — the same tag the
-      vanilla demo switches on to pick a render function. `v-if` directly on
+      One `#node` slot, branching on the LAYOUT's content treatment — the same
+      tag the vanilla demo switches on to pick a render function. `v-if` directly on
       the `<template #node>` tag is what lets the "canvas only" example omit
       the slot entirely: when the condition is false, the child component
       sees no `node` slot at all, not an empty one, so no overlay element is
       created — matching the vanilla path, which never sets `renderNode`.
     -->
-    <template v-if="example.content !== 'none'" #node="{ item, hasChildren, open, toggle }">
-      <div v-if="example.content === 'avatar'" class="avatar-card">
+    <template v-if="content !== 'none'" #node="{ item, hasChildren, open, toggle }">
+      <div v-if="content === 'avatar'" class="avatar-card">
         <div class="avatar-circle" :style="{ background: departmentColor(item) }">
           {{ initials(String(item.name ?? '')) }}
         </div>
@@ -189,7 +210,7 @@ function headcountOf(item: Item): number {
       </div>
 
       <div
-        v-else-if="example.content === 'monogram'"
+        v-else-if="content === 'monogram'"
         class="monogram-card"
         :style="{ '--accent': departmentColor(item) }"
       >
@@ -201,7 +222,7 @@ function headcountOf(item: Item): number {
       </div>
 
       <div
-        v-else-if="example.content === 'status'"
+        v-else-if="content === 'status'"
         class="status-card"
         :style="{ '--accent': departmentColor(item) }"
       >
@@ -215,7 +236,7 @@ function headcountOf(item: Item): number {
         </div>
       </div>
 
-      <div v-else-if="example.content === 'photo'" class="photo-tile">
+      <div v-else-if="content === 'photo'" class="photo-tile">
         <div class="photo-image" :style="{ background: photoGradient(item) }">
           <span>{{ initials(String(item.name ?? '')) }}</span>
         </div>
@@ -226,6 +247,35 @@ function headcountOf(item: Item): number {
         <button v-if="hasChildren" type="button" class="toggle-btn" @click="toggle">
           {{ open ? '−' : '+' }}
         </button>
+      </div>
+
+      <!--
+        One file-explorer row. See `renderFileRow` in vanilla-demo.ts for what
+        each part does; the chevron keeps its width on a leaf so every name in
+        a run of siblings starts at the same x.
+      -->
+      <div
+        v-else-if="content === 'row'"
+        class="file-row"
+        :class="{ 'is-folder': isBranchRow(item, hasChildren) }"
+      >
+        <button
+          type="button"
+          class="file-chevron"
+          :class="{ 'is-open': open }"
+          :disabled="!hasChildren"
+          :aria-hidden="!hasChildren"
+          @click.stop="toggle"
+        >
+          {{ hasChildren ? '▸' : '' }}
+        </button>
+        <span
+          class="file-icon"
+          :class="{ 'is-chip': rowFields(item, open).iconColour !== '' }"
+          :style="{ background: rowFields(item, open).iconColour || undefined }"
+        >{{ rowFields(item, open).icon }}</span>
+        <span class="file-name">{{ rowFields(item, open).primary }}</span>
+        <span class="file-size">{{ rowFields(item, open).secondary }}</span>
       </div>
 
       <div v-else class="card">

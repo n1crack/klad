@@ -1,18 +1,10 @@
 import type { Tree } from '../tree.js'
-import type { Bounds } from '../types.js'
+import type { LayoutOptions, LayoutResult } from './types.js'
 
-export interface LayoutOptions {
-  /** Minimum horizontal gap between adjacent boxes. */
-  spacingX: number
-  /** Vertical gap between a node's bottom edge and its children's top edge. */
-  spacingY: number
-}
-
-export interface LayoutResult {
-  /** [x, y, w, h] per node; node i occupies boxes[i * 4 .. i * 4 + 3]. */
-  boxes: Float64Array
-  bounds: Bounds
-}
+// Re-exported so the 1.0 import path (`from './layout/tidy.js'`) keeps
+// resolving these types after they moved to the shared `types.js` the layout
+// registry is built on.
+export type { LayoutOptions, LayoutResult }
 
 const NONE = -1
 

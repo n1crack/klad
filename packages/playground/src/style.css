@@ -1957,3 +1957,195 @@ body {
   color: var(--text-muted);
   white-space: nowrap;
 }
+
+/* ---------------------------------------------------------------------------
+ * File-explorer rows (the `file` layout).
+ *
+ * Scoped to `.surface.is-file` rather than styled globally: these rules make a
+ * node look like a row in a list, which is exactly wrong for every other
+ * example's card. main.ts sets the class per example.
+ *
+ * The row fills its overlay element completely — the layout gave it a box of
+ * `FILE_ROW` and drew nothing in it (the example sets the canvas node fill and
+ * stroke to transparent), so the row IS the node as far as a viewer is
+ * concerned. What the canvas still contributes underneath is the folder guide
+ * lines, which is the part a DOM row can't do without an element per line.
+ * ------------------------------------------------------------------------ */
+
+.surface.is-file .file-row {
+  display: flex;
+  align-items: center;
+  gap: 0.4rem;
+  width: 100%;
+  height: 100%;
+  padding: 0 0.5rem 0 0.15rem;
+  border-radius: 5px;
+  font-size: 0.8rem;
+  line-height: 1;
+  color: canvastext;
+  /* A list is scanned, not read one row at a time, so nothing here draws a
+     border or a background of its own — the only thing that should catch the
+     eye while scanning is the row under the pointer. */
+  background: transparent;
+  cursor: default;
+  user-select: none;
+}
+
+.surface.is-file .file-row:hover {
+  background: color-mix(in srgb, var(--accent) 9%, transparent);
+}
+
+.surface.is-file .file-chevron {
+  flex: 0 0 auto;
+  width: 1rem;
+  height: 1rem;
+  display: grid;
+  place-items: center;
+  padding: 0;
+  border: none;
+  background: none;
+  color: var(--text-muted);
+  font-size: 0.62rem;
+  line-height: 1;
+  cursor: pointer;
+  /* Rotated rather than swapped for a second glyph, so the disclosure reads as
+     one control turning rather than two characters alternating. */
+  transition: transform 140ms ease, color 140ms ease;
+}
+
+.surface.is-file .file-chevron.is-open {
+  transform: rotate(90deg);
+}
+
+.surface.is-file .file-chevron:disabled {
+  cursor: default;
+  /* Kept in the layout, not hidden: a leaf whose chevron collapsed would start
+     its name a pixel-hair left of its folder siblings', which reads as broken
+     indentation rather than as a missing control. */
+  visibility: hidden;
+}
+
+.surface.is-file .file-chevron:hover:not(:disabled) {
+  color: var(--accent);
+}
+
+.surface.is-file .file-icon {
+  flex: 0 0 auto;
+  font-size: 0.78rem;
+  line-height: 1;
+}
+
+.surface.is-file .file-name {
+  flex: 1 1 auto;
+  min-width: 0;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.surface.is-file .file-row.is-folder .file-name {
+  font-weight: 600;
+}
+
+/* Right-aligned and tabular so the column of sizes lines up digit for digit —
+   the one place in this playground where `tabular-nums` earns its keep. */
+.surface.is-file .file-size {
+  flex: 0 0 auto;
+  font-size: 0.7rem;
+  font-variant-numeric: tabular-nums;
+  color: var(--text-muted);
+}
+
+/* ---------------------------------------------------------------------------
+ * The sunburst's breadcrumb.
+ * ------------------------------------------------------------------------ */
+
+.surface-panel-trail {
+  /* Sits along the top rather than in a corner: it is a path, and a path reads
+     as a line. Right edge left open so a deep trail grows into the space it
+     needs instead of wrapping inside a fixed box. */
+  max-width: calc(100% - 1.2rem);
+}
+
+.centre-trail {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: 0.15rem;
+}
+
+.centre-step {
+  font: inherit;
+  font-size: 0.72rem;
+  padding: 0.12rem 0.35rem;
+  border: none;
+  border-radius: 4px;
+  background: none;
+  color: var(--text-muted);
+  cursor: pointer;
+  white-space: nowrap;
+}
+
+.centre-step:hover:not(:disabled) {
+  color: var(--accent);
+  background: color-mix(in srgb, var(--accent) 10%, transparent);
+}
+
+.centre-step.is-current {
+  color: canvastext;
+  font-weight: 600;
+  cursor: default;
+}
+
+.centre-sep {
+  font-size: 0.72rem;
+  color: var(--border-strong);
+}
+
+/* ---------------------------------------------------------------------------
+ * The wheel layouts draw their own text on the canvas, so there are no overlay
+ * cards to style — but the cursor still has to say the segments are clickable.
+ * ------------------------------------------------------------------------ */
+
+.surface.is-wheel canvas {
+  cursor: pointer;
+}
+
+/* An org row has no folder emoji to identify it, so it gets a monogram chip in
+   its department's colour instead — same slot, same width, so the two datasets
+   line their names up at the same x. */
+.surface.is-file .file-icon.is-chip {
+  display: grid;
+  place-items: center;
+  width: 1.05rem;
+  height: 1.05rem;
+  border-radius: 50%;
+  font-size: 0.52rem;
+  font-weight: 700;
+  letter-spacing: 0.02em;
+  color: #ffffff;
+}
+
+/* One line under the layout picker saying what the shape is for. */
+.field-note {
+  margin: 0.15rem 0 0;
+  font-size: 0.7rem;
+  line-height: 1.35;
+  color: var(--text-muted);
+}
+
+/* A checkbox that reads as a row rather than a bare box — used by the layout
+   knobs, which mix sliders and on/off switches in one list. */
+.field-check {
+  display: flex;
+  align-items: center;
+  gap: 0.4rem;
+  font-size: 0.74rem;
+  color: canvastext;
+  cursor: pointer;
+}
+
+.field-check input {
+  accent-color: var(--accent);
+  cursor: pointer;
+}

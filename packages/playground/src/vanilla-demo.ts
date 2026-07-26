@@ -1,4 +1,4 @@
-import { createKlad, type KladApi, type Options, type Theme } from '@klad/core'
+import { createKlad, type KladApi, type LayoutSettings, type Options, type Theme } from '@klad/core'
 import {
   DEPARTMENT_COLOR,
   EDGE_RADIUS_DEFAULT,
@@ -7,10 +7,16 @@ import {
   minimapDefaultPosition,
   minimapOptionFor,
   modeThemeFor,
+  rowFields,
+  isBranchRow,
+  optionsForLayout,
+  contentForLayout,
+  centreControlFor,
   themeFor,
   accordionProgress,
   type Department,
   type Example,
+  type LayoutName,
   type MinimapPosition,
   type NodeContentKind,
 } from './data.js'
@@ -61,6 +67,61 @@ function renderCard(element: HTMLElement, context: NodeContext): void {
   card.querySelector('strong')!.textContent = String(item.name ?? '')
   card.querySelector('small')!.textContent = String(item.title ?? '')
   syncToggleButton(card, context)
+}
+
+/**
+ * One indented row: a disclosure chevron, an icon, the name, and one number or
+ * phrase on the right.
+ *
+ * Everything about the row is DOM — the `file` layout worked out where it goes
+ * and how far in it is indented, and drew nothing. The canvas underneath is
+ * left transparent (see `LAYOUT_PRESETS`) so there is no box behind the row
+ * and no second copy of the name; what the canvas DOES still draw is the
+ * folder guide lines, which is the part a DOM row cannot do without an element
+ * per line.
+ *
+ * The FIELDS come from `rowFields`, which reads whichever dataset it is given
+ * — a directory tree or an org chart. The layout picker can put any example
+ * into this shape, and a row that only knew about files would render half of
+ * them blank.
+ */
+function renderRow(element: HTMLElement, context: NodeContext): void {
+  let row = element.firstElementChild as HTMLDivElement | null
+  if (row === null) {
+    row = document.createElement('div')
+    row.className = 'file-row'
+    const chevron = document.createElement('button')
+    chevron.type = 'button'
+    chevron.className = 'file-chevron'
+    const icon = document.createElement('span')
+    icon.className = 'file-icon'
+    const name = document.createElement('span')
+    name.className = 'file-name'
+    const meta = document.createElement('span')
+    meta.className = 'file-size'
+    row.append(chevron, icon, name, meta)
+    element.append(row)
+  }
+  const fields = rowFields(context.item, context.open)
+  const chevron = row.querySelector<HTMLButtonElement>('.file-chevron')!
+  // A leaf keeps the chevron's WIDTH but not its glyph, so every name in a run
+  // of siblings starts at the same x — a list where leaves and branches begin
+  // at different offsets reads as broken indentation.
+  chevron.textContent = context.hasChildren ? '▸' : ''
+  chevron.classList.toggle('is-open', context.open)
+  chevron.disabled = !context.hasChildren
+  chevron.setAttribute('aria-hidden', context.hasChildren ? 'false' : 'true')
+  chevron.onclick = (event) => {
+    event.stopPropagation()
+    context.toggle()
+  }
+  const icon = row.querySelector<HTMLSpanElement>('.file-icon')!
+  icon.textContent = fields.icon
+  icon.classList.toggle('is-chip', fields.iconColour !== '')
+  icon.style.background = fields.iconColour
+  row.querySelector<HTMLSpanElement>('.file-name')!.textContent = fields.primary
+  row.querySelector<HTMLSpanElement>('.file-size')!.textContent = fields.secondary
+  row.classList.toggle('is-folder', isBranchRow(context.item, context.hasChildren))
 }
 
 /** Circular initials monogram + name + role. */
@@ -426,6 +487,7 @@ function renderActions(element: HTMLElement, context: NodeContext): void {
 }
 
 const RENDERERS: Record<NodeContentKind, RenderNode | null> = {
+  row: renderRow,
   card: renderCard,
   counts: renderCounts,
   dropdown: renderDropdown,
@@ -454,6 +516,9 @@ export interface VanillaDemoHandle {
    */
   setTheme(partial: Partial<Theme>): void
   setRingEnabled(enabled: boolean): void
+  /** Live layout tuning — see `KladApi.setLayoutOptions`. Never a remount, so
+   * the tree's open state and the camera survive a slider drag. */
+  setLayoutOptions(settings: LayoutSettings, fit: boolean): void
   setMode(mode: ThemeMode): void
 }
 
@@ -477,10 +542,15 @@ export interface VanillaDemoHandle {
 export function mountVanilla(
   host: HTMLElement,
   example: Example,
+  layout: LayoutName,
   mode: ThemeMode,
   onApiChange: (api: KladApi) => void,
 ): VanillaDemoHandle {
-  const renderNode = RENDERERS[example.content]
+  // The content treatment follows the LAYOUT, not the example — see
+  // `LAYOUT_PRESETS` in data.ts. A wheel draws its own text on the canvas and
+  // wants no overlay at all; a file list wants rows whatever the example's own
+  // card would have been.
+  const renderNode = RENDERERS[contentForLayout(example, layout)]
   let currentMode = mode
   let minimapOn = minimapDefaultOn(example)
   let minimapPosition = minimapDefaultPosition(example)
@@ -504,8 +574,8 @@ export function mountVanilla(
       data: example.data,
       nodeSize: DEFAULT_NODE_SIZE,
       label: (item) => String(item.name ?? ''),
-      ...example.options,
-      theme: themeFor(example, EDGE_RADIUS_DEFAULT, currentMode),
+      ...optionsForLayout(example, layout),
+      theme: themeFor(example, layout, EDGE_RADIUS_DEFAULT, currentMode),
       minimap: minimapOption(),
       ...(renderNode !== null ? { renderNode } : {}),
     }
@@ -585,6 +655,36 @@ export function mountVanilla(
     chart.api.focus(id, { ring: true })
   }
 
+  /**
+   * The sunburst's drill-down, wired from the library's primitives rather than
+   * built into it: `setCentre` moves the wheel, `nodeClick` says what was hit,
+   * and the parent lookup is the page's own data. Four lines of app code, and
+   * every part of it is something an app would want to control — which is why
+   * the library ships the pieces rather than the behaviour.
+   *
+   * Two gestures, and the second is the one that makes it navigable: clicking
+   * a segment drills INTO it, and clicking the segment already at the centre
+   * steps back OUT to its parent. So the hub is always "go up", which is where
+   * a viewer will look for it.
+   */
+  let stopDrill: (() => void) | null = null
+  if (centreControlFor(layout)) {
+    const parentOf = new Map<string, string | null>()
+    for (const item of example.data) parentOf.set(String(item.id), (item.parentId as string | null) ?? null)
+
+    stopDrill = chart.on('nodeClick', ({ id }) => {
+      const centre = chart.api.getCentre() ?? (example.data[0] ? String(example.data[0].id) : null)
+      // Clicking the hub steps out. At the root there is nowhere further out,
+      // so it stays put rather than blanking the wheel.
+      const next = id === centre ? (parentOf.get(id) ?? null) : id
+      if (next === null && id === centre) return
+      chart.api.setCentre(next)
+      host.dispatchEvent(
+        new CustomEvent('playground:centrechange', { detail: { id: chart.api.getCentre() }, bubbles: true }),
+      )
+    })
+  }
+
   host.addEventListener('playground:repaint', onRepaint)
   host.addEventListener('playground:relayout', onRelayout)
   host.addEventListener('playground:slide', onSlide)
@@ -600,6 +700,7 @@ export function mountVanilla(
       host.removeEventListener('playground:slide', onSlide)
       if (slideHandle !== null) cancelAnimationFrame(slideHandle)
       host.removeEventListener('playground:goto', onGoto)
+      stopDrill?.()
       chart.destroy()
     },
     setMinimap(on) {
@@ -622,6 +723,9 @@ export function mountVanilla(
     setRingEnabled(enabled) {
       chart.api.setRing(enabled)
     },
+    setLayoutOptions(settings, fit) {
+      chart.api.setLayoutOptions(settings, { fit })
+    },
     /**
      * Light/dark, applied to the chart the same paint-only way every other
      * control here is — the canvas's node fill and stroke have to move with
@@ -633,7 +737,7 @@ export function mountVanilla(
      */
     setMode(next) {
       currentMode = next
-      chart.api.setTheme(modeThemeFor(example, next))
+      chart.api.setTheme(modeThemeFor(example, layout, next))
       // The minimap's silhouette is the one piece of it the playground's own
       // CSS cannot restyle (see `silhouetteColour` in theme.ts), so it has to
       // be re-applied through the option — but only while the widget is

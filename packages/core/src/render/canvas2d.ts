@@ -2,6 +2,15 @@ import type { TextMeasurer } from '../text/measure.js'
 import type { DrawCallStats, Frame, Renderer, RenderSurface } from './renderer.js'
 import type { Theme } from './theme.js'
 import { easeInQuad, easeOutCubic } from '../viewport.js'
+import { edgeAnchors } from './edge-geometry.js'
+import { computeNodeFills, inkOn } from './palette.js'
+import {
+  labelPlacement,
+  lineHeightOf,
+  normaliseUpright,
+  SECTOR_LABEL_PAD,
+  sectorPath,
+} from './sector.js'
 
 /**
  * Canvas2D backend.
@@ -34,6 +43,35 @@ export function createCanvas2DRenderer(
   let devicePixelRatio = 1
 
   const stats = { lastDrawCalls: { edgeStrokes: 0, nodes: 0, labels: 0 } as DrawCallStats }
+
+  /**
+   * Branch colours, derived from the frame's branch structure and the current
+   * theme, and held until either changes.
+   *
+   * The memo key is the `branchOf` array's IDENTITY plus the theme object's,
+   * not their contents: the engine allocates a fresh `branchOf` per relayout
+   * and `resolveTheme` a fresh theme per `setTheme`, so identity changes
+   * exactly when the answer does. That makes the steady state — the same
+   * layout, the same theme, sixty frames a second — a single reference
+   * comparison, while a relayout or a theme swap recomputes on the next frame
+   * with no explicit invalidation to forget.
+   */
+  let fillCache: { branchOf: Int32Array; theme: Theme; fills: readonly string[] } | null = null
+  const branchFills = (branchOf: Int32Array, branchDepth: Int32Array): readonly string[] => {
+    if (fillCache !== null && fillCache.branchOf === branchOf && fillCache.theme === theme) {
+      return fillCache.fills
+    }
+    const fills = computeNodeFills(
+      branchOf.length,
+      branchOf,
+      branchDepth,
+      theme.palette,
+      theme.paletteOther,
+      theme.hubFill,
+    )
+    fillCache = { branchOf, theme, fills }
+    return fills
+  }
 
   /**
    * An elbow is three axis-aligned segments meeting at two bends: `seg0`
@@ -96,6 +134,55 @@ export function createCanvas2DRenderer(
     const traceEdge = (i: number, p: number): void => {
       const io = i * 4
       const po = p * 4
+      if (frame.edgeStyle !== 'tiered') {
+        // Anchors from the shared source (`edge-geometry.ts`), so the drawn
+        // path, the engine's cull box and the SVG export cannot disagree about
+        // where a connector starts and ends.
+        const a = edgeAnchors(
+          frame.edgeStyle,
+          frame.horizontal,
+          frame.rtl,
+          boxes[po]!,
+          boxes[po + 1]!,
+          boxes[po + 2]!,
+          boxes[po + 3]!,
+          boxes[io]!,
+          boxes[io + 1]!,
+          boxes[io + 2]!,
+          boxes[io + 3]!,
+        )
+        const px = a.px * k + camera.x
+        const py = a.py * k + camera.y
+        const cx = a.cx * k + camera.x
+        const cy = a.cy * k + camera.y
+        ctx.moveTo(px, py)
+        if (frame.edgeStyle === 'spoke') {
+          // Centre to centre, straight. On concentric rings that line is
+          // already radial, so nothing is gained by bending it.
+          ctx.lineTo(cx, cy)
+        } else {
+          // 'folder': straight down the gutter under the parent, then a short
+          // stub into the child's leading edge — the guide line of every file
+          // explorer. Deliberately NOT routed around intervening rows: the
+          // spine passing behind a sibling's row is what makes a run of
+          // children read as one group.
+          // One bend, not two, so `clampEdgeCornerRadius`'s crossbar rule
+          // doesn't apply: the limit is just the shorter of the two legs
+          // meeting at it.
+          const r = Math.min(edgeRadius, Math.abs(cy - py), Math.abs(cx - px))
+          if (r <= 0) {
+            ctx.lineTo(px, cy)
+            ctx.lineTo(cx, cy)
+          } else {
+            const dirDown = cy > py ? 1 : -1
+            const dirOut = cx > px ? 1 : -1
+            ctx.lineTo(px, cy - dirDown * r)
+            ctx.quadraticCurveTo(px, cy, px + dirOut * r, cy)
+            ctx.lineTo(cx, cy)
+          }
+        }
+        return
+      }
       {
         if (frame.horizontal) {
           // Growth axis is x: leave the parent's right edge, split on x.
@@ -229,7 +316,56 @@ export function createCanvas2DRenderer(
     const blockFillSkipped = frame.tier === 'block' && theme.blockFill === 'transparent'
     const unlitFill = frame.tier === 'block' ? theme.blockFill : theme.nodeFill
 
-    if (frame.ghostCount > 0) {
+    // Per-node branch colour, where the layout asked for one. Still loses to
+    // highlight and selection: those mean "the chart is answering you", and an
+    // ambient branch colour must not drown out an answer.
+    const fills =
+      frame.branchOf !== null && frame.branchDepth !== null && frame.tier !== 'block'
+        ? branchFills(frame.branchOf, frame.branchDepth)
+        : null
+    const fillFor = (i: number): string => (fills !== null ? (fills[i] ?? unlitFill) : unlitFill)
+
+    const sectors = frame.sectors
+    /**
+     * Traces node `i` into the current path, as a sector on a wheel or a
+     * (rounded) rectangle everywhere else. One function so the fill, the
+     * stroke and the selection outline below can't disagree about the shape
+     * they are painting.
+     *
+     * Returns false for a sector with no extent — the collapsed out-of-focus
+     * and beyond-the-last-ring nodes a sunburst layout deliberately keeps in
+     * the tree so they have somewhere to animate from. They cull in (their
+     * bounding box is a degenerate point at a real position) but there is
+     * nothing to draw, and asking the canvas to fill a zero-area path per node
+     * is a cost with no pixels to show for it.
+     */
+    const traceNode = (i: number): boolean => {
+      if (sectors !== null) {
+        const s = i * 6
+        const r0 = sectors[s + 2]! * k
+        const r1 = sectors[s + 3]! * k
+        const a0 = sectors[s + 4]!
+        const a1 = sectors[s + 5]!
+        if (r1 - r0 <= 0 || a1 - a0 <= 0) return false
+        sectorPath(ctx, sectors[s]! * k + camera.x, sectors[s + 1]! * k + camera.y, r0, r1, a0, a1)
+        return true
+      }
+      const o = i * 4
+      const x = boxes[o]! * k + camera.x
+      const y = boxes[o + 1]! * k + camera.y
+      const w = boxes[o + 2]! * k
+      const h = boxes[o + 3]! * k
+      if (radius > 0) ctx.roundRect(x, y, w, h, radius)
+      else ctx.rect(x, y, w, h)
+      return true
+    }
+
+    // A ghost is a rectangle by construction — it is a box tween, and the
+    // engine has no sector to hand it once the node has left the tree. On a
+    // wheel that would be a rectangle flying across the disc, which reads as a
+    // rendering fault rather than as a node leaving; the sectors re-partition
+    // to fill the space anyway, so the collapse is already legible without one.
+    if (frame.ghostCount > 0 && sectors === null) {
       for (let g = 0; g < frame.ghostCount; g++) {
         if (blockFillSkipped) {
           // Nothing to fill and (at this tier) nothing to stroke either — a
@@ -261,11 +397,6 @@ export function createCanvas2DRenderer(
 
     for (let n = 0; n < visibleCount; n++) {
       const i = visible[n]!
-      const o = i * 4
-      const x = boxes[o]! * k + camera.x
-      const y = boxes[o + 1]! * k + camera.y
-      const w = boxes[o + 2]! * k
-      const h = boxes[o + 3]! * k
       const lit = frame.highlight !== null && frame.highlight[i] === 1
       // Nodes newly revealed by an in-progress expand fade in; `revealAlpha`
       // is null whenever no transition is affecting opacity this frame, so
@@ -290,14 +421,33 @@ export function createCanvas2DRenderer(
       }
 
       ctx.beginPath()
-      if (radius > 0) ctx.roundRect(x, y, w, h, radius)
-      else ctx.rect(x, y, w, h)
-      ctx.fillStyle = lit ? theme.highlightFill : unlitFill
+      if (!traceNode(i)) {
+        calls.nodes++
+        if (i === frame.dragIndex || revealAlpha < 1) ctx.globalAlpha = 1
+        continue
+      }
+      ctx.fillStyle = lit ? theme.highlightFill : fillFor(i)
       ctx.fill()
       if (frame.tier !== 'block') {
-        ctx.strokeStyle = lit ? theme.highlightStroke : theme.nodeStroke
-        ctx.lineWidth = theme.nodeStrokeWidth
-        ctx.stroke()
+        if (sectors !== null) {
+          // The separation between neighbouring sectors is a hairline in the
+          // SURFACE colour, not a border: a sunburst's sectors tile the disc
+          // edge to edge, so what a viewer should see between two of them is
+          // the page showing through, the way it does between two bars. A
+          // `nodeStroke`-coloured outline instead reads as a drawn frame
+          // around every segment, which at three rings deep is more ink than
+          // data. Skipped entirely at `sectorGap: 0`, for a host that wants
+          // one continuous disc.
+          if (theme.sectorGap > 0) {
+            ctx.strokeStyle = lit ? theme.highlightStroke : theme.surface
+            ctx.lineWidth = theme.sectorGap
+            ctx.stroke()
+          }
+        } else {
+          ctx.strokeStyle = lit ? theme.highlightStroke : theme.nodeStroke
+          ctx.lineWidth = theme.nodeStrokeWidth
+          ctx.stroke()
+        }
       }
       // The selection outline goes OVER whatever the node's own stroke was,
       // rather than replacing it: a selected node is still a highlighted node
@@ -305,6 +455,15 @@ export function createCanvas2DRenderer(
       // tier, `block` included — a selection made at a readable zoom has to
       // still be findable after zooming out, which is exactly when it matters.
       if (isSelected) {
+        // Re-traced rather than reusing the path above: the sector gap stroke
+        // may already have been applied to it, and a second `stroke()` on the
+        // same path would lay the selection outline over a hairline that has
+        // eaten into the shape's edge. On the rectangular path this is the
+        // same geometry either way.
+        if (sectors !== null) {
+          ctx.beginPath()
+          traceNode(i)
+        }
         ctx.strokeStyle = theme.selectionStroke
         ctx.lineWidth = theme.selectionStrokeWidth
         ctx.stroke()
@@ -319,23 +478,147 @@ export function createCanvas2DRenderer(
       ctx.font = theme.labelFont
       ctx.textBaseline = 'middle'
       const pad = theme.labelPadding * k
-      for (let n = 0; n < visibleCount; n++) {
-        const i = visible[n]!
-        const label = frame.labels[i]
-        if (label === undefined || label === '') continue
-        const o = i * 4
-        const w = boxes[o + 2]! * k
-        const text = measurer.truncate(label, Math.max(0, w - pad * 2))
-        if (text === '') continue
-        const revealAlpha = frame.revealAlpha !== null ? frame.revealAlpha[n]! : 1
-        if (revealAlpha < 1) ctx.globalAlpha = revealAlpha
-        ctx.fillText(
-          text,
-          boxes[o]! * k + camera.x + pad,
-          (boxes[o + 1]! + boxes[o + 3]! / 2) * k + camera.y,
-        )
-        if (revealAlpha < 1) ctx.globalAlpha = 1
-        calls.labels++
+
+      if (sectors !== null) {
+        // --- Sunburst: text laid on the sector itself.
+        //
+        // This is what makes a wheel readable rather than decorative, and it
+        // is also the relief the palette's contrast notes require: several of
+        // the categorical hues sit under 3:1 against a light page, and a
+        // visible label on the mark is what discharges that. Two consequences
+        // follow, both handled here — the ink is chosen per sector against the
+        // fill actually behind it, and a sector too small to hold text simply
+        // goes unlabelled rather than being given a clipped one.
+        const lineHeight = lineHeightOf(theme.labelFont)
+        ctx.textAlign = 'center'
+        for (let n = 0; n < visibleCount; n++) {
+          const i = visible[n]!
+          const label = frame.labels[i]
+          if (label === undefined || label === '') continue
+          const s = i * 6
+          const place = labelPlacement(
+            sectors[s + 2]! * k,
+            sectors[s + 3]! * k,
+            sectors[s + 4]!,
+            sectors[s + 5]!,
+            lineHeight,
+          )
+          if (place === null) continue
+          const text = measurer.truncate(label, place.maxWidth)
+          if (text === '') continue
+          const revealAlpha = frame.revealAlpha !== null ? frame.revealAlpha[n]! : 1
+          ctx.save()
+          if (revealAlpha < 1) ctx.globalAlpha = revealAlpha
+          ctx.translate(sectors[s]! * k + camera.x + place.x, sectors[s + 1]! * k + camera.y + place.y)
+          if (place.angle !== 0) ctx.rotate(place.angle)
+          ctx.fillStyle =
+            frame.highlight !== null && frame.highlight[i] === 1
+              ? theme.labelColour
+              : inkOn(fillFor(i), theme.labelColour, theme.labelColourInverse)
+          ctx.fillText(text, 0, 0)
+          ctx.restore()
+          calls.labels++
+        }
+        ctx.textAlign = 'left'
+      } else if (frame.angles !== null) {
+        // --- Radial: the card stays axis-aligned, the NAME radiates.
+        //
+        // Laid just outside the card along its own ray and turned to follow
+        // it, flipping on the left-hand side of the wheel so nothing reads
+        // upside down. This is the difference between a radial chart whose
+        // outer ring is a crowd of overlapping horizontal labels and one you
+        // can actually read: at a constant angular spacing, tangentially
+        // crowded text has room to run outward instead.
+        const angles = frame.angles
+        // Screen-space room for one radiating name: what the layout reserved
+        // outside the outermost ring, minus the marker's own half-width the
+        // text starts after.
+        const radialRoom = frame.labelSpace * k
+        ctx.textAlign = 'left'
+        for (let n = 0; n < visibleCount; n++) {
+          const i = visible[n]!
+          const label = frame.labels[i]
+          if (label === undefined || label === '') continue
+          const o = i * 4
+          const w = boxes[o + 2]! * k
+          const h = boxes[o + 3]! * k
+          const cx = (boxes[o]! + boxes[o + 2]! / 2) * k + camera.x
+          const cy = (boxes[o + 1]! + boxes[o + 3]! / 2) * k + camera.y
+          // Room to run outward: whatever the label allowance the layout
+          // reserved outside the last ring is, in screen units. Bounded by the
+          // card's own width as a proxy, which is exactly what `radial`'s
+          // bounds reserved for it.
+          const angle = angles[i]!
+          const revealAlpha = frame.revealAlpha !== null ? frame.revealAlpha[n]! : 1
+          // No ray — the node is ON the centre (see `radial`'s `NaN`). Its
+          // name goes horizontally through the middle of it, like the label
+          // in the hole of a donut chart.
+          if (Number.isNaN(angle)) {
+            // The hub's name runs across the middle. Truncated, unlike the
+            // radiating ones below: this one DOES have something to collide
+            // with — the innermost ring, all the way around it.
+            const text = measurer.truncate(label, Math.max(0, w + radialRoom))
+            if (text === '') continue
+            ctx.save()
+            if (revealAlpha < 1) ctx.globalAlpha = revealAlpha
+            ctx.textAlign = 'center'
+            ctx.fillText(text, cx, cy)
+            ctx.restore()
+            calls.labels++
+            continue
+          }
+          const offsetFromCentre = Math.max(w, h) / 2 + SECTOR_LABEL_PAD
+          // NOT truncated, deliberately — the one label in this renderer that
+          // isn't.
+          //
+          // Every other label sits inside a box, so overflowing it is a
+          // visible defect and cutting the text is the lesser harm. A
+          // radiating name has no box: it points outward into open space, and
+          // consecutive names on a ring fan APART as they go, so there is
+          // nothing for it to overlap. What it could be cut against is the
+          // layout's world-unit reserve — but labels are drawn at a fixed
+          // screen size while that reserve shrinks with the zoom, so bounding
+          // by it means every name on the chart collapses to an ellipsis the
+          // moment a viewer zooms out far enough to see the whole wheel. Which
+          // is the default view. And a radial node is usually a bare marker
+          // (see the layout's docblock), so its name is the ONLY thing it
+          // carries: "Person …" is not a shortened label, it is a blank one.
+          //
+          // A host that wants shorter names supplies them through `label`.
+          const upright = normaliseUpright(angle)
+          const flipped = upright !== angle
+          ctx.save()
+          if (revealAlpha < 1) ctx.globalAlpha = revealAlpha
+          ctx.translate(cx, cy)
+          ctx.rotate(upright)
+          // The marker's own half-width clears it before the text starts; a
+          // flipped label runs the other way, so it is right-aligned at the
+          // mirrored offset instead.
+          ctx.textAlign = flipped ? 'right' : 'left'
+          ctx.fillText(label, flipped ? -offsetFromCentre : offsetFromCentre, 0)
+          ctx.restore()
+          calls.labels++
+        }
+        ctx.textAlign = 'left'
+      } else {
+        for (let n = 0; n < visibleCount; n++) {
+          const i = visible[n]!
+          const label = frame.labels[i]
+          if (label === undefined || label === '') continue
+          const o = i * 4
+          const w = boxes[o + 2]! * k
+          const text = measurer.truncate(label, Math.max(0, w - pad * 2))
+          if (text === '') continue
+          const revealAlpha = frame.revealAlpha !== null ? frame.revealAlpha[n]! : 1
+          if (revealAlpha < 1) ctx.globalAlpha = revealAlpha
+          ctx.fillText(
+            text,
+            boxes[o]! * k + camera.x + pad,
+            (boxes[o + 1]! + boxes[o + 3]! / 2) * k + camera.y,
+          )
+          if (revealAlpha < 1) ctx.globalAlpha = 1
+          calls.labels++
+        }
       }
     }
 
