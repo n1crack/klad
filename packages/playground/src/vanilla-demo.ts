@@ -1,4 +1,4 @@
-import { createKlad, type KladApi, type Options, type Theme } from '@klad/core'
+import { createKlad, type KladApi, type LayoutSettings, type Options, type Theme } from '@klad/core'
 import {
   DEPARTMENT_COLOR,
   EDGE_RADIUS_DEFAULT,
@@ -516,6 +516,9 @@ export interface VanillaDemoHandle {
    */
   setTheme(partial: Partial<Theme>): void
   setRingEnabled(enabled: boolean): void
+  /** Live layout tuning — see `KladApi.setLayoutOptions`. Never a remount, so
+   * the tree's open state and the camera survive a slider drag. */
+  setLayoutOptions(settings: LayoutSettings, fit: boolean): void
   setMode(mode: ThemeMode): void
 }
 
@@ -719,6 +722,9 @@ export function mountVanilla(
     },
     setRingEnabled(enabled) {
       chart.api.setRing(enabled)
+    },
+    setLayoutOptions(settings, fit) {
+      chart.api.setLayoutOptions(settings, { fit })
     },
     /**
      * Light/dark, applied to the chart the same paint-only way every other

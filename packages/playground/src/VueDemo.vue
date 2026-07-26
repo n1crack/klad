@@ -1,6 +1,6 @@
 <script setup lang="ts">
 import { Klad } from '@klad/vue'
-import type { KladApi, NodeContext, Options, Theme } from '@klad/vue'
+import type { KladApi, LayoutSettings, NodeContext, Options, Theme } from '@klad/vue'
 import { computed, ref } from 'vue'
 import {
   DEPARTMENT_COLOR,
@@ -137,6 +137,12 @@ function setRingEnabled(enabled: boolean): void {
   chartRef.value?.api?.setRing(enabled)
 }
 
+/** Live layout tuning — see `KladApi.setLayoutOptions`. Straight through the
+ * API like every other control here, so a slider drag never resets the tree. */
+function setLayoutOptions(settings: LayoutSettings, fit: boolean): void {
+  chartRef.value?.api?.setLayoutOptions(settings, { fit })
+}
+
 /**
  * Light/dark. Same paint-only `setTheme` path as every control above — the
  * canvas's node fill and stroke must move with the CSS the cards over them
@@ -157,6 +163,7 @@ defineExpose({
   setMinimapSilhouette,
   setTheme,
   setRingEnabled,
+  setLayoutOptions,
   setMode,
 })
 

@@ -526,6 +526,31 @@ export interface KladApi {
    * docblock for exactly which call sites this governs.
    */
   setRing(enabled: boolean): void
+  /**
+   * Changes how the tree is ARRANGED, after construction — the shape itself,
+   * and every knob that tunes it.
+   *
+   * The alternative is `update(data, options)`, which replaces the data and
+   * therefore resets every node's open/closed state: dragging an indent
+   * slider is not a reason to re-collapse a tree the viewer just opened. Same
+   * reasoning as `setTheme` and `setMinimap`; this is the layout-shaped hole
+   * in that set.
+   *
+   * Only these keys, and deliberately so. `nodeSize` and `label` are read
+   * per node at layout time and belong to `refresh()`; `renderNode` is a
+   * construction-time choice in every adapter. What is here is what a viewer
+   * would put on a slider.
+   *
+   * Does NOT move the camera by default: a chart that jumped to a fit on
+   * every tick of a slider is unusable as a control. But every one of these
+   * knobs changes how big the drawing is, so a caller driving a slider will
+   * want to settle the view once the drag ends — pass `{ fit: true }` for
+   * that, and the fit happens AFTER the relayout lands rather than against
+   * the bounds it is about to replace. (Calling `fit()` yourself right after
+   * this returns frames the OLD geometry: the relayout is deferred to the
+   * next frame, which is what keeps a drag cheap.)
+   */
+  setLayoutOptions(settings: LayoutSettings, opts?: { fit?: boolean }): void
   getState(): ChartState
   /**
    * Where the viewer is, as a plain serialisable object — see `ChartView`.
@@ -546,6 +571,16 @@ export interface KladApi {
    */
   setView(view: ChartView, opts?: { animate?: boolean }): void
 }
+
+/**
+ * The subset of `Options` that decides how the tree is arranged — everything
+ * `setLayoutOptions` can change live. A strict subset of `Options`, so a
+ * caller can hold one object and spread it into both.
+ */
+export type LayoutSettings = Pick<
+  Options,
+  'layout' | 'layoutStep' | 'rowGap' | 'maxRings' | 'colourBranches' | 'spacing' | 'orientation' | 'rtl'
+>
 
 export interface KladInstance {
   destroy(): void
@@ -2359,6 +2394,30 @@ export function createKlad(host: HTMLElement, options: Options): KladInstance {
       theme = resolveTheme(partial, theme)
       currentOptions = { ...currentOptions, theme }
       chartHost.setTheme(theme)
+      scheduleFrame()
+    },
+    setLayoutOptions(settings, opts) {
+      currentOptions = { ...currentOptions, ...settings }
+      chartHost.setOptions({
+        spacingX: currentOptions.spacing?.x ?? 16,
+        spacingY: currentOptions.spacing?.y ?? 48,
+        orientation: currentOptions.orientation ?? 'tb',
+        rtl: currentOptions.rtl ?? false,
+        layout: currentOptions.layout ?? 'tidy',
+        layoutStep: currentOptions.layoutStep,
+        rowGap: currentOptions.rowGap,
+        maxRings: currentOptions.maxRings,
+        colourBranches: currentOptions.colourBranches,
+      })
+      // The tree's SHAPE changed, so anything derived from the old geometry is
+      // stale: the minimap's silhouette is painted per relayout, and the
+      // screen-reader mirror describes positions.
+      minimapNeedsRefit = true
+      a11yDirty = true
+      // Queued, not called: `fit()` reads the bounds this layer last saw,
+      // and the relayout that will change them has not run yet. The frame
+      // loop fits once it has — the same mechanism `isolate` uses.
+      if (opts?.fit === true) pendingFullFit = true
       scheduleFrame()
     },
     setRing(enabled) {

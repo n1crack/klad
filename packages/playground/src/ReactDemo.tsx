@@ -4,6 +4,7 @@ import {
   Klad,
   type KladApi,
   type KladHandle,
+  type LayoutSettings,
   type NodeContext,
   type Options,
   type Theme,
@@ -196,6 +197,8 @@ export interface ReactDemoHandle {
   /** One door for every theme token the sidebar owns — see the vanilla demo. */
   setTheme(partial: Partial<Theme>): void
   setRingEnabled(enabled: boolean): void
+  /** Live layout tuning — see `KladApi.setLayoutOptions`. */
+  setLayoutOptions(settings: LayoutSettings, fit: boolean): void
   setMode(mode: ThemeMode): void
 }
 
@@ -318,6 +321,9 @@ export function ReactDemo({ example, layout, mode, onReady, ref }: ReactDemoProp
       // packages/vanilla/src/index.ts.
       setRingEnabled: (enabled: boolean) => {
         chartRef.current?.api?.setRing(enabled)
+      },
+      setLayoutOptions: (settings: LayoutSettings, fit: boolean) => {
+        chartRef.current?.api?.setLayoutOptions(settings, { fit })
       },
       // Light/dark, on the same paint-only `setTheme` path as everything
       // above: the canvas's node fill and stroke have to move with the CSS
