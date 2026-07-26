@@ -133,12 +133,6 @@ See [CONTRIBUTING.md](CONTRIBUTING.md) for how the packages fit together and
 how a release is cut.
 
 ## Roadmap
-- 1.1 drag-and-drop reparenting
-- 1.2 cross-links
-- 1.3 alternative layouts
-- 1.4 animated links and custom edges
-- 1.5 child pagination
-- 1.6 nested sets
 See the [roadmap](https://klad.ozdemir.be/roadmap).
 
 ## License
