@@ -368,3 +368,54 @@ describe('export data', () => {
     expect(data.labelSpace).toBeGreaterThan(0)
   })
 })
+
+describe('sunburst culling', () => {
+  it('reports only the sectors it actually paints', () => {
+    // `sunburst` keeps every node and collapses the ones outside the ring
+    // window to zero extent, and their bounding boxes are degenerate points
+    // at the centre of the disc — which is on screen essentially always. So
+    // the quadtree returns all of them. Without a second pass, a tree showing
+    // three rings reports every node in it as visible, and the vanilla layer
+    // builds its DOM overlay and its screen-reader mirror from that list.
+    const renderer = fakeRenderer()
+    const deep: NodeData[] = [{ id: 'r' }]
+    for (let i = 0; i < 40; i++) deep.push({ id: `n${i}`, parentId: i === 0 ? 'r' : `n${i - 1}` })
+    const tree = normalize(deep)
+    const engine = createChartEngine(renderer)
+    engine.setViewport(800, 600, 1)
+    engine.setData(
+      toWireTree(tree),
+      new Float64Array(tree.count * 2).fill(40),
+      tree.indexToId.slice(),
+      new Uint8Array(tree.count).fill(1),
+    )
+    engine.setOptions({ layout: 'sunburst', layoutStep: 10, maxRings: 3 })
+    const drawn = engine.render(0)
+
+    // Hub plus three rings of a single-file chain: four nodes, not 41.
+    expect(drawn.length).toBe(4)
+    expect(renderer.frames.at(-1)!.visibleCount).toBe(4)
+  })
+
+  it('keeps a closing sector on screen while it is still closing', () => {
+    // The cull tests THIS FRAME's geometry, not the settled layout. A sector
+    // heading for zero is still visibly shrinking, and culling it on its
+    // final extent would pop it off instead of animating it away.
+    const renderer = fakeRenderer()
+    const { engine, tree } = seed(renderer)
+    engine.setOptions({ layout: 'sunburst', layoutStep: 10, maxRings: 3 })
+    engine.setAnimate(true)
+    engine.render(0)
+    const before = renderer.frames.at(-1)!.visibleCount
+
+    engine.setFocus(idx(tree, 'a'))
+    engine.render(0)
+    engine.render(60) // barely into the 620ms drill-down
+    const mid = renderer.frames.at(-1)!.visibleCount
+    engine.render(5000) // settled
+    const after = renderer.frames.at(-1)!.visibleCount
+
+    expect(mid).toBeGreaterThan(after)
+    expect(mid).toBeLessThanOrEqual(before)
+  })
+})

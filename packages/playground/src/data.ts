@@ -554,6 +554,10 @@ export const FILE_ROW = { w: 340, h: 30 }
  * row's own width shrinks by so they all end at the same x. */
 export const FILE_INDENT = 18
 
+/** The narrowest a row gets, however deep it sits — enough for a chevron, an
+ * icon, a readable name and its trailing value. */
+export const FILE_ROW_MIN = 190
+
 /**
  * Node sizes for the wheel layouts. Neither draws these as cards — a radial
  * chart puts a small marker at each ring position and radiates the name out
@@ -622,8 +626,16 @@ export const LAYOUT_PRESETS: Record<LayoutName, LayoutPreset> = {
       // column you can scan down. Shrinking each row by its own indent is what
       // every file explorer does, and it is only expressible as a function of
       // the node — which is why `LayoutPreset.options` can be one.
+      // ...but never below `FILE_ROW_MIN`. A deep tree eventually indents
+      // past the point where there is any name left to show — the Large
+      // example is a chain 127 levels deep, which at a bare
+      // `width - depth * indent` reaches zero around level nineteen and goes
+      // NEGATIVE after that: rows with no room for their own text, marching
+      // off to the right. Past the floor a row simply keeps its minimum and
+      // the list grows sideways, which is what a real explorer does too (and
+      // is why it has a horizontal scrollbar).
       nodeSize: (item) => ({
-        w: FILE_ROW.w - depthOf(example.data, String(item.id)) * FILE_INDENT,
+        w: Math.max(FILE_ROW_MIN, FILE_ROW.w - depthOf(example.data, String(item.id)) * FILE_INDENT),
         h: FILE_ROW.h,
       }),
       rowGap: 2,

@@ -1606,6 +1606,41 @@ export function createChartEngine(renderer: Renderer): ChartEngine {
       const cullNodeQuad = transition !== null ? transition.nodeQuad : quad
       const cullEdgeQuad = transition !== null ? transition.edgeQuad : edgeQuad
       if (cullNodeQuad !== null) nodeCount = cullNodeQuad.query(rect, cullBuffer)
+      // A wheel needs a second pass the quadtree cannot do for it.
+      //
+      // `sunburst` keeps every node in the tree and collapses the ones it is
+      // not showing — out of focus, or past the last ring — to zero extent
+      // (see its docblock; that is what gives them somewhere to animate
+      // from). Their BOUNDING BOXES are degenerate points at the centre of
+      // the disc, and the centre of the disc is on screen essentially always,
+      // so the query returns all of them: a 20,000-node tree showing three
+      // rings culls in 20,000 nodes to paint 27.
+      //
+      // Two things wrong with that, and the second is the worse one. The
+      // renderer pays a full pass per frame over nodes that trace nothing.
+      // And `render()` REPORTS this set as "what is on screen" — the vanilla
+      // layer builds its DOM overlay and its screen-reader mirror from it, so
+      // without this a sunburst tells a screen reader about twenty thousand
+      // nodes a sighted viewer cannot see. Compacting here costs one pass
+      // over a result we already have.
+      // Tested against THIS FRAME's geometry (`renderSectors`), not the
+      // settled layout. Mid-drill-down a sector on its way to zero still has
+      // extent and is still visibly closing; culling it on its FINAL extent
+      // would pop it off screen instead of letting it animate away. Outside a
+      // transition `renderSectors` aliases `sectors`, so the steady state
+      // pays nothing for the distinction.
+      const cullSectors = renderSectors
+      if (cullSectors !== null && nodeCount > 0) {
+        let kept = 0
+        for (let q = 0; q < nodeCount; q++) {
+          const i = cullBuffer[q]!
+          const o = i * 6
+          if (cullSectors[o + 3]! - cullSectors[o + 2]! <= 0) continue
+          if (cullSectors[o + 5]! - cullSectors[o + 4]! <= 0) continue
+          cullBuffer[kept++] = i
+        }
+        nodeCount = kept
+      }
       if (cullEdgeQuad !== null) {
         const written = cullEdgeQuad.query(rect, edgeQueryBuffer)
         for (let i = 0; i < written; i++) edgeDrawBuffer[i] = edgeChild[edgeQueryBuffer[i]!]!
