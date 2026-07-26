@@ -1,5 +1,5 @@
 import type { Theme } from '@klad/core'
-import { minimapOptionFor, type Example, type MinimapPosition } from './data.js'
+import { minimapOptionFor, optionsForLayout, type Example, type LayoutName, type MinimapPosition } from './data.js'
 import type { ThemeMode } from './theme.js'
 
 /**
@@ -22,6 +22,8 @@ export type Stack = 'vanilla' | 'vue' | 'react'
 export interface ConfigSnapshot {
   example: Example
   mode: ThemeMode
+  /** The shape the chart is currently drawn in. */
+  layout: LayoutName
   minimapOn: boolean
   minimapPosition: MinimapPosition
   /** The viewer's own silhouette colour, or `null` while the mode's default applies. */
@@ -53,7 +55,11 @@ function themeOf(snapshot: ConfigSnapshot): Partial<Theme> {
  */
 function optionsOf(snapshot: ConfigSnapshot): [key: string, value: unknown][] {
   const example = snapshot.example
-  const declared = example.options as Record<string, unknown>
+  // The options as the chart ACTUALLY received them — the example's own with
+  // the layout's presentation preset over the top (see `LAYOUT_PRESETS`).
+  // Printing only what the example declared would omit the node size and
+  // content settings that make the shape on screen look the way it does.
+  const declared = optionsForLayout(example, snapshot.layout) as Record<string, unknown>
   const entries: [string, unknown][] = [['data', RAW('data')]]
 
   // `layout` and its tuning knobs sit with `orientation`: they are all "how

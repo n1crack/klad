@@ -15,7 +15,14 @@ import {
   MINIMAP_POSITIONS,
   minimapDefaultOn,
   minimapDefaultPosition,
+  centreControlFor,
+  contentForLayout,
+  defaultLayoutOf,
+  LAYOUT_LABELS,
+  LAYOUT_ORDER,
+  LAYOUT_PRESETS,
   type Example,
+  type LayoutName,
   type MinimapPosition,
 } from './data.js'
 import {
@@ -323,15 +330,49 @@ const exampleSelect = radioPicker(
   'example',
   'list',
   EXAMPLES.map((example) => ({ value: example.id, label: example.name })),
+  (id) => {
+    setControlsOpen(false)
+    // Snap the layout back to the one this example is ABOUT. The picker stays
+    // free afterwards — that is the point of it — but arriving at "Sunburst"
+    // and being shown a tiered chart because the last example happened to be
+    // tidy would be answering a question nobody asked.
+    layoutSelect.value = defaultLayoutOf(findExample(id))
+    refresh()
+  },
+)
+
+/**
+ * The shape the current example is drawn in.
+ *
+ * A picker rather than a per-example fixture because the library's actual
+ * claim is that these are four views of the SAME tree, and a viewer can only
+ * check that by switching one while the data stays put. What makes every
+ * combination worth looking at is that the presentation a shape needs — node
+ * size, content treatment, colour — travels with the LAYOUT rather than with
+ * the example; see `LAYOUT_PRESETS` in data.ts.
+ *
+ * Changing it remounts the demo, which is why this is a plain picker and not
+ * a live `setOptions` call: the content treatment changes with the shape, and
+ * that is chosen at construction in all three adapters.
+ */
+const layoutSelect = radioPicker(
+  'layout',
+  'segmented',
+  LAYOUT_ORDER.map((name) => ({ value: name, label: LAYOUT_LABELS[name] })),
   () => {
     setControlsOpen(false)
     refresh()
   },
 )
 
+const layoutBlurb = document.createElement('p')
+layoutBlurb.className = 'field-note'
+
 const demoGroup = sidebarGroup(
   'Demo',
   labelled('Stack', stackSelect.element),
+  labelled('Layout', layoutSelect.element),
+  layoutBlurb,
   labelled('Example', exampleSelect.element),
 )
 
@@ -749,7 +790,7 @@ const ALL_THEME_CONTROLS = THEME_CONTROLS.flatMap((section) => section.controls)
 
 /** Points every control at the theme the chart is actually showing. */
 function syncThemeControls(example: Example): void {
-  const theme = effectiveTheme(example, mode, themeState)
+  const theme = effectiveTheme(example, layoutSelect.value as LayoutName, mode, themeState)
   for (const control of ALL_THEME_CONTROLS) control.sync(theme)
 }
 
@@ -1150,11 +1191,11 @@ function renderCentreTrail(example: Example, centreId: string | null): void {
 let centreExample: Example | null = null
 let centreListenerBound = false
 
-/** Shows the breadcrumb for the example that asked for it. */
-function syncCentreControl(example: Example): void {
+/** Shows the breadcrumb when the current LAYOUT is one that has a centre. */
+function syncCentreControl(example: Example, layout: LayoutName): void {
   centreField.remove()
   centreExample = null
-  if (example.centreControl !== true) return
+  if (!centreControlFor(layout)) return
   centreExample = example
   surface.append(centreField)
   renderCentreTrail(example, example.options.centre ?? null)
@@ -1471,6 +1512,7 @@ function snapshot(): ConfigSnapshot {
   const example = findExample(exampleSelect.value)
   return {
     example,
+    layout: layoutSelect.value as LayoutName,
     mode,
     minimapOn,
     minimapPosition: minimapPositionSelect.value as MinimapPosition,
@@ -1480,7 +1522,7 @@ function snapshot(): ConfigSnapshot {
     // the defaults are what the reader gets for free by omitting them.
     theme: { ...themeState },
     ringEnabled,
-    hasNodeContent: example.content !== 'none',
+    hasNodeContent: contentForLayout(example, layoutSelect.value as LayoutName) !== 'none',
   }
 }
 
@@ -1687,7 +1729,7 @@ function findExample(id: string): Example {
   return EXAMPLES.find((example) => example.id === id) ?? EXAMPLES[0]!
 }
 
-function show(stack: Stack, exampleId: string): void {
+function show(stack: Stack, exampleId: string, layout: LayoutName): void {
   // Tear the previous demo down properly before mounting the next one: the
   // vanilla chart via chart.destroy(), the Vue one via app.unmount() —
   // otherwise listeners and canvases from the old demo leak.
@@ -1703,16 +1745,17 @@ function show(stack: Stack, exampleId: string): void {
   surface.innerHTML = ''
 
   const example = findExample(exampleId)
+  layoutBlurb.textContent = LAYOUT_PRESETS[layout]!.blurb
   syncGotoControl(example)
   syncViewControl(example)
   syncSelectionControl(example)
-  syncCentreControl(example)
+  syncCentreControl(example, layout)
   // Per-layout CSS hooks. The overlay cards a layout expects are its own
   // business — a file row is not an org card — and scoping their styles to
   // these classes is what keeps each example's look from leaking into the
   // others.
-  surface.classList.toggle('is-file', example.options.layout === 'file')
-  surface.classList.toggle('is-wheel', example.options.layout === 'sunburst' || example.options.layout === 'radial')
+  surface.classList.toggle('is-file', layout === 'file')
+  surface.classList.toggle('is-wheel', layout === 'sunburst' || layout === 'radial')
   descriptionText.textContent = example.description
   description.classList.remove('is-expanded')
 
@@ -1735,7 +1778,7 @@ function show(stack: Stack, exampleId: string): void {
   updateRingEnabledButton()
 
   if (stack === 'vanilla') {
-    const chart: VanillaDemoHandle = mountVanilla(surface, example, mode, (api) => {
+    const chart: VanillaDemoHandle = mountVanilla(surface, example, layout, mode, (api) => {
       currentApi = api
     })
     currentSetMinimap = (on) => chart.setMinimap(on)
@@ -1748,6 +1791,7 @@ function show(stack: Stack, exampleId: string): void {
   } else if (stack === 'vue') {
     const app = createApp(VueDemo, {
       example,
+      layout,
       mode,
       onReady: (api: KladApi) => {
         currentApi = api
@@ -1778,6 +1822,7 @@ function show(stack: Stack, exampleId: string): void {
     root.render(
       createElement(ReactDemo, {
         example,
+        layout,
         mode,
         onReady: (api: KladApi) => {
           currentApi = api
@@ -1796,7 +1841,7 @@ function show(stack: Stack, exampleId: string): void {
 }
 
 function refresh(): void {
-  show(stackSelect.value as Stack, exampleSelect.value)
+  show(stackSelect.value as Stack, exampleSelect.value, layoutSelect.value as LayoutName)
   refreshCode()
 }
 
@@ -1831,6 +1876,7 @@ window.addEventListener('keydown', (event) => {
 
 stackSelect.value = 'vanilla'
 exampleSelect.value = EXAMPLES[0]!.id
+layoutSelect.value = defaultLayoutOf(EXAMPLES[0]!)
 refresh()
 
 /**

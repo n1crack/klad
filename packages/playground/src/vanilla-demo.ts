@@ -7,10 +7,16 @@ import {
   minimapDefaultPosition,
   minimapOptionFor,
   modeThemeFor,
+  rowFields,
+  isBranchRow,
+  optionsForLayout,
+  contentForLayout,
+  centreControlFor,
   themeFor,
   accordionProgress,
   type Department,
   type Example,
+  type LayoutName,
   type MinimapPosition,
   type NodeContentKind,
 } from './data.js'
@@ -64,17 +70,22 @@ function renderCard(element: HTMLElement, context: NodeContext): void {
 }
 
 /**
- * One row of a file explorer: a disclosure chevron, an icon, the name, and the
- * size on the right.
+ * One indented row: a disclosure chevron, an icon, the name, and one number or
+ * phrase on the right.
  *
- * Everything about the row is DOM — the `file` layout's job was to work out
- * where the row goes and how far in it is indented, and it draws nothing. The
- * canvas underneath is left transparent (see the example's theme) so there is
- * no box behind the row and no second copy of the name; what the canvas DOES
- * still draw is the folder guide lines connecting a parent to its children,
- * which is exactly the part a DOM row cannot do without a element per line.
+ * Everything about the row is DOM — the `file` layout worked out where it goes
+ * and how far in it is indented, and drew nothing. The canvas underneath is
+ * left transparent (see `LAYOUT_PRESETS`) so there is no box behind the row
+ * and no second copy of the name; what the canvas DOES still draw is the
+ * folder guide lines, which is the part a DOM row cannot do without an element
+ * per line.
+ *
+ * The FIELDS come from `rowFields`, which reads whichever dataset it is given
+ * — a directory tree or an org chart. The layout picker can put any example
+ * into this shape, and a row that only knew about files would render half of
+ * them blank.
  */
-function renderFileRow(element: HTMLElement, context: NodeContext): void {
+function renderRow(element: HTMLElement, context: NodeContext): void {
   let row = element.firstElementChild as HTMLDivElement | null
   if (row === null) {
     row = document.createElement('div')
@@ -86,17 +97,16 @@ function renderFileRow(element: HTMLElement, context: NodeContext): void {
     icon.className = 'file-icon'
     const name = document.createElement('span')
     name.className = 'file-name'
-    const size = document.createElement('span')
-    size.className = 'file-size'
-    row.append(chevron, icon, name, size)
+    const meta = document.createElement('span')
+    meta.className = 'file-size'
+    row.append(chevron, icon, name, meta)
     element.append(row)
   }
-  const item = context.item
-  const isFolder = item.kind === 'folder'
+  const fields = rowFields(context.item, context.open)
   const chevron = row.querySelector<HTMLButtonElement>('.file-chevron')!
   // A leaf keeps the chevron's WIDTH but not its glyph, so every name in a run
-  // of siblings starts at the same x — a file list where files and folders
-  // begin at different offsets reads as broken indentation.
+  // of siblings starts at the same x — a list where leaves and branches begin
+  // at different offsets reads as broken indentation.
   chevron.textContent = context.hasChildren ? '▸' : ''
   chevron.classList.toggle('is-open', context.open)
   chevron.disabled = !context.hasChildren
@@ -105,21 +115,13 @@ function renderFileRow(element: HTMLElement, context: NodeContext): void {
     event.stopPropagation()
     context.toggle()
   }
-  row.querySelector<HTMLSpanElement>('.file-icon')!.textContent = isFolder
-    ? context.open
-      ? '📂'
-      : '📁'
-    : '📄'
-  row.querySelector<HTMLSpanElement>('.file-name')!.textContent = String(item.name ?? item.id)
-  row.querySelector<HTMLSpanElement>('.file-size')!.textContent = formatSize(Number(item.sizeKb ?? 0))
-  row.classList.toggle('is-folder', isFolder)
-}
-
-/** `1240` -> `1.2 MB`. Sizes are stored in KB; a file list that prints six
- * digits for every entry is a wall of numbers, not a column you can scan. */
-function formatSize(kb: number): string {
-  if (kb <= 0) return ''
-  return kb < 1024 ? `${kb} KB` : `${(kb / 1024).toFixed(1)} MB`
+  const icon = row.querySelector<HTMLSpanElement>('.file-icon')!
+  icon.textContent = fields.icon
+  icon.classList.toggle('is-chip', fields.iconColour !== '')
+  icon.style.background = fields.iconColour
+  row.querySelector<HTMLSpanElement>('.file-name')!.textContent = fields.primary
+  row.querySelector<HTMLSpanElement>('.file-size')!.textContent = fields.secondary
+  row.classList.toggle('is-folder', isBranchRow(context.item, context.hasChildren))
 }
 
 /** Circular initials monogram + name + role. */
@@ -485,7 +487,7 @@ function renderActions(element: HTMLElement, context: NodeContext): void {
 }
 
 const RENDERERS: Record<NodeContentKind, RenderNode | null> = {
-  file: renderFileRow,
+  row: renderRow,
   card: renderCard,
   counts: renderCounts,
   dropdown: renderDropdown,
@@ -537,10 +539,15 @@ export interface VanillaDemoHandle {
 export function mountVanilla(
   host: HTMLElement,
   example: Example,
+  layout: LayoutName,
   mode: ThemeMode,
   onApiChange: (api: KladApi) => void,
 ): VanillaDemoHandle {
-  const renderNode = RENDERERS[example.content]
+  // The content treatment follows the LAYOUT, not the example — see
+  // `LAYOUT_PRESETS` in data.ts. A wheel draws its own text on the canvas and
+  // wants no overlay at all; a file list wants rows whatever the example's own
+  // card would have been.
+  const renderNode = RENDERERS[contentForLayout(example, layout)]
   let currentMode = mode
   let minimapOn = minimapDefaultOn(example)
   let minimapPosition = minimapDefaultPosition(example)
@@ -564,8 +571,8 @@ export function mountVanilla(
       data: example.data,
       nodeSize: DEFAULT_NODE_SIZE,
       label: (item) => String(item.name ?? ''),
-      ...example.options,
-      theme: themeFor(example, EDGE_RADIUS_DEFAULT, currentMode),
+      ...optionsForLayout(example, layout),
+      theme: themeFor(example, layout, EDGE_RADIUS_DEFAULT, currentMode),
       minimap: minimapOption(),
       ...(renderNode !== null ? { renderNode } : {}),
     }
@@ -658,7 +665,7 @@ export function mountVanilla(
    * a viewer will look for it.
    */
   let stopDrill: (() => void) | null = null
-  if (example.centreControl === true) {
+  if (centreControlFor(layout)) {
     const parentOf = new Map<string, string | null>()
     for (const item of example.data) parentOf.set(String(item.id), (item.parentId as string | null) ?? null)
 
@@ -724,7 +731,7 @@ export function mountVanilla(
      */
     setMode(next) {
       currentMode = next
-      chart.api.setTheme(modeThemeFor(example, next))
+      chart.api.setTheme(modeThemeFor(example, layout, next))
       // The minimap's silhouette is the one piece of it the playground's own
       // CSS cannot restyle (see `silhouetteColour` in theme.ts), so it has to
       // be re-applied through the option — but only while the widget is

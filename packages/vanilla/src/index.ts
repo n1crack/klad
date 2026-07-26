@@ -2516,6 +2516,7 @@ export type { MinimapOptions, MinimapPosition } from './minimap.js'
 export type {
   Bounds,
   Camera,
+  LayoutName,
   LodThresholds,
   NodeData,
   Orientation,
@@ -2528,3 +2529,8 @@ export type {
 // The two ready-made palettes, for the same reason: a host doing light/dark
 // should not have to derive a dark theme by hand, nor reach into core for it.
 export { DARK_THEME, DEFAULT_THEME } from '@klad/engine'
+
+// The validated categorical palette the branch-coloured layouts draw from, so
+// a host can extend or replace it without reaching into core — see
+// `Options.colourBranches` and `Theme.palette`.
+export { DARK_PALETTE, DEFAULT_PALETTE } from '@klad/engine'

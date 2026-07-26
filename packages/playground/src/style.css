@@ -2110,3 +2110,26 @@ body {
 .surface.is-wheel canvas {
   cursor: pointer;
 }
+
+/* An org row has no folder emoji to identify it, so it gets a monogram chip in
+   its department's colour instead — same slot, same width, so the two datasets
+   line their names up at the same x. */
+.surface.is-file .file-icon.is-chip {
+  display: grid;
+  place-items: center;
+  width: 1.05rem;
+  height: 1.05rem;
+  border-radius: 50%;
+  font-size: 0.52rem;
+  font-weight: 700;
+  letter-spacing: 0.02em;
+  color: #ffffff;
+}
+
+/* One line under the layout picker saying what the shape is for. */
+.field-note {
+  margin: 0.15rem 0 0;
+  font-size: 0.7rem;
+  line-height: 1.35;
+  color: var(--text-muted);
+}
