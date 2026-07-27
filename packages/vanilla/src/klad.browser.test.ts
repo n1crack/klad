@@ -2199,4 +2199,72 @@ describe('drag and drop', () => {
     expect(ids.every((id) => id !== undefined && id !== '')).toBe(true)
     chart.destroy()
   })
+
+  it('holds the drop target still while the tree reflows around it', async () => {
+    // The destination is where the viewer is looking. A chart that jumped once
+    // they let go would make them find their place again for no reason — and
+    // the node that IS supposed to move is the one they dragged, not the one
+    // they aimed at, which is why the pin anchors the target.
+    const chart = make({
+      dragAndDrop: true,
+      renderNode: (el: HTMLElement, ctx: { item: { name?: unknown } }) => {
+        el.textContent = String(ctx.item.name ?? '')
+      },
+    })
+    await nextFrame()
+    await settle()
+
+    const host = document.querySelector<HTMLElement>('.klad-overlay-node')!.parentElement!
+    const hostRect = host.getBoundingClientRect()
+    const before = centreOfCard('c')!
+    const from = centreOfCard('d')!
+    await drag(
+      host,
+      { x: from.x - hostRect.left, y: from.y - hostRect.top },
+      { x: before.x - hostRect.left, y: before.y - hostRect.top },
+    )
+    await settleTransition()
+    await settle()
+
+    // `c` gained a child, so the whole tree reflowed around it — but the pin
+    // put the camera back where `c` sits under the same screen pixel. Within a
+    // pixel: the pin solves against the settled layout in CSS pixels, so this
+    // is an equality with rounding rather than an approximation.
+    const after = centreOfCard('c')!
+    expect(Math.abs(after.x - before.x)).toBeLessThan(1.5)
+    expect(Math.abs(after.y - before.y)).toBeLessThan(1.5)
+    chart.destroy()
+  })
+
+  it('animates the move rather than snapping to the new layout', async () => {
+    const chart = make({
+      dragAndDrop: true,
+      renderNode: (el: HTMLElement, ctx: { item: { name?: unknown } }) => {
+        el.textContent = String(ctx.item.name ?? '')
+      },
+    })
+    await nextFrame()
+    await settle()
+
+    const host = document.querySelector<HTMLElement>('.klad-overlay-node')!.parentElement!
+    const hostRect = host.getBoundingClientRect()
+    const from = centreOfCard('d')!
+    const to = centreOfCard('c')!
+    await drag(
+      host,
+      { x: from.x - hostRect.left, y: from.y - hostRect.top },
+      { x: to.x - hostRect.left, y: to.y - hostRect.top },
+    )
+
+    // A frame after the drop the moved node is still on its way. Without
+    // `animateNextLayout` the rebuild is a fresh dataset as far as the engine
+    // is concerned, so it would already be sitting at its destination here and
+    // this distance would be zero.
+    await nextFrame()
+    const midway = centreOfCard('d')!
+    await settleTransition()
+    const settled = centreOfCard('d')!
+    expect(Math.abs(midway.x - settled.x) + Math.abs(midway.y - settled.y)).toBeGreaterThan(1)
+    chart.destroy()
+  })
 })

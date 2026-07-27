@@ -1,6 +1,6 @@
 ---
 title: Roadmap
-description: 'What has shipped and what is next: layouts, drag and drop, very wide levels, cross-links, and multi-parent graphs.'
+description: 'What has shipped and what is next: layouts, drag and drop, children on demand, very wide levels, and multi-parent graphs.'
 ---
 
 # Roadmap
@@ -52,8 +52,6 @@ Alongside them: `setLayoutOptions` for changing the shape and its tuning live,
 a validated categorical palette with per-branch colouring, and a mark on any
 node whose children are off screen.
 
-Children loaded on demand as branches open is still to come.
-
 ## 1.3 — released: drag and drop
 
 Drag a node, or a selection, onto a new parent — or onto the leading or
@@ -76,39 +74,45 @@ one node changes sibling separation all the way up. And it would buy nothing
 worth the risk: a full relayout of 20,000 nodes measures 2–12ms, once, and the
 existing transition tweens the result for free.
 
-## 1.4 — custom edges
+## 1.4 — children on demand
 
-Edge shape becomes yours to supply, with motion along a link for charts that
-show flow as well as structure.
+The one thing 1.2 promised and did not deliver. Today a chart needs its whole
+tree up front, which rules out the trees where the shape matters most: a file
+system you cannot enumerate, a taxonomy behind an API, an org of a hundred
+thousand people. Opening a branch should be able to ask for its children and
+fill them in, with the node marked as having more below it in the meantime and
+the layout settling around the answer rather than jumping to it.
 
-## 1.5 — very wide levels
+This is first because everything below is easier to justify once a tree can
+exceed what fits in memory, and because drag and drop already has a hole shaped
+like it — you cannot yet drop into a branch that has not been opened.
 
-A manager with four hundred reports, a folder with ten thousand files: show the
-first few with a **more** control, aggregate the rest into one node that says
-how many it stands for, and pull specific children into view with search.
+## 1.5 — showing less of a large tree
 
-## 1.6 — cross-links
+Two problems with the same answer. A manager with four hundred reports or a
+folder with ten thousand files needs the first few, a **more** control, and one
+node standing in for the rest that says how many it counts. A tree of twenty
+thousand nodes needs a way to reduce itself to the nodes that match, keeping
+the ancestors that lead to them, so a search is something you can look at
+rather than step through.
 
-Edges that are not tree edges: dotted-line reporting, matrix relationships, a
-link between any two nodes — on screen and in the exports.
-
-## 1.7 — nested sets
-
-`lft`/`rgt` values exposed and rendered, plus binary-tree presentation.
-
-## 1.8 — layouts you supply
+## 1.6 — layouts and edges you supply
 
 `LayoutFn` is already the shape every built-in layout is written to — a pure
-`(tree, sizes, opts)` function. What is missing is a way to hand one in across
-the worker boundary, which a name cannot carry. Once that lands, your own
-layout is a first-class one.
+`(tree, sizes, opts)` function returning boxes, and optionally the polar
+geometry a wheel needs. What is missing is a way to hand your own across the
+worker boundary, which a name cannot carry. Edge shape comes with it: which
+connector a layout draws is part of that layout's identity, not a separate
+setting, and the built-ins already choose theirs this way.
 
 ## 2.0 — beyond trees
 
 Family trees, dependency graphs and git histories all give a node several ways
-in. That needs multi-parent layout and edge routing built for crossings — a
-second layout engine rather than an option on this one. A plugin API arrives
-with it.
+in, and every one of them also wants edges that are not tree edges: a
+dotted-line report, a matrix relationship, a link between any two nodes. Both
+are the same problem — multi-parent layout with edge routing built for
+crossings — and it is a second engine rather than an option on this one. A
+plugin API arrives with it.
 
 ---
 

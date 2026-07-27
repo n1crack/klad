@@ -89,6 +89,24 @@ export interface ChartEngine {
    * call it unconditionally from a click handler without restarting an
    * animation that is already running.
    */
+  /**
+   * Says that the next `setData` is a MOVE — the same nodes at different
+   * positions — so it should animate rather than snap.
+   *
+   * `sourceRemap` maps OLD source index to NEW, or `null` when the caller has
+   * not disturbed the index space. A reparent always has: the host rebuilds
+   * its data array, and a source index only means anything within one
+   * `normalize`. Getting it wrong does not crash — it makes every node tween
+   * from wherever its index used to point, which reads as the whole chart
+   * shuffling instead of one node moving.
+   *
+   * One-shot, and specifically tied to `setData`: arming it and then not
+   * calling `setData` does nothing. The remap describes ONE replacement — the
+   * tree going out against the tree coming in — so a flag left standing until
+   * some unrelated relayout would animate the wrong change with a mapping that
+   * no longer means anything.
+   */
+  animateNextLayout(sourceRemap: Int32Array | null): void
   setFocus(sourceIndex: number): void
   setDrag(sourceIndex: number): void
   /**
@@ -837,6 +855,17 @@ function buildTransition(
   prunedParent: Int32Array,
   prunedFromSource: Int32Array,
   opening: boolean,
+  /**
+   * OLD source index -> NEW source index, or `null` when the two index spaces
+   * are the same — which is every toggle, since a toggle changes no data.
+   *
+   * A reparent DOES change it: the host rebuilds its data array, and a source
+   * index only means anything within one `normalize`. Without this, every
+   * node would tween from whatever happened to hold its index before, so a
+   * drop would look like the whole chart shuffling rather than one node
+   * moving. `-1` for a node the new tree does not contain at all.
+   */
+  sourceRemap: Int32Array | null,
   /** This relayout's own `edgeChild` (edge-array position -> pruned CHILD
    * index) — needed to build `Transition.edgeQuad` in the SAME iteration
    * order as the engine's own (module-scope) `edgeQuad`, so a query result
@@ -865,7 +894,11 @@ function buildTransition(
         box = lerpBox(entry.box, box, t)
       }
     }
-    prevPositionBySource.set(src, box)
+    // Keyed in the NEW index space, so every lookup downstream — reveals,
+    // ghosts, anchors — is against indices that mean the same thing they did
+    // when the box was captured.
+    const key = sourceRemap === null ? src : (sourceRemap[src] ?? -1)
+    if (key !== -1) prevPositionBySource.set(key, box)
   }
   if (prevTransition !== null) {
     for (const ghost of prevTransition.ghosts) {
@@ -880,9 +913,14 @@ function buildTransition(
         // a still-fading ghost tracking its anchor's OWN live reposition
         // tween — same "live anchor, not a stale snapshot" fix as
         // `render()`'s ghost-drawing loop.
+        const anchorKey =
+          sourceRemap === null ? ghost.anchorSource : (sourceRemap[ghost.anchorSource] ?? -1)
         const to =
-          ghost.anchor === -1 ? ghost.from : (prevPositionBySource.get(ghost.anchorSource) ?? ghost.from)
-        prevPositionBySource.set(ghost.source, lerpBox(ghost.from, to, prevEasing!.emphasisPos))
+          ghost.anchor === -1 || anchorKey === -1
+            ? ghost.from
+            : (prevPositionBySource.get(anchorKey) ?? ghost.from)
+        const key = sourceRemap === null ? ghost.source : (sourceRemap[ghost.source] ?? -1)
+        if (key !== -1) prevPositionBySource.set(key, lerpBox(ghost.from, to, prevEasing!.emphasisPos))
       }
     }
   }
@@ -1256,6 +1294,32 @@ export function createChartEngine(renderer: Renderer): ChartEngine {
    * touches no open state, so nothing else in the toggle machinery should
    * treat it as a toggle — no ring, no reveal, no ghosts. */
   let pendingFocus = false
+  /**
+   * Set by `animateNextLayout`: the next relayout is a MOVE, not a load.
+   *
+   * The engine's default is right for both cases it already knew about — a
+   * toggle animates, new data snaps — but a reparent is a third thing: the
+   * same nodes at different positions, which is exactly what the transition
+   * machinery is for. It has to be asked for explicitly because the engine
+   * cannot tell a reparent from a fresh dataset by looking at it; only the
+   * caller knows the ids are the same ones.
+   */
+  let pendingMove = false
+  /** OLD source index -> NEW, for that move. See `buildTransition`'s
+   * `sourceRemap`. */
+  let pendingRemap: Int32Array | null = null
+  /**
+   * What `animateNextLayout` armed, waiting for the `setData` it describes.
+   *
+   * Deliberately not `pendingMove` directly. The remap is about ONE data
+   * change — it maps indices from the tree being replaced to the tree
+   * replacing it — so a flag left standing while something else triggers a
+   * relayout would animate an unrelated change with a mapping that no longer
+   * describes anything. Arming and then not calling `setData` does nothing at
+   * all, which is the honest answer to a caller who changed their mind.
+   */
+  let armedMove = false
+  let armedRemap: Int32Array | null = null
   // The boxes actually handed to the renderer. Aliases `boxes` (zero extra
   // cost) whenever no transition is running; a real mutable copy, selectively
   // overwritten per frame for only the near-viewport entries, while one is.
@@ -1310,7 +1374,7 @@ export function createChartEngine(renderer: Renderer): ChartEngine {
    * layout instead would jump the wheel back to where it was heading before
    * starting over.
    */
-  const capturePolar = (now: number): Map<number, PolarFrom> | null => {
+  const capturePolar = (now: number, sourceRemap: Int32Array | null): Map<number, PolarFrom> | null => {
     if (sectors === null) return null
     const out = new Map<number, PolarFrom>()
     const t = polar === null ? 1 : easeInOutCubic(progressOf(polar, now))
@@ -1324,8 +1388,11 @@ export function createChartEngine(renderer: Renderer): ChartEngine {
         a1: sectors[o + 5]!,
       }
       const from = polar === null ? undefined : polar.fromBySource.get(src)
+      // Keyed in the NEW index space — see `buildTransition`'s `sourceRemap`.
+      const key = sourceRemap === null ? src : (sourceRemap[src] ?? -1)
+      if (key === -1) continue
       out.set(
-        src,
+        key,
         from === undefined
           ? to
           : {
@@ -1348,7 +1415,7 @@ export function createChartEngine(renderer: Renderer): ChartEngine {
     // than as of where the previous transition started, so a second click
     // landing mid-drill retargets from wherever the wheel actually is instead
     // of snapping back to the layout it left.
-    const prevPolarFrom = capturePolar(now)
+    const prevPolarFrom = capturePolar(now, pendingRemap)
 
     const pruned = pruneToVisible(sourceTree, open, isolateSource)
     visibleToSource = pruned.toSource
@@ -1508,7 +1575,7 @@ export function createChartEngine(renderer: Renderer): ChartEngine {
     // toggle case and so no way for the two to disagree.
     if (sectors !== null) {
       polar =
-        animate && (pendingFocus || pendingTransition) && prevPolarFrom !== null
+        animate && (pendingFocus || pendingTransition || pendingMove) && prevPolarFrom !== null
           ? { startedAt: now, duration: POLAR_DURATION_MS, fromBySource: prevPolarFrom }
           : null
       renderSectors = polar === null ? sectors : sectors.slice()
@@ -1519,6 +1586,8 @@ export function createChartEngine(renderer: Renderer): ChartEngine {
       renderBoxes = boxes
       pendingTransition = false
       pendingFocus = false
+      pendingMove = false
+      pendingRemap = null
       layoutDirty = false
       return
     }
@@ -1529,7 +1598,7 @@ export function createChartEngine(renderer: Renderer): ChartEngine {
     // Start (or continue) a transition only for a toggle-triggered relayout,
     // only when animation is enabled, and only when there was a previous
     // layout to transition from (the very first layout has nothing to tween).
-    if (animate && pendingTransition && prevVisibleToSource.length > 0) {
+    if (animate && (pendingTransition || pendingMove) && prevVisibleToSource.length > 0) {
       transition = buildTransition(
         now,
         prevBoxes,
@@ -1541,6 +1610,7 @@ export function createChartEngine(renderer: Renderer): ChartEngine {
         prunedParent,
         prunedFromSource,
         pendingTransitionOpening,
+        pendingRemap,
         edgeChild,
       )
       renderBoxes = boxes.slice()
@@ -1549,6 +1619,8 @@ export function createChartEngine(renderer: Renderer): ChartEngine {
       renderBoxes = boxes
     }
     pendingTransition = false
+    pendingMove = false
+    pendingRemap = null
 
     layoutDirty = false
   }
@@ -2057,6 +2129,14 @@ export function createChartEngine(renderer: Renderer): ChartEngine {
       // no longer exists.
       pendingTransition = false
       transition = null
+      // ...unless the caller has told us this replacement is a MOVE, in which
+      // case the two index spaces DO share meaning, through the remap they
+      // handed over — see `animateNextLayout`. Consumed here rather than left
+      // standing, so arming without a `setData` is a no-op.
+      pendingMove = armedMove
+      pendingRemap = armedRemap
+      armedMove = false
+      armedRemap = null
       // Same reasoning for the ring: its SOURCE index means nothing against
       // a new dataset, so drop any candidate and any in-flight flash.
       pendingRingSource = -1
@@ -2137,6 +2217,10 @@ export function createChartEngine(renderer: Renderer): ChartEngine {
       isolateSource = sourceIndex
       // A relayout, not a repaint: the set of nodes that exist just changed.
       layoutDirty = true
+    },
+    animateNextLayout(sourceRemap) {
+      armedMove = true
+      armedRemap = sourceRemap
     },
     setFocus(sourceIndex) {
       const next = sourceIndex < 0 ? -1 : sourceIndex

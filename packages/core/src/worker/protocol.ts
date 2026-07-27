@@ -145,6 +145,8 @@ export type MainToWorkerMessage =
   /** Centres a sunburst on one node — see `ChartEngine.setFocus`. `-1` for the
    * default centre. */
   | { t: 'focus'; index: number }
+  /** The next relayout is a move — see `ChartEngine.animateNextLayout`. */
+  | { t: 'move'; sourceRemap: Int32Array | null }
   | { t: 'selection'; ids: Uint32Array | null }
   | { t: 'drag'; index: number }
   /** The drop preview — see `ChartEngine.setDropTarget`. Paint-only, like

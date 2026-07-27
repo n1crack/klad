@@ -24,6 +24,9 @@ export interface ChartHost {
   setIsolate(index: number): void
   /** Centres a sunburst on one node, with the drill-down animation — see
    * `ChartEngine.setFocus`. `-1` for the default centre. */
+  /** The next relayout is a move, not a load — see
+   * `ChartEngine.animateNextLayout`. */
+  animateNextLayout(sourceRemap: Int32Array | null): void
   setFocus(index: number): void
   setSelection(ids: Uint32Array | null): void
   setDrag(index: number): void
@@ -269,6 +272,14 @@ export function createChartHost(
     setFocus(index) {
       engine?.setFocus(index)
       post({ t: 'focus', index })
+    },
+    animateNextLayout(sourceRemap) {
+      engine?.animateNextLayout(sourceRemap)
+      // Transferred rather than cloned, and a fresh copy per path: the
+      // in-process engine above holds onto the caller's array, so handing the
+      // same buffer to the worker would detach it out from under it.
+      const copy = sourceRemap === null ? null : sourceRemap.slice()
+      post({ t: 'move', sourceRemap: copy }, copy === null ? [] : [copy.buffer])
     },
     setHighlight(ids) {
       engine?.setHighlight(ids)

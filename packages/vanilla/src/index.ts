@@ -25,6 +25,7 @@ import {
   screenToWorld,
   toSVG as coreToSVG,
   toWireTree,
+  worldToScreen,
   transitionAnchorProgress,
   zoomAt,
   type Bounds,
@@ -1050,7 +1051,14 @@ export function createKlad(host: HTMLElement, options: Options): KladInstance {
       },
     })
     if (refused) return
-    applyReparent(ordered, parentSource === -1 ? null : tree.indexToId[parentSource]!, position.index)
+    // Pinned to the node that was dropped ONTO, not the one that moved — see
+    // `applyReparent`.
+    applyReparent(
+      ordered,
+      parentSource === -1 ? null : tree.indexToId[parentSource]!,
+      position.index,
+      target,
+    )
   }
 
   /**
@@ -1066,8 +1074,19 @@ export function createKlad(host: HTMLElement, options: Options): KladInstance {
    * Dropping a node is not a reason to fold up the branch you dropped it into,
    * and doing so would hide the result of the very action just taken.
    */
-  const applyReparent = (ids: string[], parentId: string | null, index: number): void => {
+  const applyReparent = (ids: string[], parentId: string | null, index: number, pinSource = -1): void => {
     const moving = new Set(ids)
+    // Where the DROP TARGET is on screen right now. Pinned across the
+    // relayout below, so the place the viewer just dropped onto stays under
+    // their cursor while everything reflows around it. Anchoring the dropped
+    // node instead would drag the camera along with it — which is the one
+    // thing that IS supposed to move.
+    const pinBox = pinSource === -1 ? null : boxOfSource(pinSource)
+    const pinId: string | undefined = pinSource === -1 ? undefined : tree.indexToId[pinSource]
+    const pinScreen =
+      pinBox === null
+        ? null
+        : worldToScreen(camera, pinBox.x + pinBox.w / 2, pinBox.y + pinBox.h / 2)
     const openById = new Map<string, boolean>()
     for (let i = 0; i < tree.count; i++) openById.set(tree.indexToId[i]!, open[i] === 1)
 
@@ -1092,7 +1111,17 @@ export function createKlad(host: HTMLElement, options: Options): KladInstance {
     rest.splice(insertAt, 0, ...moved)
 
     currentOptions = { ...currentOptions, data: rest }
+    const previous = tree
     tree = normalize(rest)
+
+    // OLD source index -> NEW. A source index only means anything within one
+    // `normalize`, and the array was just rebuilt, so without this the
+    // transition would tween every node from wherever its index used to point
+    // — the whole chart shuffling rather than one node moving.
+    const remap = new Int32Array(previous.count).fill(-1)
+    for (let i = 0; i < previous.count; i++) {
+      remap[i] = tree.idToIndex.get(previous.indexToId[i]!) ?? -1
+    }
     stats = computeSubtreeStats(tree)
     rebuildItemIndex()
     const next = new Uint8Array(tree.count)
@@ -1109,7 +1138,12 @@ export function createKlad(host: HTMLElement, options: Options): KladInstance {
     }
     pendingAnchor = null
     cameraAnchor = null
+    // The nodes are the same ones; only their positions changed. That is
+    // exactly what the layout transition is for, and it has to be asked for —
+    // the engine cannot tell a reparent from a fresh dataset by looking at it.
+    chartHost.animateNextLayout(remap)
     applyData()
+    if (pinScreen !== null && pinId !== undefined) pendingPin = { id: pinId, screen: pinScreen }
     a11yDirty = true
     scheduleFrame()
   }
@@ -1558,6 +1592,21 @@ export function createKlad(host: HTMLElement, options: Options): KladInstance {
   let pendingFullFit = false
 
   /**
+   * Hold one node's SCREEN position fixed across the next relayout.
+   *
+   * Set by a drop: the destination is where the viewer is looking, and a chart
+   * that jumped after they let go makes them find their place again for no
+   * reason. Keyed by id rather than index because the relayout it survives is
+   * exactly the one that renumbers the indices.
+   *
+   * Applied once, against the settled layout, rather than tracked per frame
+   * like `cameraAnchor`: the node it pins barely moves, so pinning where it
+   * ENDS UP is indistinguishable from pinning it throughout, and needs none of
+   * the phase-matching the toggle anchor does.
+   */
+  let pendingPin: { id: string; screen: { x: number; y: number } } | null = null
+
+  /**
    * The ids the caller last passed to `highlight`, so `refresh` can restore
    * them — `setData` drops the engine's highlight, since it holds source
    * indices that a real data swap would invalidate.
@@ -1635,6 +1684,17 @@ export function createKlad(host: HTMLElement, options: Options): KladInstance {
       }
       // Runs after the relayout above, so it sees the boxes the toggle actually
       // produced rather than stale ones from before it.
+      if (pendingPin !== null) {
+        const pin = pendingPin
+        pendingPin = null
+        const index = tree.idToIndex.get(pin.id)
+        const box = index === undefined ? null : boxOfSource(index)
+        if (box !== null) {
+          const now = worldToScreen(camera, box.x + box.w / 2, box.y + box.h / 2)
+          camera = pan(camera, pin.screen.x - now.x, pin.screen.y - now.y)
+          chartHost.setCamera(camera)
+        }
+      }
       if (pendingFullFit) {
         pendingFullFit = false
         pendingAnchor = null

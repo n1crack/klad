@@ -471,3 +471,117 @@ describe('hidden-children marks', () => {
     expect(renderer.frames.at(-1)!.hasHidden).toBeNull()
   })
 })
+
+describe('animateNextLayout', () => {
+  /** `seed`'s tree with `a1` moved under `b` — the array rebuilt the way a
+   * reparent rebuilds it, so the source indices genuinely shift. */
+  function reparented() {
+    return normalize([
+      { id: 'root' },
+      { id: 'a', parentId: 'root' },
+      { id: 'a2', parentId: 'a' },
+      { id: 'b', parentId: 'root' },
+      { id: 'b1', parentId: 'b' },
+      { id: 'a1', parentId: 'b' },
+    ] satisfies NodeData[])
+  }
+
+  function remapBetween(from: ReturnType<typeof normalize>, to: ReturnType<typeof normalize>) {
+    const remap = new Int32Array(from.count).fill(-1)
+    for (let i = 0; i < from.count; i++) remap[i] = to.idToIndex.get(from.indexToId[i]!) ?? -1
+    return remap
+  }
+
+  it('animates a move that would otherwise snap', () => {
+    // The engine's default is right for the two cases it already knew about —
+    // a toggle animates, new data snaps — but a reparent is a third: the same
+    // nodes at different positions. It has to be asked for, because the engine
+    // cannot tell a reparent from a fresh dataset by looking at it.
+    const renderer = fakeRenderer()
+    const { engine, tree } = seed(renderer)
+    engine.setAnimate(true)
+    engine.render(0)
+
+    const next = reparented()
+    engine.animateNextLayout(remapBetween(tree, next))
+    engine.setData(
+      toWireTree(next),
+      new Float64Array(next.count * 2).fill(40),
+      next.indexToId.slice(),
+      new Uint8Array(next.count).fill(1),
+    )
+    engine.render(0)
+    expect(engine.transitioning).toBe(true)
+    engine.render(2000)
+    expect(engine.transitioning).toBe(false)
+  })
+
+  it('snaps without it, so loading new data still snaps', () => {
+    const renderer = fakeRenderer()
+    const { engine } = seed(renderer)
+    engine.setAnimate(true)
+    engine.render(0)
+
+    const next = reparented()
+    engine.setData(
+      toWireTree(next),
+      new Float64Array(next.count * 2).fill(40),
+      next.indexToId.slice(),
+      new Uint8Array(next.count).fill(1),
+    )
+    engine.render(0)
+    expect(engine.transitioning).toBe(false)
+  })
+
+  it('tweens each node from its OWN previous box, not from its old index', () => {
+    // The bug this exists to prevent: a source index only means anything
+    // within one `normalize`, and a reparent rebuilds the array. Without the
+    // remap every node tweens from wherever its index used to point, which
+    // reads as the whole chart shuffling rather than one node moving.
+    const renderer = fakeRenderer()
+    const { engine, tree } = seed(renderer)
+    engine.setAnimate(true)
+    engine.render(0)
+
+    const boxBefore = new Map<string, number>()
+    for (let i = 0; i < engine.visibleToSource.length; i++) {
+      boxBefore.set(tree.indexToId[engine.visibleToSource[i]!]!, engine.boxes[i * 4]!)
+    }
+
+    const next = reparented()
+    engine.animateNextLayout(remapBetween(tree, next))
+    engine.setData(
+      toWireTree(next),
+      new Float64Array(next.count * 2).fill(40),
+      next.indexToId.slice(),
+      new Uint8Array(next.count).fill(1),
+    )
+    engine.render(0)
+
+    // At t=0 every surviving node is drawn exactly where it was, by NAME.
+    const frame = renderer.frames.at(-1)!
+    for (let n = 0; n < frame.visibleCount; n++) {
+      const i = frame.visible[n]!
+      const id = next.indexToId[engine.visibleToSource[i]!]!
+      const was = boxBefore.get(id)
+      if (was === undefined) continue
+      expect(frame.boxes[i * 4]!).toBeCloseTo(was, 5)
+    }
+  })
+
+  it('does nothing if the setData it describes never comes', () => {
+    // The remap maps indices from ONE tree to ONE other tree. A flag left
+    // standing until some unrelated relayout would animate the wrong change
+    // with a mapping that no longer describes anything — so it is tied to
+    // `setData`, and arming without one is a no-op.
+    const renderer = fakeRenderer()
+    const { engine, tree } = seed(renderer)
+    engine.setAnimate(true)
+    engine.render(0)
+
+    engine.animateNextLayout(remapBetween(tree, tree))
+    engine.setOptions({ spacingX: 99 })
+    engine.render(1)
+    expect(engine.transitioning).toBe(false)
+  })
+})
