@@ -1,5 +1,119 @@
 # @klad/core
 
+## 1.3.0
+
+### Minor Changes
+
+- 4aa5140: Three things a drag could not do.
+
+  **Closed branches spring open.** Rest the pointer on a collapsed node for
+  about half a second and it opens, so you can carry on into it. Before this a
+  closed branch was a wall — its children are off screen, so there was nothing
+  to aim at, and no way to open one while the gesture had both your hands. What
+  sprang open closes again when you let go, except the branch the drop actually
+  landed in: wandering across six folders on the way to the seventh should not
+  leave all seven standing open.
+
+  **Escape puts the node back down.** No `nodeDrop`, nothing moved. The same
+  path now handles `pointercancel`, which used to route to the same place as
+  `pointerup` — so a gesture the browser reclaimed, a touch it decided was a
+  page scroll, restructured the tree on its way out.
+
+  **The cursor answers "will this be taken?"** `grabbing` while dragging,
+  `no-drop` over a target that would refuse. Set by the chart on its own host
+  and canvas, with cards taken out of the pointer's way for the length of the
+  gesture — so it works without the host writing any CSS. `.klad-dragging` and
+  `.klad-drag-refused` are still on the host for anyone who wants a different
+  look.
+
+  Also: `NodeDropEvent` is now exported from every package. Typing a `nodeDrop`
+  handler meant digging the shape out of `KladEvents['nodeDrop']`, which is not
+  a thing anyone should have to do to write the one handler this feature is
+  about.
+
+- 6f61f1d: Drag and drop — `dragAndDrop: true`.
+
+  Drag a node onto another to reparent it, or onto the leading or trailing
+  quarter of one to drop it beside that node instead. A reparent that could only
+  say "into" is half a feature: reordering siblings is most of what anyone does
+  with a file list.
+
+  Which axis those bands run along is a question only the layout can answer, so
+  it asks. A file list stacks downward whatever `orientation` says; a tidy chart
+  puts siblings across its growth axis; a wheel offers `into` and nothing else,
+  because sibling segments are arranged by angle and "three degrees
+  anticlockwise" is not a position anyone is pointing at.
+
+  Dropping into the branch you are carrying is refused — a node cannot become
+  its own descendant — and shown in the refusal colour rather than not shown,
+  since an absence cannot tell "not allowed" apart from "not pointing at
+  anything". The check is one array read per pointer move, from a subtree mask
+  built when the drag starts.
+
+  The move is reported through `nodeDrop` BEFORE anything happens; call
+  `preventDefault()` to refuse it. Dragging a selected node carries the whole
+  selection. The chart applies the move to its own copy of the data rather than
+  mutating the array you handed it, so reconcile your own store from the event.
+
+  New theme tokens: `dropStroke`, `dropRefusedStroke`, `dropStrokeWidth`. New
+  core exports for anyone building their own gesture layer: `resolveDropMode`,
+  `isDropAllowed`, `subtreeMask`, `dropPosition`.
+
+- 66cbb55: Drag and drop, completed.
+
+  **A card follows the cursor.** The node stays where it is, dimmed, and a copy
+  travels — the convention every file manager uses, and for a reason: the
+  original is where the node still is until you let go, and a drag you can
+  abandon needs something to abandon it to. The copy is a clone of your own
+  overlay element, so it looks exactly right whatever your card is, including
+  your CSS.
+
+  **The chart pans at the edges.** Without it a drop is only possible onto
+  something already on screen, which on a chart big enough to need dragging is
+  usually the wrong place. The speed ramps with depth into the zone rather than
+  switching on at a line.
+
+  **The keyboard can move a node too.** Focus a row in the screen-reader tree,
+  press `m` to pick it up, move to another row, press `m` again to drop it in,
+  or Escape to put it back. Announced through a live region, because a keyboard
+  user gets no drop preview — the announcement is the feedback, not a courtesy
+  on top of it. `into` only: the row list gives no way to point at a gap between
+  two things, and reparenting is the part with no other keyboard route.
+
+  **`nodeDrop` in Vue and React.** `@node-drop` and `onNodeDrop`, emitted
+  synchronously so `preventDefault()` on the payload still works.
+
+  Also: overlay elements now carry `data-klad-id`. Slots are pooled and
+  reassigned as the camera moves, so this is the only way to find the element
+  currently showing a given node — a drag needs it to clone the card, and a test
+  needs it to assert a node rendered.
+
+### Patch Changes
+
+- cfddd4a: A drop now animates, and holds the place you dropped it.
+
+  Two things a reparent got wrong. The chart rebuilt from a new dataset, which
+  as far as the engine was concerned shared no index space with the old one — so
+  every node snapped to its new position with no tween. And because a `tidy` or
+  `radial` layout reflows around the change, the destination you had just aimed
+  at slid somewhere else, leaving you to find your place again.
+
+  `ChartEngine.animateNextLayout(sourceRemap)` says the next `setData` is a MOVE:
+  the same nodes at different positions, with a mapping from the outgoing index
+  space to the incoming one. The transition then reads across it and tweens.
+  It is tied to `setData` rather than to "the next relayout" on purpose — the
+  mapping describes one replacement, so arming it without one does nothing.
+
+  The vanilla chart arms it on every drop and, alongside it, pins the drop
+  TARGET's screen position across the rebuild. The target, not the moved node:
+  anchoring what you dragged would pull the camera along with it, which is the
+  one thing that is supposed to move.
+
+- Updated dependencies [6f61f1d]
+- Updated dependencies [66cbb55]
+- Updated dependencies [cfddd4a]
+  - @klad/engine@1.3.0
+
 ## 1.2.0
 
 ### Minor Changes
