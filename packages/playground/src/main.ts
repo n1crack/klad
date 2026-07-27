@@ -1338,7 +1338,11 @@ function renderCentreTrail(example: Example, centreId: string | null): void {
 /** The example the breadcrumb is currently describing — it needs the data to
  * walk parent links, and only the example that owns the trail has it. */
 let centreExample: Example | null = null
-let centreListenerBound = false
+
+/** Called by whichever demo is mounted when a drill lands. */
+function reportCentre(id: string | null): void {
+  if (centreExample !== null) renderCentreTrail(centreExample, id)
+}
 
 /** Shows the breadcrumb when the current LAYOUT is one that has a centre. */
 function syncCentreControl(example: Example, layout: LayoutName): void {
@@ -1348,17 +1352,6 @@ function syncCentreControl(example: Example, layout: LayoutName): void {
   centreExample = example
   surface.append(centreField)
   renderCentreTrail(example, example.options.centre ?? null)
-  if (!centreListenerBound) {
-    centreListenerBound = true
-    // Emitted by the demo's own drill-down handler (see vanilla-demo.ts), so
-    // the trail follows a click on the wheel as well as a click on itself.
-    // Bound lazily, like the selection panel's listeners, because `surface`
-    // is created further down this module.
-    surface.addEventListener('playground:centrechange', (event) => {
-      if (centreExample === null) return
-      renderCentreTrail(centreExample, (event as CustomEvent<{ id: string | null }>).detail.id)
-    })
-  }
 }
 
 /**
@@ -1986,6 +1979,7 @@ function show(stack: Stack, exampleId: string, layout: LayoutName): void {
         currentApi = api
       },
       reportDrop,
+      reportCentre,
     )
     currentSetMinimap = (on) => chart.setMinimap(on)
     currentSetMinimapPosition = (position) => chart.setMinimapPosition(position)
@@ -2001,6 +1995,7 @@ function show(stack: Stack, exampleId: string, layout: LayoutName): void {
       layout,
       mode,
       onDrop: reportDrop,
+      onCentreChange: reportCentre,
       onReady: (api: KladApi) => {
         currentApi = api
       },
@@ -2035,6 +2030,7 @@ function show(stack: Stack, exampleId: string, layout: LayoutName): void {
         layout,
         mode,
         onDrop: reportDrop,
+        onCentreChange: reportCentre,
         onReady: (api: KladApi) => {
           currentApi = api
         },

@@ -12,7 +12,6 @@ import {
   isBranchRow,
   optionsForLayout,
   contentForLayout,
-  centreControlFor,
   themeFor,
   accordionProgress,
   type Department,
@@ -21,6 +20,7 @@ import {
   type MinimapPosition,
   type NodeContentKind,
 } from './data.js'
+import { createAccordionSlide, createDrill, goTo } from './demo-behaviour.js'
 import type { ThemeMode } from './theme.js'
 
 const DEFAULT_NODE_SIZE = { w: 180, h: 64 }
@@ -547,6 +547,7 @@ export function mountVanilla(
   mode: ThemeMode,
   onApiChange: (api: KladApi) => void,
   onDrop?: (detail: { ids: string[]; parentId: string | null; mode: string }) => void,
+  onCentreChange?: (id: string | null) => void,
 ): VanillaDemoHandle {
   // The content treatment follows the LAYOUT, not the example — see
   // `LAYOUT_PRESETS` in data.ts. A wheel draws its own text on the canvas and
@@ -610,39 +611,12 @@ export function mountVanilla(
     chart.api.refresh()
   }
 
-  /**
-   * Eases every accordion card's `detailT` toward its open/closed target and
-   * re-measures the chart on each frame, which is what turns a size change
-   * into a slide: `nodeSize` is read at layout time, so animating the size
-   * means animating the number it returns.
-   *
-   * One `refresh()` per frame for the ~200ms this runs. That is a full
-   * relayout per frame, which is affordable here — this example is 28 nodes —
-   * and deliberately not what the library does for its own expand/collapse
-   * transition, which interpolates already-computed positions instead
-   * precisely so it never relayouts per frame. An app animating node sizes on
-   * a large tree should expect the same distinction to matter.
-   */
-  const SLIDE_MS = 200
-  let slideHandle: number | null = null
-  const stepSlide = (): void => {
-    slideHandle = null
-    let moving = false
-    for (const item of example.data) {
-      const target = item.detail === true ? 1 : 0
-      const current = accordionProgress(item)
-      if (current === target) continue
-      const step = 1000 / 60 / SLIDE_MS
-      const next = target > current ? Math.min(target, current + step) : Math.max(target, current - step)
-      item.detailT = next
-      if (next !== target) moving = true
-    }
-    chart.api.refresh()
-    if (moving) slideHandle = requestAnimationFrame(stepSlide)
-  }
-  const onSlide = (): void => {
-    if (slideHandle === null) slideHandle = requestAnimationFrame(stepSlide)
-  }
+  // The accordion's slide and the go-to-node command are shared with the Vue
+  // and React demos — see `demo-behaviour.ts`. Only the delivery differs: a
+  // vanilla card is plain DOM with no reference to the chart, so it asks
+  // through a CustomEvent; the other two stacks hand their cards a closure.
+  const slide = createAccordionSlide(() => chart.api, example)
+  const onSlide = (): void => slide.start()
 
   /**
    * The go-to-node command in one gesture: mark the way from the root, then
@@ -652,9 +626,7 @@ export function mountVanilla(
    * not only when the target already happens to be on screen.
    */
   const onGoto = (event: Event): void => {
-    const id = (event as CustomEvent<{ id: string }>).detail.id
-    chart.api.highlight(chart.api.pathTo(id))
-    chart.api.focus(id, { ring: true })
+    goTo(chart.api, (event as CustomEvent<{ id: string }>).detail.id)
   }
 
   /**
@@ -669,23 +641,13 @@ export function mountVanilla(
    * steps back OUT to its parent. So the hub is always "go up", which is where
    * a viewer will look for it.
    */
-  let stopDrill: (() => void) | null = null
-  if (centreControlFor(layout)) {
-    const parentOf = new Map<string, string | null>()
-    for (const item of example.data) parentOf.set(String(item.id), (item.parentId as string | null) ?? null)
-
-    stopDrill = chart.on('nodeClick', ({ id }) => {
-      const centre = chart.api.getCentre() ?? (example.data[0] ? String(example.data[0].id) : null)
-      // Clicking the hub steps out. At the root there is nowhere further out,
-      // so it stays put rather than blanking the wheel.
-      const next = id === centre ? (parentOf.get(id) ?? null) : id
-      if (next === null && id === centre) return
-      chart.api.setCentre(next)
-      host.dispatchEvent(
-        new CustomEvent('playground:centrechange', { detail: { id: chart.api.getCentre() }, bubbles: true }),
-      )
-    })
-  }
+  const drill = createDrill(example, layout)
+  const stopDrill = chart.on('nodeClick', ({ id }) => {
+    const next = drill(id, chart.api.getCentre())
+    if (next === undefined) return
+    chart.api.setCentre(next)
+    onCentreChange?.(chart.api.getCentre())
+  })
 
   /**
    * The drop log. Deliberately does NOT call `preventDefault()`: the point of
@@ -712,9 +674,9 @@ export function mountVanilla(
       host.removeEventListener('playground:repaint', onRepaint)
       host.removeEventListener('playground:relayout', onRelayout)
       host.removeEventListener('playground:slide', onSlide)
-      if (slideHandle !== null) cancelAnimationFrame(slideHandle)
+      slide.stop()
       host.removeEventListener('playground:goto', onGoto)
-      stopDrill?.()
+      stopDrill()
       stopDrop?.()
       chart.destroy()
     },

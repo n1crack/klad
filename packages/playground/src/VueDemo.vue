@@ -1,9 +1,11 @@
 <script setup lang="ts">
 import { Klad } from '@klad/vue'
 import type { KladApi, LayoutSettings, NodeContext, Options, Theme } from '@klad/vue'
-import { computed, ref } from 'vue'
+import { computed, onBeforeUnmount, ref } from 'vue'
+import { createAccordionSlide, createDrill, goTo } from './demo-behaviour.js'
 import {
   DEPARTMENT_COLOR,
+  accordionProgress,
   EDGE_RADIUS_DEFAULT,
   initials,
   minimapDefaultOn,
@@ -27,6 +29,7 @@ const props = defineProps<{ example: Example; layout: LayoutName; mode: ThemeMod
 const emit = defineEmits<{
   ready: [KladApi]
   drop: [{ ids: string[]; parentId: string | null; mode: string }]
+  centreChange: [string | null]
 }>()
 
 const chartRef = ref<{ api: KladApi | null } | null>(null)
@@ -197,6 +200,55 @@ function photoGradient(item: Item): string {
 function headcountOf(item: Item): number {
   return Number(item.headcount ?? 0)
 }
+
+const ROLE_OPTIONS = ['Owner', 'Reviewer', 'Observer'] as const
+
+/**
+ * The accordion's own slide. Shared with the other two stacks — see
+ * `createAccordionSlide`: the node's HEIGHT follows the disclosure, and sizes
+ * are declared rather than measured (layout runs in a worker with no DOM), so
+ * the chart has to be told to re-read them on each frame of the ease.
+ */
+const slide = createAccordionSlide(() => chartRef.value?.api, props.example)
+onBeforeUnmount(() => slide.stop())
+
+function toggleDetail(item: Item): void {
+  item.detail = item.detail !== true
+  slide.start()
+}
+
+/**
+ * A card changed something about ITSELF — a star toggled — so nothing in the
+ * chart's own state moved and it has no reason to draw a frame. A paint-only
+ * `setTheme({})` (a merge of nothing over the current theme, documented as
+ * never touching tree, layout or camera) is how a demo card gets itself
+ * redrawn without the library needing a "repaint" verb.
+ */
+function toggleStar(item: Item): void {
+  item.starred = item.starred !== true
+  chartRef.value?.api?.setTheme({})
+}
+
+function goToNode(id: string): void {
+  const api = chartRef.value?.api
+  if (api) goTo(api, id)
+}
+
+/**
+ * The sunburst's drill-down, delivered through the adapter's own `nodeClick`
+ * emit. The decision is shared with the other two stacks (`createDrill`); only
+ * the delivery differs.
+ */
+const drill = createDrill(props.example, props.layout)
+
+function handleNodeClick({ id }: { id: string }): void {
+  const api = chartRef.value?.api
+  if (!api) return
+  const next = drill(id, api.getCentre())
+  if (next === undefined) return
+  api.setCentre(next)
+  emit('centreChange', api.getCentre())
+}
 </script>
 
 <template>
@@ -206,6 +258,7 @@ function headcountOf(item: Item): number {
     class="chart-host"
     @ready="handleReady"
     @node-drop="handleNodeDrop"
+    @node-click="handleNodeClick"
   >
     <!--
       One `#node` slot, branching on the LAYOUT's content treatment — the same
@@ -215,7 +268,10 @@ function headcountOf(item: Item): number {
       sees no `node` slot at all, not an empty one, so no overlay element is
       created — matching the vanilla path, which never sets `renderNode`.
     -->
-    <template v-if="content !== 'none'" #node="{ item, hasChildren, open, toggle }">
+    <template
+      v-if="content !== 'none'"
+      #node="{ id, item, hasChildren, open, toggle, directChildren, descendants, depth, height }"
+    >
       <div v-if="content === 'avatar'" class="avatar-card">
         <div class="avatar-circle" :style="{ background: departmentColor(item) }">
           {{ initials(String(item.name ?? '')) }}
@@ -296,6 +352,109 @@ function headcountOf(item: Item): number {
         >{{ rowFields(item, open).icon }}</span>
         <span class="file-name">{{ rowFields(item, open).primary }}</span>
         <span class="file-size">{{ rowFields(item, open).secondary }}</span>
+      </div>
+
+      <!-- Subtree counts. Every number is an array lookup the chart
+           precomputed — see `NodeStats` — not a walk. -->
+      <div
+        v-else-if="content === 'counts'"
+        class="counts-card"
+        :style="{ '--accent': departmentColor(item) }"
+      >
+        <strong>{{ String(item.name ?? '') }}</strong>
+        <small>{{ String(item.title ?? '') }}</small>
+        <div class="counts-row">
+          <span class="count count-direct" title="Direct reports">{{ directChildren }}</span>
+          <span class="count count-total" title="Everyone below, at any depth">{{ descendants }}</span>
+          <span class="count count-depth" title="Levels below the root">L{{ depth }}</span>
+          <span class="count count-height" title="How deep this subtree runs">↓{{ height }}</span>
+        </div>
+        <button v-if="hasChildren" type="button" class="toggle-btn" @click="toggle">
+          {{ open ? '−' : '+' }}
+        </button>
+      </div>
+
+      <!--
+        A card carrying a real `<select>`. The overlay is a DOM layer over a
+        canvas, so a form control in it has to keep behaving normally: opening
+        the menu must not pan the chart, which `@pointerdown.stop` handles.
+        The value is written back onto the node's own data, so it survives the
+        pooled element being recycled onto another node and back.
+      -->
+      <div v-else-if="content === 'dropdown'" class="dropdown-card">
+        <div class="dropdown-text">
+          <strong>{{ String(item.name ?? '') }}</strong>
+          <small>{{ String(item.title ?? '') }}</small>
+        </div>
+        <select
+          class="dropdown-select"
+          :value="String(item.access ?? ROLE_OPTIONS[0])"
+          @pointerdown.stop
+          @change="item.access = ($event.target as HTMLSelectElement).value"
+        >
+          <option v-for="role in ROLE_OPTIONS" :key="role" :value="role">{{ role }}</option>
+        </select>
+      </div>
+
+      <!--
+        A card with its own detail pane — a SECOND, independent kind of "open"
+        inside a node. The chart's expand/collapse is about children; this is
+        about the card's own content, so the state lives on `item.detail` and
+        is never inferred from `open`.
+      -->
+      <div v-else-if="content === 'accordion'" class="accordion-card">
+        <div class="accordion-head">
+          <div class="accordion-text">
+            <strong>{{ String(item.name ?? '') }}</strong>
+            <small>{{ String(item.title ?? '') }}</small>
+          </div>
+          <button
+            type="button"
+            class="accordion-btn"
+            :aria-expanded="item.detail === true"
+            @click.stop="toggleDetail(item)"
+          >
+            {{ item.detail === true ? 'Hide details' : 'Details' }}
+          </button>
+        </div>
+        <div
+          class="accordion-body"
+          :class="{ 'is-open': accordionProgress(item) > 0 }"
+          :style="{ opacity: accordionProgress(item) }"
+        >
+          {{ String(item.department ?? '—') }} · {{ directChildren }} direct · {{ descendants }} total
+        </div>
+      </div>
+
+      <!-- The node as a small toolbar: arbitrary controls on a card, each
+           keeping its own click, with the chart's own toggle as one of them. -->
+      <div v-else-if="content === 'actions'" class="actions-card">
+        <div class="actions-text">
+          <strong>{{ String(item.name ?? '') }}</strong>
+          <small>{{ String(item.title ?? '') }}</small>
+        </div>
+        <div class="actions-bar">
+          <button
+            type="button"
+            class="action-btn"
+            :class="{ 'is-on': item.starred === true }"
+            :title="item.starred === true ? 'Starred' : 'Star'"
+            @click.stop="toggleStar(item)"
+          >★</button>
+          <button
+            type="button"
+            class="action-btn"
+            title="Go to this node, marking the way"
+            @click.stop="goToNode(id)"
+          >⇢</button>
+          <button
+            v-if="hasChildren"
+            type="button"
+            class="action-btn"
+            title="Expand or collapse"
+            @click.stop="toggle"
+          >{{ open ? '−' : '+' }}</button>
+        </div>
       </div>
 
       <div v-else class="card">

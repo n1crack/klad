@@ -1,5 +1,5 @@
 /** @jsxImportSource react */
-import { useCallback, useImperativeHandle, useMemo, useRef, type CSSProperties, type ReactNode, type Ref } from 'react'
+import { useCallback, useEffect, useImperativeHandle, useMemo, useRef, type CSSProperties, type ReactNode, type Ref } from 'react'
 import {
   Klad,
   type KladApi,
@@ -15,6 +15,7 @@ import {
   initials,
   minimapDefaultOn,
   minimapDefaultPosition,
+  accordionProgress,
   minimapOptionFor,
   modeThemeFor,
   dropDetail,
@@ -28,6 +29,7 @@ import {
   type LayoutName,
   type MinimapPosition,
 } from './data.js'
+import { createAccordionSlide, createDrill, goTo } from './demo-behaviour.js'
 import type { ThemeMode } from './theme.js'
 
 const DEFAULT_NODE_SIZE = { w: 180, h: 64 }
@@ -169,25 +171,207 @@ function renderRow(context: NodeContext): ReactNode {
   )
 }
 
+/**
+ * Subtree counts. Every number is an array lookup the chart precomputed — see
+ * `NodeStats` in the vanilla package — not a walk, which at one walk per node
+ * per frame is exactly the shape of work a large chart cannot afford.
+ */
+function renderCounts(context: NodeContext): ReactNode {
+  const item = context.item
+  const style = { '--accent': departmentColor(item) } as CSSProperties
+  const cells: [kind: string, value: string, title: string][] = [
+    ['direct', String(context.directChildren), 'Direct reports'],
+    ['total', String(context.descendants), 'Everyone below, at any depth'],
+    ['depth', `L${context.depth}`, 'Levels below the root'],
+    ['height', `↓${context.height}`, 'How deep this subtree runs'],
+  ]
+  return (
+    <div className="counts-card" style={style}>
+      <strong>{String(item.name ?? '')}</strong>
+      <small>{String(item.title ?? '')}</small>
+      <div className="counts-row">
+        {cells.map(([kind, value, title]) => (
+          <span key={kind} className={`count count-${kind}`} title={title}>
+            {value}
+          </span>
+        ))}
+      </div>
+      <ToggleButton {...context} />
+    </div>
+  )
+}
+
+const ROLE_OPTIONS = ['Owner', 'Reviewer', 'Observer'] as const
+
+/**
+ * A card carrying a real `<select>`.
+ *
+ * The overlay is an absolutely-positioned DOM layer over a canvas, and a form
+ * control living in it has to keep behaving normally: opening the menu must
+ * not pan the chart. `stopPropagation` on the pointer is all it takes — the
+ * vanilla layer already treats genuinely interactive elements as theirs.
+ *
+ * The value is written back onto the node's own data rather than held in React
+ * state, and that is not laziness: the overlay pools its elements, so this
+ * component is unmounted and remounted against a different node as the camera
+ * moves. State would travel with the slot; the data travels with the node.
+ */
+function renderDropdown(context: NodeContext): ReactNode {
+  const item = context.item
+  return (
+    <div className="dropdown-card">
+      <div className="dropdown-text">
+        <strong>{String(item.name ?? '')}</strong>
+        <small>{String(item.title ?? '')}</small>
+      </div>
+      <select
+        className="dropdown-select"
+        value={String(item.access ?? ROLE_OPTIONS[0])}
+        onPointerDown={(event) => event.stopPropagation()}
+        onChange={(event) => {
+          item.access = event.target.value
+        }}
+      >
+        {ROLE_OPTIONS.map((role) => (
+          <option key={role} value={role}>
+            {role}
+          </option>
+        ))}
+      </select>
+    </div>
+  )
+}
+
+/**
+ * A card with its own detail pane — a SECOND, independent kind of "open"
+ * living inside a node. The chart's expand/collapse is about children; this is
+ * about the card's own content, and the two must not be mistaken for each
+ * other. So the state lives on `item.detail`, never inferred from
+ * `context.open`.
+ *
+ * `onSlide` re-measures the chart: the node's own height follows the
+ * disclosure, and sizes are declared rather than measured (layout runs in a
+ * worker with no DOM), so the chart has to be told to re-read them.
+ */
+function renderAccordion(context: NodeContext, onSlide: () => void): ReactNode {
+  const item = context.item
+  const open = item.detail === true
+  const progress = accordionProgress(item)
+  return (
+    <div className="accordion-card">
+      <div className="accordion-head">
+        <div className="accordion-text">
+          <strong>{String(item.name ?? '')}</strong>
+          <small>{String(item.title ?? '')}</small>
+        </div>
+        <button
+          type="button"
+          className="accordion-btn"
+          aria-expanded={open}
+          onClick={(event) => {
+            event.stopPropagation()
+            item.detail = !open
+            onSlide()
+          }}
+        >
+          {open ? 'Hide details' : 'Details'}
+        </button>
+      </div>
+      {/* Driven by the same eased number the node's height is, so the text
+          fades in as the room for it appears rather than popping at one end. */}
+      <div
+        className={`accordion-body${progress > 0 ? ' is-open' : ''}`}
+        style={{ opacity: progress }}
+      >
+        {String(item.department ?? '—')} · {context.directChildren} direct · {context.descendants} total
+      </div>
+    </div>
+  )
+}
+
+/** The node as a small toolbar: arbitrary controls on a card, each keeping its
+ * own click, with the chart's own toggle as merely one of them. */
+function renderActions(context: NodeContext, onRepaint: () => void, onGoto: (id: string) => void): ReactNode {
+  const item = context.item
+  const starred = item.starred === true
+  return (
+    <div className="actions-card">
+      <div className="actions-text">
+        <strong>{String(item.name ?? '')}</strong>
+        <small>{String(item.title ?? '')}</small>
+      </div>
+      <div className="actions-bar">
+        <button
+          type="button"
+          className={`action-btn${starred ? ' is-on' : ''}`}
+          title={starred ? 'Starred' : 'Star'}
+          onClick={(event) => {
+            event.stopPropagation()
+            item.starred = !starred
+            onRepaint()
+          }}
+        >
+          ★
+        </button>
+        <button
+          type="button"
+          className="action-btn"
+          title="Go to this node, marking the way"
+          onClick={(event) => {
+            event.stopPropagation()
+            onGoto(context.id)
+          }}
+        >
+          ⇢
+        </button>
+        {context.hasChildren && (
+          <button
+            type="button"
+            className="action-btn"
+            title="Expand or collapse"
+            onClick={(event) => {
+              event.stopPropagation()
+              context.toggle()
+            }}
+          >
+            {context.open ? '−' : '+'}
+          </button>
+        )}
+      </div>
+    </div>
+  )
+}
+
 const RENDERERS: Record<Exclude<Example['content'], 'none'>, (context: NodeContext) => ReactNode> = {
   card: renderCard,
   avatar: renderAvatar,
   monogram: renderMonogram,
   status: renderStatus,
   photo: renderPhoto,
-  // The four card treatments added for the 1.0 feature work — subtree counts,
-  // a dropdown, an accordion, a button toolbar — are demonstrated in the
-  // vanilla demo, which is the reference implementation every adapter is
-  // written against. They fall back to the plain card here, exactly as they do
-  // in the Vue demo's `v-else` branch: the point they make is about the node
-  // context and the overlay, both of which are adapter-independent, so
-  // restating each of them three times would add maintenance without adding
-  // anything a reader learns from.
-  counts: renderCard,
-  dropdown: renderCard,
+  counts: renderCounts,
+  dropdown: renderDropdown,
+  // These two need to reach back into the demo — see `RENDERERS_WITH` below.
   accordion: renderCard,
   actions: renderCard,
   row: renderRow,
+}
+
+/**
+ * The two treatments that cannot be a bare `(context) => ReactNode`: they act
+ * on the CHART, not just on their own node — an accordion re-measures it, a
+ * toolbar flies to a node and marks the route. Bound to the demo's own
+ * handlers at render time rather than reaching for a context, because there is
+ * exactly one consumer and a provider for two callbacks would be ceremony.
+ */
+function rendererFor(
+  content: Exclude<Example['content'], 'none'>,
+  handlers: { onSlide: () => void; onRepaint: () => void; onGoto: (id: string) => void },
+): (context: NodeContext) => ReactNode {
+  if (content === 'accordion') return (context) => renderAccordion(context, handlers.onSlide)
+  if (content === 'actions') {
+    return (context) => renderActions(context, handlers.onRepaint, handlers.onGoto)
+  }
+  return RENDERERS[content]
 }
 
 /** Imperative handle main.ts uses to drive the mounted React chart's live controls. */
@@ -207,6 +391,8 @@ export interface ReactDemoProps {
   example: Example
   /** Reports a completed drop for the demo's log — see `dropDetail`. */
   onDrop?: (detail: { ids: string[]; parentId: string | null; mode: string }) => void
+  /** Reports the sunburst's new centre, for the breadcrumb. */
+  onCentreChange?: (id: string | null) => void
   /** Which shape to draw in. Changing it remounts (see main.ts's `show`) —
    * the content treatment changes with it, and that is a construction-time
    * choice. */
@@ -225,7 +411,7 @@ export interface ReactDemoProps {
  * function that returns null) so this adapter never claims overlay DOM it
  * doesn't need — matching the vanilla and Vue "canvas only" behaviour.
  */
-export function ReactDemo({ example, layout, mode, onReady, onDrop, ref }: ReactDemoProps): ReactNode {
+export function ReactDemo({ example, layout, mode, onReady, onDrop, onCentreChange, ref }: ReactDemoProps): ReactNode {
   const chartRef = useRef<KladHandle>(null)
 
   /**
@@ -301,6 +487,57 @@ export function ReactDemo({ example, layout, mode, onReady, onDrop, ref }: React
     [example, onDrop],
   )
 
+  /**
+   * Everything an example does that is not a card — the sunburst's drill-down
+   * and the drop log — plus the two card handlers that act on the chart.
+   * Attached once the chart exists, torn down with it.
+   *
+   * Shared with the other two stacks (`demo-behaviour.ts`) rather than written
+   * here: it is `KladApi` calls in a particular order and nothing about React,
+   * and writing it per stack is exactly how half the examples ended up working
+   * on only one of them.
+   */
+  const slide = useMemo(
+    () => createAccordionSlide(() => chartRef.current?.api, example),
+    [example],
+  )
+  useEffect(() => () => slide.stop(), [slide])
+
+  /**
+   * The sunburst's drill-down, delivered through React's own `onNodeClick`
+   * prop rather than an imperative subscription — the decision itself is
+   * shared with the other two stacks (`createDrill`), only the delivery
+   * differs.
+   */
+  const drill = useMemo(() => createDrill(example, layout), [example, layout])
+  const handleNodeClick = useCallback(
+    ({ id }: { id: string }) => {
+      const api = chartRef.current?.api
+      if (!api) return
+      const next = drill(id, api.getCentre())
+      if (next === undefined) return
+      api.setCentre(next)
+      onCentreChange?.(api.getCentre())
+    },
+    [drill, onCentreChange],
+  )
+
+  const cardHandlers = useMemo(
+    () => ({
+      onSlide: () => slide.start(),
+      // A card changed something about ITSELF — a star toggled — so nothing in
+      // the chart's own state moved and it has no reason to draw a frame. A
+      // paint-only theme write (a merge of nothing) is how a demo card gets
+      // itself redrawn without the library needing a "repaint" verb.
+      onRepaint: () => chartRef.current?.api?.setTheme({}),
+      onGoto: (id: string) => {
+        const api = chartRef.current?.api
+        if (api) goTo(api, id)
+      },
+    }),
+    [slide],
+  )
+
   const handleReady = useCallback(() => {
     if (chartRef.current?.api) onReady?.(chartRef.current.api)
   }, [onReady])
@@ -369,11 +606,12 @@ export function ReactDemo({ example, layout, mode, onReady, onDrop, ref }: React
         options={options}
         onReady={handleReady}
         onNodeDrop={handleNodeDrop}
+        onNodeClick={handleNodeClick}
       />
     )
   }
 
-  const render = RENDERERS[content]
+  const render = rendererFor(content, cardHandlers)
   return (
     <Klad
       ref={chartRef}
@@ -381,6 +619,7 @@ export function ReactDemo({ example, layout, mode, onReady, onDrop, ref }: React
       options={options}
       onReady={handleReady}
       onNodeDrop={handleNodeDrop}
+      onNodeClick={handleNodeClick}
     >
       {render}
     </Klad>

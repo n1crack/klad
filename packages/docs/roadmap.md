@@ -54,10 +54,27 @@ node whose children are off screen.
 
 Children loaded on demand as branches open is still to come.
 
-## 1.3 — drag and drop
+## 1.3 — released: drag and drop
 
-Drag a node, or a selection, onto a new parent. A drop that would make a cycle
-is refused and reported. Only the subtree that changed is laid out again.
+Drag a node, or a selection, onto a new parent — or onto the leading or
+trailing quarter of one to drop it beside that node instead. Which axis those
+bands run along is the layout's to answer, so a file list offers "between two
+rows" and a wheel offers only "into".
+
+A drop into the branch you are carrying is refused: a node cannot become its
+own descendant. The move is reported through `nodeDrop` before anything
+happens, and `preventDefault()` is how you veto one.
+
+The keyboard has the same move — `m` to pick up, `m` again to drop, announced
+through a live region, since a keyboard user gets no drop preview.
+
+The whole visible tree is laid out again on a drop, not just the changed
+branch. An earlier draft of this line promised the latter; it was wrong twice
+over. `tidy` is a global algorithm whose contour threads run through the whole
+forest, so "only the subtree that changed" is not generally correct — moving
+one node changes sibling separation all the way up. And it would buy nothing
+worth the risk: a full relayout of 20,000 nodes measures 2–12ms, once, and the
+existing transition tweens the result for free.
 
 ## 1.4 — custom edges
 
