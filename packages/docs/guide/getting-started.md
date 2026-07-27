@@ -1,3 +1,8 @@
+---
+title: Getting started
+description: Install Klad for plain JavaScript, Vue 3 or React, and render your first tree from a flat array of { id, parentId } rows.
+---
+
 # Getting started
 
 ## Install

@@ -1,3 +1,8 @@
+---
+title: Licence
+description: 'Klad is dual-licensed: free under the GNU AGPL v3 or later, with a commercial licence for closed-source use.'
+---
+
 # Licence
 
 Klad is dual-licensed.

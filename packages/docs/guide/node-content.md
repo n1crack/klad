@@ -1,3 +1,8 @@
+---
+title: Node content
+description: Put your own Vue, React or plain-DOM components on the nodes. Klad mounts them only where they are on screen and big enough to read.
+---
+
 # Node content
 
 Out of the box a node is drawn by the canvas: a rounded box with a truncated

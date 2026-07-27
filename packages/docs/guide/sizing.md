@@ -1,3 +1,8 @@
+---
+title: Sizing nodes
+description: Why nodeSize is declared rather than measured, what that buys, and how to give different nodes different sizes.
+---
+
 # Sizing
 
 `nodeSize` defaults to `{ w: 180, h: 64 }`, and whatever you set it to is

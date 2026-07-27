@@ -1,3 +1,8 @@
+---
+title: Options
+description: 'Every option createKlad takes: data, layouts, node size, labels, spacing, minimap, selection, theming and worker mode.'
+---
+
 # Options
 
 The object passed to `createKlad` (or the `options` prop on the Vue and
@@ -14,9 +19,20 @@ that produces a usable chart.
 
 ## Layout
 
+The shape the tree is drawn in, and the knobs that tune it. All of these can
+also be changed after construction with
+[`setLayoutOptions`](/api/chart#layout) — see [Layouts](/guide/layouts) for
+what each shape is for.
+
 | Option | Type | Default | |
 |---|---|---|---|
-| `orientation` | `'tb' \| 'bt' \| 'lr' \| 'rl'` | `'tb'` | Which way the tree grows. |
+| `layout` | `'tidy' \| 'file' \| 'radial' \| 'sunburst'` | `'tidy'` | Which shape. `tidy` is the tiered chart; `file` indented rows; `radial` concentric rings; `sunburst` nested arcs. |
+| `layoutStep` | `number` | derived | The per-level step, whose meaning is per-layout: the `file` indent, the `radial`/`sunburst` ring size. Omitted, each layout derives one from your `nodeSize`. |
+| `rowGap` | `number` | `spacing.y` | `file` only: the gap between consecutive rows. |
+| `maxRings` | `number` | `3` | `sunburst` only: how many rings are drawn around the centre. Deeper nodes are still there — drilling in reveals them. |
+| `centre` | `string \| null` | `null` | `sunburst` only: the id at the middle of the wheel. Changing it animates; see [`setCentre`](/api/chart#layout). |
+| `colourBranches` | `boolean` | per-layout | Fill nodes by which top-level branch they belong to, from `theme.palette`. On for `sunburst`, off elsewhere. |
+| `orientation` | `'tb' \| 'bt' \| 'lr' \| 'rl'` | `'tb'` | Which way the tree grows. **`tidy` only** — a file list is a vertical list of rows whatever you set, and a wheel has no reading direction. |
 | `rtl` | `boolean` | `false` | Mirrors sibling order; the growth direction is unaffected. |
 | `spacing` | `{ x?, y?: number }` | `{ x: 16, y: 48 }` | Gaps between siblings and between levels, in world units. |
 | `collapsedByDefault` | `boolean \| (item) => boolean` | `false` | Which nodes start closed. |

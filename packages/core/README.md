@@ -1,7 +1,8 @@
 # @klad/engine
 
 The pure-logic layer of [Klad](https://github.com/n1crack/klad): tree
-normalization, the tidy-tree layout algorithm, orientation/RTL mirroring, the
+normalization, the layout registry (tidy, file, radial and sunburst),
+orientation/RTL mirroring, the
 viewport (pan/zoom/inertia) math, a quadtree for hit-testing, the Canvas2D
 renderer, and the typed worker protocol. No DOM dependency in the main entry,
 so it can run inside a Web Worker.

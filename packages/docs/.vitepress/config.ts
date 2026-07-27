@@ -51,7 +51,7 @@ gtag('config', '${GA_ID}')`,
     : []
 
 const DESCRIPTION =
-  'A framework-agnostic org chart for very large trees. Canvas in a Web Worker; your Vue, React or plain-DOM components mounted only where they can be read.'
+  'A framework-agnostic tree engine for very large hierarchies. Four layouts — tiered, file, radial and sunburst — drawn on a canvas in a Web Worker, with your Vue, React or plain-DOM components mounted only where they can be read.'
 
 /**
  * Schema.org structured data (JSON-LD), site-wide. It does not by itself change
@@ -157,7 +157,7 @@ export default defineConfig({
     ['meta', { property: 'og:image', content: `${SITE_URL}${BASE}og.png` }],
     ['meta', { property: 'og:image:width', content: '1200' }],
     ['meta', { property: 'og:image:height', content: '630' }],
-    ['meta', { property: 'og:image:alt', content: 'Klad — a fast org chart for very large trees.' }],
+    ['meta', { property: 'og:image:alt', content: 'Klad — a fast tree engine for very large hierarchies.' }],
 
     // `summary_large_image` is what makes the card render the image full
     // width rather than as a thumbnail beside the text.
@@ -227,6 +227,7 @@ export default defineConfig({
           text: 'Guide',
           items: [
             { text: 'Getting started', link: '/guide/getting-started' },
+            { text: 'Layouts', link: '/guide/layouts' },
             { text: 'Node content', link: '/guide/node-content' },
             { text: 'Navigating', link: '/guide/navigating' },
             { text: 'Sizing', link: '/guide/sizing' },

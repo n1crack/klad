@@ -1,11 +1,18 @@
+---
+title: Roadmap
+description: 'What has shipped and what is next: layouts, drag and drop, very wide levels, cross-links, and multi-parent graphs.'
+---
+
 # Roadmap
 
 The plan, in order. No dates — each release ships when it is ready.
 
-Klad draws org charts today. It is being built into a general tree renderer:
-the same canvas behind file explorers, ASTs and family trees.
+Klad is a tree engine. One canvas, one flat array of `{ id, parentId }`, and
+whichever shape suits what you are showing — an org chart, a file explorer, a
+taxonomy, a dependency tree. Everything below is about making that one engine
+cover more of the ground trees actually occupy.
 
-## 1.0 — available now
+## 1.0 — released
 
 ```bash
 npm install @klad/core    # or @klad/vue, @klad/react
@@ -16,7 +23,7 @@ components on the nodes. Expand and collapse, minimap, SVG and PNG export,
 keyboard navigation, a screen-reader tree, per-node subtree counts, and
 go-to-node with the route marked.
 
-## 1.1 — navigating large charts
+## 1.1 — released: navigating large charts
 
 - **`fitSubtree(id)`** — frame one branch instead of the whole chart.
 - **`isolate(id)`** — show one branch as if it were the whole chart.
@@ -25,9 +32,10 @@ go-to-node with the route marked.
 - **Keyboard camera** — arrows pan, `+`/`-` zoom, `f` fits.
 - **Selection** — click, ctrl-click, shift-click, box and lasso.
 
-## 1.2 — more layouts
+## 1.2 — released: layout is a choice
 
-Layout is something you choose. `layout: 'file' | 'radial' | 'sunburst'`
+This is the release that made Klad a tree engine rather than an org chart
+component. Layout is something you pick, not something the library assumes. `layout: 'file' | 'radial' | 'sunburst'`
 alongside the tiered default, each with the connector style, label placement
 and colour treatment that shape actually needs:
 
@@ -39,6 +47,10 @@ and colour treatment that shape actually needs:
   branch from a validated categorical palette. Click a segment to drill into
   it: it widens to the full circle and travels inward while the rest closes at
   the seam, and the frame never moves.
+
+Alongside them: `setLayoutOptions` for changing the shape and its tuning live,
+a validated categorical palette with per-branch colouring, and a mark on any
+node whose children are off screen.
 
 Children loaded on demand as branches open is still to come.
 
@@ -66,6 +78,13 @@ link between any two nodes — on screen and in the exports.
 ## 1.7 — nested sets
 
 `lft`/`rgt` values exposed and rendered, plus binary-tree presentation.
+
+## 1.8 — layouts you supply
+
+`LayoutFn` is already the shape every built-in layout is written to — a pure
+`(tree, sizes, opts)` function. What is missing is a way to hand one in across
+the worker boundary, which a name cannot carry. Once that lands, your own
+layout is a first-class one.
 
 ## 2.0 — beyond trees
 

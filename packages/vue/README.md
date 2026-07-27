@@ -1,7 +1,7 @@
 # @klad/vue
 
-The Vue 3 adapter for [Klad](https://github.com/n1crack/klad) — an org
-chart library that renders 5,000–50,000 nodes at 60fps by laying out and
+The Vue 3 adapter for [Klad](https://github.com/n1crack/klad) — a tree
+engine that renders 5,000–50,000 nodes at 60fps by laying out and
 drawing the tree on a `<canvas>` inside a Web Worker, overlaying real Vue
 components only for the nodes currently on screen and zoomed in far enough to
 read.

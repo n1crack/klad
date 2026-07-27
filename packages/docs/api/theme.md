@@ -1,3 +1,8 @@
+---
+title: Theme
+description: 'The canvas drawing tokens: node fill and stroke, connectors, labels, highlight and selection accents, and the branch colour palette.'
+---
+
 # Theme
 
 What the **canvas** draws with. Overlay cards are your own DOM and take their
@@ -65,6 +70,28 @@ and `DARK_THEME` are both exported, ready to spread — see
 Setting `highlightStroke`, `edgeHighlightStroke` and `ringStroke` to one colour
 is usually right: they all answer a question the user just asked, and a route
 drawn in one colour but confirmed in another reads as two unrelated events.
+
+## Branch colour
+
+The layouts that fill their nodes — the sunburst always, anything else with
+`colourBranches: true` — draw from a categorical palette rather than one node
+fill.
+
+| Token | Default | |
+|---|---|---|
+| `palette` | eight validated hues | Slot order is meaningful and is **never cycled**: a ninth branch takes `paletteOther`, not slot one. Two branches sharing a hue is a lie about the data; a branch that is visibly "not one of the named ones" is not. |
+| `paletteOther` | `'#9c9c96'` | The neutral every branch past the last slot shares. |
+| `hubFill` | `'#f0efec'` | A root — a sunburst's centre disc, the top of a file list. Neutral rather than a palette slot: the root is what the branches hang off, not one of them. |
+| `surface` | `'#ffffff'` | The colour **behind** the chart. Never painted; a sunburst's sector gaps are drawn in it, so they read as the page showing through rather than as a border around every segment. Set it to your panel's own background. |
+| `sectorGap` | `1.5` | The width of that gap, in screen pixels. `0` for one continuous disc. |
+| `labelColourInverse` | `'#ffffff'` | The label colour used where `labelColour` would be unreadable. Sector labels pick whichever of the two has more contrast against the fill actually behind them, per sector. |
+
+Going one level deeper steps a branch's own hue lighter in OKLab, so depth
+reads as a ramp within one colour rather than as a new one. `DEFAULT_PALETTE`
+and `DARK_PALETTE` are exported if you want to extend or reorder them — run
+your own set through a contrast check first; the shipped order was chosen for
+the separation of its *adjacent* pairs, which is what a sunburst puts side by
+side.
 
 ## Dark mode
 

@@ -1,3 +1,8 @@
+---
+title: Events
+description: Click, double-click, hover, toggle, selection and viewport events, and how to subscribe to them from JavaScript, Vue or React.
+---
+
 # Events
 
 ::: tabs key:stack

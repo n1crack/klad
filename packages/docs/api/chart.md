@@ -1,3 +1,8 @@
+---
+title: Chart API
+description: 'The imperative handle: expand and collapse, camera commands, search, selection, layout tuning, views and SVG or PNG export.'
+---
+
 # Chart API
 
 The imperative handle. `createKlad` returns an instance whose `.api` is
@@ -124,6 +129,18 @@ These change one thing without the tree-state reset that going through
 | `setTheme(partial)` | Merged over the **current** theme, not the defaults. Paint-only: camera, expand state and scroll position are untouched, and a transition mid-flight keeps animating in the new colours. |
 | `setMinimap(boolean \| options)` | On, off, moved or resized. |
 | `setRing(boolean)` | The confirmation flash. An already-fading ring finishes rather than being cut off. |
+
+## Layout
+
+| Method | |
+|---|---|
+| `setLayoutOptions(settings, opts?)` | Change the shape and its tuning — `layout`, `layoutStep`, `rowGap`, `maxRings`, `colourBranches`, `spacing`, `orientation`, `rtl`. Relayouts without touching open state or the camera, which is what makes it usable behind a slider. Pass `{ fit: true }` to settle the view once a drag ends; the fit is queued until after the relayout, so it frames the new geometry rather than the one it replaced. |
+| `setCentre(id \| null)` | **Sunburst only.** Drill into one node: it widens to the full circle and travels inward while everything else closes at the seam, over about 600ms. Nothing is pruned and the camera does not move — a wheel's frame does not depend on what is at its centre. `null` returns to the root. |
+| `getCentre()` | The id currently at the middle of the wheel, or `null`. Pair it with each node's ancestors to build a breadcrumb. |
+
+`setCentre` is deliberately not `isolate`. Isolating prunes the tree, so the
+nodes that leave have no "after" and the change can only cut; a focus change
+keeps every node and only moves it, which is what there is to animate.
 
 ## Instance
 

@@ -1,9 +1,12 @@
 # klad
 
-The frameworkless API for [Klad](https://github.com/n1crack/klad) — an
-org chart library that renders 5,000–50,000 nodes at 60fps by laying out and
-drawing the tree on a `<canvas>` inside a Web Worker, overlaying real DOM only
-for the nodes currently on screen and zoomed in far enough to read.
+The frameworkless API for [Klad](https://github.com/n1crack/klad) — a tree
+engine that renders 5,000–50,000 nodes at 60fps by laying out and drawing the
+tree on a `<canvas>` inside a Web Worker, overlaying real DOM only for the
+nodes currently on screen and zoomed in far enough to read.
+
+Four layouts off one flat array: tiered, indented file rows, radial rings, or
+a sunburst you can drill into.
 
 This package is one function.
 

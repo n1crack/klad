@@ -1,3 +1,8 @@
+---
+title: Navigating a large tree
+description: Go to a node, frame one branch, isolate a subtree, save and restore a view, and drive the camera from the keyboard.
+---
+
 # Navigating
 
 A large chart is mostly off screen. What matters is how you get to a specific

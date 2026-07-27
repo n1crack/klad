@@ -3,16 +3,16 @@ layout: home
 # SEO <title> for the home page (the hero above is separate). `titleTemplate:
 # false` keeps VitePress from appending "| Klad" on top of a title that already
 # starts with the name.
-title: Klad — Canvas org chart for very large trees
+title: Klad — Canvas tree engine for very large hierarchies
 titleTemplate: false
 
 hero:
   name: Klad
-  text: Canvas Org Chart
-  tagline: A fast, framework-agnostic org chart for very large trees
+  text: Canvas Tree Engine
+  tagline: One engine, four shapes — tiered, file, radial and sunburst — for trees of any size
   image:
     src: /hero.png
-    alt: An org chart of six cards in perspective, floating above their connectors
+    alt: A tree of six cards in perspective, floating above their connectors
   actions:
     - theme: brand
       text: Get Started
@@ -27,6 +27,8 @@ hero:
 features:
   - title: ⚡ Built for Large Trees
     details: Renders very large trees smoothly. Layout and drawing run on a canvas inside a Web Worker, so the main thread stays free. No DOM per node, ever.
+  - title: 🌳 Four Layouts, One Tree
+    details: Tiered for an org chart, indented rows for a file explorer, concentric rings for something wide and shallow, or a sunburst you can drill into. Change the shape without changing the data.
   - title: 🧩 Your Components on Top
     details: A Vue slot, a React render prop, or plain DOM. Real components mount only for the nodes on screen and zoomed in far enough to read — about fifty at a time, pooled and reused.
   - title: 🛠️ Developer-Friendly
@@ -111,6 +113,22 @@ export function Chart() {
 
 Pan, zoom, click, keyboard navigation. `data` is flat — `{ id, parentId?, ...yours }` —
 so the array from your API is usually already the right shape.
+
+## Same Data, Four Shapes
+
+An org chart is one thing a tree can look like. Add `layout` and the same array
+draws as something else entirely — no second data structure, no second library.
+
+```ts
+createKlad(el, { data, layout: 'file' })      // indented rows, folder guide lines
+createKlad(el, { data, layout: 'radial' })    // root at the centre, generations as rings
+createKlad(el, { data, layout: 'sunburst' })  // nested arcs you can drill into
+```
+
+File explorers, ASTs, taxonomies, dependency trees, family trees, disk usage —
+all the same shape of problem, and the reason this is a tree engine rather than
+an org chart component. Try all four in the
+[playground](/playground/).
 
 ## One Thing to Know
 

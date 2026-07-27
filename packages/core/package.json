@@ -1,17 +1,23 @@
 {
   "name": "@klad/engine",
   "version": "1.1.0",
-  "description": "Layout, viewport maths, spatial index, canvas renderer and worker protocol for Klad. No DOM.",
+  "description": "Klad \u2014 a canvas tree engine for tens of thousands of nodes. Tiered, file, radial and sunburst layouts, with a DOM overlay for your own node content. Frameworkless.",
   "keywords": [
+    "tree",
+    "tree-view",
+    "treeview",
+    "hierarchy",
+    "canvas",
+    "sunburst",
+    "radial-tree",
+    "file-tree",
+    "dendrogram",
     "org-chart",
     "orgchart",
     "organization-chart",
-    "tree",
-    "hierarchy",
-    "canvas",
     "klad",
-    "layout",
-    "tidy-tree"
+    "typescript",
+    "vanilla"
   ],
   "homepage": "https://klad.ozdemir.be",
   "repository": {
@@ -22,7 +28,7 @@
   "bugs": {
     "url": "https://github.com/n1crack/klad/issues"
   },
-  "author": "Yusuf Özdemir",
+  "author": "Yusuf \u00d6zdemir",
   "type": "module",
   "license": "AGPL-3.0-or-later",
   "sideEffects": false,

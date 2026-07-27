@@ -1,8 +1,12 @@
 # Klad
 
-A framework-agnostic org chart. The tree is laid out and drawn on a `<canvas>`
-inside a Web Worker; real framework components are mounted only for the handful
-of nodes actually on screen and zoomed in far enough to read.
+A framework-agnostic tree engine. The tree is laid out and drawn on a
+`<canvas>` inside a Web Worker; real framework components are mounted only for
+the handful of nodes actually on screen and zoomed in far enough to read.
+
+**Four layouts, one flat array.** `{ id, parentId }` in; a tiered org chart,
+an indented file explorer, a radial dendrogram, or a sunburst you can drill
+into — whichever suits what you are showing. Change `layout` and nothing else.
 
 **The number that matters:** 5,000–50,000 nodes at 60fps. A DOM-per-node chart
 cannot get there — 50,000 component instances plus as many connector elements
