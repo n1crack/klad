@@ -1,6 +1,7 @@
 import type { Bounds } from './types.js'
 import type { Camera } from './viewport.js'
 import type { EdgeStyle, Renderer } from './render/renderer.js'
+import type { DropMode } from './drag/drop-target.js'
 import { edgeAnchors, edgeBBox, edgeStyleDrawsConnectors } from './render/edge-geometry.js'
 import { isSectorVisible } from './render/sector.js'
 import type { ExportData } from './render/svg.js'
@@ -90,6 +91,17 @@ export interface ChartEngine {
    */
   setFocus(sourceIndex: number): void
   setDrag(sourceIndex: number): void
+  /**
+   * The node a drop would land on right now, what it would mean, and whether
+   * it is allowed — see `Frame.dropIndex`. `-1` clears it.
+   *
+   * Paint-only, like `setHighlight` and `setSelection`: a drop preview is a
+   * statement about what WOULD happen, so nothing about the layout may depend
+   * on it. The caller resolves the target itself (`hitTest`, then
+   * `resolveDropMode` and `isDropAllowed` from `drag/drop-target.js`) — the
+   * engine does not own the pointer.
+   */
+  setDropTarget(sourceIndex: number, mode: DropMode, valid: boolean): void
   /**
    * Enables or disables the expand/collapse layout transition. Disabling
    * mid-transition snaps straight to the final layout — for a host honouring
@@ -1195,6 +1207,11 @@ export function createChartEngine(renderer: Renderer): ChartEngine {
   let selectionSource: Uint32Array | null = null
   let selectionBuffer: Uint8Array | null = null
   let dragSource = -1
+  /** SOURCE index a drop would land on, and what it would mean — see
+   * `Frame.dropIndex`. `-1` whenever nothing is being dragged over anything. */
+  let dropSource = -1
+  let dropMode: DropMode = 'into'
+  let dropValid = true
 
   let layoutDirty = true
   // Reused across frames and grown, never shrunk. After a relayout collapses the
@@ -1923,6 +1940,10 @@ export function createChartEngine(renderer: Renderer): ChartEngine {
         }
       }
     }
+    // O(1) rather than the linear scan above: `prunedFromSource` is already
+    // built every relayout, and the drop target changes on every pointer move
+    // where the drag source changes once per gesture.
+    const dropPruned = dropSource === -1 ? -1 : (prunedFromSource[dropSource] ?? -1)
 
     renderer.draw({
       boxes: renderBoxes,
@@ -1954,6 +1975,9 @@ export function createChartEngine(renderer: Renderer): ChartEngine {
       highlight: highlightBuffer,
       selected: selectionBuffer,
       dragIndex: dragPruned,
+      dropIndex: dropPruned,
+      dropMode,
+      dropValid,
       revealAlpha,
       ghostBoxes: ghostDrawBoxes,
       ghostAlpha: ghostDrawAlpha,
@@ -2133,6 +2157,11 @@ export function createChartEngine(renderer: Renderer): ChartEngine {
     },
     setDrag(index) {
       dragSource = index
+    },
+    setDropTarget(sourceIndex, mode, valid) {
+      dropSource = sourceIndex
+      dropMode = mode
+      dropValid = valid
     },
     setAnimate(enabled) {
       animate = enabled

@@ -2382,6 +2382,12 @@ export function createKlad(host: HTMLElement, options: Options): KladInstance {
         highlight: null,
         selected: null,
         dragIndex: -1,
+        // An export is a picture of the CHART; a drop preview is a picture of
+        // what someone is in the middle of doing to it. Same reasoning as
+        // highlight and selection, a few lines up.
+        dropIndex: -1,
+        dropMode: 'into',
+        dropValid: true,
         revealAlpha: null,
         ghostBoxes: EMPTY_GHOST_BOXES,
         ghostAlpha: EMPTY_GHOST_ALPHA,

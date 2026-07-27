@@ -1,3 +1,4 @@
+import type { DropMode } from '../drag/drop-target.js'
 import type { Camera } from '../viewport.js'
 import type { LodTier } from './lod.js'
 import type { Theme } from './theme.js'
@@ -204,6 +205,26 @@ export interface Frame {
   selected: Uint8Array | null
   /** Node currently being dragged, or -1. Drawn with reduced alpha. */
   dragIndex: number
+  /**
+   * The node a drop would land on right now, or `-1` when nothing is being
+   * dragged over anything.
+   *
+   * Drawn as a preview of the result, not as a hover state: `into` outlines
+   * the target, `before`/`after` draw an insertion line along the edge the
+   * node would arrive at. A drag that only lit up whatever was under the
+   * pointer would leave the viewer to guess which of the three a drop means,
+   * and the whole point of the edge bands is that they mean different things.
+   */
+  dropIndex: number
+  dropMode: DropMode
+  /**
+   * False when the drop under the pointer would be refused — the target is
+   * inside the subtree being dragged. Drawn in the refusal colour rather than
+   * simply not drawn: "nothing happens here" and "you are pointing at nothing"
+   * look identical when the answer is an absence, and only one of them is
+   * true.
+   */
+  dropValid: boolean
   /**
    * Per-SLOT opacity override for `visible[0, visibleCount)` — `revealAlpha[n]`
    * pairs with `visible[n]`, unlike `highlight` which is keyed by pruned

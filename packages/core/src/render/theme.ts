@@ -117,6 +117,22 @@ export interface Theme {
    * consults it.
    */
   labelColourInverse: string
+  /**
+   * The drop preview during a drag: the outline around a node a drop would go
+   * INTO, and the insertion line for a drop beside one.
+   *
+   * Its own token rather than a reuse of `selectionStroke`, which it would sit
+   * next to constantly — a drag usually starts from a selection. Same reason
+   * selection is separate from highlight: they co-occur, and a viewer who
+   * cannot tell "what I picked" from "where this is going" has lost the
+   * distinction that makes the preview worth drawing.
+   */
+  dropStroke: string
+  /** The same preview where the drop would be REFUSED — the target is inside
+   * the subtree being dragged. Drawn rather than omitted: an absence cannot
+   * distinguish "not allowed" from "not pointing at anything". */
+  dropRefusedStroke: string
+  dropStrokeWidth: number
   /** Colour of the one-shot expand/collapse confirmation ring. */
   ringStroke: string
   /**
@@ -171,6 +187,9 @@ export const DEFAULT_THEME: Readonly<Theme> = Object.freeze({
   surface: '#ffffff',
   sectorGap: 1.5,
   labelColourInverse: '#ffffff',
+  dropStroke: '#16a34a',
+  dropRefusedStroke: '#dc2626',
+  dropStrokeWidth: 2.5,
   // Reuses the highlight accent rather than introducing a new hue — the
   // ring and the highlight both mean "this node", so sharing a colour
   // keeps the palette's visual vocabulary small.
@@ -221,6 +240,10 @@ export const DARK_THEME: Readonly<Theme> = Object.freeze({
   // custom property the page's background uses, exactly like `nodeFill`.
   surface: '#111318',
   labelColourInverse: '#0b0b0b',
+  // Lifted for a dark surface. Both keep their meaning — go / no — which is
+  // why they move step rather than hue.
+  dropStroke: '#4ade80',
+  dropRefusedStroke: '#f87171',
 })
 
 /** Assigns `value` into `target[key]` only when it is not `undefined`. */

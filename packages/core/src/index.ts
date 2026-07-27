@@ -23,6 +23,9 @@ export { file } from './layout/file.js'
 export { radial } from './layout/radial.js'
 export { hitTestSector, sunburst } from './layout/sunburst.js'
 
+export type { DropMode, DropTarget } from './drag/drop-target.js'
+export { dropPosition, isDropAllowed, resolveDropMode, subtreeMask } from './drag/drop-target.js'
+
 export type { Orientation } from './layout/orientation.js'
 export { applyOrientation } from './layout/orientation.js'
 

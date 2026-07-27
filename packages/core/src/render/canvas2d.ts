@@ -682,6 +682,48 @@ export function createCanvas2DRenderer(
       }
     }
 
+    // The drop preview, drawn over the nodes and their labels: it is the most
+    // important thing on screen for as long as it is there, and a drag is
+    // exactly when a viewer is looking for it rather than at the data.
+    //
+    // A preview of the RESULT, not a hover state. `into` outlines the target;
+    // `before`/`after` draw a line along the edge the node would arrive at.
+    // Lighting up whatever is under the pointer would leave the three modes
+    // indistinguishable, and the edge bands exist precisely because they mean
+    // different things.
+    if (frame.dropIndex !== -1) {
+      const i = frame.dropIndex
+      ctx.strokeStyle = frame.dropValid ? theme.dropStroke : theme.dropRefusedStroke
+      ctx.lineWidth = theme.dropStrokeWidth
+      if (frame.dropMode === 'into') {
+        ctx.beginPath()
+        if (traceNode(i)) ctx.stroke()
+      } else {
+        // The insertion line runs ACROSS the axis siblings are laid out along
+        // — the same axis the edge bands were measured on, so the line appears
+        // exactly where the pointer said. On a wheel `dropMode` is always
+        // `into`, so this branch is never a question of angles.
+        const o = i * 4
+        const x = boxes[o]! * k + camera.x
+        const y = boxes[o + 1]! * k + camera.y
+        const w = boxes[o + 2]! * k
+        const h = boxes[o + 3]! * k
+        const along = frame.edgeStyle === 'folder' || frame.horizontal ? 'y' : 'x'
+        const after = frame.dropMode === 'after'
+        ctx.beginPath()
+        if (along === 'y') {
+          const lineY = after ? y + h : y
+          ctx.moveTo(x, lineY)
+          ctx.lineTo(x + w, lineY)
+        } else {
+          const lineX = after ? x + w : x
+          ctx.moveTo(lineX, y)
+          ctx.lineTo(lineX, y + h)
+        }
+        ctx.stroke()
+      }
+    }
+
     // One-shot expand/collapse confirmation ring, drawn last so it isn't
     // occluded by a neighbouring node or its own label. A single stroked
     // path regardless of tree size — at most one ring is ever live (see
