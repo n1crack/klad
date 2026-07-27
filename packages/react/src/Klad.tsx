@@ -44,6 +44,9 @@ export interface KladProps {
   onNodeClick?: KladEvents['nodeClick']
   onNodeHover?: KladEvents['nodeHover']
   onNodeDblClick?: KladEvents['nodeDblClick']
+  /** A node was dropped somewhere new, before anything moves. Call the event's
+   * `preventDefault()` to refuse it. */
+  onNodeDrop?: KladEvents['nodeDrop']
   onToggle?: KladEvents['toggle']
   onWarning?: KladEvents['warning']
   onReady?: KladEvents['ready']
@@ -107,6 +110,7 @@ export function Klad(props: KladProps): ReactNode {
     onNodeClick: props.onNodeClick,
     onNodeHover: props.onNodeHover,
     onNodeDblClick: props.onNodeDblClick,
+    onNodeDrop: props.onNodeDrop,
     onToggle: props.onToggle,
     onWarning: props.onWarning,
     onReady: props.onReady,
@@ -115,6 +119,7 @@ export function Klad(props: KladProps): ReactNode {
     onNodeClick: props.onNodeClick,
     onNodeHover: props.onNodeHover,
     onNodeDblClick: props.onNodeDblClick,
+    onNodeDrop: props.onNodeDrop,
     onToggle: props.onToggle,
     onWarning: props.onWarning,
     onReady: props.onReady,
@@ -179,6 +184,7 @@ export function Klad(props: KladProps): ReactNode {
       chart.on('nodeClick', (event) => handlersRef.current.onNodeClick?.(event)),
       chart.on('nodeHover', (event) => handlersRef.current.onNodeHover?.(event)),
       chart.on('nodeDblClick', (event) => handlersRef.current.onNodeDblClick?.(event)),
+      chart.on('nodeDrop', (event) => handlersRef.current.onNodeDrop?.(event)),
       chart.on('toggle', (event) => handlersRef.current.onToggle?.(event)),
       chart.on('warning', (warning) => handlersRef.current.onWarning?.(warning)),
       chart.on('ready', () => handlersRef.current.onReady?.()),

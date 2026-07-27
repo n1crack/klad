@@ -17,6 +17,7 @@ import {
   minimapDefaultPosition,
   minimapOptionFor,
   modeThemeFor,
+  dropDetail,
   rowFields,
   isBranchRow,
   optionsForLayout,
@@ -204,6 +205,8 @@ export interface ReactDemoHandle {
 
 export interface ReactDemoProps {
   example: Example
+  /** Reports a completed drop for the demo's log — see `dropDetail`. */
+  onDrop?: (detail: { ids: string[]; parentId: string | null; mode: string }) => void
   /** Which shape to draw in. Changing it remounts (see main.ts's `show`) —
    * the content treatment changes with it, and that is a construction-time
    * choice. */
@@ -222,7 +225,7 @@ export interface ReactDemoProps {
  * function that returns null) so this adapter never claims overlay DOM it
  * doesn't need — matching the vanilla and Vue "canvas only" behaviour.
  */
-export function ReactDemo({ example, layout, mode, onReady, ref }: ReactDemoProps): ReactNode {
+export function ReactDemo({ example, layout, mode, onReady, onDrop, ref }: ReactDemoProps): ReactNode {
   const chartRef = useRef<KladHandle>(null)
 
   /**
@@ -286,6 +289,18 @@ export function ReactDemo({ example, layout, mode, onReady, ref }: ReactDemoProp
     [example, layout],
   )
 
+  /**
+   * The drop log, reported the same way the other two demos do — see
+   * `dropDetail`. Not refused: the example is about the chart applying the
+   * move.
+   */
+  const handleNodeDrop = useCallback(
+    (event: { ids: string[]; parentId: string | null; mode: string }) => {
+      onDrop?.(dropDetail(example.data, event.ids, event.parentId, event.mode))
+    },
+    [example, onDrop],
+  )
+
   const handleReady = useCallback(() => {
     if (chartRef.current?.api) onReady?.(chartRef.current.api)
   }, [onReady])
@@ -347,12 +362,26 @@ export function ReactDemo({ example, layout, mode, onReady, ref }: ReactDemoProp
   // is what stops this adapter claiming overlay DOM it does not need.
   const content = contentForLayout(example, layout)
   if (content === 'none') {
-    return <Klad ref={chartRef} className="chart-host" options={options} onReady={handleReady} />
+    return (
+      <Klad
+        ref={chartRef}
+        className="chart-host"
+        options={options}
+        onReady={handleReady}
+        onNodeDrop={handleNodeDrop}
+      />
+    )
   }
 
   const render = RENDERERS[content]
   return (
-    <Klad ref={chartRef} className="chart-host" options={options} onReady={handleReady}>
+    <Klad
+      ref={chartRef}
+      className="chart-host"
+      options={options}
+      onReady={handleReady}
+      onNodeDrop={handleNodeDrop}
+    >
       {render}
     </Klad>
   )

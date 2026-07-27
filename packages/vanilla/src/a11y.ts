@@ -30,6 +30,21 @@ export interface A11yCallbacks {
   onActivate(id: string): void
   /** The row gained focus; the camera should follow. */
   onFocus(id: string): void
+  /**
+   * The keyboard equivalent of a drag: `m` picks a node up ("move"), arrows
+   * carry the focus somewhere else, and `m` again drops it INTO whatever is
+   * focused. Escape puts it back down.
+   *
+   * `to` is `null` for a cancel. Returns what happened, so this module can say
+   * it out loud — a keyboard user gets no drop preview, so the announcement IS
+   * the feedback.
+   *
+   * Only `into`: `before`/`after` are a question about a position between two
+   * things, and the row list gives a keyboard user no way to point at a gap.
+   * Reparenting is the part that has no other keyboard route at all; ordering
+   * within a parent is a job for the host's own UI.
+   */
+  onMove(id: string, to: string | null): 'moved' | 'refused' | 'cancelled'
 }
 
 /**
@@ -57,6 +72,47 @@ export function createA11yTree(container: HTMLElement, callbacks: A11yCallbacks)
   root.style.clipPath = 'inset(50%)'
   root.style.whiteSpace = 'nowrap'
   container.appendChild(root)
+
+  /**
+   * Where the keyboard-move gesture speaks.
+   *
+   * A pointer drag has a preview — the outline, the insertion line, the ghost.
+   * A keyboard user has none of that, so the announcement is not a courtesy on
+   * top of the feedback, it IS the feedback: without it, pressing M twice does
+   * something invisible and unconfirmed.
+   *
+   * `polite` rather than `assertive`: these fire in response to a deliberate
+   * keypress, so they will be reached in turn, and interrupting whatever the
+   * reader is mid-sentence on would be louder than the event deserves. A
+   * sibling of the tree rather than a child, so a row's own subtree is not
+   * disturbed by text appearing inside it.
+   */
+  const live = document.createElement('div')
+  live.setAttribute('aria-live', 'polite')
+  live.setAttribute('role', 'status')
+  live.style.position = 'absolute'
+  live.style.width = '1px'
+  live.style.height = '1px'
+  live.style.overflow = 'hidden'
+  live.style.clipPath = 'inset(50%)'
+  live.style.whiteSpace = 'nowrap'
+  container.appendChild(live)
+
+  const announce = (message: string): void => {
+    // Cleared first: an identical string written twice is not a DOM change,
+    // and a live region only announces what changed — so "could not be moved"
+    // twice in a row would be said once.
+    live.textContent = ''
+    live.textContent = message
+  }
+
+  /** A node's own label, for an announcement. Falls back to the id, exactly
+   * as the rows themselves do. */
+  const labelFor = (id: string): string => {
+    const index = currentTree?.idToIndex.get(id)
+    if (index === undefined || currentLabelOf === undefined) return id
+    return currentLabelOf(index) || id
+  }
 
   // `pool[i]` is the row currently sitting at document position `i`, once it
   // has been attached at least once. `activeCount` is how many of them were
@@ -243,11 +299,40 @@ export function createA11yTree(container: HTMLElement, callbacks: A11yCallbacks)
     rowsById.get(id)?.focus()
   }
 
+  /** The node currently picked up by the keyboard, or `null`. */
+  let grabbed: string | null = null
+
   const onKeyDown = (event: KeyboardEvent): void => {
     const target = event.target as HTMLElement
     const id = target.dataset.orgchartId
     if (id === undefined) return
     const pos = seqPosById.get(id)
+
+    if (event.key === 'm' || event.key === 'M') {
+      event.preventDefault()
+      if (grabbed === null) {
+        grabbed = id
+        announce(`${labelFor(id)} picked up. Move to a node and press M to drop it there, or Escape to cancel.`)
+      } else {
+        const from = grabbed
+        grabbed = null
+        const result = callbacks.onMove(from, id)
+        announce(
+          result === 'moved'
+            ? `${labelFor(from)} moved into ${labelFor(id)}.`
+            : `${labelFor(from)} could not be moved into ${labelFor(id)}.`,
+        )
+      }
+      return
+    }
+    if (event.key === 'Escape' && grabbed !== null) {
+      event.preventDefault()
+      const from = grabbed
+      grabbed = null
+      callbacks.onMove(from, null)
+      announce(`${labelFor(from)} put back.`)
+      return
+    }
 
     switch (event.key) {
       case 'Enter':
@@ -458,6 +543,7 @@ export function createA11yTree(container: HTMLElement, callbacks: A11yCallbacks)
 
     destroy() {
       root.removeEventListener('keydown', onKeyDown)
+      live.remove()
       root.removeEventListener('focusin', onFocusIn)
       root.remove()
       rowsById.clear()

@@ -2077,3 +2077,126 @@ describe('setLayoutOptions', () => {
     chart.destroy()
   })
 })
+
+describe('drag and drop', () => {
+  /** A press, a travel past the threshold, and a release — the shape
+   * `input.ts` turns into a claimed drag. `steps` matters: a single jump
+   * would cross the threshold and land in the same event, leaving no move
+   * for the drop preview to be resolved from. */
+  async function drag(el: HTMLElement, from: { x: number; y: number }, to: { x: number; y: number }) {
+    const rect = el.getBoundingClientRect()
+    const at = (p: { x: number; y: number }) => ({
+      clientX: rect.left + p.x,
+      clientY: rect.top + p.y,
+      pointerId: 1,
+      button: 0,
+      bubbles: true,
+    })
+    el.dispatchEvent(new PointerEvent('pointerdown', at(from)))
+    for (let s = 1; s <= 5; s++) {
+      const point = { x: from.x + ((to.x - from.x) * s) / 5, y: from.y + ((to.y - from.y) * s) / 5 }
+      window.dispatchEvent(new PointerEvent('pointermove', at(point)))
+      await nextFrame()
+    }
+    window.dispatchEvent(new PointerEvent('pointerup', at(to)))
+    await nextFrame()
+    await nextFrame()
+  }
+
+  /** Screen-space centre of a node, from the overlay element the chart wrote
+   * its id onto. */
+  function centreOfCard(id: string): { x: number; y: number } | null {
+    const el = document.querySelector<HTMLElement>(`.klad-overlay-node[data-klad-id="${id}"]`)
+    if (el === null) return null
+    const rect = el.getBoundingClientRect()
+    return { x: rect.left + rect.width / 2, y: rect.top + rect.height / 2 }
+  }
+
+  it('is off unless asked for, so a plain drag still pans', async () => {
+    const chart = make({ renderNode: (el: HTMLElement) => (el.textContent = 'x') })
+    await nextFrame()
+    await settle()
+    const before = chart.api.getState().camera
+    const host = document.querySelector<HTMLElement>('.klad-overlay-node')!.parentElement!
+    // Straight across a card. With `dragAndDrop` off this is still a pan, and
+    // that is the point: turning the feature on is what takes the gesture
+    // away from the camera.
+    await drag(host, { x: 200, y: 200 }, { x: 320, y: 260 })
+    expect(chart.api.getState().camera).not.toEqual(before)
+    chart.destroy()
+  })
+
+  it('reparents a node onto another, and reports it before applying', async () => {
+    const dropped: { ids: string[]; parentId: string | null; mode: string }[] = []
+    const chart = make({
+      dragAndDrop: true,
+      renderNode: (el: HTMLElement, ctx: { item: { name?: unknown } }) => {
+        el.textContent = String(ctx.item.name ?? '')
+      },
+    })
+    chart.on('nodeDrop', ({ ids, parentId, mode }) => dropped.push({ ids, parentId, mode }))
+    await nextFrame()
+    await settle()
+
+    const host = document.querySelector<HTMLElement>('.klad-overlay-node')!.parentElement!
+    const hostRect = host.getBoundingClientRect()
+    const from = centreOfCard('d')!
+    const to = centreOfCard('c')!
+    await drag(
+      host,
+      { x: from.x - hostRect.left, y: from.y - hostRect.top },
+      { x: to.x - hostRect.left, y: to.y - hostRect.top },
+    )
+    await settleTransition()
+
+    expect(dropped.length).toBe(1)
+    expect(dropped[0]!.ids).toEqual(['d'])
+    expect(dropped[0]!.parentId).toBe('c')
+    expect(dropped[0]!.mode).toBe('into')
+    chart.destroy()
+  })
+
+  it('lets a handler refuse the move', async () => {
+    const chart = make({
+      dragAndDrop: true,
+      renderNode: (el: HTMLElement, ctx: { item: { name?: unknown } }) => {
+        el.textContent = String(ctx.item.name ?? '')
+      },
+    })
+    chart.on('nodeDrop', (event) => event.preventDefault())
+    await nextFrame()
+    await settle()
+
+    const host = document.querySelector<HTMLElement>('.klad-overlay-node')!.parentElement!
+    const hostRect = host.getBoundingClientRect()
+    const from = centreOfCard('d')!
+    const to = centreOfCard('c')!
+    await drag(
+      host,
+      { x: from.x - hostRect.left, y: from.y - hostRect.top },
+      { x: to.x - hostRect.left, y: to.y - hostRect.top },
+    )
+    await settleTransition()
+
+    // Refused: `d` is still a child of `a`, which is where it started. A
+    // handler that had to UNDO a move it did not want would have to know how,
+    // and would flash the wrong tree on the way.
+    expect(centreOfCard('d')).not.toBeNull()
+    expect(chart.api.stats('a')!.directChildren).toBe(2)
+    chart.destroy()
+  })
+
+  it('stamps each overlay slot with the node it is showing', async () => {
+    // Slots are pooled and reassigned as the camera moves, so this is the only
+    // way to find a node's element — and a drag needs it in order to clone the
+    // card it picked up.
+    const chart = make({ renderNode: (el: HTMLElement) => (el.textContent = 'x') })
+    await nextFrame()
+    const ids = [...document.querySelectorAll<HTMLElement>('.klad-overlay-node')].map(
+      (el) => el.dataset.kladId,
+    )
+    expect(ids.length).toBeGreaterThan(0)
+    expect(ids.every((id) => id !== undefined && id !== '')).toBe(true)
+    chart.destroy()
+  })
+})

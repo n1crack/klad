@@ -50,6 +50,7 @@ import { attachInput } from './input.js'
 import { attachKeys } from './keys.js'
 import { attachMarquee, pointInPolygon } from './marquee.js'
 import { createMinimap, type Minimap, type MinimapOptions } from './minimap.js'
+import { createDragGhost } from './drag-ghost.js'
 import { createOverlay } from './overlay.js'
 
 /**
@@ -923,6 +924,18 @@ export function createKlad(host: HTMLElement, options: Options): KladInstance {
 
   /** The nodes this drag is carrying, by id. Empty when nothing is dragging. */
   let dragIds: string[] = []
+  const dragGhost = createDragGhost(host)
+  /**
+   * Auto-pan while a drag sits near an edge.
+   *
+   * Without it a drop is only possible onto something already on screen, which
+   * on a chart big enough to need dragging is most of the time the wrong
+   * place. The pointer is held still by the viewer; the CHART moves under it,
+   * which is the same gesture every file manager and calendar uses for the
+   * same reason.
+   */
+  let edgePan: { x: number; y: number } = { x: 0, y: 0 }
+  let edgePanFrame: number | null = null
   /**
    * A mask over SOURCE indices marking everything the drag carries, built
    * once at drag start. Source rather than pruned because the gesture outlives
@@ -937,6 +950,41 @@ export function createKlad(host: HTMLElement, options: Options): KladInstance {
   let dropTargetIndex = -1
   let dropTargetMode: DropMode = 'into'
   let dropTargetValid = true
+
+  /** Screen px from the edge within which a drag starts panning, and how fast
+   * it goes at the very edge (px per frame). */
+  const EDGE_ZONE_PX = 56
+  const EDGE_SPEED_PX = 14
+
+  const stepEdgePan = (): void => {
+    edgePanFrame = null
+    if (edgePan.x === 0 && edgePan.y === 0) return
+    setCameraInstant(pan(camera, -edgePan.x, -edgePan.y))
+    edgePanFrame = requestAnimationFrame(stepEdgePan)
+  }
+
+  /** How hard to pan, given where the pointer is in the host. Ramps with depth
+   * into the zone rather than switching on: a fixed speed the moment you cross
+   * a line feels like the chart lurching away from you. */
+  const updateEdgePan = (screenX: number, screenY: number): void => {
+    const rect = host.getBoundingClientRect()
+    const axis = (position: number, extent: number): number => {
+      if (position < EDGE_ZONE_PX) return -(1 - position / EDGE_ZONE_PX) * EDGE_SPEED_PX
+      const fromEnd = extent - position
+      if (fromEnd < EDGE_ZONE_PX) return (1 - fromEnd / EDGE_ZONE_PX) * EDGE_SPEED_PX
+      return 0
+    }
+    edgePan = { x: axis(screenX, rect.width), y: axis(screenY, rect.height) }
+    if ((edgePan.x !== 0 || edgePan.y !== 0) && edgePanFrame === null) {
+      edgePanFrame = requestAnimationFrame(stepEdgePan)
+    }
+  }
+
+  const stopEdgePan = (): void => {
+    edgePan = { x: 0, y: 0 }
+    if (edgePanFrame !== null) cancelAnimationFrame(edgePanFrame)
+    edgePanFrame = null
+  }
 
   const setDropTarget = (index: number, mode: DropMode, valid: boolean): void => {
     if (index === dropTargetIndex && mode === dropTargetMode && valid === dropTargetValid) return
@@ -2166,6 +2214,25 @@ export function createKlad(host: HTMLElement, options: Options): KladInstance {
         })
       : () => {}
 
+  /**
+   * The overlay element currently showing node `source`, or `null` when the
+   * chart is not drawing cards at this zoom (or this node is off screen).
+   *
+   * The overlay pools its elements by SLOT rather than by node — see
+   * `createOverlay` — so there is no map from a node to its element, and
+   * building one would mean the pool telling the world about an internal
+   * detail it exists to hide. Reading the id back off the element it wrote is
+   * cheap enough for a gesture that happens once.
+   */
+  const overlayElementOf = (source: number): HTMLElement | null => {
+    const id = tree.indexToId[source]
+    if (id === undefined) return null
+    for (const element of host.querySelectorAll<HTMLElement>('.klad-overlay-node')) {
+      if (element.dataset.kladId === id) return element
+    }
+    return null
+  }
+
   const detachInput = attachInput(host, () => limits, {
     getCamera: () => camera,
     setCamera: setCameraInstant,
@@ -2283,11 +2350,17 @@ export function createKlad(host: HTMLElement, options: Options): KladInstance {
       // move, at pointer frequency, on a tree of unbounded depth.
       dragMask = subtreeMask(tree, roots)
       chartHost.setDrag(index)
+      // The card the pointer picked up, if the chart is drawing cards at this
+      // zoom — see `createDragGhost` for the fallback when it is not.
+      dragGhost.show(overlayElementOf(index), labelOf(itemFor(index)), dragIds.length)
+      dragGhost.move(screenX, screenY)
       host.classList.add('klad-dragging')
       scheduleFrame()
       return true
     },
     onDragMove(screenX, screenY) {
+      dragGhost.move(screenX, screenY)
+      updateEdgePan(screenX, screenY)
       const world = screenToWorld(camera, screenX, screenY)
       const index = hitTestLocal(world.x, world.y)
       if (index === -1 || dragMask === null) {
@@ -2320,6 +2393,8 @@ export function createKlad(host: HTMLElement, options: Options): KladInstance {
 
       dragIds = []
       dragMask = null
+      dragGhost.hide()
+      stopEdgePan()
       chartHost.setDrag(-1)
       setDropTarget(-1, 'into', true)
       host.classList.remove('klad-dragging')
@@ -2818,6 +2893,34 @@ export function createKlad(host: HTMLElement, options: Options): KladInstance {
     onFocus(id) {
       api.focus(id)
     },
+    /**
+     * The keyboard's whole drag-and-drop: `m` to pick up, `m` again over a
+     * target to drop it in. Goes through the same `nodeDrop` event and the
+     * same refusal rule as the pointer — a move made with the keyboard is not
+     * a different kind of move, and a host that had to handle two would
+     * eventually handle one of them wrong.
+     */
+    onMove(id, to) {
+      if (to === null) return 'cancelled'
+      if (currentOptions.dragAndDrop !== true) return 'refused'
+      const from = tree.idToIndex.get(id)
+      const target = tree.idToIndex.get(to)
+      if (from === undefined || target === undefined) return 'refused'
+      if (!isDropAllowed(subtreeMask(tree, [from]), target)) return 'refused'
+
+      emitDrop([id], target, 'into')
+
+      // Read the result rather than assume it: `emitDrop` applies the move
+      // only if the `nodeDrop` handler did not refuse it, and a refusal is a
+      // legitimate answer the announcement has to reflect. `tree` is rebuilt
+      // on a real move, so both lookups are against the new one — the node
+      // now having `to` as its parent IS the observable difference.
+      const moved = tree.idToIndex.get(id)
+      const landed = tree.idToIndex.get(to)
+      return moved !== undefined && landed !== undefined && tree.parent[moved] === landed
+        ? 'moved'
+        : 'refused'
+    },
   })
 
   rebuildItemIndex()
@@ -2835,6 +2938,8 @@ export function createKlad(host: HTMLElement, options: Options): KladInstance {
       cancelCameraAnimation()
       observer.disconnect()
       detachInput()
+      dragGhost.destroy()
+      stopEdgePan()
       detachKeys()
       detachMarquee()
       overlay?.destroy()

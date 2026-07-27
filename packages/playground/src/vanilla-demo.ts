@@ -7,6 +7,7 @@ import {
   minimapDefaultPosition,
   minimapOptionFor,
   modeThemeFor,
+  dropDetail,
   rowFields,
   isBranchRow,
   optionsForLayout,
@@ -545,6 +546,7 @@ export function mountVanilla(
   layout: LayoutName,
   mode: ThemeMode,
   onApiChange: (api: KladApi) => void,
+  onDrop?: (detail: { ids: string[]; parentId: string | null; mode: string }) => void,
 ): VanillaDemoHandle {
   // The content treatment follows the LAYOUT, not the example — see
   // `LAYOUT_PRESETS` in data.ts. A wheel draws its own text on the canvas and
@@ -692,20 +694,8 @@ export function mountVanilla(
    */
   let stopDrop: (() => void) | null = null
   if (example.dropControl === true) {
-    // Reported by NAME, not by id. The chart speaks ids and the cards show
-    // names, and a log that answered "n15 → into n5" about two cards reading
-    // "Person 16" and "Person 6" is a puzzle rather than a confirmation.
-    const nameOf = (id: string): string => {
-      const item = example.data.find((each) => String(each.id) === id)
-      return String(item?.name ?? id)
-    }
     stopDrop = chart.on('nodeDrop', ({ ids, parentId, mode }) => {
-      host.dispatchEvent(
-        new CustomEvent('playground:drop', {
-          detail: { ids: ids.map(nameOf), parentId: parentId === null ? null : nameOf(parentId), mode },
-          bubbles: true,
-        }),
-      )
+      onDrop?.(dropDetail(example.data, ids, parentId, mode))
     })
   }
 

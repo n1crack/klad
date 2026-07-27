@@ -77,6 +77,13 @@ export function createOverlay(container: HTMLElement, callbacks: OverlayCallback
         // overridden by an inline rule on every frame.
         const alpha = alphaOf(item.index)
         element.style.opacity = alpha >= 1 ? '' : String(alpha)
+        // Which node this slot is currently showing. Slots are pooled and
+        // reassigned as the camera moves, so the element cannot be found by
+        // node any other way — and something has to be able to: a drag needs
+        // the card it picked up in order to clone it, and a test needs to
+        // assert that a given node rendered. Written every frame because the
+        // answer changes every frame.
+        if (element.dataset.kladId !== item.id) element.dataset.kladId = item.id
         callbacks.render(element, item)
         activeCount++
       }

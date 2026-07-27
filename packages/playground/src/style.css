@@ -2149,3 +2149,54 @@ body {
   accent-color: var(--accent);
   cursor: pointer;
 }
+
+/* The card that follows the cursor during a drag. Tilted and lifted so it
+   reads as picked up rather than as a second copy sitting in the tree. */
+.klad-drag-ghost {
+  transform-origin: 0 0;
+  opacity: 0.9;
+  filter: drop-shadow(0 8px 16px rgba(0, 0, 0, 0.35));
+  rotate: -2deg;
+}
+
+.klad-drag-ghost-label {
+  padding: 0.3rem 0.6rem;
+  border-radius: var(--radius-sm);
+  background: var(--surface-raised);
+  border: 1px solid var(--border-strong);
+  font-size: 0.78rem;
+  white-space: nowrap;
+}
+
+/* How many nodes are being carried. Only appears above one — a badge reading
+   "1" is noise. */
+.klad-drag-ghost-count {
+  position: absolute;
+  top: -0.4rem;
+  right: -0.4rem;
+  min-width: 1.15rem;
+  padding: 0 0.25rem;
+  border-radius: 999px;
+  background: var(--accent);
+  color: var(--accent-contrast);
+  font-size: 0.68rem;
+  font-weight: 700;
+  line-height: 1.15rem;
+  text-align: center;
+}
+
+/* The pointer is carrying something; say so everywhere, including over the
+   cards it passes. */
+.surface .klad-dragging,
+.surface .klad-dragging * {
+  cursor: grabbing !important;
+}
+
+/* The container each stack mounts into. A child of `.surface` rather than
+   `.surface` itself, because Vue and React both clear the element they are
+   handed — see the note in main.ts's `show`. The floating panels are siblings
+   of this, so nothing the adapters do can take them with it. */
+.surface-chart {
+  position: absolute;
+  inset: 0;
+}

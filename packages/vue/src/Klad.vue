@@ -15,6 +15,12 @@ const emit = defineEmits<{
   nodeClick: Parameters<KladEvents['nodeClick']>
   nodeHover: Parameters<KladEvents['nodeHover']>
   nodeDblClick: Parameters<KladEvents['nodeDblClick']>
+  /**
+   * A node was dropped somewhere new, BEFORE anything moves. Call the event's
+   * own `preventDefault()` to refuse it — Vue's emit has no return channel,
+   * so the veto travels on the payload rather than as a return value.
+   */
+  nodeDrop: Parameters<KladEvents['nodeDrop']>
   toggle: Parameters<KladEvents['toggle']>
   warning: Parameters<KladEvents['warning']>
   ready: Parameters<KladEvents['ready']>
@@ -77,6 +83,9 @@ onMounted(() => {
   chart.on('nodeClick', (event) => emit('nodeClick', event))
   chart.on('nodeHover', (event) => emit('nodeHover', event))
   chart.on('nodeDblClick', (event) => emit('nodeDblClick', event))
+  // Emitted SYNCHRONOUSLY, which is what makes `preventDefault()` on the
+  // payload work: the vanilla layer reads it back the instant this returns.
+  chart.on('nodeDrop', (event) => emit('nodeDrop', event))
   chart.on('toggle', (event) => emit('toggle', event))
   chart.on('warning', (warning) => emit('warning', warning))
   chart.on('ready', () => emit('ready'))

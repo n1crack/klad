@@ -742,6 +742,26 @@ export function isBranchRow(item: NodeItem, hasChildren: boolean): boolean {
   return item.kind === 'folder' || (item.kind === undefined && hasChildren)
 }
 
+/**
+ * The drop-log payload, by NAME rather than id.
+ *
+ * Shared by all three demos so they report a move identically — the point of
+ * the playground is that the stacks are directly comparable, and a log that
+ * said different things about the same drag would undercut that. The chart
+ * speaks ids and the cards show names, and "n15 → into n5" about two cards
+ * reading "Person 16" and "Person 6" is a puzzle rather than a confirmation.
+ */
+export function dropDetail(
+  data: NodeItem[],
+  ids: string[],
+  parentId: string | null,
+  mode: string,
+): { ids: string[]; parentId: string | null; mode: string } {
+  const nameOf = (id: string): string =>
+    String(data.find((each) => String(each.id) === id)?.name ?? id)
+  return { ids: ids.map(nameOf), parentId: parentId === null ? null : nameOf(parentId), mode }
+}
+
 /** Which layout an example draws in by default. */
 export function defaultLayoutOf(example: Example): LayoutName {
   return example.options.layout ?? 'tidy'

@@ -10,6 +10,7 @@ import {
   minimapDefaultPosition,
   minimapOptionFor,
   modeThemeFor,
+  dropDetail,
   rowFields,
   isBranchRow,
   optionsForLayout,
@@ -23,7 +24,10 @@ import {
 import type { ThemeMode } from './theme.js'
 
 const props = defineProps<{ example: Example; layout: LayoutName; mode: ThemeMode }>()
-const emit = defineEmits<{ ready: [KladApi] }>()
+const emit = defineEmits<{
+  ready: [KladApi]
+  drop: [{ ids: string[]; parentId: string | null; mode: string }]
+}>()
 
 const chartRef = ref<{ api: KladApi | null } | null>(null)
 
@@ -95,6 +99,16 @@ const options = computed<Options>(() => ({
 
 function handleReady(): void {
   if (chartRef.value?.api) emit('ready', chartRef.value.api)
+}
+
+/**
+ * The drop log, reported the same way the vanilla demo does — see
+ * `dropDetail`. Not `preventDefault()`-ed: the point of the example is that
+ * the chart applies the move, and a demo that vetoed every drop would be
+ * demonstrating the veto.
+ */
+function handleNodeDrop(event: { ids: string[]; parentId: string | null; mode: string }): void {
+  emit('drop', dropDetail(props.example.data, event.ids, event.parentId, event.mode))
 }
 
 function setMinimap(on: boolean): void {
@@ -186,7 +200,13 @@ function headcountOf(item: Item): number {
 </script>
 
 <template>
-  <Klad ref="chartRef" :options="options" class="chart-host" @ready="handleReady">
+  <Klad
+    ref="chartRef"
+    :options="options"
+    class="chart-host"
+    @ready="handleReady"
+    @node-drop="handleNodeDrop"
+  >
     <!--
       One `#node` slot, branching on the LAYOUT's content treatment — the same
       tag the vanilla demo switches on to pick a render function. `v-if` directly on

@@ -1378,26 +1378,16 @@ for (const type of ['pointerdown', 'wheel'] as const) {
   dropField.addEventListener(type, (event) => event.stopPropagation())
 }
 
-let dropListenerBound = false
-
 function syncDropControl(example: Example): void {
   dropField.remove()
   if (example.dropControl !== true) return
   dropLog.textContent = 'Drag a card onto another.'
   surface.append(dropField)
-  if (!dropListenerBound) {
-    dropListenerBound = true
-    // Bound lazily, like the breadcrumb's — `surface` is created further down
-    // this module.
-    surface.addEventListener('playground:drop', (event) => {
-      if (!dropField.isConnected) return
-      reportDrop((event as CustomEvent<{ ids: string[]; parentId: string | null; mode: string }>).detail)
-    })
-  }
 }
 
 /** Called by the demo when a drop lands — see `playground:drop`. */
 function reportDrop(detail: { ids: string[]; parentId: string | null; mode: string }): void {
+  if (!dropField.isConnected) return
   const what = detail.ids.length === 1 ? detail.ids[0]! : `${detail.ids.length} nodes`
   dropLog.textContent =
     detail.mode === 'into'
@@ -1468,10 +1458,9 @@ function syncViewControl(example: Example): void {
 function syncGotoControl(example: Example): void {
   gotoField.remove()
   if (example.gotoControl === true) {
-    // Appended after `surface.innerHTML = ''` has run and before the chart
-    // mounts into it — the panel is absolutely positioned with its own
-    // stacking order, so DOM order relative to the canvas doesn't decide what
-    // is on top.
+    // Appended after the chart has mounted — see the note at the end of
+    // `show`. The panel is absolutely positioned with its own stacking order,
+    // so DOM order relative to the canvas doesn't decide what is on top.
     surface.append(gotoField)
     const depthOf = new Map<string, number>()
     gotoSelect.innerHTML = ''
@@ -1938,14 +1927,21 @@ function show(stack: Stack, exampleId: string, layout: LayoutName): void {
   currentSetMode = null
   surface.innerHTML = ''
 
+  // Each stack mounts into its OWN container, not into `surface` itself.
+  //
+  // Vue's `app.mount()` and React's `createRoot().render()` both take over the
+  // element they are given and clear it — and React's render is asynchronous,
+  // so there is no "append afterwards" that reliably survives it. Giving them
+  // a child of their own means the floating panels are siblings of the chart
+  // rather than things it is about to delete, which is also what they are:
+  // chrome over the drawing, not part of it.
+  const chartRoot = document.createElement('div')
+  chartRoot.className = 'surface-chart'
+  surface.append(chartRoot)
+
   const example = findExample(exampleId)
   layoutBlurb.textContent = LAYOUT_PRESETS[layout]!.blurb
   syncLayoutKnobs(example, layout)
-  syncGotoControl(example)
-  syncViewControl(example)
-  syncSelectionControl(example)
-  syncCentreControl(example, layout)
-  syncDropControl(example)
   // Per-layout CSS hooks. The overlay cards a layout expects are its own
   // business — a file row is not an org card — and scoping their styles to
   // these classes is what keeps each example's look from leaking into the
@@ -1981,9 +1977,16 @@ function show(stack: Stack, exampleId: string, layout: LayoutName): void {
   }
 
   if (stack === 'vanilla') {
-    const chart: VanillaDemoHandle = mountVanilla(surface, example, layout, mode, (api) => {
-      currentApi = api
-    })
+    const chart: VanillaDemoHandle = mountVanilla(
+      chartRoot,
+      example,
+      layout,
+      mode,
+      (api) => {
+        currentApi = api
+      },
+      reportDrop,
+    )
     currentSetMinimap = (on) => chart.setMinimap(on)
     currentSetMinimapPosition = (position) => chart.setMinimapPosition(position)
     currentSetMinimapSilhouette = (colour) => chart.setMinimapSilhouette(colour)
@@ -1997,6 +2000,7 @@ function show(stack: Stack, exampleId: string, layout: LayoutName): void {
       example,
       layout,
       mode,
+      onDrop: reportDrop,
       onReady: (api: KladApi) => {
         currentApi = api
       },
@@ -2005,7 +2009,7 @@ function show(stack: Stack, exampleId: string, layout: LayoutName): void {
     // `setNodeFill`/`setBlockFill`/`setRingStroke`/`setRingEnabled` via
     // `defineExpose`; `app.mount()` returns exactly that exposed public
     // instance for the root component.
-    const instance = app.mount(surface) as unknown as {
+    const instance = app.mount(chartRoot) as unknown as {
       setMinimap: (on: boolean) => void
       setMinimapPosition: (position: MinimapPosition) => void
       setMinimapSilhouette: (colour: string) => void
@@ -2023,13 +2027,14 @@ function show(stack: Stack, exampleId: string, layout: LayoutName): void {
     currentSetMode = (next) => instance.setMode(next)
     teardown = () => app.unmount()
   } else {
-    const root: Root = createRoot(surface)
+    const root: Root = createRoot(chartRoot)
     const reactHandle: { current: ReactDemoHandle | null } = { current: null }
     root.render(
       createElement(ReactDemo, {
         example,
         layout,
         mode,
+        onDrop: reportDrop,
         onReady: (api: KladApi) => {
           currentApi = api
         },
@@ -2045,6 +2050,16 @@ function show(stack: Stack, exampleId: string, layout: LayoutName): void {
     currentSetMode = (next) => reactHandle.current?.setMode(next)
     teardown = () => root.unmount()
   }
+
+  // The floating panels, onto `surface` — beside `chartRoot`, never inside it.
+  // See the note where `chartRoot` is created for why that separation exists
+  // at all; before it, the selection, branch and breadcrumb panels appeared
+  // only on the vanilla stack, because the other two deleted them on mount.
+  syncGotoControl(example)
+  syncViewControl(example)
+  syncSelectionControl(example)
+  syncCentreControl(example, layout)
+  syncDropControl(example)
 }
 
 function refresh(): void {
