@@ -3,6 +3,10 @@ import {
   applyOrientation,
   centreOn,
   createCanvas2DRenderer,
+  dropPosition,
+  isDropAllowed,
+  resolveDropMode,
+  subtreeMask,
   edgeStyleForLayout,
   isPolarLayout,
   resolveLayout,
@@ -25,6 +29,7 @@ import {
   zoomAt,
   type Bounds,
   type Camera,
+  type DropMode,
   type ExportData,
   type Frame,
   type LayoutName,
@@ -149,6 +154,21 @@ export interface Options {
    * outermost ring stays thick enough to carry a label. Defaults to 3.
    */
   maxRings?: number
+  /**
+   * Drag a node — or the whole selection, if the node is in one — onto a new
+   * parent, or between two siblings.
+   *
+   * Off by default: a chart is as often a read-only picture as an editor, and
+   * a drag that silently restructures someone's org is a worse default than
+   * one that pans. When on, dragging a node stops panning the camera; dragging
+   * the background still does.
+   *
+   * The move is reported through `nodeDrop` before it is applied, and refusing
+   * it there is how you veto one. Drops that would make a cycle — onto the
+   * dragged node itself, or anything inside it — are refused by the chart and
+   * never reach the event.
+   */
+  dragAndDrop?: boolean
   /**
    * Fill each node with its top-level branch's colour from `theme.palette`.
    * Omitted, the layout decides: on for `sunburst`, whose segments have
@@ -353,6 +373,29 @@ export interface KladEvents {
    * `nodeClick`.
    */
   nodeDblClick: (event: { id: string; item: NodeData }) => void
+  /**
+   * A node was dropped somewhere new. Fires BEFORE anything moves.
+   *
+   * Call `preventDefault()` to refuse it — a server rejected the move, a
+   * business rule forbids it, you want to confirm first. Otherwise the chart
+   * applies it as soon as the handler returns, and the layout transition
+   * animates the result.
+   *
+   * `ids` is the whole selection when a selected node was dragged, in the
+   * order they appear in the tree, so a handler applying the move to its own
+   * array does not have to work out the ordering itself. `parentId` is `null`
+   * for a drop that makes a node a root. `index` is the position among the new
+   * parent's children BEFORE the moving nodes are removed — see
+   * `dropPosition` in core.
+   */
+  nodeDrop: (event: {
+    ids: string[]
+    items: NodeData[]
+    parentId: string | null
+    index: number
+    mode: DropMode
+    preventDefault: () => void
+  }) => void
   toggle: (event: { id: string; open: boolean }) => void
   viewportChange: (event: { camera: Camera }) => void
   warning: (warning: Warning) => void
@@ -870,6 +913,157 @@ export function createKlad(host: HTMLElement, options: Options): KladInstance {
   const rebuildPrunedIndex = (): void => {
     sourceToPruned = new Map()
     for (let i = 0; i < visibleToSource.length; i++) sourceToPruned.set(visibleToSource[i]!, i)
+  }
+
+  // --- drag and drop ---------------------------------------------------
+  //
+  // The pointer half of 1.3. The decisions — what a position over a node
+  // means, and whether the drop is legal — live in core (`drag/drop-target`)
+  // and are pure; this is the gesture, the preview state, and the event.
+
+  /** The nodes this drag is carrying, by id. Empty when nothing is dragging. */
+  let dragIds: string[] = []
+  /**
+   * A mask over SOURCE indices marking everything the drag carries, built
+   * once at drag start. Source rather than pruned because the gesture outlives
+   * a relayout: a drag that hovers over a collapsed folder long enough for it
+   * to spring open would otherwise be testing against an index space that no
+   * longer exists.
+   */
+  let dragMask: Uint8Array | null = null
+  /** What the preview is currently showing — mirrored here because the engine
+   * takes it as three arguments and `onDragEnd` needs to read back what the
+   * last move decided. */
+  let dropTargetIndex = -1
+  let dropTargetMode: DropMode = 'into'
+  let dropTargetValid = true
+
+  const setDropTarget = (index: number, mode: DropMode, valid: boolean): void => {
+    if (index === dropTargetIndex && mode === dropTargetMode && valid === dropTargetValid) return
+    dropTargetIndex = index
+    dropTargetMode = mode
+    dropTargetValid = valid
+    chartHost.setDropTarget(index, mode, valid)
+    scheduleFrame()
+  }
+
+  /**
+   * Hit-test on THIS thread, synchronously.
+   *
+   * `chartHost.hitTest` returns a promise — in worker mode it may genuinely
+   * have to ask — and a drag cannot await one: the answer would arrive a frame
+   * or two after the pointer has moved on, so the preview would trail the
+   * cursor and, worse, `onDragStart` would have to decide whether to claim the
+   * gesture before it knew if there was a node under it. Every input this
+   * needs is already mirrored on the main thread for the overlay, so it
+   * answers now.
+   */
+  const hitTestLocal = (worldX: number, worldY: number): number => {
+    for (let i = 0; i < visibleToSource.length; i++) {
+      const o = i * 4
+      const x = boxes[o]!
+      const y = boxes[o + 1]!
+      if (worldX < x || worldY < y) continue
+      if (worldX > x + boxes[o + 2]! || worldY > y + boxes[o + 3]!) continue
+      return visibleToSource[i]!
+    }
+    return -1
+  }
+
+  /**
+   * Reports a completed drop, and applies it unless the handler refuses.
+   *
+   * The event fires BEFORE anything moves, which is what makes refusing it
+   * meaningful — a handler that had to undo a move it did not want would have
+   * to know how to undo it, and would flash the wrong tree on the way.
+   */
+  const emitDrop = (ids: string[], target: number, mode: DropMode): void => {
+    const pruned = sourceToPruned.get(target)
+    if (pruned === undefined) return
+    const visible = pruneToVisible(tree, open, isolatedIndex)
+    const position = dropPosition(visible.tree, pruned, mode)
+    const parentSource = position.parent === -1 ? -1 : visible.toSource[position.parent]!
+    // In tree order, so a handler applying this to its own array does not have
+    // to work the ordering out. `tree.order` is preorder, which is the order a
+    // viewer sees them in.
+    const ordered = Array.from(tree.order)
+      .map((index) => tree.indexToId[index]!)
+      .filter((id) => ids.includes(id))
+
+    let refused = false
+    emit('nodeDrop', {
+      ids: ordered,
+      items: ordered.map((id) => itemById.get(id) ?? { id }),
+      parentId: parentSource === -1 ? null : tree.indexToId[parentSource]!,
+      index: position.index,
+      mode,
+      preventDefault: () => {
+        refused = true
+      },
+    })
+    if (refused) return
+    applyReparent(ordered, parentSource === -1 ? null : tree.indexToId[parentSource]!, position.index)
+  }
+
+  /**
+   * Moves `ids` under `parentId` at `index`, and relayouts.
+   *
+   * Builds a NEW array rather than mutating the one the caller handed in:
+   * `data` is their object, and a chart quietly rewriting `parentId` on rows
+   * it was given is the kind of side effect that shows up as a bug somewhere
+   * else entirely. The chart's own copy moves; the caller reconciles their
+   * store from `nodeDrop`, which is what that event is for.
+   *
+   * Open state survives, keyed by id — unlike `update()`, which resets it.
+   * Dropping a node is not a reason to fold up the branch you dropped it into,
+   * and doing so would hide the result of the very action just taken.
+   */
+  const applyReparent = (ids: string[], parentId: string | null, index: number): void => {
+    const moving = new Set(ids)
+    const openById = new Map<string, boolean>()
+    for (let i = 0; i < tree.count; i++) openById.set(tree.indexToId[i]!, open[i] === 1)
+
+    const source = currentOptions.data
+    const moved: NodeData[] = []
+    const rest: NodeData[] = []
+    for (const item of source) {
+      if (moving.has(String(item.id))) moved.push({ ...item, parentId })
+      else rest.push(item)
+    }
+    // `index` counts among the target parent's children BEFORE the moving
+    // nodes were taken out, so splicing into the remaining siblings needs it
+    // adjusted by however many of them sat ahead of the insertion point —
+    // otherwise moving a node down within its own parent lands it one slot
+    // short every time.
+    const siblingsBefore = source.filter(
+      (item) => (item.parentId ?? null) === parentId && !moving.has(String(item.id)),
+    )
+    const anchor = siblingsBefore[Math.min(index, siblingsBefore.length) - 1]
+    const insertAt =
+      anchor === undefined ? 0 : rest.findIndex((item) => item.id === anchor.id) + 1
+    rest.splice(insertAt, 0, ...moved)
+
+    currentOptions = { ...currentOptions, data: rest }
+    tree = normalize(rest)
+    stats = computeSubtreeStats(tree)
+    rebuildItemIndex()
+    const next = new Uint8Array(tree.count)
+    for (let i = 0; i < tree.count; i++) {
+      next[i] = (openById.get(tree.indexToId[i]!) ?? true) ? 1 : 0
+    }
+    open = next
+    // The node just landed somewhere; showing it closed would hide the result
+    // of the action. Opening its new parent is the one open-state change a
+    // drop is entitled to make.
+    if (parentId !== null) {
+      const parentIndex = tree.idToIndex.get(parentId)
+      if (parentIndex !== undefined) open[parentIndex] = 1
+    }
+    pendingAnchor = null
+    cameraAnchor = null
+    applyData()
+    a11yDirty = true
+    scheduleFrame()
   }
 
   /** `NodeStats` for a node by INDEX — four array reads, no walking. See
@@ -2066,6 +2260,73 @@ export function createKlad(host: HTMLElement, options: Options): KladInstance {
     },
     onRelease(vx, vy) {
       startMomentum(vx, vy)
+    },
+    onDragStart(screenX, screenY) {
+      if (currentOptions.dragAndDrop !== true) return false
+      const world = screenToWorld(camera, screenX, screenY)
+      // The synchronous mirror, not `chartHost.hitTest` — that returns a
+      // promise in worker mode, and by the time it resolved the gesture would
+      // already have been panning for a frame or two. `boxOfSource` and the
+      // pruned index are both on this thread; see `hitTestLocal`.
+      const index = hitTestLocal(world.x, world.y)
+      if (index === -1) return false
+
+      // Dragging a node that is in the selection carries the whole selection;
+      // dragging one outside it carries just that node and leaves the
+      // selection alone. Same rule as a file manager, and the same reason: a
+      // drag is not a selection gesture.
+      const id = tree.indexToId[index]!
+      dragIds = selectedIds.includes(id) ? [...selectedIds] : [id]
+      const roots = dragIds.map((each) => tree.idToIndex.get(each)).filter((i): i is number => i !== undefined)
+      // Built once, here, and read as one array lookup per pointer move —
+      // see `subtreeMask`. The alternative walks the ancestor chain on every
+      // move, at pointer frequency, on a tree of unbounded depth.
+      dragMask = subtreeMask(tree, roots)
+      chartHost.setDrag(index)
+      host.classList.add('klad-dragging')
+      scheduleFrame()
+      return true
+    },
+    onDragMove(screenX, screenY) {
+      const world = screenToWorld(camera, screenX, screenY)
+      const index = hitTestLocal(world.x, world.y)
+      if (index === -1 || dragMask === null) {
+        setDropTarget(-1, 'into', true)
+        return
+      }
+      const box = boxOfSource(index)
+      if (box === null) {
+        setDropTarget(-1, 'into', true)
+        return
+      }
+      const mode = resolveDropMode(
+        currentOptions.layout ?? 'tidy',
+        currentOptions.layout === 'tidy' &&
+          (currentOptions.orientation === 'lr' || currentOptions.orientation === 'rl'),
+        box,
+        world.x,
+        world.y,
+      )
+      // `dragMask` is over SOURCE indices, which is what `hitTestLocal`
+      // answers in — the pruned space changes as branches open and this
+      // gesture outlives that.
+      setDropTarget(index, mode, isDropAllowed(dragMask, index))
+    },
+    onDragEnd() {
+      const target = dropTargetIndex
+      const mode = dropTargetMode
+      const valid = dropTargetValid
+      const ids = dragIds
+
+      dragIds = []
+      dragMask = null
+      chartHost.setDrag(-1)
+      setDropTarget(-1, 'into', true)
+      host.classList.remove('klad-dragging')
+      scheduleFrame()
+
+      if (target === -1 || !valid || ids.length === 0) return
+      emitDrop(ids, target, mode)
     },
   })
 

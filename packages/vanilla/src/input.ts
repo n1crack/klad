@@ -41,6 +41,30 @@ export interface InputCallbacks {
   /** The pointer has left the chart (canvas and overlay cards alike). */
   onLeave(): void
   /**
+   * A press has travelled far enough to be a drag rather than a tap. Return
+   * `true` to claim the gesture as something OTHER than a pan — dragging a
+   * node to a new parent — and this module will stop moving the camera and
+   * route the rest of the gesture to `onDragMove`/`onDragEnd` instead.
+   *
+   * Decided at the threshold rather than at the press, and that ordering is
+   * the whole point: a press on a node is far more often a tap (open it,
+   * select it) than the start of a drag, so claiming at `pointerdown` would
+   * mean deciding before the viewer has said which they meant. By the time
+   * this fires they have moved four pixels, which is the moment their
+   * intention becomes readable.
+   *
+   * `screenX`/`screenY` are host-relative, and are the position of the
+   * ORIGINAL press — not where the pointer is now. A drag is about the node
+   * you picked up, and after four pixels of travel the pointer may already be
+   * over its neighbour.
+   */
+  onDragStart(screenX: number, screenY: number, target: EventTarget | null): boolean
+  /** Host-relative pointer position during a claimed drag. */
+  onDragMove(screenX: number, screenY: number): void
+  /** The claimed drag ended here. Fires for a cancel too (see `pointercancel`),
+   * so a caller has exactly one place to tear its state down. */
+  onDragEnd(screenX: number, screenY: number): void
+  /**
    * A single-pointer drag (not a pinch) just ended. `vx`/`vy` are the release
    * velocity in screen px/ms, estimated from a short rolling window of recent
    * samples — see the `VELOCITY_WINDOW_MS` comment below. Not called for a tap,
@@ -98,6 +122,13 @@ export function attachInput(
   callbacks: InputCallbacks,
 ): () => void {
   let dragging = false
+  /**
+   * True once `onDragStart` claimed this gesture. While it is, the camera does
+   * not move and every sample goes to the caller instead — a viewer dragging a
+   * node to a new parent is not also asking to pan, and doing both at once
+   * makes the target move as you reach for it.
+   */
+  let claimed = false
   let travelled = 0
   let lastX = 0
   let lastY = 0
@@ -159,6 +190,7 @@ export function attachInput(
       return
     }
     dragging = true
+    claimed = false
     travelled = 0
     lastX = event.clientX
     lastY = event.clientY
@@ -197,6 +229,25 @@ export function attachInput(
     lastX = event.clientX
     lastY = event.clientY
     travelled += Math.abs(dx) + Math.abs(dy)
+
+    if (claimed) {
+      const point = localPoint(event)
+      callbacks.onDragMove(point.x, point.y)
+      return
+    }
+    // Crossing the threshold is the moment the gesture stops being ambiguous,
+    // so it is the moment to ask whether someone else wants it. Offered from
+    // the PRESS point, not from here — see `onDragStart`.
+    if (travelled > DRAG_THRESHOLD_PX) {
+      const from = localPoint({ clientX: downX, clientY: downY })
+      if (callbacks.onDragStart(from.x, from.y, downTarget)) {
+        claimed = true
+        const point = localPoint(event)
+        callbacks.onDragMove(point.x, point.y)
+        return
+      }
+    }
+
     callbacks.setCamera(pan(callbacks.getCamera(), dx, dy))
 
     const now = performance.now()
@@ -211,6 +262,15 @@ export function attachInput(
     if (activePointers.size < 2) pinchDistance = 0
     if (!dragging) return
     dragging = false
+    if (claimed) {
+      claimed = false
+      const point = localPoint(event)
+      callbacks.onDragEnd(point.x, point.y)
+      // No momentum: the gesture moved a node, not the camera, and a chart
+      // that coasted afterwards would slide the thing you just placed out of
+      // view.
+      return
+    }
     if (travelled <= DRAG_THRESHOLD_PX) {
       const point = localPoint({ clientX: downX, clientY: downY })
       callbacks.onTap(point.x, point.y, downTarget, { additive: downAdditive, extend: downExtend })

@@ -1361,6 +1361,50 @@ function syncCentreControl(example: Example, layout: LayoutName): void {
   }
 }
 
+/**
+ * What the last drop actually moved. A drag whose result is only visible as
+ * "the tree looks different now" is hard to check; an app would be sending
+ * this to a server, so the demo shows exactly what it would send.
+ */
+const dropLog = document.createElement('div')
+dropLog.className = 'panel-note'
+dropLog.textContent = 'Drag a card onto another.'
+
+const dropField = document.createElement('div')
+dropField.className = 'surface-panel surface-panel-trail'
+dropField.append(dropLog)
+
+for (const type of ['pointerdown', 'wheel'] as const) {
+  dropField.addEventListener(type, (event) => event.stopPropagation())
+}
+
+let dropListenerBound = false
+
+function syncDropControl(example: Example): void {
+  dropField.remove()
+  if (example.dropControl !== true) return
+  dropLog.textContent = 'Drag a card onto another.'
+  surface.append(dropField)
+  if (!dropListenerBound) {
+    dropListenerBound = true
+    // Bound lazily, like the breadcrumb's — `surface` is created further down
+    // this module.
+    surface.addEventListener('playground:drop', (event) => {
+      if (!dropField.isConnected) return
+      reportDrop((event as CustomEvent<{ ids: string[]; parentId: string | null; mode: string }>).detail)
+    })
+  }
+}
+
+/** Called by the demo when a drop lands — see `playground:drop`. */
+function reportDrop(detail: { ids: string[]; parentId: string | null; mode: string }): void {
+  const what = detail.ids.length === 1 ? detail.ids[0]! : `${detail.ids.length} nodes`
+  dropLog.textContent =
+    detail.mode === 'into'
+      ? `${what} → into ${detail.parentId ?? 'the root'}`
+      : `${what} → ${detail.mode} a sibling, under ${detail.parentId ?? 'the root'}`
+}
+
 let selectionListenersBound = false
 
 /** Shows the selection panel for the example that asked for it. */
@@ -1901,6 +1945,7 @@ function show(stack: Stack, exampleId: string, layout: LayoutName): void {
   syncViewControl(example)
   syncSelectionControl(example)
   syncCentreControl(example, layout)
+  syncDropControl(example)
   // Per-layout CSS hooks. The overlay cards a layout expects are its own
   // business — a file row is not an org card — and scoping their styles to
   // these classes is what keeps each example's look from leaking into the

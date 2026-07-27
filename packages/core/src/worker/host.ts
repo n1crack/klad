@@ -3,6 +3,7 @@ import { createCanvas2DRenderer } from '../render/canvas2d.js'
 import { createTextMeasurer } from '../text/measure.js'
 import { buildQuadTree, type QuadTree } from '../spatial/quadtree.js'
 import { hitTestSector } from '../layout/sunburst.js'
+import type { DropMode } from '../drag/drop-target.js'
 import type { Renderer, RenderSurface } from '../render/renderer.js'
 import type { Theme } from '../render/theme.js'
 import type { Camera } from '../viewport.js'
@@ -26,6 +27,9 @@ export interface ChartHost {
   setFocus(index: number): void
   setSelection(ids: Uint32Array | null): void
   setDrag(index: number): void
+  /** The drop preview — see `ChartEngine.setDropTarget`. Paint-only, so it
+   * never needs a reply. */
+  setDropTarget(index: number, mode: DropMode, valid: boolean): void
   setAnimate(enabled: boolean): void
   /**
    * Paint-only theme swap, effective from the next `render()` on either path
@@ -277,6 +281,10 @@ export function createChartHost(
     setDrag(index) {
       engine?.setDrag(index)
       post({ t: 'drag', index })
+    },
+    setDropTarget(index, mode, valid) {
+      engine?.setDropTarget(index, mode, valid)
+      post({ t: 'drop', index, mode, valid })
     },
     setAnimate(enabled) {
       engine?.setAnimate(enabled)

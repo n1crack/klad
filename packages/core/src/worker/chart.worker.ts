@@ -69,6 +69,9 @@ self.onmessage = (event: MessageEvent<MainToWorker>): void => {
       case 'drag':
         engine?.setDrag(message.index)
         break
+      case 'drop':
+        engine?.setDropTarget(message.index, message.mode, message.valid)
+        break
       case 'animate':
         engine?.setAnimate(message.enabled)
         break

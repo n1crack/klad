@@ -2,6 +2,7 @@ import type { Tree } from '../tree.js'
 import type { Camera } from '../viewport.js'
 import type { Orientation } from '../layout/orientation.js'
 import type { LayoutName } from '../layout/index.js'
+import type { DropMode } from '../drag/drop-target.js'
 import type { LodThresholds } from '../render/lod.js'
 import type { Bounds } from '../types.js'
 
@@ -146,6 +147,9 @@ export type MainToWorkerMessage =
   | { t: 'focus'; index: number }
   | { t: 'selection'; ids: Uint32Array | null }
   | { t: 'drag'; index: number }
+  /** The drop preview — see `ChartEngine.setDropTarget`. Paint-only, like
+   * `highlight` and `selection`. */
+  | { t: 'drop'; index: number; mode: DropMode; valid: boolean }
   | { t: 'animate'; enabled: boolean }
   /**
    * Paint-only, mirroring `Renderer.setTheme` — carries an already-resolved

@@ -371,6 +371,12 @@ export interface Example {
    * top of a selection. Per-example, like the others.
    */
   selectionControl?: boolean
+  /**
+   * Shows the drop log: what the last drag actually moved, and where. Same
+   * per-example opt-in as the others — a chart-wide panel that only reports on
+   * one example would be worse than none.
+   */
+  dropControl?: boolean
 }
 
 // Shared by every example except "Large", which needs its own scale and its
@@ -972,6 +978,16 @@ export const EXAMPLES: Example[] = [
     data: SHARED_DATA,
     options: {},
     content: 'none',
+  },
+  {
+    id: 'drag-drop',
+    name: 'Drag and drop',
+    description:
+      'Drag a card onto another to reparent it, or onto the left or right quarter of one to drop it beside that node instead. A drop into the branch you are carrying is refused and shown in red. What actually moves is reported back to the page — an app would send that to a server.',
+    data: SHARED_DATA,
+    options: { dragAndDrop: true, selection: true, minimap: true, nodeSize: { w: 200, h: 72 } },
+    content: 'card',
+    dropControl: true,
   },
   {
     id: 'file-tree',

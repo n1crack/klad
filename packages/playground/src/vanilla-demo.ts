@@ -685,6 +685,30 @@ export function mountVanilla(
     })
   }
 
+  /**
+   * The drop log. Deliberately does NOT call `preventDefault()`: the point of
+   * this example is that the chart applies the move, and a demo that vetoed
+   * every drop would be demonstrating the veto instead.
+   */
+  let stopDrop: (() => void) | null = null
+  if (example.dropControl === true) {
+    // Reported by NAME, not by id. The chart speaks ids and the cards show
+    // names, and a log that answered "n15 → into n5" about two cards reading
+    // "Person 16" and "Person 6" is a puzzle rather than a confirmation.
+    const nameOf = (id: string): string => {
+      const item = example.data.find((each) => String(each.id) === id)
+      return String(item?.name ?? id)
+    }
+    stopDrop = chart.on('nodeDrop', ({ ids, parentId, mode }) => {
+      host.dispatchEvent(
+        new CustomEvent('playground:drop', {
+          detail: { ids: ids.map(nameOf), parentId: parentId === null ? null : nameOf(parentId), mode },
+          bubbles: true,
+        }),
+      )
+    })
+  }
+
   host.addEventListener('playground:repaint', onRepaint)
   host.addEventListener('playground:relayout', onRelayout)
   host.addEventListener('playground:slide', onSlide)
@@ -701,6 +725,7 @@ export function mountVanilla(
       if (slideHandle !== null) cancelAnimationFrame(slideHandle)
       host.removeEventListener('playground:goto', onGoto)
       stopDrill?.()
+      stopDrop?.()
       chart.destroy()
     },
     setMinimap(on) {

@@ -94,7 +94,7 @@ describe('subtreeMask', () => {
   })
 
   it('ignores out-of-range roots rather than throwing', () => {
-    expect(Array.from(subtreeMask(tree, [-1, 999]))).toEqual(new Array(tree.count).fill(0))
+    expect(Array.from(subtreeMask(tree, [-1, 999]))).toEqual(Array.from({ length: tree.count }, () => 0))
   })
 
   it('never recurses', () => {
