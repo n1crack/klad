@@ -166,7 +166,6 @@ export function createA11yTree(container: HTMLElement, callbacks: A11yCallbacks)
   let currentTree: Tree | undefined
   let currentOpen: Uint8Array | undefined
   let currentLabelOf: ((index: number) => string) | undefined
-  let currentIsolate = -1
   // The visible nodes in preorder, and each node id's position in that sequence.
   // Rebuilt by the cheap pass in `update()`; read by keyboard nav to re-window.
   let visibleSeq: number[] = []
@@ -471,7 +470,6 @@ export function createA11yTree(container: HTMLElement, callbacks: A11yCallbacks)
       currentTree = tree
       currentOpen = open
       currentLabelOf = labelOf
-      currentIsolate = isolate
 
       // Roving tabindex target for this render: keep whatever node last held
       // the tab stop, provided it still exists in this tree — otherwise fall
@@ -555,7 +553,6 @@ export function createA11yTree(container: HTMLElement, callbacks: A11yCallbacks)
       currentTree = undefined
       currentOpen = undefined
       currentLabelOf = undefined
-      currentIsolate = -1
       visibleSeq = []
       seqPosById.clear()
       windowStart = 0

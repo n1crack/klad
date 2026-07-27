@@ -1,5 +1,9 @@
 # @klad/react
 
+[![npm](https://img.shields.io/npm/v/@klad/react?color=cb3837&logo=npm&logoColor=white&label=npm)](https://www.npmjs.com/package/@klad/react)
+[![gzip size](https://img.shields.io/bundlejs/size/@klad/react?label=gzip)](https://bundlejs.com/?q=%40klad%2Freact)
+[![licence](https://img.shields.io/npm/l/@klad/react?label=licence)](https://github.com/n1crack/klad/blob/main/LICENSE)
+
 The React adapter for [Klad](https://github.com/n1crack/klad) — a tree
 engine that renders 5,000–50,000 nodes at 60fps by laying out and
 drawing the tree on a `<canvas>` inside a Web Worker, mounting real React

@@ -1,5 +1,10 @@
 # Klad
 
+[![CI](https://github.com/n1crack/klad/actions/workflows/ci.yml/badge.svg)](https://github.com/n1crack/klad/actions/workflows/ci.yml)
+[![npm](https://img.shields.io/npm/v/@klad/core?color=cb3837&logo=npm&logoColor=white&label=npm)](https://www.npmjs.com/package/@klad/core)
+[![gzip size](https://img.shields.io/bundlejs/size/@klad/core?label=gzip)](https://bundlejs.com/?q=%40klad%2Fcore)
+[![licence](https://img.shields.io/npm/l/@klad/core?label=licence)](LICENSE)
+
 A framework-agnostic tree engine. The tree is laid out and drawn on a
 `<canvas>` inside a Web Worker; real framework components are mounted only for
 the handful of nodes actually on screen and zoomed in far enough to read.

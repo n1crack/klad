@@ -1,5 +1,9 @@
 # klad
 
+[![npm](https://img.shields.io/npm/v/@klad/core?color=cb3837&logo=npm&logoColor=white&label=npm)](https://www.npmjs.com/package/@klad/core)
+[![gzip size](https://img.shields.io/bundlejs/size/@klad/core?label=gzip)](https://bundlejs.com/?q=%40klad%2Fcore)
+[![licence](https://img.shields.io/npm/l/@klad/core?label=licence)](https://github.com/n1crack/klad/blob/main/LICENSE)
+
 The frameworkless API for [Klad](https://github.com/n1crack/klad) — a tree
 engine that renders 5,000–50,000 nodes at 60fps by laying out and drawing the
 tree on a `<canvas>` inside a Web Worker, overlaying real DOM only for the

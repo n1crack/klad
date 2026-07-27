@@ -1,5 +1,9 @@
 # @klad/vue
 
+[![npm](https://img.shields.io/npm/v/@klad/vue?color=cb3837&logo=npm&logoColor=white&label=npm)](https://www.npmjs.com/package/@klad/vue)
+[![gzip size](https://img.shields.io/bundlejs/size/@klad/vue?label=gzip)](https://bundlejs.com/?q=%40klad%2Fvue)
+[![licence](https://img.shields.io/npm/l/@klad/vue?label=licence)](https://github.com/n1crack/klad/blob/main/LICENSE)
+
 The Vue 3 adapter for [Klad](https://github.com/n1crack/klad) — a tree
 engine that renders 5,000–50,000 nodes at 60fps by laying out and
 drawing the tree on a `<canvas>` inside a Web Worker, overlaying real Vue

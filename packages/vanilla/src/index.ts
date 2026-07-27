@@ -731,7 +731,20 @@ export function createKlad(host: HTMLElement, options: Options): KladInstance {
   }
   const lod = options.lodThresholds ?? DEFAULT_LOD
 
-  host.style.position = host.style.position || 'relative'
+  // The overlay, the minimap and the drag ghost are all absolutely positioned
+  // inside the host, so the host has to be a containing block. Any positioning
+  // makes it one, so this only steps in when there is none.
+  //
+  // Read from the COMPUTED style, not the inline one. `host.style.position` is
+  // only what an inline attribute says, so a host positioned by a stylesheet —
+  // `.chart { position: absolute; inset: 0 }`, the ordinary way to make an
+  // element fill its parent — read as unpositioned and got an inline
+  // `relative` written over the top of it. Inline wins over a stylesheet, so
+  // the rule was not overridden, it was silently defeated: the element
+  // collapsed to its content height, the canvas sized itself to that, and the
+  // minimap anchored to the bottom of a chart that ended halfway up the page.
+  const positioned = host.isConnected ? getComputedStyle(host).position : host.style.position
+  if (positioned === '' || positioned === 'static') host.style.position = 'relative'
   host.style.overflow = 'hidden'
 
   const canvas = document.createElement('canvas')

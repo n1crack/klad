@@ -1,5 +1,9 @@
 # @klad/engine
 
+[![npm](https://img.shields.io/npm/v/@klad/engine?color=cb3837&logo=npm&logoColor=white&label=npm)](https://www.npmjs.com/package/@klad/engine)
+[![gzip size](https://img.shields.io/bundlejs/size/@klad/engine?label=gzip)](https://bundlejs.com/?q=%40klad%2Fengine)
+[![licence](https://img.shields.io/npm/l/@klad/engine?label=licence)](https://github.com/n1crack/klad/blob/main/LICENSE)
+
 The pure-logic layer of [Klad](https://github.com/n1crack/klad): tree
 normalization, the layout registry (tidy, file, radial and sunburst),
 orientation/RTL mirroring, the

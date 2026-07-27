@@ -2489,4 +2489,50 @@ describe('drag and drop', () => {
     expect(chart.api.getView().open).not.toContain('b')
     chart.destroy()
   })
+
+  it('leaves a host that a stylesheet already positioned alone', async () => {
+    // `position: absolute; inset: 0` is the ordinary way to make an element
+    // fill its parent. The chart used to read `host.style.position` — the
+    // INLINE attribute, empty here — decide the host was unpositioned, and
+    // write `position: relative` over the top. Inline beats a stylesheet, so
+    // the rule was not overridden, it was defeated: the host collapsed to its
+    // content height, and the minimap anchored to the bottom of a chart that
+    // ended halfway up the page.
+    const style = document.createElement('style')
+    style.textContent = '.fills-parent { position: absolute; inset: 0; }'
+    document.head.appendChild(style)
+    const parent = document.createElement('div')
+    parent.style.position = 'relative'
+    parent.style.width = '800px'
+    parent.style.height = '600px'
+    document.body.appendChild(parent)
+    const el = document.createElement('div')
+    el.className = 'fills-parent'
+    parent.appendChild(el)
+
+    const chart = createKlad(el, { data: DATA, nodeSize: { w: 120, h: 48 }, worker: false })
+    await nextFrame()
+    await settle()
+
+    expect(getComputedStyle(el).position).toBe('absolute')
+    expect(el.getBoundingClientRect().height).toBe(600)
+    chart.destroy()
+    parent.remove()
+    style.remove()
+  })
+
+  it('still positions a host that nothing else has', async () => {
+    const el = document.createElement('div')
+    el.style.width = '400px'
+    el.style.height = '300px'
+    document.body.appendChild(el)
+    const chart = createKlad(el, { data: DATA, nodeSize: { w: 120, h: 48 }, worker: false })
+    await nextFrame()
+
+    // The overlay, minimap and drag ghost are absolutely positioned inside it,
+    // so it has to be a containing block one way or another.
+    expect(getComputedStyle(el).position).toBe('relative')
+    chart.destroy()
+    el.remove()
+  })
 })
