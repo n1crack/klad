@@ -240,3 +240,30 @@ describe('hitTestSector', () => {
     expect(found).toBeGreaterThan(0)
   })
 })
+
+describe('seam residue', () => {
+  it('closes the focused node’s neighbour completely, not to a sliver', () => {
+    // `focusSpan * (TAU / focusSpan)` is not exactly `TAU`, so the focused
+    // node's upper edge lands an ulp short of the seam and the sibling right
+    // after it keeps a wedge of ~1e-15 radians instead of zero. Invisible as a
+    // fill and very visible as everything else: it still takes the sector-gap
+    // stroke (a hairline spoke out of the centre), and with an inner radius of
+    // zero it looks like the hub to anything reading its geometry loosely — so
+    // its label gets written across the middle of the wheel, on top of the one
+    // that belongs there.
+    //
+    // A deeper focus makes the residue bigger, so drill in rather than
+    // focusing a top-level branch.
+    const { tree, sizes } = build()
+    const focus = tree.idToIndex.get('a2')!
+    const { sectors } = sunburst(tree, sizes, { ...OPTS, focus })
+    for (let i = 0; i < tree.count; i++) {
+      if (i === focus) continue
+      const s = sectorOf(sectors!, i)
+      const span = s.a1 - s.a0
+      // Every other node is either genuinely open or exactly shut. Nothing is
+      // allowed to sit in between.
+      expect(span === 0 || span > 1e-6).toBe(true)
+    }
+  })
+})

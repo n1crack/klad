@@ -4,7 +4,14 @@ import type { Theme } from './theme.js'
 import { resolveTheme } from './theme.js'
 import { edgeAnchors, edgeStyleDrawsConnectors } from './edge-geometry.js'
 import { computeNodeFills, inkOn } from './palette.js'
-import { labelPlacement, lineHeightOf, normaliseUpright, SECTOR_LABEL_PAD, sectorPath } from './sector.js'
+import {
+  isSectorVisible,
+  labelPlacement,
+  lineHeightOf,
+  normaliseUpright,
+  SECTOR_LABEL_PAD,
+  sectorPath,
+} from './sector.js'
 
 /**
  * Pure geometry export never touches a canvas. It re-derives its own SVG
@@ -508,7 +515,7 @@ export function toSVG(data: ExportData, opts: SvgExportOptions = {}): string {
       // Collapsed sectors — out of focus, or past the last ring — have no
       // extent. They exist in the layout so the live chart has something to
       // animate; an export is a still, and an empty path in it is just bytes.
-      if (r1 - r0 <= 0 || a1 - a0 <= 0) continue
+      if (!isSectorVisible(r0, r1, a0, a1)) continue
       recorder.beginPath()
       sectorPath(recorder, sectors[s]! + offsetX, sectors[s + 1]! + offsetY, r0, r1, a0, a1)
       const fill = fills === null ? theme.nodeFill : (fills[i] ?? theme.nodeFill)

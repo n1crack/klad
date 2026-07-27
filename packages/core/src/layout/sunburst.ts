@@ -20,6 +20,16 @@ const DEFAULT_MAX_RINGS = 3
 const START_ANGLE = -Math.PI / 2
 
 /**
+ * A wedge narrower than this is treated as closed — see the snap in the main
+ * loop for what produces one. Around a thousandth of a pixel at a radius of a
+ * million, so nothing this closes could have been drawn. Kept in step with
+ * `MIN_SECTOR_ANGLE` in `render/sector.ts`, which guards the same thing on the
+ * drawing side; they are separate constants because layout must not import
+ * from render (`layout/index.ts` already imports the other way).
+ */
+const CLOSED_ANGLE = 1e-9
+
+/**
  * Polar hit-test over sunburst sectors: returns the position (into the sectors
  * array, i.e. the pruned node index) of the sector containing `(worldX,
  * worldY)`, or -1.
@@ -263,7 +273,24 @@ export function sunburst(tree: Tree, sizes: Float64Array, opts: LayoutOptions): 
     //
     // `baseA0 <= baseA1` and `scale > 0`, so `lo <= hi` needs no check.
     const lo = START_ANGLE + clamp((baseA0[i]! - focusA0) * scale, 0, TAU)
-    const hi = START_ANGLE + clamp((baseA1[i]! - focusA0) * scale, 0, TAU)
+    let hi = START_ANGLE + clamp((baseA1[i]! - focusA0) * scale, 0, TAU)
+    // Snap a float-residue sliver shut.
+    //
+    // `focusSpan * (TAU / focusSpan)` is not exactly `TAU`, so the focused
+    // node's upper edge lands an ulp short of the seam and the sibling right
+    // after it — which should clamp to zero width — keeps a wedge of about
+    // 1e-15 radians. Invisible as a fill, and very visible as everything
+    // else: it still takes the sector-gap stroke (a hairline spoke out of the
+    // centre), and since its inner radius is zero anything reading its
+    // geometry loosely calls it the hub and writes its label across the
+    // middle of the wheel, over the label that belongs there.
+    //
+    // Fixed here, at the source, rather than only guarded at draw time: the
+    // hit-test reads these numbers too, and a sector that is closed should be
+    // closed for every consumer. `render/sector.ts`'s `isSectorVisible` keeps
+    // the same guard on the drawing side, for geometry from any other
+    // producer.
+    if (hi - lo < CLOSED_ANGLE) hi = lo
 
     const o6 = i * 6
     sectors[o6] = outerMost // shared centre, at the middle of the square

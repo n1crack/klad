@@ -654,6 +654,11 @@ export const LAYOUT_PRESETS: Record<LayoutName, LayoutPreset> = {
       nodeSize: RADIAL_NODE,
       layoutStep: 190,
       colourBranches: true,
+      // Click a marker to open or close it. Not a stylistic choice: the node
+      // IS an 18px dot, so there is nowhere to put a disclosure control, and
+      // without this the one thing every other layout lets you do — fold a
+      // branch away — is unreachable on a wheel.
+      toggleOnNodeClick: true,
     },
     content: 'none',
     // A marker, not a card: the name radiating out of it carries the content,

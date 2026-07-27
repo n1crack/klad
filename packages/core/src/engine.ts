@@ -2,6 +2,7 @@ import type { Bounds } from './types.js'
 import type { Camera } from './viewport.js'
 import type { EdgeStyle, Renderer } from './render/renderer.js'
 import { edgeAnchors, edgeBBox, edgeStyleDrawsConnectors } from './render/edge-geometry.js'
+import { isSectorVisible } from './render/sector.js'
 import type { ExportData } from './render/svg.js'
 import type { EngineOptions, WireTree } from './worker/protocol.js'
 import { wireTreeToTree } from './worker/protocol.js'
@@ -399,9 +400,15 @@ function boxAt(boxes: Float64Array, i: number): Box {
  * exit edge and grows to its own size while moving to its final box, rather
  * than starting already sized like the whole parent box — see `render()`'s
  * `applyTween` and the ghost-drawing loop, both in `createChartEngine`. */
-function exitBox(box: Box, horizontal: boolean): Box {
-  const p = exitPointXY(box.x, box.y, box.w, box.h, horizontal)
-  return { x: p.x, y: p.y, w: 0, h: 0 }
+function exitBox(box: Box, horizontal: boolean, style: EdgeStyle, rtl: boolean): Box {
+  // Where a revealed child grows FROM has to be where its connector attaches,
+  // or the two disagree in the one moment a viewer is watching them: the card
+  // slides out of the middle of the parent while the guide line to it comes
+  // out of the gutter. Same shared anchors the connector itself uses — the
+  // child's own geometry is irrelevant here (the reveal starts as a point), so
+  // a zero-size box at the parent is enough to ask with.
+  const a = edgeAnchors(style, horizontal, rtl, box.x, box.y, box.w, box.h, box.x, box.y, 0, 0)
+  return { x: a.px, y: a.py, w: 0, h: 0 }
 }
 
 function writeBox(target: Float64Array, i: number, box: Box): void {
@@ -1635,8 +1642,13 @@ export function createChartEngine(renderer: Renderer): ChartEngine {
         for (let q = 0; q < nodeCount; q++) {
           const i = cullBuffer[q]!
           const o = i * 6
-          if (cullSectors[o + 3]! - cullSectors[o + 2]! <= 0) continue
-          if (cullSectors[o + 5]! - cullSectors[o + 4]! <= 0) continue
+          const visible = isSectorVisible(
+            cullSectors[o + 2]!,
+            cullSectors[o + 3]!,
+            cullSectors[o + 4]!,
+            cullSectors[o + 5]!,
+          )
+          if (!visible) continue
           cullBuffer[kept++] = i
         }
         nodeCount = kept
@@ -1722,7 +1734,7 @@ export function createChartEngine(renderer: Renderer): ChartEngine {
           // entire parent — the owner's ask (previously it grew out of the
           // anchor's box origin/centre, which read as ballooning out of the
           // middle rather than dropping out of the bottom).
-          from = exitBox(boxAt(renderBoxes, entry.anchor), horizontal)
+          from = exitBox(boxAt(renderBoxes, entry.anchor), horizontal, edgeStyle, options.rtl)
         }
         writeBox(renderBoxes, idx, lerpBox(from, boxAt(boxes, idx), easing.emphasisPos))
       }
@@ -1792,7 +1804,7 @@ export function createChartEngine(renderer: Renderer): ChartEngine {
             // ancestor, not the ancestor's whole box, so it visibly
             // disappears back into the bottom/trailing edge it originally
             // emerged from rather than shrinking into the ancestor's centre.
-            to = exitBox(boxAt(renderBoxes, ghost.anchor), horizontal)
+            to = exitBox(boxAt(renderBoxes, ghost.anchor), horizontal, edgeStyle, options.rtl)
           }
           writeBox(ghostDrawBoxes, g, lerpBox(ghost.from, to, easing.emphasisPos))
           ghostDrawAlpha[g] = easing.ghostAlpha

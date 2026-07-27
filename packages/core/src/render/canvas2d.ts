@@ -5,6 +5,7 @@ import { easeInQuad, easeOutCubic } from '../viewport.js'
 import { edgeAnchors } from './edge-geometry.js'
 import { computeNodeFills, inkOn } from './palette.js'
 import {
+  isSectorVisible,
   labelPlacement,
   lineHeightOf,
   normaliseUpright,
@@ -346,7 +347,7 @@ export function createCanvas2DRenderer(
         const r1 = sectors[s + 3]! * k
         const a0 = sectors[s + 4]!
         const a1 = sectors[s + 5]!
-        if (r1 - r0 <= 0 || a1 - a0 <= 0) return false
+        if (!isSectorVisible(r0, r1, a0, a1)) return false
         sectorPath(ctx, sectors[s]! * k + camera.x, sectors[s + 1]! * k + camera.y, r0, r1, a0, a1)
         return true
       }

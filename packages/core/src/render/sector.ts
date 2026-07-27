@@ -24,6 +24,36 @@ const TAU = Math.PI * 2
 export const SECTOR_LABEL_PAD = 4
 
 /**
+ * Angular width below which a sector counts as closed rather than merely thin.
+ *
+ * Not a fudge: `sunburst`'s focus maps the focused node's wedge onto the whole
+ * turn by multiplying by `TAU / focusSpan`, and `focusSpan * (TAU / focusSpan)`
+ * is not exactly `TAU` in floating point. So the focused node's upper edge
+ * lands an ulp short of the seam, and the sibling immediately after it — which
+ * should clamp to zero width — keeps a wedge of about 1e-15 radians instead.
+ *
+ * That sliver is invisible as a FILL and very visible as everything else: it
+ * still takes the sector-gap stroke, drawing a hairline spoke from the centre
+ * out; and because its inner radius is zero, a naive reading of its geometry
+ * calls it a disc and writes its label across the middle of the hub, on top of
+ * the label that belongs there.
+ *
+ * 1e-9 radians is around a thousandth of a pixel at a radius of a million, so
+ * nothing this rejects could have been drawn anyway.
+ */
+export const MIN_SECTOR_ANGLE = 1e-9
+
+/**
+ * Whether a sector has anything to draw. The single definition of "collapsed",
+ * shared by the engine's cull, both renderers and the label placement below —
+ * a sector that one of them thinks is closed and another thinks is open is
+ * exactly how a sliver ends up stroked but not filled.
+ */
+export function isSectorVisible(r0: number, r1: number, a0: number, a1: number): boolean {
+  return r1 - r0 > 0 && a1 - a0 > MIN_SECTOR_ANGLE
+}
+
+/**
  * Approximate line height for a CSS font shorthand, by reading the px size out
  * of it. Used only to decide whether a sector is thick enough to hold text at
  * all, so an approximation is the right tool — the alternative is asking the
@@ -145,12 +175,18 @@ export function labelPlacement(
   if (thickness < lineHeight) return null
 
   const span = a1 - a0
-  if (span <= 0) return null
+  if (!isSectorVisible(r0, r1, a0, a1)) return null
   const mid = (a0 + a1) / 2
 
-  // The hub: a full disc, labelled horizontally across its middle like the
+  // The hub: a FULL disc, labelled horizontally across its middle like the
   // centre of a donut chart, because it has no ring direction to follow.
-  if (r0 <= 0) {
+  //
+  // The full-turn test is not decoration. A wedge that merely starts at the
+  // centre is a pie slice, not a hub, and reading `r0 <= 0` alone as "this is
+  // the middle" writes its label across the middle of the wheel — where it
+  // lands on top of whatever actually belongs there. A near-zero sliver at the
+  // seam is exactly such a wedge; see `MIN_SECTOR_ANGLE`.
+  if (r0 <= 0 && span >= TAU - 1e-9) {
     const maxWidth = 2 * r1 - 2 * SECTOR_LABEL_PAD
     return maxWidth <= 0 ? null : { x: 0, y: 0, angle: 0, maxWidth }
   }
