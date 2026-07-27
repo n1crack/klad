@@ -72,6 +72,30 @@ const pnpm = process.env.npm_execpath ?? 'pnpm'
 const tarballs = mkdtempSync(join(tmpdir(), 'klad-pack-'))
 let failed = false
 
+/**
+ * `@klad/engine` exports a `VERSION` constant, and it is a hand-written
+ * literal — that package compiles with `types: []` so its entry stays
+ * importable inside a Web Worker, which leaves it no way to read its own
+ * manifest at runtime.
+ *
+ * A literal drifts. This one did, by three releases, while the unit test that
+ * covered it asserted only that it LOOKED like a version. Checked here because
+ * this script is the release path's last stop and has Node available; a
+ * consumer logging `VERSION` should get the number they installed.
+ */
+{
+  const manifest = readManifest(join(repoRoot, 'packages/core/package.json'))
+  const source = readFileSync(join(repoRoot, 'packages/core/src/index.ts'), 'utf8')
+  const declared = /export const VERSION = '([^']+)'/.exec(source)?.[1]
+  process.stdout.write(`\n── ${manifest.name} · VERSION ──\n`)
+  if (declared === manifest.version) {
+    process.stdout.write(`${declared} matches package.json\n`)
+  } else {
+    process.stdout.write(`VERSION is '${declared}' but package.json says '${manifest.version}'\n`)
+    failed = true
+  }
+}
+
 for (const pkg of PACKAGES) {
   const cwd = join(repoRoot, pkg)
   const name = readManifest(join(cwd, 'package.json')).name

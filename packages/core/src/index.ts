@@ -1,4 +1,15 @@
-export const VERSION = '1.0.0-alpha.0'
+/**
+ * This package's version, for a consumer that wants to report or log which one
+ * it has.
+ *
+ * A literal rather than a read of `package.json`: this entry has to be
+ * importable inside a Web Worker with `types: []` and no JSON module
+ * resolution. The cost is a number in two places, which had already drifted
+ * three releases before anyone noticed — so `scripts/check-packages.mjs`
+ * asserts the two agree, in the release path, where a mismatch can still be
+ * fixed without another publish.
+ */
+export const VERSION = '1.2.0'
 
 export type { NodeData, Warning, WarningCode, Size, Bounds } from './types.js'
 export type { Tree, SubtreeStats } from './tree.js'

@@ -1,7 +1,7 @@
 {
   "name": "@klad/react",
-  "version": "1.1.0",
-  "description": "Klad for React \u2014 a canvas tree engine for tens of thousands of nodes. Tiered, file, radial and sunburst layouts, with your own components on the nodes.",
+  "version": "1.2.0",
+  "description": "Klad for React — a canvas tree engine for tens of thousands of nodes. Tiered, file, radial and sunburst layouts, with your own components on the nodes.",
   "keywords": [
     "tree",
     "tree-view",
@@ -28,7 +28,7 @@
   "bugs": {
     "url": "https://github.com/n1crack/klad/issues"
   },
-  "author": "Yusuf \u00d6zdemir",
+  "author": "Yusuf Özdemir",
   "type": "module",
   "license": "AGPL-3.0-or-later",
   "sideEffects": false,
