@@ -474,6 +474,65 @@ export function createCanvas2DRenderer(
       if (i === frame.dragIndex || revealAlpha < 1) ctx.globalAlpha = 1
     }
 
+    // "There is more inside this." Drawn between the nodes and the labels, so
+    // it sits over its own node and under the text — see `Frame.hasHidden` for
+    // why the wheel layouts need a mark at all.
+    //
+    // Skipped at the `block` tier along with the labels: at a zoom where a node
+    // is a few pixels of colour, a mark on it is a few pixels of noise.
+    const hidden = frame.hasHidden
+    if (hidden !== null && frame.tier !== 'block') {
+      ctx.lineWidth = 1.5
+      for (let n = 0; n < visibleCount; n++) {
+        const i = visible[n]!
+        if (hidden[i] !== 1) continue
+        if (sectors !== null) {
+          // A second arc just inside the segment's outer edge, in its own
+          // label ink: it reads as the beginning of the ring that would be
+          // there if the branch were open. Drawn inside rather than outside
+          // because outside is where the NEXT ring lives, and a mark there
+          // would be a promise about space that is already spoken for.
+          const s = i * 6
+          const r1 = sectors[s + 3]! * k
+          const r0 = sectors[s + 2]! * k
+          const inset = Math.min(4, (r1 - r0) * 0.28)
+          if (inset < 1.5) continue
+          ctx.beginPath()
+          ctx.arc(
+            sectors[s]! * k + camera.x,
+            sectors[s + 1]! * k + camera.y,
+            r1 - inset,
+            sectors[s + 4]!,
+            sectors[s + 5]!,
+            false,
+          )
+          ctx.strokeStyle = inkOn(fillFor(i), theme.labelColour, theme.labelColourInverse)
+          ctx.globalAlpha = 0.55
+          ctx.stroke()
+          ctx.globalAlpha = 1
+        } else if (frame.angles !== null) {
+          // A halo around the marker — the same "there is a ring here you
+          // cannot see" idea, at the scale of a dot.
+          const o = i * 4
+          const w = boxes[o + 2]! * k
+          const h = boxes[o + 3]! * k
+          ctx.beginPath()
+          ctx.arc(
+            (boxes[o]! + boxes[o + 2]! / 2) * k + camera.x,
+            (boxes[o + 1]! + boxes[o + 3]! / 2) * k + camera.y,
+            Math.max(w, h) / 2 + 3,
+            0,
+            Math.PI * 2,
+            false,
+          )
+          ctx.strokeStyle = fills !== null ? fillFor(i) : theme.labelColour
+          ctx.globalAlpha = 0.5
+          ctx.stroke()
+          ctx.globalAlpha = 1
+        }
+      }
+    }
+
     if (frame.tier !== 'block' && frame.labels.length > 0) {
       ctx.fillStyle = theme.labelColour
       ctx.font = theme.labelFont

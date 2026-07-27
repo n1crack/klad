@@ -1010,6 +1010,42 @@ export function createKlad(host: HTMLElement, options: Options): KladInstance {
    * export time, which is fine: export is a deliberate, infrequent user
    * action, not a per-frame path.
    */
+  /**
+   * 1 per visible node with children that are all off screen — mirrors the
+   * engine's own `hasHidden`; see `Frame.hasHidden`. `null` when nothing is
+   * hiding anything.
+   */
+  const hiddenMarks = (
+    visible: ReturnType<typeof pruneToVisible>,
+    sectors: Float64Array | null,
+  ): Uint8Array | null => {
+    const count = visible.tree.count
+    const marks = new Uint8Array(count)
+    let any = false
+    for (let i = 0; i < count; i++) {
+      const src = visible.toSource[i]!
+      if (tree.childStart[src]! === tree.childStart[src + 1]!) continue
+      let shown = false
+      for (let j = visible.tree.childStart[i]!; j < visible.tree.childStart[i + 1]!; j++) {
+        const child = visible.tree.childIndex[j]!
+        if (sectors === null) {
+          shown = true
+          break
+        }
+        const o = child * 6
+        if (sectors[o + 3]! - sectors[o + 2]! > 0 && sectors[o + 5]! - sectors[o + 4]! > 0) {
+          shown = true
+          break
+        }
+      }
+      if (!shown) {
+        marks[i] = 1
+        any = true
+      }
+    }
+    return any ? marks : null
+  }
+
   const buildExportData = (): ExportData => {
     // Isolation included: an export is a picture of the chart, and the chart
     // is currently one branch. Leaving it out would put the whole org in a PNG
@@ -1087,6 +1123,13 @@ export function createKlad(host: HTMLElement, options: Options): KladInstance {
       sectors: result.sectors ?? null,
       angles: result.angles ?? null,
       labelSpace: result.labelSpace ?? 0,
+      // Recomputed here rather than mirrored from the engine, for the same
+      // reason the rest of `buildExportData` is: in worker mode the live
+      // engine is unreachable from this thread. A node counts as hiding
+      // something when it has children in the source tree and none of them
+      // are drawn — either pruned away, or (on a wheel) parked at zero extent
+      // past the last ring.
+      hasHidden: hiddenMarks(visible, result.sectors ?? null),
       branchOf,
       branchDepth,
     }
@@ -2328,6 +2371,7 @@ export function createKlad(host: HTMLElement, options: Options): KladInstance {
         sectors: data.sectors,
         angles: data.angles,
         labelSpace: data.labelSpace,
+        hasHidden: data.hasHidden,
         branchOf: data.branchOf,
         branchDepth: data.branchDepth,
         horizontal: data.horizontal,

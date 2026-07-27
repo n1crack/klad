@@ -77,6 +77,7 @@ describe('toSVG size and performance at 50k nodes', () => {
       rtl: false,
       edgeStyle: 'tiered',
       labelSpace: 0,
+      hasHidden: null,
       sectors: null,
       angles: null,
       branchOf: null,

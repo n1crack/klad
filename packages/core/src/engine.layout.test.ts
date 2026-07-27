@@ -419,3 +419,55 @@ describe('sunburst culling', () => {
     expect(mid).toBeLessThanOrEqual(before)
   })
 })
+
+describe('hidden-children marks', () => {
+  it('flags a node whose children are all off screen, for either reason', () => {
+    // Two reasons a wheel hides children, and they are one question to a
+    // viewer: the branch is closed, or its children fell past the last ring.
+    // Without a mark for both, a collapsed branch looks exactly like a leaf —
+    // the chart omits the fact that there is more, which is worse than
+    // showing less.
+    const renderer = fakeRenderer()
+    const { engine, tree } = seed(renderer)
+    engine.setOptions({ layout: 'sunburst', layoutStep: 10, maxRings: 1 })
+    engine.render(0)
+
+    const marks = renderer.frames.at(-1)!.hasHidden
+    expect(marks).not.toBeNull()
+    // `a` and `b` are on the last drawn ring, so their own children are parked
+    // at zero thickness beyond it.
+    expect(marks![idx(tree, 'a')]).toBe(1)
+    expect(marks![idx(tree, 'b')]).toBe(1)
+    // The hub's children ARE drawn.
+    expect(marks![idx(tree, 'root')]).toBe(0)
+    // And a genuine leaf is never flagged.
+    expect(marks![idx(tree, 'b1')]).toBe(0)
+  })
+
+  it('flags a collapsed branch on a rectangular layout too', () => {
+    const renderer = fakeRenderer()
+    const { engine, tree } = seed(renderer)
+    engine.setOpen(idx(tree, 'a'), false, false)
+    engine.render(0)
+    const marks = renderer.frames.at(-1)!.hasHidden
+    expect(marks).not.toBeNull()
+    // `hasHidden` is PRUNED-indexed, like every other per-node array on a
+    // `Frame` — and a collapse is exactly when the two index spaces stop
+    // agreeing, since the nodes it removed are gone from the pruned one.
+    const at = (id: string): number => {
+      const source = idx(tree, id)
+      return marks![engine.visibleToSource.indexOf(source)]!
+    }
+    expect(at('a')).toBe(1)
+    expect(at('b')).toBe(0)
+  })
+
+  it('is null when nothing is hiding anything', () => {
+    // The whole steady state of a fully expanded chart — no array allocated,
+    // no per-node pass in the renderer.
+    const renderer = fakeRenderer()
+    const { engine } = seed(renderer)
+    engine.render(0)
+    expect(renderer.frames.at(-1)!.hasHidden).toBeNull()
+  })
+})

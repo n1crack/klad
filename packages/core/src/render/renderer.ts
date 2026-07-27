@@ -144,6 +144,23 @@ export interface Frame {
    */
   labelSpace: number
   /**
+   * 1 per node that HAS children, none of which are on screen — `null` when
+   * nothing is hiding anything, which is the whole steady state of a fully
+   * expanded chart.
+   *
+   * It exists because the two layouts that draw their own nodes have no room
+   * for a disclosure control: a radial marker is a dot, and a sunburst
+   * segment is a slice of a ring. Without a mark, a collapsed branch there
+   * looks exactly like a leaf — the chart simply omits the fact that there is
+   * more, which is worse than showing less.
+   *
+   * "Not on screen" covers both reasons a wheel has: the branch is closed, or
+   * its children fell outside the ring window. They are one question to a
+   * viewer, so they get one answer. The engine works it out per relayout; see
+   * the block that fills it.
+   */
+  hasHidden: Uint8Array | null
+  /**
    * Which branch each node belongs to, as the node index of its own top-level
    * ancestor (`-1` for a root itself) — and how deep it sits below that
    * ancestor. Together these are everything `render/palette.ts` needs to give a

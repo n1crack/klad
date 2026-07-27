@@ -1170,6 +1170,12 @@ export function createChartEngine(renderer: Renderer): ChartEngine {
    * and the settled geometry are different questions.
    */
   let renderSectors: Float64Array | null = null
+  /**
+   * 1 per pruned node that HAS children none of which are on screen — see
+   * `Frame.hasHidden`. `null` when every visible node's children are visible
+   * too, which is the whole steady state of a fully expanded chart.
+   */
+  let hasHidden: Uint8Array | null = null
   /** Branch structure for the renderer's palette — see `Frame.branchOf`. Both
    * `null` when this layout doesn't colour by branch. Recomputed once per
    * relayout, never per frame, and independent of the theme. */
@@ -1445,6 +1451,50 @@ export function createChartEngine(renderer: Renderer): ChartEngine {
       ? result.bounds
       : applyOrientation(boxes, result.bounds, tidyLayout ? options.orientation : 'tb', options.rtl)
     quad = buildQuadTree(boxes, bounds)
+    // "Is there more inside this?" — the one question a viewer asks of a node
+    // whose children they cannot see, and it has two answers on a wheel that
+    // look identical from the outside: the branch is collapsed, or its
+    // children fell outside the ring window. Both are computed here, together,
+    // because to the viewer they are the same fact and the affordance for them
+    // is the same mark.
+    //
+    // Deliberately not left to the renderer. It has `parent` but no child
+    // links, so answering this per frame would mean a pass over the whole
+    // pruned tree on every frame to derive something that only changes when
+    // the layout does.
+    {
+      const childStart = pruned.tree.childStart
+      const childIndex = pruned.tree.childIndex
+      const marks = new Uint8Array(n)
+      let any = false
+      for (let i = 0; i < n; i++) {
+        const src = visibleToSource[i]!
+        const sourceFrom = sourceTree.childStart[src]!
+        const sourceTo = sourceTree.childStart[src + 1]!
+        if (sourceFrom === sourceTo) continue // a genuine leaf; nothing hidden
+        let shown = false
+        for (let j = childStart[i]!; j < childStart[i + 1]!; j++) {
+          const child = childIndex[j]!
+          if (sectors === null) {
+            shown = true
+            break
+          }
+          // On a wheel a child can be present in the tree and still have
+          // nothing drawn — parked at zero thickness past the last ring.
+          const o = child * 6
+          if (sectors[o + 3]! - sectors[o + 2]! > 0 && sectors[o + 5]! - sectors[o + 4]! > 0) {
+            shown = true
+            break
+          }
+        }
+        if (!shown) {
+          marks[i] = 1
+          any = true
+        }
+      }
+      hasHidden = any ? marks : null
+    }
+
     edgeStyle = edgeStyleForLayout(options.layout)
     const edgeIndex = buildEdgeIndex(boxes, prunedParent, bounds, horizontal, edgeStyle, options.rtl)
     edgeQuad = edgeIndex.quad
@@ -1914,6 +1964,7 @@ export function createChartEngine(renderer: Renderer): ChartEngine {
       sectors: renderSectors,
       angles,
       labelSpace,
+      hasHidden,
       branchOf,
       branchDepth,
       // Only tidy grows along a caller-chosen axis; see `relayout`. A file
@@ -2185,6 +2236,7 @@ export function createChartEngine(renderer: Renderer): ChartEngine {
         sectors,
         angles,
         labelSpace,
+        hasHidden,
         branchOf,
         branchDepth,
         edgeStyle,

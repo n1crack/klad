@@ -64,6 +64,10 @@ export interface ExportData {
   /** Mirrors `Frame.labelSpace` — the world-unit room the layout reserved
    * outside each node for its label. `0` for every layout but `radial`. */
   labelSpace: number
+  /** Mirrors `Frame.hasHidden` — 1 per node whose children are all off screen.
+   * Exported too: a picture that left the "there is more inside this" marks
+   * off would be a picture of a chart nobody is looking at. */
+  hasHidden: Uint8Array | null
   /** Mirrors `Frame.branchOf` / `Frame.branchDepth` — the branch structure the
    * palette colours nodes from, or `null` for a layout that doesn't. */
   branchOf: Int32Array | null
@@ -533,6 +537,46 @@ export function toSVG(data: ExportData, opts: SvgExportOptions = {}): string {
     }
   }
 
+  // "There is more inside this" — see `Frame.hasHidden`. Emitted with the
+  // nodes, before the labels, so it sits over its own segment and under the
+  // text, exactly as on the canvas.
+  const hidden = data.hasHidden
+  if (hidden !== null && sectors !== null) {
+    for (let i = 0; i < n; i++) {
+      if (hidden[i] !== 1) continue
+      const s = i * 6
+      const r0 = sectors[s + 2]!
+      const r1 = sectors[s + 3]!
+      const a0 = sectors[s + 4]!
+      const a1 = sectors[s + 5]!
+      if (!isSectorVisible(r0, r1, a0, a1)) continue
+      const inset = Math.min(4, (r1 - r0) * 0.28)
+      if (inset < 1.5) continue
+      const recorder = createPathRecorder()
+      recorder.beginPath()
+      const r = r1 - inset
+      const cx = sectors[s]! + offsetX
+      const cy = sectors[s + 1]! + offsetY
+      recorder.moveTo(cx + r * Math.cos(a0), cy + r * Math.sin(a0))
+      recorder.arc(cx, cy, r, a0, a1, false)
+      const ink = fills === null ? theme.labelColour : inkOn(fills[i]!, theme.labelColour, theme.labelColourInverse)
+      nodeParts.push(`<path class="h" stroke="${escapeXml(ink)}" d="${recorder.data()}"/>`)
+    }
+  } else if (hidden !== null && data.angles !== null) {
+    for (let i = 0; i < n; i++) {
+      if (hidden[i] !== 1) continue
+      const o = i * 4
+      const w = boxes[o + 2]!
+      const h = boxes[o + 3]!
+      const ink = fills === null ? theme.labelColour : (fills[i] ?? theme.labelColour)
+      nodeParts.push(
+        `<circle class="h" stroke="${escapeXml(ink)}"` +
+          ` cx="${fmt(boxes[o]! + offsetX + w / 2)}" cy="${fmt(boxes[o + 1]! + offsetY + h / 2)}"` +
+          ` r="${fmt(Math.max(w, h) / 2 + 3)}"/>`,
+      )
+    }
+  }
+
   const labelParts: string[] = []
   if (sectors !== null) {
     // Same placement function the canvas uses, so a label that is drawn on
@@ -609,6 +653,7 @@ export function toSVG(data: ExportData, opts: SvgExportOptions = {}): string {
     // the canvas. `stroke-linejoin: round` keeps the corners where a wedge's
     // two straight sides meet its arcs from spiking outward at narrow angles.
     `.s{stroke:${css(theme.surface)};stroke-width:${css(theme.sectorGap)};stroke-linejoin:round}` +
+    `.h{fill:none;stroke-width:1.5;opacity:0.55}` +
     `.e{fill:none;stroke:${css(theme.edgeStroke)};stroke-width:${css(theme.edgeWidth)}}` +
     `.l{fill:${css(theme.labelColour)};font:${css(theme.labelFont)};dominant-baseline:middle}`
 

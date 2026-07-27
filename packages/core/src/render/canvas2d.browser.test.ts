@@ -46,6 +46,7 @@ function frame(overrides: Partial<Frame> = {}): Frame {
     sectors: null,
     angles: null,
     labelSpace: 0,
+    hasHidden: null,
     branchOf: null,
     branchDepth: null,
     horizontal: false,
