@@ -11,7 +11,6 @@ import {
   easeInOutCubic,
   fit as fitCamera,
   interpolate,
-  layout,
   computeSubtreeStats,
   normalize,
   overlayEnabled,

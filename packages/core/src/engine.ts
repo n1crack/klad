@@ -284,27 +284,6 @@ const NO_LABELS: readonly string[] = []
  * builds the node quadtree — never touched by `render()`'s per-frame,
  * camera-only path.
  */
-/**
- * The point where a connector LEAVES a box shaped `(x, y, w, h)` — the
- * PARENT side of the elbow drawn between a parent and child, in the growth
- * direction `horizontal` implies. MUST mirror canvas2d.ts's elbow-drawing
- * formula exactly (`draw`'s `frame.horizontal` branch: `(px, py)`) — every
- * caller of this function ends up describing where a connector visually
- * attaches, whether for culling (`buildEdgeIndex`, below) or for the reveal/
- * ghost "emerge from the parent" point (`render()`'s `applyTween`, over in
- * `createChartEngine`) — a formula drifting out of step with the renderer's
- * own elbow math would misplace either one. Takes raw `(x, y, w, h)` rather
- * than a `Box` — `Box` isn't declared until further down this file, and
- * `buildEdgeIndex` (the other caller) already works in raw `Float64Array`
- * offsets to avoid an allocation per edge in its O(pruned count) build; see
- * `exitPoint` below for the `Box`-typed convenience wrapper `render()` uses.
- */
-function exitPointXY(x: number, y: number, w: number, h: number, horizontal: boolean): { x: number; y: number } {
-  return horizontal
-    ? { x: x + w, y: y + h / 2 } // right edge, vertical centre
-    : { x: x + w / 2, y: y + h } // bottom edge, horizontal centre
-}
-
 function buildEdgeIndex(
   boxes: Float64Array,
   parent: Int32Array,
