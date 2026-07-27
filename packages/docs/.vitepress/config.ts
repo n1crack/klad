@@ -230,6 +230,7 @@ export default defineConfig({
             { text: 'Layouts', link: '/guide/layouts' },
             { text: 'Node content', link: '/guide/node-content' },
             { text: 'Navigating', link: '/guide/navigating' },
+            { text: 'Drag and drop', link: '/guide/drag-and-drop' },
             { text: 'Sizing', link: '/guide/sizing' },
           ],
         },

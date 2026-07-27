@@ -8,6 +8,12 @@ the handful of nodes actually on screen and zoomed in far enough to read.
 an indented file explorer, a radial dendrogram, or a sunburst you can drill
 into — whichever suits what you are showing. Change `layout` and nothing else.
 
+**Editable, if you want it.** `dragAndDrop: true` and a drag moves a node to a
+new parent or between two siblings — with the whole selection if it is in one.
+Closed branches spring open as the pointer rests on them, cycles are refused,
+Escape puts the node back, and the same move is on the keyboard. Every move is
+reported before it happens, so refusing one is a `preventDefault()`.
+
 **The number that matters:** 5,000–50,000 nodes at 60fps. A DOM-per-node chart
 cannot get there — 50,000 component instances plus as many connector elements
 exhaust memory and layout time long before. Nothing here creates DOM for a node
@@ -100,6 +106,7 @@ stays cheap.
 | `←` | Collapses an expanded node; on a collapsed one or a leaf, moves out to the parent. |
 | `Enter` / `Space` | Toggle the focused row. |
 | `Home` / `End` | First / last row. |
+| `m` | Pick the focused node up; `m` again drops it on wherever focus now is. `Escape` puts it back. Needs `dragAndDrop`. |
 
 Moving focus pans the camera to the focused node, subject to `animate`.
 

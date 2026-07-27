@@ -31,6 +31,8 @@ features:
     details: Tiered for an org chart, indented rows for a file explorer, concentric rings for something wide and shallow, or a sunburst you can drill into. Change the shape without changing the data.
   - title: 🧩 Your Components on Top
     details: A Vue slot, a React render prop, or plain DOM. Real components mount only for the nodes on screen and zoomed in far enough to read — about fifty at a time, pooled and reused.
+  - title: ✋ Rearrange by Dragging
+    details: One option turns a chart into an editor. Drag a node — or a whole selection — onto a new parent or between two siblings. Closed branches spring open as you pass, cycles are refused, and every move is yours to veto before it happens.
   - title: 🛠️ Developer-Friendly
     details: TypeScript throughout, four orientations, RTL, minimap, SVG and PNG export, full keyboard navigation and a screen-reader tree. ESM only, with Vue 3 and React adapters.
 ---

@@ -12,6 +12,7 @@ export type {
   NodeContext,
   Options,
   KladApi,
+  NodeDropEvent,
   SearchResult,
 } from '@klad/core'
 

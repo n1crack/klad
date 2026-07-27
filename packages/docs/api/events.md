@@ -1,6 +1,6 @@
 ---
 title: Events
-description: Click, double-click, hover, toggle, selection and viewport events, and how to subscribe to them from JavaScript, Vue or React.
+description: Click, double-click, hover, toggle, selection, drop and viewport events, and how to subscribe to them from JavaScript, Vue or React.
 ---
 
 # Events
@@ -43,8 +43,36 @@ off()
 | `nodeDblClick` | `{ id, item }` | Two taps on the same node inside 300ms. The second does not also emit `nodeClick`. |
 | `nodeHover` | `{ id, item }` or `{ id: null, item: null }` | Enter and leave. Not re-fired for repeated moves within the same node. |
 | `toggle` | `{ id, open }` | A node was expanded or collapsed, however it happened. |
+| `selectionChange` | `{ ids, items }` | The selection changed. Carries the whole selection, not a delta. |
+| `nodeDrop` | `NodeDropEvent` | A node was dropped somewhere new. Fires BEFORE anything moves. |
 | `viewportChange` | `{ camera }` | Any camera change — pan, zoom, ease, kinetic coast. Fires per frame while one is running. |
 | `warning` | `Warning` | Something in the data could not be honoured. |
+
+## Refusing a move
+
+`nodeDrop` is the one event that fires *before* the thing it describes. That
+is what makes it refusable:
+
+```ts
+chart.on('nodeDrop', ({ ids, parentId, index, mode, preventDefault }) => {
+  if (parentId === null) return preventDefault() // no new roots
+  save(ids, parentId, index)
+})
+```
+
+| Field | |
+|---|---|
+| `ids` | What is moving, in tree order — the whole selection if a selected node was dragged |
+| `items` | The same nodes' data objects |
+| `parentId` | The new parent, or `null` for a drop that makes a root |
+| `index` | Position among the new parent's children |
+| `mode` | `'into'`, `'before'` or `'after'` |
+| `preventDefault()` | Refuse the move; the chart applies nothing |
+
+Without a `preventDefault()`, the chart applies the move as soon as the
+handler returns and animates the result — so an `async` handler must call it
+first, before its first `await`. `NodeDropEvent` is exported from every
+package. See [Drag and drop](/guide/drag-and-drop).
 
 ## Warnings are not errors
 

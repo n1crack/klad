@@ -2185,12 +2185,13 @@ body {
   text-align: center;
 }
 
-/* The pointer is carrying something; say so everywhere, including over the
-   cards it passes. */
-.surface .klad-dragging,
-.surface .klad-dragging * {
-  cursor: grabbing !important;
-}
+/* Nothing here for `.klad-dragging` / `.klad-drag-refused` any more: the
+   chart sets the cursor itself now, on its own host and canvas, and takes the
+   cards out of the pointer's way for the length of the drag. This used to be
+   `cursor: grabbing !important` over everything, which also meant the
+   playground was the only place a drag looked like one — and once refusal
+   needed its own cursor, that `!important` was the thing standing in front of
+   it. */
 
 /* The container each stack mounts into. A child of `.surface` rather than
    `.surface` itself, because Vue and React both clear the element they are

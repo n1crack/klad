@@ -352,6 +352,23 @@ export interface ChartView {
   selected?: string[]
 }
 
+/**
+ * What `nodeDrop` carries — see the event's own docblock in `KladEvents`.
+ *
+ * Named and exported rather than left inline on the event, because a handler
+ * is a function a host has to declare somewhere, and typing its parameter
+ * should not mean digging the shape back out of `KladEvents['nodeDrop']`.
+ * Every adapter re-exports it.
+ */
+export interface NodeDropEvent {
+  ids: string[]
+  items: NodeData[]
+  parentId: string | null
+  index: number
+  mode: DropMode
+  preventDefault: () => void
+}
+
 export interface KladEvents {
   nodeClick: (event: { id: string; item: NodeData }) => void
   /**
@@ -390,14 +407,7 @@ export interface KladEvents {
    * parent's children BEFORE the moving nodes are removed — see
    * `dropPosition` in core.
    */
-  nodeDrop: (event: {
-    ids: string[]
-    items: NodeData[]
-    parentId: string | null
-    index: number
-    mode: DropMode
-    preventDefault: () => void
-  }) => void
+  nodeDrop: (event: NodeDropEvent) => void
   toggle: (event: { id: string; open: boolean }) => void
   viewportChange: (event: { camera: Camera }) => void
   warning: (warning: Warning) => void
@@ -987,13 +997,139 @@ export function createKlad(host: HTMLElement, options: Options): KladInstance {
     edgePanFrame = null
   }
 
+  /**
+   * The cursor, for as long as a drag is running.
+   *
+   * Set inline on the chart's own two elements rather than left to a
+   * stylesheet, because the cursor is the answer to "will this be taken?" and
+   * a library whose only refusal signal is a class the host has to style
+   * themselves has not actually answered it. `klad-dragging` and
+   * `klad-drag-refused` are still set alongside, for a host that wants a
+   * different look; this is the floor, not the ceiling.
+   */
+  const setDragCursor = (cursor: string): void => {
+    host.style.cursor = cursor
+    canvas.style.cursor = cursor
+    // Cards stop taking pointer events for the length of the drag. Two
+    // reasons, and both are about the drag rather than the cursor: a card's
+    // own `cursor` would otherwise win over the host's inside its bounds, and
+    // a button or link in a card has no business receiving hover states from
+    // a pointer that is carrying a node. Hit-testing is unaffected — it runs
+    // against the layout on this thread, and the gesture is tracked on
+    // `window`.
+    overlayRoot.style.pointerEvents = cursor === '' ? '' : 'none'
+  }
+
+  /** Everything a drag put in place, undone — shared by the release and the
+   * cancel, which differ only in what they do AFTER this. */
+  const teardownDrag = (): void => {
+    dragIds = []
+    dragMask = null
+    dragGhost.hide()
+    stopEdgePan()
+    cancelSpring()
+    chartHost.setDrag(-1)
+    setDropTarget(-1, 'into', true)
+    host.classList.remove('klad-dragging')
+    host.classList.remove('klad-drag-refused')
+    setDragCursor('')
+    scheduleFrame()
+  }
+
   const setDropTarget = (index: number, mode: DropMode, valid: boolean): void => {
     if (index === dropTargetIndex && mode === dropTargetMode && valid === dropTargetValid) return
     dropTargetIndex = index
     dropTargetMode = mode
     dropTargetValid = valid
     chartHost.setDropTarget(index, mode, valid)
+    // The pointer is the only thing the viewer is actually looking at during a
+    // drag, so it carries the answer to "will this be taken?". The drop
+    // preview says it too, but it is under the ghost and under the cursor,
+    // which is exactly where a pointer is not.
+    const refused = index !== -1 && !valid
+    host.classList.toggle('klad-drag-refused', refused)
+    // Only while a drag is actually running: `setDropTarget(-1, ...)` is also
+    // how a drag is torn down, and that call must not paint a cursor back on.
+    if (dragIds.length > 0) setDragCursor(refused ? 'no-drop' : 'grabbing')
     scheduleFrame()
+  }
+
+  // --- spring-loaded folders ---------------------------------------------
+  //
+  // A closed branch is a wall: its children are not on screen, so there is no
+  // way to aim at one. Every file manager answers this the same way — hold
+  // over a closed folder and it opens — and the answer is the same here for
+  // the same reason. The alternative is to open every branch you might want
+  // BEFORE picking anything up, which is a plan the viewer has to make in
+  // advance of knowing where they are going.
+
+  /** How long the pointer has to rest on a closed branch before it opens. Long
+   * enough that crossing one on the way somewhere else does not trip it,
+   * short enough not to feel like waiting. */
+  const SPRING_DELAY_MS = 550
+  let springTimer: ReturnType<typeof setTimeout> | null = null
+  /** The node the timer is counting down for, by SOURCE index. */
+  let springIndex = -1
+  /**
+   * Everything this drag sprang open, by id, oldest first.
+   *
+   * Kept so they can be closed again at the end. A drag that wanders across
+   * six folders on its way to the seventh should not leave all seven standing
+   * open — the viewer opened none of them on purpose. What survives is the
+   * chain the drop actually landed in, which they did mean, and which is the
+   * one place they now want to be looking.
+   */
+  let sprungOpen: string[] = []
+
+  const hasChildren = (index: number): boolean =>
+    tree.childStart[index + 1]! > tree.childStart[index]!
+
+  const cancelSpring = (): void => {
+    if (springTimer !== null) clearTimeout(springTimer)
+    springTimer = null
+    springIndex = -1
+  }
+
+  /** Arms, re-arms or disarms the timer for whatever the pointer is now over.
+   * Re-hovering the SAME node does not restart the countdown, or a pointer
+   * jittering by a pixel would hold it off forever. */
+  const armSpring = (index: number): void => {
+    if (index === springIndex) return
+    cancelSpring()
+    if (index === -1 || dragMask === null) return
+    // Already open, childless, or part of what is being carried: nothing to
+    // reveal, and in the last case nothing that could legally be dropped in.
+    if (open[index] === 1 || !hasChildren(index) || dragMask[index] === 1) return
+    springIndex = index
+    springTimer = setTimeout(() => {
+      springTimer = null
+      const target = springIndex
+      springIndex = -1
+      // The drag may have ended, or the data been replaced, in the meantime.
+      if (dragMask === null || target === -1 || target >= tree.count) return
+      if (open[target] === 1) return
+      sprungOpen.push(tree.indexToId[target]!)
+      setOpenFlag(target, true)
+    }, SPRING_DELAY_MS)
+  }
+
+  /** Closes what this drag sprang open, keeping `keepUnder` and its ancestors
+   * — the branch the drop landed in. `null` keeps nothing, which is the
+   * cancelled case: the viewer asked for none of this. */
+  const collapseSprung = (keepUnder: number): void => {
+    const keep = new Set<string>()
+    for (let i = keepUnder; i !== -1; i = tree.parent[i]!) {
+      keep.add(tree.indexToId[i]!)
+    }
+    // Deepest first, so a parent closing does not have to reason about
+    // children whose flags are still being changed underneath it.
+    for (const id of [...sprungOpen].reverse()) {
+      if (keep.has(id)) continue
+      const index = tree.idToIndex.get(id)
+      if (index === undefined || open[index] !== 1) continue
+      setOpenFlag(index, false)
+    }
+    sprungOpen = []
   }
 
   /**
@@ -2415,9 +2551,11 @@ export function createKlad(host: HTMLElement, options: Options): KladInstance {
       dragGhost.show(overlayElementOf(index), labelOf(itemFor(index)), dragIds.length)
       dragGhost.move(screenX, screenY)
       host.classList.add('klad-dragging')
+      setDragCursor('grabbing')
       scheduleFrame()
       return true
     },
+
     onDragMove(screenX, screenY) {
       dragGhost.move(screenX, screenY)
       updateEdgePan(screenX, screenY)
@@ -2425,11 +2563,13 @@ export function createKlad(host: HTMLElement, options: Options): KladInstance {
       const index = hitTestLocal(world.x, world.y)
       if (index === -1 || dragMask === null) {
         setDropTarget(-1, 'into', true)
+        cancelSpring()
         return
       }
       const box = boxOfSource(index)
       if (box === null) {
         setDropTarget(-1, 'into', true)
+        cancelSpring()
         return
       }
       const mode = resolveDropMode(
@@ -2444,24 +2584,32 @@ export function createKlad(host: HTMLElement, options: Options): KladInstance {
       // answers in — the pruned space changes as branches open and this
       // gesture outlives that.
       setDropTarget(index, mode, isDropAllowed(dragMask, index))
+      // Only an "into" hover springs a folder. On the leading or trailing
+      // quarter the viewer is aiming BETWEEN two rows, and opening the one
+      // they are beside would push their target out from under them.
+      armSpring(mode === 'into' ? index : -1)
     },
     onDragEnd() {
       const target = dropTargetIndex
       const mode = dropTargetMode
       const valid = dropTargetValid
       const ids = dragIds
+      const landed = target !== -1 && valid && ids.length > 0
 
-      dragIds = []
-      dragMask = null
-      dragGhost.hide()
-      stopEdgePan()
-      chartHost.setDrag(-1)
-      setDropTarget(-1, 'into', true)
-      host.classList.remove('klad-dragging')
-      scheduleFrame()
+      teardownDrag()
+      // The branch the drop landed in stays open; everything else this drag
+      // sprang open on the way closes again. A refused or missed drop landed
+      // nowhere, so nothing is kept.
+      collapseSprung(landed ? target : -1)
 
-      if (target === -1 || !valid || ids.length === 0) return
+      if (!landed) return
       emitDrop(ids, target, mode)
+    },
+    onDragCancel() {
+      teardownDrag()
+      // Escape means "none of this happened", and a folder that sprang open
+      // under the pointer is part of "this".
+      collapseSprung(-1)
     },
   })
 
@@ -3000,6 +3148,7 @@ export function createKlad(host: HTMLElement, options: Options): KladInstance {
       detachInput()
       dragGhost.destroy()
       stopEdgePan()
+      cancelSpring()
       detachKeys()
       detachMarquee()
       overlay?.destroy()

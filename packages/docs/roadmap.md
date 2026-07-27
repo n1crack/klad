@@ -96,6 +96,14 @@ thousand nodes needs a way to reduce itself to the nodes that match, keeping
 the ancestors that lead to them, so a search is something you can look at
 rather than step through.
 
+Nested-set bounds come with it — `lft`/`rgt` on `stats(id)`, computed by the
+same walk that already counts descendants. Not as a way of storing a tree, but
+as a number you can compare: "is this node inside that branch" stops being an
+ancestor walk of unbounded length and becomes `lft > a.lft && rgt < a.rgt`,
+which is what makes filtering a large tree by branch cheap enough to do per
+frame. They are also what a backend storing categories as nested sets needs
+back after a drag reorders them, so the same values close that loop too.
+
 ## 1.6 — layouts and edges you supply
 
 `LayoutFn` is already the shape every built-in layout is written to — a pure

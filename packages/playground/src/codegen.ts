@@ -53,6 +53,23 @@ function themeOf(snapshot: ConfigSnapshot): Partial<Theme> {
  * snippet restating every default is a worse answer than a short one, and
  * these two are the controls whose default is the common case.
  */
+/** Whether the snippet should carry a `nodeDrop` handler — see `dropHandler`. */
+function hasDrop(snapshot: ConfigSnapshot): boolean {
+  return optionsForLayout(snapshot.example, snapshot.layout).dragAndDrop === true
+}
+
+/**
+ * The body of a `nodeDrop` handler, shared by all three stacks.
+ *
+ * Printed for any example with dragging on, because the option alone is only
+ * half the feature: the chart moves the node on screen either way, and this is
+ * where an app makes that stick. Saying so in the snippet is the difference
+ * between a demo and something a reader can ship.
+ */
+const DROP_BODY = `// Fires BEFORE the move is applied. Send it to your server here, or
+  // call event.preventDefault() to refuse it and leave the tree alone.
+  console.log(event.ids, '->', event.parentId ?? '(root)', 'at', event.index)`
+
 function optionsOf(snapshot: ConfigSnapshot): [key: string, value: unknown][] {
   const example = snapshot.example
   // The options as the chart ACTUALLY received them — the example's own with
@@ -79,6 +96,12 @@ function optionsOf(snapshot: ConfigSnapshot): [key: string, value: unknown][] {
     'rtl',
     'collapsedByDefault',
     'toggleOnNodeClick',
+    // Both default to off, and both are the whole point of the example that
+    // turns them on. A drag-and-drop snippet that omitted `dragAndDrop: true`
+    // would paste into a chart that pans when you drag a card, and leave the
+    // reader with no way to find out why.
+    'dragAndDrop',
+    'selection',
   ]) {
     if (declared[key] !== undefined) entries.push([key, declared[key]])
   }
@@ -202,6 +225,13 @@ function vanilla(snapshot: ConfigSnapshot): string {
   const content = snapshot.hasNodeContent
     ? `\n  renderNode: (element, context) => {\n    element.textContent = String(context.item.name ?? '')\n  },`
     : ''
+  const drop = hasDrop(snapshot)
+    ? `
+
+chart.on('nodeDrop', (event) => {
+  ${DROP_BODY}
+})`
+    : ''
   return `import { createKlad } from '@klad/core'
 
 ${DATA_NOTE}
@@ -209,7 +239,7 @@ ${nodeContentNote(snapshot.hasNodeContent)}
 
 const chart = createKlad(host, {
 ${optionLines(snapshot, '  ')}${content}
-})
+})${drop}
 `
 }
 
@@ -220,19 +250,27 @@ function vue(snapshot: ConfigSnapshot): string {
       <div class="card">{{ item.name }}</div>
     </template>`
     : ''
+  const drop = hasDrop(snapshot)
+  const dropHandler = drop
+    ? `
+
+function onNodeDrop(event: NodeDropEvent) {
+  ${DROP_BODY}
+}`
+    : ''
   return `<script setup lang="ts">
-import { Klad, type Options } from '@klad/vue'
+import { Klad, type Options${drop ? ', type NodeDropEvent' : ''} } from '@klad/vue'
 
 ${DATA_NOTE}
 ${nodeContentNote(snapshot.hasNodeContent)}
 
 const options: Options = {
 ${optionLines(snapshot, '  ')}
-}
+}${dropHandler}
 </script>
 
 <template>
-  <Klad :options="options">${slot}
+  <Klad :options="options"${drop ? ' @node-drop="onNodeDrop"' : ''}>${slot}
   </Klad>
 </template>
 `
@@ -244,8 +282,16 @@ function react(snapshot: ConfigSnapshot): string {
       {(context) => <div className="card">{String(context.item.name ?? '')}</div>}
     </Klad>`
     : ' />'
-  return `import { useMemo } from 'react'
-import { Klad, type Options } from '@klad/react'
+  const drop = hasDrop(snapshot)
+  const dropHandler = drop
+    ? `
+
+  const onNodeDrop = useCallback((event: NodeDropEvent) => {
+    ${DROP_BODY.split('\n').join('\n  ')}
+  }, [])`
+    : ''
+  return `import { useMemo${drop ? ', useCallback' : ''} } from 'react'
+import { Klad, type Options${drop ? ', type NodeDropEvent' : ''} } from '@klad/react'
 
 ${DATA_NOTE}
 ${nodeContentNote(snapshot.hasNodeContent)}
@@ -256,10 +302,10 @@ export function Chart() {
 ${optionLines(snapshot, '      ')}
     }),
     [],
-  )
+  )${dropHandler}
 
   return (
-    <Klad options={options}${children}
+    <Klad options={options}${drop ? ' onNodeDrop={onNodeDrop}' : ''}${children}
   )
 }
 `

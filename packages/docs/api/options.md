@@ -1,6 +1,6 @@
 ---
 title: Options
-description: 'Every option createKlad takes: data, layouts, node size, labels, spacing, minimap, selection, theming and worker mode.'
+description: 'Every option createKlad takes: data, layouts, node size, labels, spacing, minimap, selection, drag and drop, theming and worker mode.'
 ---
 
 # Options
@@ -56,6 +56,7 @@ what each shape is for.
 
 | Option | Type | Default | |
 |---|---|---|---|
+| `dragAndDrop` | `boolean` | `false` | Dragging a node — or the whole selection, if it is in one — onto a new parent, or between two siblings. Reported through [`nodeDrop`](/api/events) before it is applied. See [Drag and drop](/guide/drag-and-drop). |
 | `selection` | `boolean` | `false` | Selecting nodes with the pointer — click, ctrl/cmd-click, shift-click, shift-drag for a box, alt-drag for a lasso. `select()` and `selectionChange` work either way; this is only about the pointer. |
 | `keyboard` | `boolean` | `true` | Camera control from the keyboard, and the tab stop that makes the chart reachable at all — see [Navigating](/guide/navigating#keyboard). |
 | `animate` | `boolean` | `true` | Every animation this layer starts on its own: the expand/collapse transition, camera eases, kinetic panning. `prefers-reduced-motion: reduce` forces it off regardless. |

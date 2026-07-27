@@ -61,9 +61,25 @@ export interface InputCallbacks {
   onDragStart(screenX: number, screenY: number, target: EventTarget | null): boolean
   /** Host-relative pointer position during a claimed drag. */
   onDragMove(screenX: number, screenY: number): void
-  /** The claimed drag ended here. Fires for a cancel too (see `pointercancel`),
-   * so a caller has exactly one place to tear its state down. */
+  /** The claimed drag was released here, meaning to do whatever it was
+   * carrying. See `onDragCancel` for the other way a drag can finish. */
   onDragEnd(screenX: number, screenY: number): void
+  /**
+   * The claimed drag ended WITHOUT meaning it — Escape, or a `pointercancel`
+   * (the browser taking the gesture for a scroll, a touch turned into a
+   * system gesture, the pointer's device going away mid-drag).
+   *
+   * Separate from `onDragEnd` because the two have opposite consequences: one
+   * moves a node, the other must not. `pointercancel` used to route here to
+   * `onDragEnd`, which meant a gesture the browser took away from us
+   * restructured the tree on its way out. And a viewer who has picked up the
+   * wrong node needs a way to put it back down that is not "find somewhere
+   * the drop is refused" — which is what Escape is for everywhere else.
+   *
+   * A caller tears the same state down as for `onDragEnd`, and applies
+   * nothing.
+   */
+  onDragCancel(): void
   /**
    * A single-pointer drag (not a pinch) just ended. `vx`/`vy` are the release
    * velocity in screen px/ms, estimated from a short rolling window of recent
@@ -257,6 +273,41 @@ export function attachInput(
     }
   }
 
+  /**
+   * Abandons a claimed drag: the caller hears `onDragCancel` and nothing
+   * moves. `false` when there was no claimed drag to abandon, so a key
+   * handler can tell whether it consumed the key.
+   */
+  const cancelClaimedDrag = (): boolean => {
+    if (!claimed) return false
+    claimed = false
+    dragging = false
+    callbacks.onDragCancel()
+    return true
+  }
+
+  const onKeyDown = (event: KeyboardEvent): void => {
+    // Only ever consumes Escape, and only while a drag is actually claimed —
+    // every other Escape in the page (a dialog the host opened over the
+    // chart, the chart's own keyboard grab in a11y.ts) is untouched.
+    if (event.key !== 'Escape') return
+    if (cancelClaimedDrag()) event.preventDefault()
+  }
+
+  /**
+   * The browser took the gesture away — see `onDragCancel`. Nothing is
+   * applied, and unlike `pointerup` there is no tap and no momentum: a
+   * cancelled press was not a click, and a fling the browser interrupted is
+   * not one the viewer asked for.
+   */
+  const onPointerCancel = (event: PointerEvent): void => {
+    activePointers.delete(event.pointerId)
+    if (activePointers.size < 2) pinchDistance = 0
+    if (!dragging) return
+    dragging = false
+    cancelClaimedDrag()
+  }
+
   const onPointerUp = (event: PointerEvent): void => {
     activePointers.delete(event.pointerId)
     if (activePointers.size < 2) pinchDistance = 0
@@ -330,7 +381,10 @@ export function attachInput(
   host.addEventListener('pointerdown', onPointerDown)
   window.addEventListener('pointermove', onPointerMove)
   window.addEventListener('pointerup', onPointerUp)
-  window.addEventListener('pointercancel', onPointerUp)
+  window.addEventListener('pointercancel', onPointerCancel)
+  // On `window`, so Escape reaches a drag whatever has focus — a drag is a
+  // pointer gesture and the viewer has no reason to have focused the chart.
+  window.addEventListener('keydown', onKeyDown)
   host.addEventListener('wheel', onWheel, { passive: false })
   host.addEventListener('pointermove', onHoverMove)
   host.addEventListener('pointerleave', onHoverLeave)
@@ -341,7 +395,8 @@ export function attachInput(
     host.removeEventListener('pointerdown', onPointerDown)
     window.removeEventListener('pointermove', onPointerMove)
     window.removeEventListener('pointerup', onPointerUp)
-    window.removeEventListener('pointercancel', onPointerUp)
+    window.removeEventListener('pointercancel', onPointerCancel)
+    window.removeEventListener('keydown', onKeyDown)
     host.removeEventListener('wheel', onWheel)
     host.removeEventListener('pointermove', onHoverMove)
     host.removeEventListener('pointerleave', onHoverLeave)

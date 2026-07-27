@@ -2103,6 +2103,57 @@ describe('drag and drop', () => {
     await nextFrame()
   }
 
+  /** A press and a travel past the threshold, left HELD — the caller decides
+   * how the gesture ends (a release, an Escape, a `pointercancel`), and can
+   * hover in place in between. */
+  async function dragHold(el: HTMLElement, from: { x: number; y: number }, to: { x: number; y: number }) {
+    const rect = el.getBoundingClientRect()
+    const at = (p: { x: number; y: number }) => ({
+      clientX: rect.left + p.x,
+      clientY: rect.top + p.y,
+      pointerId: 1,
+      button: 0,
+      bubbles: true,
+    })
+    el.dispatchEvent(new PointerEvent('pointerdown', at(from)))
+    for (let s = 1; s <= 5; s++) {
+      const point = { x: from.x + ((to.x - from.x) * s) / 5, y: from.y + ((to.y - from.y) * s) / 5 }
+      window.dispatchEvent(new PointerEvent('pointermove', at(point)))
+      await nextFrame()
+    }
+    return {
+      /** Another move, without ending anything — for testing what HOLDING
+       * somewhere does. */
+      async hover(point: { x: number; y: number }) {
+        window.dispatchEvent(new PointerEvent('pointermove', at(point)))
+        await nextFrame()
+      },
+      async release(point = to) {
+        window.dispatchEvent(new PointerEvent('pointerup', at(point)))
+        await nextFrame()
+        await nextFrame()
+      },
+      async escape() {
+        window.dispatchEvent(new KeyboardEvent('keydown', { key: 'Escape', bubbles: true }))
+        await nextFrame()
+        await nextFrame()
+      },
+      async cancel() {
+        window.dispatchEvent(new PointerEvent('pointercancel', at(to)))
+        await nextFrame()
+        await nextFrame()
+      },
+    }
+  }
+
+  /** The element `createKlad` was handed. The overlay root sits inside it, so
+   * the tests that dispatch at `.klad-overlay-node`'s parent are aiming one
+   * level in from here — fine for an event, which bubbles, but not for
+   * reading back the class and cursor the chart sets on the host itself. */
+  function chartHostEl(): HTMLElement {
+    return document.querySelector<HTMLElement>('.klad-overlay-node')!.parentElement!.parentElement!
+  }
+
   /** Screen-space centre of a node, from the overlay element the chart wrote
    * its id onto. */
   function centreOfCard(id: string): { x: number; y: number } | null {
@@ -2265,6 +2316,177 @@ describe('drag and drop', () => {
     await settleTransition()
     const settled = centreOfCard('d')!
     expect(Math.abs(midway.x - settled.x) + Math.abs(midway.y - settled.y)).toBeGreaterThan(1)
+    chart.destroy()
+  })
+
+  it('cancels on Escape without moving anything', async () => {
+    const dropped: unknown[] = []
+    const chart = make({
+      dragAndDrop: true,
+      renderNode: (el: HTMLElement, ctx: { item: { name?: unknown } }) => {
+        el.textContent = String(ctx.item.name ?? '')
+      },
+    })
+    chart.on('nodeDrop', (event) => dropped.push(event))
+    await nextFrame()
+    await settle()
+
+    const host = document.querySelector<HTMLElement>('.klad-overlay-node')!.parentElement!
+    const hostRect = host.getBoundingClientRect()
+    const from = centreOfCard('d')!
+    const to = centreOfCard('c')!
+    const gesture = await dragHold(
+      host,
+      { x: from.x - hostRect.left, y: from.y - hostRect.top },
+      { x: to.x - hostRect.left, y: to.y - hostRect.top },
+    )
+    await gesture.escape()
+    // The release after an Escape is the browser's, not the viewer's — the
+    // gesture is already over, and it must not resurrect the drop.
+    await gesture.release()
+    await settleTransition()
+
+    expect(dropped.length).toBe(0)
+    expect(chart.api.stats('b')!.directChildren).toBe(1)
+    // Pooled, not removed — see `createDragGhost`. Hidden and emptied is what
+    // "put down" looks like.
+    expect(document.querySelector<HTMLElement>('.klad-drag-ghost')?.hidden ?? true).toBe(true)
+    expect(chartHostEl().classList.contains('klad-dragging')).toBe(false)
+    chart.destroy()
+  })
+
+  it('cancels when the browser takes the gesture away', async () => {
+    // `pointercancel` used to route to the same place as `pointerup`, so a
+    // gesture the browser reclaimed — a touch it decided was a scroll — moved
+    // a node on its way out.
+    const dropped: unknown[] = []
+    const chart = make({
+      dragAndDrop: true,
+      renderNode: (el: HTMLElement, ctx: { item: { name?: unknown } }) => {
+        el.textContent = String(ctx.item.name ?? '')
+      },
+    })
+    chart.on('nodeDrop', (event) => dropped.push(event))
+    await nextFrame()
+    await settle()
+
+    const host = document.querySelector<HTMLElement>('.klad-overlay-node')!.parentElement!
+    const hostRect = host.getBoundingClientRect()
+    const from = centreOfCard('d')!
+    const to = centreOfCard('c')!
+    const gesture = await dragHold(
+      host,
+      { x: from.x - hostRect.left, y: from.y - hostRect.top },
+      { x: to.x - hostRect.left, y: to.y - hostRect.top },
+    )
+    await gesture.cancel()
+    await settleTransition()
+
+    expect(dropped.length).toBe(0)
+    expect(chart.api.stats('b')!.directChildren).toBe(1)
+    chart.destroy()
+  })
+
+  it('says with the cursor whether the drop would be taken', async () => {
+    const chart = make({
+      dragAndDrop: true,
+      renderNode: (el: HTMLElement, ctx: { item: { name?: unknown } }) => {
+        el.textContent = String(ctx.item.name ?? '')
+      },
+    })
+    await nextFrame()
+    await settle()
+
+    const host = document.querySelector<HTMLElement>('.klad-overlay-node')!.parentElement!
+    const hostRect = host.getBoundingClientRect()
+    const local = (id: string) => {
+      const c = centreOfCard(id)!
+      return { x: c.x - hostRect.left, y: c.y - hostRect.top }
+    }
+    // Drag `b`, which owns `d` — so `c` accepts it and `d` cannot.
+    const chartHost = chartHostEl()
+    const gesture = await dragHold(host, local('b'), local('c'))
+    expect(chartHost.style.cursor).toBe('grabbing')
+    expect(chartHost.classList.contains('klad-drag-refused')).toBe(false)
+    // Cards are out of the pointer's way for the length of the drag, which is
+    // what stops a card's own cursor winning inside its bounds.
+    expect(host.style.pointerEvents).toBe('none')
+
+    await gesture.hover(local('d'))
+    expect(chartHost.style.cursor).toBe('no-drop')
+    expect(chartHost.classList.contains('klad-drag-refused')).toBe(true)
+
+    await gesture.escape()
+    expect(chartHost.style.cursor).toBe('')
+    expect(chartHost.classList.contains('klad-drag-refused')).toBe(false)
+    expect(host.style.pointerEvents).toBe('')
+    chart.destroy()
+  })
+
+  it('springs a closed branch open when the drag rests on it', async () => {
+    // Without this a closed branch is a wall: its children are off screen, so
+    // there is nothing to aim at and no way to open it while both hands are
+    // busy with the gesture.
+    const chart = make({
+      dragAndDrop: true,
+      renderNode: (el: HTMLElement, ctx: { item: { name?: unknown } }) => {
+        el.textContent = String(ctx.item.name ?? '')
+      },
+    })
+    await nextFrame()
+    await settle()
+    chart.api.collapse('b')
+    await settleTransition()
+    expect(centreOfCard('d')).toBeNull()
+
+    const host = document.querySelector<HTMLElement>('.klad-overlay-node')!.parentElement!
+    const hostRect = host.getBoundingClientRect()
+    const local = (id: string) => {
+      const c = centreOfCard(id)!
+      return { x: c.x - hostRect.left, y: c.y - hostRect.top }
+    }
+    const gesture = await dragHold(host, local('c'), local('b'))
+    await new Promise<void>((resolve) => setTimeout(resolve, 700))
+    await settleTransition()
+
+    // `d` is on screen now, which it was not when the drag started.
+    expect(centreOfCard('d')).not.toBeNull()
+    await gesture.release(local('b'))
+    await settleTransition()
+    // Dropped into `b`, so `b` stays open — that is where the viewer is now
+    // looking.
+    expect(chart.api.getView().open).toContain('b')
+    chart.destroy()
+  })
+
+  it('closes again what it sprang open, when the drop went elsewhere', async () => {
+    const chart = make({
+      dragAndDrop: true,
+      renderNode: (el: HTMLElement, ctx: { item: { name?: unknown } }) => {
+        el.textContent = String(ctx.item.name ?? '')
+      },
+    })
+    await nextFrame()
+    await settle()
+    chart.api.collapse('b')
+    await settleTransition()
+
+    const host = document.querySelector<HTMLElement>('.klad-overlay-node')!.parentElement!
+    const hostRect = host.getBoundingClientRect()
+    const local = (id: string) => {
+      const c = centreOfCard(id)!
+      return { x: c.x - hostRect.left, y: c.y - hostRect.top }
+    }
+    const gesture = await dragHold(host, local('c'), local('b'))
+    await new Promise<void>((resolve) => setTimeout(resolve, 700))
+    await settleTransition()
+    expect(chart.api.getView().open).toContain('b')
+
+    // Escape: none of this happened, and a branch that only opened because
+    // the pointer paused over it on the way is part of "this".
+    await gesture.escape()
+    await settleTransition()
+    expect(chart.api.getView().open).not.toContain('b')
     chart.destroy()
   })
 })
