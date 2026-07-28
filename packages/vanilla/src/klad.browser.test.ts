@@ -3908,6 +3908,53 @@ describe('very wide levels', () => {
     chart.destroy()
   })
 
+  it('fades the leaving card in worker mode too', async () => {
+    // The ghosts cross `postMessage` as three more arrays on the frame
+    // message. Every other test for them runs the engine in-process, which is
+    // exactly the half that cannot tell whether the wire carries them.
+    const watching = new Set<string>()
+    const chart = createKlad(tallHost(), {
+      data: WIDE,
+      layout: 'file',
+      nodeSize: { w: 300, h: 26 },
+      rowGap: 4,
+      label: (item) => String(item.name ?? ''),
+      worker: true,
+      maxChildren: 3,
+      pinChildren: (item) => watching.has(String(item.id)),
+      renderNode: (el, ctx) => (el.textContent = ctx.id),
+    })
+    await nextFrame()
+    await settle()
+    await settle()
+    expect(onScreen()).toContain('c2')
+
+    const alphaOf = (id: string) => {
+      const el = document.querySelector<HTMLElement>(`.klad-overlay-node[data-klad-id="${id}"]`)
+      if (el === null) return null
+      return el.style.opacity === '' ? 1 : Number(el.style.opacity)
+    }
+
+    watching.add('c17')
+    chart.api.refresh()
+    let leaving = false
+    let arriving = false
+    // Across the WHOLE transition: the departure rides phase one and the
+    // arrival phase two, so a window that only covers the first half sees one
+    // of them and calls the other broken.
+    for (let i = 0; i < 40; i++) {
+      await nextFrame()
+      const gone = alphaOf('c2')
+      const came = alphaOf('c17')
+      if (gone !== null && gone > 0 && gone < 1) leaving = true
+      if (came !== null && came > 0 && came < 1) arriving = true
+    }
+    await settleTransition()
+    await settle()
+    expect({ leaving, arriving }).toEqual({ leaving: true, arriving: true })
+    chart.destroy()
+  })
+
   it('does nothing without a cap', async () => {
     const chart = wide()
     await nextFrame()

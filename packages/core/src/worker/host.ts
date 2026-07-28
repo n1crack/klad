@@ -19,6 +19,8 @@ export interface ChartHost {
     labels: string[],
     open: Uint8Array,
     unloaded?: Uint8Array | null,
+    keep?: Uint8Array | null,
+    hide?: Uint8Array | null,
   ): void
   setOptions(partial: Partial<EngineOptions>): void
   /** See `ChartEngine.setOpen`'s docblock — `ring` defaults to `true` here too. */
@@ -268,9 +270,9 @@ export function createChartHost(
       return worker !== null
     },
 
-    setData(tree, sizes, labels, open, unloaded = null) {
-      engine?.setData(tree, sizes, labels, open, unloaded)
-      post({ t: 'data', tree, sizes, labels, open, unloaded })
+    setData(tree, sizes, labels, open, unloaded = null, keep = null, hide = null) {
+      engine?.setData(tree, sizes, labels, open, unloaded, keep, hide)
+      post({ t: 'data', tree, sizes, labels, open, unloaded, keep, hide })
     },
     setOptions(partial) {
       engine?.setOptions(partial)

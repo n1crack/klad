@@ -37,6 +37,19 @@ export interface ChartEngine {
     labels: string[],
     open: Uint8Array,
     unloaded?: Uint8Array | null,
+    /**
+     * The filter and cap masks that go WITH this data — see `setFilter` and
+     * `setOverflow`, which remain for changing either on its own.
+     *
+     * Here as well because they have to arrive in the same breath as the tree
+     * they are indexed against. Sent as separate calls after it, each one
+     * dirtied the layout again — and in worker mode, where a render follows
+     * every message, the relayout that built the move's transition was
+     * immediately followed by one that threw it away. Sent before it, they
+     * would briefly be masks for a tree the engine does not have yet.
+     */
+    keep?: Uint8Array | null,
+    hide?: Uint8Array | null,
   ): void
   setOptions(partial: Partial<EngineOptions>): void
   /**
@@ -2251,7 +2264,7 @@ export function createChartEngine(renderer: Renderer): ChartEngine {
   }
 
   return {
-    setData(tree, sizes, labels, openFlags, unloaded) {
+    setData(tree, sizes, labels, openFlags, unloaded, keep, hide) {
       sourceTree = wireTreeToTree(tree)
       // Defensive-copy every caller-owned buffer. In the worker path these
       // arrive as structured clones the engine already owns, but the
@@ -2297,6 +2310,11 @@ export function createChartEngine(renderer: Renderer): ChartEngine {
       // case the two index spaces DO share meaning, through the remap they
       // handed over — see `animateNextLayout`. Consumed here rather than left
       // standing, so arming without a `setData` is a no-op.
+      // With the data, not after it — see the `keep`/`hide` parameters.
+      // `undefined` leaves whatever `setFilter`/`setOverflow` last set, so a
+      // caller that does not use them is unaffected.
+      if (keep !== undefined) filterKeep = keep === null ? null : Uint8Array.from(keep)
+      if (hide !== undefined) overflowHide = hide === null ? null : Uint8Array.from(hide)
       pendingMove = armedMove
       pendingRemap = armedRemap
       if (armedMove) pendingTransitionOpening = armedOpening

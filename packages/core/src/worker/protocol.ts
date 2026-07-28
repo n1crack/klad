@@ -129,6 +129,11 @@ export type MainToWorkerMessage =
       labels: string[]
       open: Uint8Array
       unloaded: Uint8Array | null
+      /** The filter and cap masks for THIS tree — see `ChartEngine.setData`.
+       * They travel with the data because arriving after it cost the move its
+       * transition: the worker renders after every message. */
+      keep: Uint8Array | null
+      hide: Uint8Array | null
     }
   | { t: 'options'; options: Partial<EngineOptions> }
   | { t: 'camera'; camera: Camera }

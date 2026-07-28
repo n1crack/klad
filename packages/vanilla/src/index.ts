@@ -1379,14 +1379,15 @@ export function createKlad(host: HTMLElement, options: Options): KladInstance {
     // twenty thousand calls into somebody else's code — worth not doing
     // twice in the same function for the sake of a shorter line.
     const unloaded = unloadedMask()
-    chartHost.setData(toWireTree(tree), sizes, labels, open, unloaded)
-    // After `setData`, because the mask is indexed against the tree that was
-    // just sent. Re-derived rather than kept: a source index means nothing
-    // across a `normalize`, so carrying the old mask over would keep an
-    // arbitrary set of nodes.
-    if (filterQuery !== null) applyFilter()
+    // Both masks are re-derived here rather than carried: a source index means
+    // nothing across a `normalize`, so an old mask would keep an arbitrary set
+    // of nodes. Computed BEFORE `setData` and handed to it, because sending
+    // them after cost every move its transition — the worker renders after
+    // every message, so the relayout that built the transition was followed
+    // immediately by one that threw it away.
+    if (filterQuery !== null) buildFilterMask()
     overflowHide = overflowMask()
-    chartHost.setOverflow(overflowHide)
+    chartHost.setData(toWireTree(tree), sizes, labels, open, unloaded, filterKeep, overflowHide)
     // Deferred: applyData() runs synchronously inside createKlad, before the
     // caller has had a chance to attach a 'warning' listener via `on()`. Emitting
     // here directly would drop every warning raised on the initial load. Queuing
@@ -2068,10 +2069,9 @@ export function createKlad(host: HTMLElement, options: Options): KladInstance {
    * means nothing across a `normalize`, so a mask from the previous tree would
    * keep an arbitrary set of nodes.
    */
-  const applyFilter = (): string[] => {
+  const buildFilterMask = (): string[] => {
     if (filterQuery === null) {
       filterKeep = null
-      chartHost.setFilter(null)
       return []
     }
     const query = filterQuery
@@ -2098,7 +2098,15 @@ export function createKlad(host: HTMLElement, options: Options): KladInstance {
       for (let a = i; a !== -1 && keep[a] !== 1; a = tree.parent[a]!) keep[a] = 1
     }
     filterKeep = keep
-    chartHost.setFilter(keep)
+    return matched
+  }
+
+  /** `buildFilterMask`, and then tell the engine about it — for `api.filter`,
+   * which changes the filter without changing the data. `applyData` hands the
+   * mask to `setData` instead; see there for why. */
+  const applyFilter = (): string[] => {
+    const matched = buildFilterMask()
+    chartHost.setFilter(filterKeep)
     return matched
   }
 
