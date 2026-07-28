@@ -1,5 +1,6 @@
 import { describe, expect, it } from 'vitest'
 import { normalize, subtreeOf, wouldCreateCycle, computeSubtreeStats } from './tree.js'
+import type { NodeData } from './types.js'
 
 describe('normalize', () => {
   it('indexes a simple tree and builds CSR children', () => {
@@ -254,6 +255,77 @@ describe('computeSubtreeStats', () => {
     // One child, which is itself a leaf.
     expect(at('e')).toEqual({ directChildren: 1, descendants: 1, height: 1, depth: 2 })
     expect(at('f')).toEqual({ directChildren: 0, descendants: 0, height: 0, depth: 3 })
+  })
+
+  it('numbers the nested set so a subtree is one contiguous range', () => {
+    const tree = normalize(DATA)
+    const stats = computeSubtreeStats(tree)
+    const at = (id: string) => {
+      const i = tree.idToIndex.get(id)!
+      return { lft: stats.lft[i]!, rgt: stats.rgt[i]! }
+    }
+
+    // a(1..12): b(2..9) contains d(3,4) and e(5..8) which contains f(6,7);
+    // then c(10,11).
+    expect(at('a')).toEqual({ lft: 1, rgt: 12 })
+    expect(at('b')).toEqual({ lft: 2, rgt: 9 })
+    expect(at('d')).toEqual({ lft: 3, rgt: 4 })
+    expect(at('e')).toEqual({ lft: 5, rgt: 8 })
+    expect(at('f')).toEqual({ lft: 6, rgt: 7 })
+    expect(at('c')).toEqual({ lft: 10, rgt: 11 })
+
+    // The property the numbering exists for: containment is a comparison, not
+    // a walk up the parent chain.
+    const inside = (child: string, ancestor: string): boolean =>
+      at(child).lft > at(ancestor).lft && at(child).rgt < at(ancestor).rgt
+    expect(inside('f', 'b')).toBe(true)
+    expect(inside('f', 'a')).toBe(true)
+    expect(inside('f', 'c')).toBe(false)
+    expect(inside('c', 'b')).toBe(false)
+    // Not its own ancestor — strict on both sides.
+    expect(inside('b', 'b')).toBe(false)
+
+    // And the pair carries the subtree size: rgt - lft === 2 * descendants + 1.
+    for (let i = 0; i < tree.count; i++) {
+      expect(stats.rgt[i]! - stats.lft[i]!).toBe(stats.descendants[i]! * 2 + 1)
+    }
+  })
+
+  it('numbers across the whole forest, so two roots never overlap', () => {
+    // Per-root numbering would give both roots lft 1, and every containment
+    // comparison across them would answer wrongly.
+    const tree = normalize([
+      { id: 'r1' },
+      { id: 'r1a', parentId: 'r1' },
+      { id: 'r2' },
+      { id: 'r2a', parentId: 'r2' },
+    ])
+    const stats = computeSubtreeStats(tree)
+    const at = (id: string) => {
+      const i = tree.idToIndex.get(id)!
+      return { lft: stats.lft[i]!, rgt: stats.rgt[i]! }
+    }
+    expect(at('r1')).toEqual({ lft: 1, rgt: 4 })
+    expect(at('r1a')).toEqual({ lft: 2, rgt: 3 })
+    expect(at('r2')).toEqual({ lft: 5, rgt: 8 })
+    expect(at('r2a')).toEqual({ lft: 6, rgt: 7 })
+    expect(at('r2a').lft > at('r1').lft && at('r2a').rgt < at('r1').rgt).toBe(false)
+  })
+
+  it('numbers a deep chain without recursing', () => {
+    // The numbering is usually described as an enter/exit recursion. A 50k
+    // chain is a supported input, so this one is a flat sweep — and this is
+    // the test that would blow the stack if it stopped being one.
+    const data: NodeData[] = [{ id: 'n0' }]
+    for (let i = 1; i < 50_000; i++) data.push({ id: `n${i}`, parentId: `n${i - 1}` })
+    const tree = normalize(data)
+    const stats = computeSubtreeStats(tree)
+    const first = tree.idToIndex.get('n0')!
+    const last = tree.idToIndex.get('n49999')!
+    expect(stats.lft[first]).toBe(1)
+    expect(stats.rgt[first]).toBe(100_000)
+    expect(stats.lft[last]).toBe(50_000)
+    expect(stats.rgt[last]).toBe(50_001)
   })
 
   it('keeps each root to its own subtree', () => {

@@ -210,6 +210,34 @@ export interface SubtreeStats {
    * distance from the root, which is `tree.depth` and answers a different
    * question. */
   height: Int32Array
+  /**
+   * Nested-set bounds — the classic interleaved numbering, 1-based, where a
+   * node's own pair brackets every pair below it:
+   *
+   * ```
+   *  1 root                                        16
+   *    2 a        7     8 b                  15
+   *      3 a1  4   5 a2  6    9 b1 10   11 b2   14
+   *                                        12 b2a 13
+   * ```
+   *
+   * What they are FOR is the comparison they turn into. "Is this node inside
+   * that branch" is otherwise a walk up the parent chain of unbounded length;
+   * here it is `lft > a.lft && rgt < a.rgt`, two reads and two compares,
+   * which is what makes filtering a large tree by branch cheap enough to do
+   * per frame. `rgt - lft` is also `2 * descendants + 1`, so the subtree size
+   * is in the pair too.
+   *
+   * The interleaved form rather than a half-open preorder range because this
+   * is also the encoding a database storing a hierarchy as nested sets uses —
+   * `lft`/`rgt` columns, `WHERE lft BETWEEN … AND …` — and the point of
+   * exposing them is that they can go straight back.
+   *
+   * Numbered across the whole FOREST, not per root: two roots' ranges are
+   * disjoint, so the comparison stays correct for a node in either of them.
+   */
+  lft: Int32Array
+  rgt: Int32Array
 }
 
 export function computeSubtreeStats(tree: Tree): SubtreeStats {
@@ -217,6 +245,8 @@ export function computeSubtreeStats(tree: Tree): SubtreeStats {
   const directChildren = new Int32Array(n)
   const descendants = new Int32Array(n)
   const height = new Int32Array(n)
+  const lft = new Int32Array(n)
+  const rgt = new Int32Array(n)
 
   for (let i = 0; i < n; i++) {
     directChildren[i] = tree.childStart[i + 1]! - tree.childStart[i]!
@@ -234,5 +264,27 @@ export function computeSubtreeStats(tree: Tree): SubtreeStats {
     if (viaChild > height[p]!) height[p] = viaChild
   }
 
-  return { directChildren, descendants, height }
+  // Nested-set bounds, forward this time. A node's `rgt` is fully determined
+  // by its `lft` and its (now final) descendant count, so no second traversal
+  // is needed to close a node — which is what lets this be a flat sweep
+  // rather than the enter/exit recursion the numbering is usually described
+  // with, and is why a 50k-deep chain is fine here too.
+  //
+  // `next` holds the next free number INSIDE a node, which its children take
+  // in turn. Preorder guarantees a parent is numbered before any of its
+  // children read it, and that siblings arrive in order.
+  const next = new Int32Array(n)
+  let forest = 1
+  for (let k = 0; k < n; k++) {
+    const i = tree.order[k]!
+    const p = tree.parent[i]!
+    const start = p === -1 ? forest : next[p]!
+    lft[i] = start
+    rgt[i] = start + descendants[i]! * 2 + 1
+    if (p === -1) forest = rgt[i]! + 1
+    else next[p] = rgt[i]! + 1
+    next[i] = start + 1
+  }
+
+  return { directChildren, descendants, height, lft, rgt }
 }

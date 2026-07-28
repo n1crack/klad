@@ -1391,25 +1391,52 @@ describe('createKlad', () => {
     const chart = make()
     await nextFrame()
 
+    // a(1..8): b(2..5) contains d(3,4); then c(6,7).
     expect(chart.api.stats('a')).toEqual({
       directChildren: 2,
       descendants: 3,
       depth: 0,
       height: 2,
+      lft: 1,
+      rgt: 8,
     })
     expect(chart.api.stats('b')).toEqual({
       directChildren: 1,
       descendants: 1,
       depth: 1,
       height: 1,
+      lft: 2,
+      rgt: 5,
     })
     expect(chart.api.stats('d')).toEqual({
       directChildren: 0,
       descendants: 0,
       depth: 2,
       height: 0,
+      lft: 3,
+      rgt: 4,
     })
     expect(chart.api.stats('nope')).toBeNull()
+    chart.destroy()
+  })
+
+  it('answers "is this node inside that branch" as a comparison', async () => {
+    // The reason the bounds are exposed at all. Without them this is a walk up
+    // the parent chain, of unbounded length, per node — which is what rules it
+    // out of anything running per frame.
+    const chart = make()
+    await nextFrame()
+    const inside = (child: string, ancestor: string): boolean => {
+      const c = chart.api.stats(child)!
+      const a = chart.api.stats(ancestor)!
+      return c.lft > a.lft && c.rgt < a.rgt
+    }
+    expect(inside('d', 'b')).toBe(true)
+    expect(inside('d', 'a')).toBe(true)
+    expect(inside('d', 'c')).toBe(false)
+    expect(inside('c', 'b')).toBe(false)
+    // Strict on both sides: a node is not inside itself.
+    expect(inside('b', 'b')).toBe(false)
     chart.destroy()
   })
 
@@ -1456,6 +1483,8 @@ describe('createKlad', () => {
       descendants: 1,
       depth: 0,
       height: 1,
+      lft: 1,
+      rgt: 4,
     })
     chart.destroy()
   })

@@ -97,9 +97,32 @@ chart written before this existed already has its own meaning for a click.
 | `collapse(id, deep?)` | Close it. |
 | `expandAll()` / `collapseAll()` | Everything. |
 | `expandTo(id)` | Open the ancestors of a node without moving the camera. |
-| `stats(id)` | `{ directChildren, descendants, depth, height }`, or `null`. Describes the whole tree, not the expanded part. |
+| `stats(id)` | `{ directChildren, descendants, depth, height, lft, rgt }`, or `null`. Describes the whole tree, not the expanded part. |
 | `pathTo(id)` | The root-to-node id chain, inclusive. `null` for an unknown id. |
 | `refresh()` | Re-read every node's `nodeSize`/`label` and lay out again, keeping expand/collapse, camera and highlight. See [Sizing](/guide/sizing). |
+
+### Is this node inside that branch?
+
+`lft` and `rgt` are nested-set bounds: a node's pair brackets every pair below
+it. That turns an ancestor walk of unbounded length into two comparisons —
+
+```ts
+const branch = chart.api.stats('engineering')!
+const node = chart.api.stats('lead-42')!
+const inside = node.lft > branch.lft && node.rgt < branch.rgt
+```
+
+— which is what makes filtering a large tree by branch cheap enough to do per
+frame. Strict on both sides, so a node is not inside itself, and `rgt - lft` is
+`2 * descendants + 1`, so the pair carries the subtree size too.
+
+It is the classic interleaved numbering rather than a half-open range, because
+that is also what a database storing a hierarchy as nested sets uses — so these
+can go straight back after a drag reorders anything. Numbered across the whole
+forest, so two roots' ranges never overlap.
+
+Every number describes the full tree, not the expanded part, and all six are
+also on the context every card is rendered with — see [Node content](/guide/node-content).
 
 ## Finding and marking
 

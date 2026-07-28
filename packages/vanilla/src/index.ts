@@ -78,6 +78,29 @@ export interface NodeStats {
    * every child is a leaf. The mirror of `depth`, and a different question
    * from it. */
   height: number
+  /**
+   * Nested-set bounds: this node's pair brackets every pair below it.
+   *
+   * What they are for is the comparison they turn into. "Is this node inside
+   * that branch" is otherwise a walk up the parent chain of unbounded length;
+   * here it is two compares:
+   *
+   * ```ts
+   * const branch = chart.stats('engineering')!
+   * const node = chart.stats('lead-42')!
+   * const inside = node.lft > branch.lft && node.rgt < branch.rgt
+   * ```
+   *
+   * Strict on both sides, so a node is not inside itself. `rgt - lft` is
+   * `2 * descendants + 1`, so the pair carries the subtree size too.
+   *
+   * The classic interleaved numbering rather than a half-open range, because
+   * this is also what a database storing a hierarchy as nested sets uses —
+   * which means these can go straight back after a drag reorders anything.
+   * Numbered across the whole forest, so two roots' ranges never overlap.
+   */
+  lft: number
+  rgt: number
 }
 
 export interface NodeContext extends NodeStats {
@@ -1624,13 +1647,15 @@ export function createKlad(host: HTMLElement, options: Options): KladInstance {
     setOpenFlag(index, true)
   }
 
-  /** `NodeStats` for a node by INDEX — four array reads, no walking. See
+  /** `NodeStats` for a node by INDEX — six array reads, no walking. See
    * `NodeStats` and core's `computeSubtreeStats`. */
   const statsOf = (index: number): NodeStats => ({
     directChildren: stats.directChildren[index]!,
     descendants: stats.descendants[index]!,
     depth: tree.depth[index]!,
     height: stats.height[index]!,
+    lft: stats.lft[index]!,
+    rgt: stats.rgt[index]!,
   })
 
   const boxOfSource = (source: number) => {
