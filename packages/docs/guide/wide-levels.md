@@ -50,7 +50,7 @@ The children that did not fit are still in the tree.
 | | |
 | --- | --- |
 | `search` | Finds them. |
-| `stats(id)` | Counts them — `descendants` is the real number. |
+| `stats(id)` | Counts them: `descendants` on the capped parent is still all four hundred. |
 | `filter` | Matches them. |
 | `focus(id)` | Brings one back, digging it out of the cap on the way. |
 
@@ -63,9 +63,9 @@ A cap is about what you can look at, not about what is there.
 
 ## The node that stands for the rest
 
-It is a real node the chart invents, with an id of `klad:more:<parentId>`. If
-your `label` has no answer for it, it gets `+392`. Everything past that is
-yours:
+It is a real node the chart invents, with an id of `klad:more:<parentId>` — so
+if your own ids can start with `klad:more:`, they will collide. If your `label`
+has no answer for it, it gets `+392`. Everything past that is yours:
 
 ```ts
 renderNode: (element, context) => {
@@ -110,11 +110,30 @@ inside the first one. For "find that specific person", `search` plus `focus` is
 the better answer, and it works across the whole tree rather than one parent's
 children.
 
+### What it is, and is not
+
+It is real enough to lay out, be hit-tested, and appear in an export — an
+export is a picture of the chart, and this node is in the chart. It is
+deliberately none of the things that would leak it into your data model:
+
+| | |
+| --- | --- |
+| `search` | Never returns it. Its `item` is a stub with nothing on it but an id. |
+| `stats(id)` | Does not count it. A card saying "21 reports" would be wrong about the only tree you have. |
+| Dragging | Refused, from either side. It stands for nodes rather than being one, and `nodeDrop` must never report an id you have not seen — including when a box selection swept it up. |
+
+The one place it does show is `lft`/`rgt`, which are positions in the chart's
+own numbering rather than counts. Containment is unaffected; the
+`rgt - lft === 2 * descendants + 1` identity holds only where nothing is
+capped.
+
 ## Lifting a cap sticks
 
 `showMore` and `reveal` survive a relayout. Somebody asked for them, and a
 rebuild is not an undo. `update(data)` starts over, as it does with everything
-else.
+else. Both are carried in `getView()` / `setView()` — a link that restored
+everything except what the viewer had opened up would come back a different
+chart.
 
 ## With a filter
 

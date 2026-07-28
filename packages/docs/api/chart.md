@@ -54,7 +54,8 @@ chartRef.current?.api?.fit()
 ### Saving where you are
 
 ```ts
-const view = chart.api.getView()      // { camera, open, highlighted, isolated }
+// { camera, open, highlighted, isolated, selected, filter, uncapped, revealed }
+const view = chart.api.getView()
 localStorage.setItem('chart', JSON.stringify(view))
 
 chart.api.setView(JSON.parse(localStorage.getItem('chart')!))
@@ -63,7 +64,10 @@ chart.api.setView(view, { animate: true })   // fly there instead of arriving
 
 A view is a plain serialisable object naming nodes by id, so it survives the
 data being refetched, reordered or grown — put one in a URL and you have a
-link to a place in a chart. Ids it names that are no longer in the tree are
+link to a place in a chart. One exception, and it is stated rather than
+rounded: a [`filter`](#searching-and-filtering-are-different-things) set with a
+predicate cannot be written into a URL, so `getView` reports `filter: null` for
+one and a restored view shows the whole tree. Ids it names that are no longer in the tree are
 ignored rather than throwing, which is what keeps an old bookmark usable.
 
 ## Selection
@@ -125,6 +129,8 @@ forest, so two roots' ranges never overlap.
 
 Every number describes the full tree, not the expanded part, and all six are
 also on the context every card is rendered with — see [Node content](/guide/node-content).
+The counts leave out the nodes a [capped level](/guide/wide-levels) invents;
+`lft`/`rgt`, being positions rather than counts, include them.
 
 ## Finding and marking
 

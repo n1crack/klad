@@ -98,6 +98,12 @@ export interface NodeStats {
    * this is also what a database storing a hierarchy as nested sets uses —
    * which means these can go straight back after a drag reorders anything.
    * Numbered across the whole forest, so two roots' ranges never overlap.
+   *
+   * These are positions in the CHART's numbering, which includes the nodes a
+   * capped level invents (see `maxChildren`). Containment is unaffected — the
+   * comparison stays exactly as correct — but `rgt - lft === 2 * descendants
+   * + 1` holds only where nothing is capped, since the counts have those
+   * nodes taken back out of them and the numbering does not.
    */
   lft: number
   rgt: number
@@ -507,6 +513,20 @@ export interface ChartView {
   isolated?: string | null
   /** Ids of the selected nodes — see `select`. */
   selected?: string[]
+  /**
+   * The filter, when it was a string — see `filter`. `null` for none.
+   *
+   * A predicate cannot be written into a URL, so a filter set with one is not
+   * part of a view: `getView` reports `null` for it, and a restored view shows
+   * the whole tree. That is a real limit rather than a rounding, and it is
+   * stated here because the alternative is a view that silently claims to be
+   * the chart it is not.
+   */
+  filter?: string | null
+  /** Parents whose cap has been lifted — see `showMore`. */
+  uncapped?: string[]
+  /** Children pulled back past a cap — see `reveal`. */
+  revealed?: string[]
 }
 
 /**
@@ -1166,7 +1186,34 @@ export function createKlad(host: HTMLElement, options: Options): KladInstance {
   // Computed once per tree, never per frame and never per node on demand —
   // see `computeSubtreeStats` in core. Every consumer below (`renderNode`'s
   // context, `api.stats`) is then a plain array lookup.
-  let stats: SubtreeStats = computeSubtreeStats(tree)
+  /**
+   * Takes the nodes a cap invented back out of the counts.
+   *
+   * They are real nodes in the chart's tree — that is what makes them lay out,
+   * hit-test and export like anything else — but they are not in anybody's
+   * data, and a card reading `directChildren` to say "20 reports" must not say
+   * 21. Cheap: one walk up the ancestor chain per aggregate, and there is at
+   * most one per capped parent.
+   *
+   * `lft`/`rgt` are deliberately NOT adjusted. They are positions in the
+   * chart's own numbering rather than counts, and the containment comparison
+   * they exist for stays exactly as correct with the extra nodes in it. What
+   * does not survive is the `rgt - lft === 2 * descendants + 1` identity,
+   * which is documented as holding when nothing is capped.
+   */
+  const discountAggregates = (raw: SubtreeStats): SubtreeStats => {
+    if (hiddenChildIds.size === 0) return raw
+    for (const moreId of overflowOf.keys()) {
+      const index = tree.idToIndex.get(moreId)
+      if (index === undefined) continue
+      const parent = tree.parent[index]!
+      if (parent !== -1) raw.directChildren[parent]! -= 1
+      for (let a = parent; a !== -1; a = tree.parent[a]!) raw.descendants[a]! -= 1
+    }
+    return raw
+  }
+
+  let stats: SubtreeStats = discountAggregates(computeSubtreeStats(tree))
   let open = new Uint8Array(tree.count)
   let camera: Camera = { x: 0, y: 0, k: 1 }
   // Explicitly annotated: under TS 5.9, `new Uint32Array(0)` infers
@@ -1730,7 +1777,7 @@ export function createKlad(host: HTMLElement, options: Options): KladInstance {
     for (let i = 0; i < previous.count; i++) {
       remap[i] = tree.idToIndex.get(previous.indexToId[i]!) ?? -1
     }
-    stats = computeSubtreeStats(tree)
+    stats = discountAggregates(computeSubtreeStats(tree))
     rebuildItemIndex()
     const next = new Uint8Array(tree.count)
     for (let i = 0; i < tree.count; i++) {
@@ -1886,7 +1933,7 @@ export function createKlad(host: HTMLElement, options: Options): KladInstance {
     for (let i = 0; i < previous.count; i++) {
       remap[i] = tree.idToIndex.get(previous.indexToId[i]!) ?? -1
     }
-    stats = computeSubtreeStats(tree)
+    stats = discountAggregates(computeSubtreeStats(tree))
     rebuildItemIndex()
     const next = new Uint8Array(tree.count)
     for (let i = 0; i < tree.count; i++) {
@@ -2007,7 +2054,7 @@ export function createKlad(host: HTMLElement, options: Options): KladInstance {
     for (let i = 0; i < previous.count; i++) {
       remap[i] = tree.idToIndex.get(previous.indexToId[i]!) ?? -1
     }
-    stats = computeSubtreeStats(tree)
+    stats = discountAggregates(computeSubtreeStats(tree))
     rebuildItemIndex()
     const next = new Uint8Array(tree.count)
     for (let i = 0; i < tree.count; i++) {
@@ -3293,7 +3340,18 @@ export function createKlad(host: HTMLElement, options: Options): KladInstance {
       // selection alone. Same rule as a file manager, and the same reason: a
       // drag is not a selection gesture.
       const id = tree.indexToId[index]!
-      dragIds = selectedIds.includes(id) ? [...selectedIds] : [id]
+      // Not the node a cap invented. It stands for other nodes rather than
+      // being one, so "move it" has no meaning and `nodeDrop` would report an
+      // id the host has never seen.
+      if (overflowInfo(itemFor(index)) !== null) return false
+      // ...and not one that came along in a selection either. A box or lasso
+      // can take it in, and a drag carrying the whole selection would then
+      // report an invented id through `nodeDrop`.
+      dragIds = (selectedIds.includes(id) ? [...selectedIds] : [id]).filter((each) => {
+        const at = tree.idToIndex.get(each)
+        return at !== undefined && overflowInfo(itemFor(at)) === null
+      })
+      if (dragIds.length === 0) return false
       const roots = dragIds.map((each) => tree.idToIndex.get(each)).filter((i): i is number => i !== undefined)
       // Built once, here, and read as one array lookup per pointer move —
       // see `subtreeMask`. The alternative walks the ancestor chain on every
@@ -3337,7 +3395,11 @@ export function createKlad(host: HTMLElement, options: Options): KladInstance {
       // `dragMask` is over SOURCE indices, which is what `hitTestLocal`
       // answers in — the pruned space changes as branches open and this
       // gesture outlives that.
-      setDropTarget(index, mode, isDropAllowed(dragMask, index))
+      // Same reasoning on the other side: dropping INTO the aggregate would
+      // make the moved node a child of something that does not exist as far
+      // as the host is concerned.
+      const legal = isDropAllowed(dragMask, index) && overflowInfo(itemFor(index)) === null
+      setDropTarget(index, mode, legal)
       // Only an "into" hover springs a folder. On the leading or trailing
       // quarter the viewer is aiming BETWEEN two rows, and opening the one
       // they are beside would push their target out from under them.
@@ -3607,6 +3669,10 @@ export function createKlad(host: HTMLElement, options: Options): KladInstance {
       const results: SearchResult[] = []
       for (let i = 0; i < tree.count; i++) {
         const item = itemFor(i)
+        // Never the node a cap invented. It is not in anyone's data, so its
+        // `item` is a stub with nothing on it but an id, and a caller looping
+        // results to read a field would find nothing there.
+        if (overflowInfo(item) !== null) continue
         if (!predicate(item)) continue
         const path: string[] = []
         let node = tree.parent[i]!
@@ -3843,6 +3909,9 @@ export function createKlad(host: HTMLElement, options: Options): KladInstance {
         highlighted: highlightedIds === null ? null : [...highlightedIds],
         isolated: isolatedIndex === -1 ? null : (tree.indexToId[isolatedIndex] ?? null),
         selected: [...selectedIds],
+        filter: typeof filterQuery === 'string' ? filterQuery : null,
+        uncapped: [...uncapped],
+        revealed: [...revealed],
       }
     },
     setView(view, opts) {
@@ -3851,8 +3920,22 @@ export function createKlad(host: HTMLElement, options: Options): KladInstance {
       // already be the right one. `?? null` so a view saved before this field
       // existed restores the whole tree rather than nothing.
       api.isolate(view.isolated ?? null)
-      // A restored view says where the camera goes; the fit that isolating
-      // schedules would arrive somewhere else entirely.
+      // Caps next, and before the open flags: lifting one rebuilds the tree,
+      // so flags written against the old one would be written against indices
+      // that no longer mean anything. Absent fields leave what is there —
+      // a view saved before these existed says nothing about them.
+      if (view.uncapped !== undefined || view.revealed !== undefined) {
+        uncapped.clear()
+        revealed.clear()
+        for (const id of view.uncapped ?? []) uncapped.add(id)
+        for (const id of view.revealed ?? []) revealed.add(id)
+        rebuildForOverflow()
+      }
+      // The filter after them, because it suppresses capping while it runs —
+      // so it has to be applied to a tree whose caps are already settled.
+      if (view.filter !== undefined) api.filter(view.filter)
+      // A restored view says where the camera goes; the fit that isolating or
+      // filtering schedules would arrive somewhere else entirely.
       pendingFullFit = false
       // Open state first: the camera is meaningless against a layout that has
       // not happened yet, and expanding changes where everything is.
@@ -3931,6 +4014,11 @@ export function createKlad(host: HTMLElement, options: Options): KladInstance {
       const from = tree.idToIndex.get(id)
       const target = tree.idToIndex.get(to)
       if (from === undefined || target === undefined) return 'refused'
+      // The keyboard reaches every row the mirror lists, which now includes
+      // the node a cap invented — and that is neither something to move nor
+      // somewhere to put one. Same rule as the pointer.
+      if (overflowInfo(itemFor(from)) !== null) return 'refused'
+      if (overflowInfo(itemFor(target)) !== null) return 'refused'
       if (!isDropAllowed(subtreeMask(tree, [from]), target)) return 'refused'
 
       emitDrop([id], target, 'into')
@@ -3986,7 +4074,7 @@ export function createKlad(host: HTMLElement, options: Options): KladInstance {
       loadedChildren.clear()
       loadingIds.clear()
       tree = normalize(treeSource())
-      stats = computeSubtreeStats(tree)
+      stats = discountAggregates(computeSubtreeStats(tree))
       rebuildItemIndex()
       syncAnimate()
       initOpen()

@@ -3083,7 +3083,11 @@ describe('very wide levels', () => {
     await nextFrame()
     await settle()
 
-    expect(chart.api.stats('r')!.directChildren).toBe(21) // 20 + the aggregate
+    // Twenty, not twenty-one: the node the cap invented is real enough to lay
+    // out and hit-test, but it is not in anybody's data and a card saying "21
+    // reports" would be wrong about the only tree the host has.
+    expect(chart.api.stats('r')!.directChildren).toBe(20)
+    expect(chart.api.stats('r')!.descendants).toBe(20)
     expect(chart.api.search('Child 19').map((r) => r.id)).toEqual(['c19'])
     expect(chart.api.pathTo('c19')).toEqual(['r', 'c19'])
     chart.destroy()
@@ -3232,6 +3236,160 @@ describe('very wide levels', () => {
     expect(rows).toContain('c0')
     expect(rows).not.toContain('c19')
     expect(rows).toContain('klad:more:r')
+    chart.destroy()
+  })
+
+  it('refuses to drag the node a cap invented, or to drop into it', async () => {
+    // It stands for other nodes rather than being one, so "move it" has no
+    // meaning — and `nodeDrop` would report an id the host has never seen.
+    const dropped: unknown[] = []
+    const chart = wide({ maxChildren: 5, dragAndDrop: true })
+    chart.on('nodeDrop', (event) => dropped.push(event))
+    await nextFrame()
+    await settle()
+
+    const host = document.querySelector<HTMLElement>('.klad-overlay-node')!.parentElement!
+    const hostRect = host.getBoundingClientRect()
+    const at = (id: string) => {
+      const el = document.querySelector<HTMLElement>(`.klad-overlay-node[data-klad-id="${id}"]`)
+      if (el === null) {
+        throw new Error(
+          `no ${id}; have ${[...document.querySelectorAll<HTMLElement>('.klad-overlay-node')]
+            .map((n) => n.dataset.kladId)
+            .join(',')}`,
+        )
+      }
+      const r = el.getBoundingClientRect()
+      return { x: r.left + r.width / 2 - hostRect.left, y: r.top + r.height / 2 - hostRect.top }
+    }
+    const drag = async (from: { x: number; y: number }, to: { x: number; y: number }) => {
+      const ev = (t: string, p: { x: number; y: number }) =>
+        new PointerEvent(t, {
+          clientX: hostRect.left + p.x,
+          clientY: hostRect.top + p.y,
+          pointerId: 1,
+          button: 0,
+          bubbles: true,
+        })
+      host.dispatchEvent(ev('pointerdown', from))
+      for (let i = 1; i <= 5; i++) {
+        window.dispatchEvent(
+          ev('pointermove', {
+            x: from.x + ((to.x - from.x) * i) / 5,
+            y: from.y + ((to.y - from.y) * i) / 5,
+          }),
+        )
+        await nextFrame()
+      }
+      window.dispatchEvent(ev('pointerup', to))
+      await nextFrame()
+      await nextFrame()
+    }
+
+    // Dropping INTO it: the drag is claimed, the target refuses, nothing
+    // moves. Done first because the other case leaves the camera somewhere
+    // else — see below.
+    await drag(at('c1'), at('klad:more:r'))
+    await settleTransition()
+    expect(dropped.length).toBe(0)
+    expect(chart.api.stats('r')!.directChildren).toBe(20)
+
+    // Dragging IT: refused before the gesture is claimed, so it stays a pan —
+    // which is the right outcome and also why this is last, since panning
+    // takes the nodes the assertions above needed off screen.
+    const cameraBefore = chart.api.getState().camera
+    await drag(at('klad:more:r'), { x: 40, y: 40 })
+    await settleTransition()
+    expect(dropped.length).toBe(0)
+    expect(chart.api.getState().camera).not.toEqual(cameraBefore)
+    chart.destroy()
+  })
+
+  it('keeps the node a cap invented out of search results', async () => {
+    // Its `item` is a stub with nothing on it but an id, so a caller looping
+    // results to read a field would find nothing there.
+    const chart = wide({ maxChildren: 5 })
+    await nextFrame()
+    await settle()
+    const all = chart.api.search(() => true)
+    expect(all.length).toBe(21) // the twenty children and the root
+    expect(all.some((r) => r.id.startsWith('klad:more:'))).toBe(false)
+    chart.destroy()
+  })
+
+  it('does not carry an invented node along in a selection', async () => {
+    // A box or lasso can take it in, and a drag carrying the whole selection
+    // would then report an id the host has never seen through `nodeDrop`.
+    const dropped: { ids: string[] }[] = []
+    const chart = wide({ maxChildren: 5, dragAndDrop: true, selection: true })
+    chart.on('nodeDrop', ({ ids }) => dropped.push({ ids }))
+    await nextFrame()
+    await settle()
+
+    chart.api.select(['c1', 'klad:more:r'])
+    await nextFrame()
+
+    const host = document.querySelector<HTMLElement>('.klad-overlay-node')!.parentElement!
+    const hostRect = host.getBoundingClientRect()
+    const at = (id: string) => {
+      const r = document
+        .querySelector<HTMLElement>(`.klad-overlay-node[data-klad-id="${id}"]`)!
+        .getBoundingClientRect()
+      return { x: r.left + r.width / 2 - hostRect.left, y: r.top + r.height / 2 - hostRect.top }
+    }
+    const ev = (t: string, p: { x: number; y: number }) =>
+      new PointerEvent(t, {
+        clientX: hostRect.left + p.x,
+        clientY: hostRect.top + p.y,
+        pointerId: 1,
+        button: 0,
+        bubbles: true,
+      })
+    const from = at('c1')
+    const to = at('c0')
+    host.dispatchEvent(ev('pointerdown', from))
+    for (let i = 1; i <= 5; i++) {
+      window.dispatchEvent(
+        ev('pointermove', {
+          x: from.x + ((to.x - from.x) * i) / 5,
+          y: from.y + ((to.y - from.y) * i) / 5,
+        }),
+      )
+      await nextFrame()
+    }
+    window.dispatchEvent(ev('pointerup', to))
+    await settleTransition()
+
+    expect(dropped.length).toBe(1)
+    expect(dropped[0]!.ids).toEqual(['c1'])
+    chart.destroy()
+  })
+
+  it('carries the caps and the filter in a view', async () => {
+    // A view is a thing you put in a URL. One that restored everything except
+    // what the viewer had filtered and uncapped would come back a different
+    // chart.
+    const chart = wide({ maxChildren: 5 })
+    await nextFrame()
+    await settle()
+    chart.api.showMore('klad:more:r')
+    chart.api.reveal(['c18'])
+    await settleTransition()
+    await settle()
+
+    const view = JSON.parse(JSON.stringify(chart.api.getView()))
+    expect(view.uncapped).toEqual(['r'])
+    expect(view.revealed).toEqual(['c18'])
+
+    const other = wide({ maxChildren: 5 })
+    await nextFrame()
+    await settle()
+    expect(laidOut(other)).toBe(7)
+    other.api.setView(view)
+    await settleTransition()
+    await settle()
+    expect(laidOut(other)).toBe(21)
+    other.destroy()
     chart.destroy()
   })
 
