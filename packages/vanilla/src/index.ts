@@ -2133,6 +2133,19 @@ export function createKlad(host: HTMLElement, options: Options): KladInstance {
    * asking for MORE of what they are already looking at, and moving the camera
    * would take away the thing they were looking at it from.
    */
+  /**
+   * A node a cap change has just brought onto a level, waiting for the layout
+   * that gives it a box so the ring can be flashed on it.
+   *
+   * Only ever ONE. Pinning somebody swaps them into a slot another node was
+   * occupying, and a cross-fade in place is not something a viewer can read —
+   * "it re-rendered" is what it looks like. The ring is the chart's existing
+   * answer to "the thing you asked for is HERE", and one node arriving is
+   * exactly the single-node action it was built for. A `showMore` brings back
+   * fifteen at once and rings none of them, because fifteen rings is a strobe.
+   */
+  let pendingRingId: string | null = null
+
   const rebuildForOverflow = (pinId?: string): void => {
     // Where the parent whose cap is being lifted sits right now. Held across
     // the rebuild, the way a drop holds its target: clicking "+392 more"
@@ -2147,6 +2160,8 @@ export function createKlad(host: HTMLElement, options: Options): KladInstance {
     const openById = new Map<string, boolean>()
     for (let i = 0; i < tree.count; i++) openById.set(tree.indexToId[i]!, open[i] === 1)
 
+    // What the cap was hiding before, so the arrivals can be worked out after.
+    const wasHidden = hiddenChildIds
     const previous = tree
     tree = normalize(treeSource())
     const remap = new Int32Array(previous.count).fill(-1)
@@ -2167,6 +2182,14 @@ export function createKlad(host: HTMLElement, options: Options): KladInstance {
     // reverse, they leave and the gap closes behind them. Without this the
     // node simply appeared, which at the speed a relayout happens is not
     // something a viewer can follow.
+    // Exactly one node came out from behind the cap — see `pendingRingId`.
+    const arrived: string[] = []
+    for (const id of wasHidden) {
+      if (!hiddenChildIds.has(id) && tree.idToIndex.get(id) !== undefined) arrived.push(id)
+      if (arrived.length > 1) break
+    }
+    pendingRingId = arrived.length === 1 ? arrived[0]! : null
+
     chartHost.animateNextLayout(remap, tree.count >= previous.count)
     applyData(false)
     if (pinScreen !== null && pinId !== undefined) pendingPin = { id: pinId, screen: pinScreen }
@@ -2760,6 +2783,19 @@ export function createKlad(host: HTMLElement, options: Options): KladInstance {
           camera = pan(camera, pin.screen.x - at.x, pin.screen.y - at.y)
           chartHost.setCamera(camera)
           if (!chartHost.transitioning) pendingPin = null
+        }
+      }
+      // After the pin, and after the relayout that gave the node a box. The
+      // ring fires on ARRIVAL for the same reason it does in `moveToSource`:
+      // armed earlier it spends its brightest part on a node that is not
+      // where it is going yet.
+      if (pendingRingId !== null) {
+        const id = pendingRingId
+        const source = tree.idToIndex.get(id)
+        const box = source === undefined ? null : boxOfSource(source)
+        if (box !== null) {
+          pendingRingId = null
+          if (currentOptions.ring !== false) chartHost.flashRing(source!)
         }
       }
       if (pendingFullFit) {

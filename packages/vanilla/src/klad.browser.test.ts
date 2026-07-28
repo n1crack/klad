@@ -3832,6 +3832,41 @@ describe('very wide levels', () => {
     el.remove()
   })
 
+  it('marks the one node a pin brings in, and swaps rather than widens', async () => {
+    // With slots to spare, pinning somebody does not make the level bigger —
+    // it takes a slot off whoever was last. That swap is a cross-fade in the
+    // same place, which reads as "the whole thing re-rendered" rather than as
+    // one node arriving. The ring is what says which node.
+    const watching = new Set<string>()
+    const chart = wide({
+      maxChildren: 3,
+      pinChildren: (item) => watching.has(String(item.id)),
+    })
+    await nextFrame()
+    await settle()
+    expect(laidOut(chart)).toBe(5) // root + three + the aggregate
+    expect(onScreen()).toContain('c2')
+
+    watching.add('c17')
+    chart.api.refresh()
+    await settleTransition()
+    await settle()
+
+    // Swapped, not widened: still three on the level, and the one that lost
+    // its slot is the last of them.
+    expect(laidOut(chart)).toBe(5)
+    expect(onScreen()).toContain('c17')
+    expect(onScreen()).not.toContain('c2')
+
+    // Past the cap the pins win and the level grows instead.
+    for (const id of ['c14', 'c15', 'c16']) watching.add(id)
+    chart.api.refresh()
+    await settleTransition()
+    await settle()
+    expect(laidOut(chart)).toBe(6) // root + four pins + the aggregate
+    chart.destroy()
+  })
+
   it('does nothing without a cap', async () => {
     const chart = wide()
     await nextFrame()
