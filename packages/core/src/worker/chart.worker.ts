@@ -63,6 +63,9 @@ self.onmessage = (event: MessageEvent<MainToWorker>): void => {
       case 'filter':
         engine?.setFilter(message.keep)
         break
+      case 'overflow':
+        engine?.setOverflow(message.hide)
+        break
       case 'focus':
         engine?.setFocus(message.index)
         break
@@ -139,6 +142,7 @@ self.onmessage = (event: MessageEvent<MainToWorker>): void => {
       message.t === 'open' ||
       message.t === 'isolate' ||
       message.t === 'filter' ||
+      message.t === 'overflow' ||
       message.t === 'focus'
     ) {
       const boxes = engine.boxes.slice()

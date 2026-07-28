@@ -40,6 +40,12 @@ export interface A11yTree {
      * `null` when nothing is filtering.
      */
     keep?: Uint8Array | null,
+    /**
+     * The cap's hide mask — see `KladApi.showMore`. A capped level lists eight
+     * children on the canvas; a mirror that read out all four hundred would
+     * not be mirroring anything. `null` when nothing is capped.
+     */
+    hide?: Uint8Array | null,
   ): void
   focusNode(id: string): void
   destroy(): void
@@ -492,7 +498,7 @@ export function createA11yTree(container: HTMLElement, callbacks: A11yCallbacks)
   root.addEventListener('focusin', onFocusIn)
 
   return {
-    update(tree, open, labelOf, isolate = -1, unloaded = null, keep = null) {
+    update(tree, open, labelOf, isolate = -1, unloaded = null, keep = null, hide = null) {
       // Focus preservation. A full rebuild used to destroy the focused
       // element outright, so focus fell back to the body — an acceptable if
       // unfriendly default. Pooling introduces a sharper hazard: a row can be
@@ -544,7 +550,8 @@ export function createA11yTree(container: HTMLElement, callbacks: A11yCallbacks)
         // answer and overrides collapse; the isolate root is visible whatever
         // its parent says, any other genuine root is not, and everything else
         // resolves through its parent as usual.
-        const filtered = keep !== null && keep[index] !== 1
+        const filtered =
+          (hide !== null && hide[index] === 1) || (keep !== null && keep[index] !== 1)
         const isVisible = filtered
           ? false
           : index === isolate

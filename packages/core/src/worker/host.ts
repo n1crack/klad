@@ -33,6 +33,9 @@ export interface ChartHost {
   /** Reduces the visible tree to the nodes in `keep` — see
    * `ChartEngine.setFilter`. */
   setFilter(keep: Uint8Array | null): void
+  /** Removes the nodes a capped level pushed out of view — see
+   * `ChartEngine.setOverflow`. */
+  setOverflow(hide: Uint8Array | null): void
   /** Centres a sunburst on one node, with the drill-down animation — see
    * `ChartEngine.setFocus`. `-1` for the default centre. */
   /** The next relayout is a move, not a load — see
@@ -283,6 +286,10 @@ export function createChartHost(
     setFilter(keep) {
       engine?.setFilter(keep)
       post({ t: 'filter', keep })
+    },
+    setOverflow(hide) {
+      engine?.setOverflow(hide)
+      post({ t: 'overflow', hide })
     },
     setFocus(index) {
       engine?.setFocus(index)

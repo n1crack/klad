@@ -1,5 +1,5 @@
 import { describe, expect, it } from 'vitest'
-import { createKlad, type NodeData, type Options } from './index.js'
+import { createKlad, type NodeContext, type NodeData, type Options } from './index.js'
 
 const DATA = [
   { id: 'a', name: 'Root' },
@@ -3014,6 +3014,233 @@ describe('filter', () => {
     // contradicts what it mirrors.
     expect(rows).toContain('d')
     expect(rows).not.toContain('c')
+    chart.destroy()
+  })
+})
+
+describe('very wide levels', () => {
+  // One root with twenty children, three of which are "interesting".
+  const WIDE = [
+    { id: 'r', name: 'Root' },
+    ...Array.from({ length: 20 }, (_, i) => ({ id: `c${i}`, parentId: 'r', name: `Child ${i}` })),
+  ]
+  const WATCHING = new Set(['c14', 'c17', 'c19'])
+
+  /** Tall and narrow, with the file layout, so twenty-odd rows all fit on
+   * screen at once. The overlay only renders what is in the viewport, so a
+   * wide layout would make "is this node drawn" a question about the camera
+   * rather than about the cap. */
+  function tallHost(): HTMLElement {
+    const el = document.createElement('div')
+    el.style.width = '600px'
+    el.style.height = '1400px'
+    document.body.appendChild(el)
+    return el
+  }
+
+  const onScreen = () =>
+    [...document.querySelectorAll<HTMLElement>('.klad-overlay-node')].map((el) => el.dataset.kladId!)
+
+  function wide(overrides: Partial<Options> = {}) {
+    return createKlad(tallHost(), {
+      data: WIDE,
+      layout: 'file',
+      nodeSize: { w: 300, h: 26 },
+      rowGap: 4,
+      label: (item) => String(item.name ?? ''),
+      worker: false,
+      renderNode: (el, ctx) => {
+        el.textContent = ctx.overflow === null ? String(ctx.item.name ?? '') : `+${ctx.overflow.count}`
+      },
+      ...overrides,
+    })
+  }
+
+  /** How many nodes the chart is actually laying out — the pruned count, not
+   * whatever happens to be in the viewport. */
+  const laidOut = (chart: ReturnType<typeof createKlad>) => chart.api.getState().visibleCount
+
+  it('draws the first few and rolls the rest into one node', async () => {
+    const chart = wide({ maxChildren: 5 })
+    await nextFrame()
+    await settle()
+
+    // Root + 5 children + one node standing in for the fifteen that did not fit.
+    expect(laidOut(chart)).toBe(7)
+    const ids = onScreen()
+    expect(ids).toContain('c0')
+    expect(ids).toContain('c4')
+    expect(ids).not.toContain('c5')
+    expect(ids).toContain('klad:more:r')
+    chart.destroy()
+  })
+
+  it('still CONTAINS everything it is not drawing', async () => {
+    // The claim the whole feature rests on. A cap is about what you can look
+    // at, not about what is there — so search, stats and the path to a node
+    // must all still see the fifteen that fell past it.
+    const chart = wide({ maxChildren: 5 })
+    await nextFrame()
+    await settle()
+
+    expect(chart.api.stats('r')!.directChildren).toBe(21) // 20 + the aggregate
+    expect(chart.api.search('Child 19').map((r) => r.id)).toEqual(['c19'])
+    expect(chart.api.pathTo('c19')).toEqual(['r', 'c19'])
+    chart.destroy()
+  })
+
+  it('shows the ones you pinned, not the ones that sort first', async () => {
+    const chart = wide({
+      maxChildren: 5,
+      pinChildren: (item) => WATCHING.has(String(item.id)),
+    })
+    await nextFrame()
+    await settle()
+
+    const ids = onScreen()
+    for (const id of WATCHING) expect(ids).toContain(id)
+    // Three of the five slots went to pins, so only two unpinned survive.
+    expect(ids.filter((id) => id.startsWith('c') && !WATCHING.has(id)).length).toBe(2)
+    chart.destroy()
+  })
+
+  it('lets pins exceed the cap — a pin is an instruction, a cap is a default', async () => {
+    const chart = wide({
+      maxChildren: 2,
+      pinChildren: (item) => WATCHING.has(String(item.id)),
+    })
+    await nextFrame()
+    await settle()
+    const ids = onScreen()
+    for (const id of WATCHING) expect(ids).toContain(id)
+    chart.destroy()
+  })
+
+  it('keeps the data’s own order, so nothing jumps when the set changes', async () => {
+    const chart = wide({
+      maxChildren: 6,
+      pinChildren: (item) => WATCHING.has(String(item.id)),
+    })
+    await nextFrame()
+    await settle()
+    const shown = onScreen().filter((id) => /^c\d+$/.test(id))
+    const sorted = [...shown].sort((a, b) => Number(a.slice(1)) - Number(b.slice(1)))
+    // A pinned child stays where it was among its siblings rather than being
+    // hoisted to the front.
+    expect(shown).toEqual(sorted)
+    chart.destroy()
+  })
+
+  it('says what the aggregate node stands for', async () => {
+    const seen: NonNullable<NodeContext['overflow']>[] = []
+    const chart = wide({
+      maxChildren: 5,
+      renderNode: (el, ctx) => {
+        if (ctx.overflow !== null) seen.push(ctx.overflow)
+        el.textContent = ctx.id
+      },
+    })
+    await nextFrame()
+    await settle()
+    expect(seen.length).toBeGreaterThan(0)
+    expect(seen[0]!.count).toBe(15)
+    expect(seen[0]!.ids).toContain('c19')
+    expect(seen[0]!.parentId).toBe('r')
+    chart.destroy()
+  })
+
+  it('lifts the cap on showMore, and keeps it lifted', async () => {
+    const chart = wide({ maxChildren: 5 })
+    await nextFrame()
+    await settle()
+
+    chart.api.showMore('klad:more:r')
+    await settleTransition()
+    await settle()
+    // All twenty, and no aggregate node left to stand for anything.
+    expect(laidOut(chart)).toBe(21)
+    expect(onScreen()).not.toContain('klad:more:r')
+
+    // A rebuild is not an undo.
+    chart.api.refresh()
+    await settleTransition()
+    await settle()
+    expect(laidOut(chart)).toBe(21)
+    chart.destroy()
+  })
+
+  it('brings back just the ones you ask for', async () => {
+    const chart = wide({ maxChildren: 5 })
+    await nextFrame()
+    await settle()
+
+    chart.api.reveal(['c17'])
+    await settleTransition()
+    await settle()
+    const ids = onScreen()
+    expect(ids).toContain('c17')
+    // The cap is still on — everything else past it is still rolled up.
+    expect(ids).toContain('klad:more:r')
+    expect(ids).not.toContain('c19')
+    chart.destroy()
+  })
+
+  it('digs a node out of a cap when you focus it', async () => {
+    // Without this a node that fell past a cap is unreachable: focus opens
+    // every ancestor and still shows nothing, and there is no toggle for a
+    // cap the way there is for a collapsed branch.
+    const chart = wide({ maxChildren: 5 })
+    await nextFrame()
+    await settle()
+    expect(onScreen()).not.toContain('c19')
+
+    chart.api.focus('c19')
+    await settleTransition()
+    await settle()
+    expect(onScreen()).toContain('c19')
+    chart.destroy()
+  })
+
+  it('caps nothing while a filter is running', async () => {
+    // Someone who asked for specific nodes has said which ones they want.
+    // Hiding part of the answer behind "and 12 more" would be a second cap
+    // on top of theirs.
+    const chart = wide({ maxChildren: 2 })
+    await nextFrame()
+    await settle()
+
+    // 'Child 1' matches Child 1 and Child 10..19 — eleven, plus the root.
+    chart.api.filter('Child 1')
+    await settleTransition()
+    await settle()
+    expect(laidOut(chart)).toBe(12)
+    expect(onScreen()).not.toContain('klad:more:r')
+    chart.destroy()
+  })
+
+  it('tells the screen-reader tree the same thing', async () => {
+    // A capped level draws eight children. A mirror that read out all twenty
+    // would not be mirroring anything — and the aggregate node, which IS on
+    // screen, has to be in there instead.
+    const chart = wide({ maxChildren: 5 })
+    await nextFrame()
+    await settle()
+
+    const rows = [...document.querySelectorAll('[role="treeitem"]')].map((r) =>
+      r.getAttribute('data-orgchart-id'),
+    )
+    expect(rows).toContain('c0')
+    expect(rows).not.toContain('c19')
+    expect(rows).toContain('klad:more:r')
+    chart.destroy()
+  })
+
+  it('does nothing without a cap', async () => {
+    const chart = wide()
+    await nextFrame()
+    await settle()
+    expect(laidOut(chart)).toBe(21)
+    expect(onScreen().some((id) => id.startsWith('klad:more:'))).toBe(false)
     chart.destroy()
   })
 })

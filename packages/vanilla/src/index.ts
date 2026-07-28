@@ -120,6 +120,28 @@ export interface NodeContext extends NodeStats {
    * Always `false` without `loadChildren`.
    */
   loading: boolean
+  /**
+   * Set on the node a capped level rolled its remainder into — `count` is how
+   * many it stands for and `ids` are which. `null` on every ordinary node.
+   *
+   * The chart invents this node and gives it a `+392` label if you have none;
+   * everything past that is yours. A plain count, a button, a list you can
+   * pick from — `ids` is here precisely so a picker is possible.
+   *
+   * `showMore` and `reveal` are the same commands as on the chart, bound to
+   * this node — so a card is self-contained and does not have to reach back
+   * out for the instance from inside a render callback. The same reason
+   * `toggle` is on the context rather than being `expand(id)`.
+   */
+  overflow: {
+    parentId: string
+    count: number
+    ids: string[]
+    /** Lift the cap on this node's parent: draw all of them. */
+    showMore(): void
+    /** Bring specific ones back without lifting the cap — what a picker calls. */
+    reveal(ids: string[]): void
+  } | null
   toggle(): void
 }
 
@@ -191,6 +213,47 @@ export interface Options {
    * outermost ring stays thick enough to carry a label. Defaults to 3.
    */
   maxRings?: number
+  /**
+   * How many children a node shows before the rest are rolled into one node.
+   *
+   * A manager with four hundred reports or a folder with ten thousand files
+   * makes a level nobody can read and a chart nobody can navigate. This caps
+   * it: the first `maxChildren` are drawn as themselves, and everything after
+   * them is replaced by a single node saying how many it stands for.
+   *
+   * A number, or a function per PARENT if different levels want different
+   * budgets. Omitted, nothing is capped.
+   *
+   * The children that did not fit are still in the tree. `search` finds them,
+   * `stats` counts them, `filter` matches them, and `focus` will bring one
+   * back into view. Only the drawn chart is smaller — which is the whole
+   * claim: a cap is about what you can look at, not about what is there.
+   *
+   * On its own this is a truncation, and truncation shows whichever children
+   * happen to come first rather than the ones anybody cares about. See
+   * `pinChildren`.
+   */
+  maxChildren?: number | ((item: NodeData) => number)
+  /**
+   * Children that are shown whatever `maxChildren` says — your working set.
+   *
+   * ```ts
+   * pinChildren: (item) => watching.has(String(item.id))
+   * ```
+   *
+   * This is the half that makes a cap useful. Working through five levels of a
+   * hundred where seven or eight per level matter, a plain cap gives you
+   * whichever eight sort first, which is nobody's eight. Pinning says which.
+   *
+   * Pins are not part of the budget, they precede it: pin ten with a cap of
+   * eight and you get ten, because a pin is an instruction and the cap is a
+   * default. Order among the shown children is the data's own, pinned or not,
+   * so nothing jumps around as the set changes.
+   *
+   * Does nothing without `maxChildren` — with no cap there is nothing to be
+   * exempt from.
+   */
+  pinChildren?: (item: NodeData) => boolean
   /**
    * Whether a node has children, whether or not they are in `data` yet.
    *
@@ -639,6 +702,24 @@ export interface KladApi {
    */
   filter(query: string | ((item: NodeData) => boolean) | null): string[]
   /**
+   * Lifts the cap on the parent an aggregate node belongs to, so all of its
+   * children are drawn. `id` is the aggregate node's own id — the one
+   * `NodeContext.overflow` was set on.
+   *
+   * The lift sticks: a later relayout does not put the cap back, because
+   * somebody asked for this and a rebuild is not an undo.
+   */
+  showMore(id: string): void
+  /**
+   * Brings specific children back into view past a cap, without lifting it.
+   *
+   * This is what a picker on an aggregate node calls — `overflow.ids` lists
+   * what there is to choose from. `focus` and `expandTo` call it for you when
+   * the node you are going to has fallen past a cap, so getting somewhere
+   * never depends on knowing that it had.
+   */
+  reveal(ids: string[]): void
+  /**
    * Where `id` sits in the tree and how much hangs off it — see `NodeStats`.
    * `null` for an id this chart doesn't have. The same numbers `renderNode`
    * receives, for a caller driving its own UI (a sidebar, a breadcrumb, a
@@ -922,22 +1003,166 @@ export function createKlad(host: HTMLElement, options: Options): KladInstance {
    * appended whole keeps its own order — which is the order the loader
    * returned, and the only order anyone has expressed an opinion about.
    */
-  const treeSource = (): NodeData[] => {
-    if (loadedChildren.size === 0) return currentOptions.data
-    const all = [...currentOptions.data]
-    for (const [parentId, items] of loadedChildren) {
-      for (const item of items) {
-        // A `parentId` the loader set wins, so returning a whole subtree in
-        // one call works. One it left off is the common case — "here are the
-        // children of the node you asked about" — and filling it in is what
-        // makes that call as short as it reads.
-        all.push(item.parentId === undefined ? { ...item, parentId } : item)
-      }
+  // --- capped levels --------------------------------------------------------
+  //
+  // A level of four hundred is unreadable. `maxChildren` caps what is drawn and
+  // `pinChildren` says which ones survive the cap; everything else is hidden at
+  // PRUNE time and replaced by one node that says how many it stands for.
+  //
+  // Hidden rather than removed, and that is the load-bearing choice. The tree
+  // still contains all four hundred, so `search` finds them, `stats` counts
+  // them, `filter` matches them and `focus` can bring one back. Only the drawn
+  // tree is smaller.
+
+  /** Prefix for the id of an aggregate node, which is invented here rather
+   * than given by the host. Long and punctuated on purpose: it has to not
+   * collide with a real id, and a host whose ids look like this has bigger
+   * problems. */
+  const MORE_ID = 'klad:more:'
+
+  /** What each aggregate node stands for, by its own id. Rebuilt with the
+   * tree; read by `NodeContext.overflow` and by `showMore`. */
+  let overflowOf = new Map<string, { parentId: string; count: number; ids: string[] }>()
+  /** Parents whose cap the host has lifted through `showMore`, and individual
+   * children pulled back by `reveal`/`focus`. Both survive a rebuild, because
+   * both are things the viewer asked for and a relayout is not an undo. */
+  const uncapped = new Set<string>()
+  const revealed = new Set<string>()
+  /** SOURCE-indexed hide mask, or null when nothing is capped. */
+  let overflowHide: Uint8Array | null = null
+  /** Ids the last `planOverflow` pushed out of view, before they are turned
+   * into a mask against whatever tree `normalize` produced. */
+  let hiddenChildIds = new Set<string>()
+  /**
+   * Parent id -> the children a loader returned for it. Insertion-ordered,
+   * which is the order they are laid out in.
+   *
+   * Declared up here with the rest of the tree-source state rather than down
+   * with the loading code that fills it, because `treeSource()` reads it and
+   * `treeSource()` has to be callable before the FIRST `normalize` — a cap
+   * applies from the opening frame, so that call cannot be the one place that
+   * skips it.
+   */
+  const loadedChildren = new Map<string, NodeData[]>()
+
+  /** The hide mask for the CURRENT tree — see `ChartEngine.setOverflow`.
+   * `null` when nothing is capped, which is the common case. */
+  const overflowMask = (): Uint8Array | null => {
+    // A filter suppresses capping outright. Someone who has asked for specific
+    // nodes has said which ones they want; hiding some of the answer behind
+    // "and 12 more" would be a second, unasked-for cap on top of theirs.
+    if (hiddenChildIds.size === 0 || filterQuery !== null) return null
+    const hide = new Uint8Array(tree.count)
+    let any = false
+    for (const id of hiddenChildIds) {
+      const index = tree.idToIndex.get(id)
+      if (index === undefined) continue
+      hide[index] = 1
+      any = true
     }
-    return all
+    return any ? hide : null
   }
 
-  let tree: Tree = normalize(options.data)
+  /** The cap for one parent, or `Infinity` when it has none. */
+  const capFor = (item: NodeData): number => {
+    const max = currentOptions.maxChildren
+    if (max === undefined) return Infinity
+    const n = typeof max === 'function' ? max(item) : max
+    return Number.isFinite(n) && n >= 0 ? n : Infinity
+  }
+
+  /**
+   * Decides, per parent, which children are drawn — and returns the aggregate
+   * nodes to add plus the ids to hide.
+   *
+   * Runs against the host's array rather than the tree, because it has to run
+   * BEFORE `normalize` in order to add nodes to what gets normalised. Grouping
+   * by `parentId` is the one pass that costs anything, and it is the same O(n)
+   * `normalize` is about to do anyway.
+   */
+  const planOverflow = (rows: NodeData[]): { extra: NodeData[]; hidden: Set<string> } => {
+    const extra: NodeData[] = []
+    const hidden = new Set<string>()
+    overflowOf = new Map()
+    if (currentOptions.maxChildren === undefined) return { extra, hidden }
+
+    const byParent = new Map<string, NodeData[]>()
+    const byId = new Map<string, NodeData>()
+    for (const row of rows) {
+      byId.set(String(row.id), row)
+      const parent = row.parentId
+      if (parent === undefined || parent === null) continue
+      const key = String(parent)
+      const list = byParent.get(key)
+      if (list === undefined) byParent.set(key, [row])
+      else list.push(row)
+    }
+
+    const pin = currentOptions.pinChildren
+    for (const [parentId, children] of byParent) {
+      const parent = byId.get(parentId)
+      if (parent === undefined) continue
+      const cap = capFor(parent)
+      if (children.length <= cap) continue
+      if (uncapped.has(parentId)) continue
+
+      // Pins and reveals first, then the cap's remaining budget in the data's
+      // own order. Two passes rather than a sort, so nothing reorders: a
+      // pinned child stays where it was among its siblings.
+      const shown = new Set<string>()
+      for (const child of children) {
+        const id = String(child.id)
+        if (revealed.has(id) || (pin !== undefined && pin(child))) shown.add(id)
+      }
+      let budget = cap - shown.size
+      for (const child of children) {
+        if (budget <= 0) break
+        const id = String(child.id)
+        if (shown.has(id)) continue
+        shown.add(id)
+        budget--
+      }
+
+      const rest = children.filter((child) => !shown.has(String(child.id)))
+      if (rest.length === 0) continue
+      const ids = rest.map((child) => String(child.id))
+      for (const id of ids) hidden.add(id)
+      const moreId = MORE_ID + parentId
+      const stands = { parentId, count: ids.length, ids }
+      overflowOf.set(moreId, stands)
+      // On the item itself, so `nodeSize`, `label` and `renderNode` can all
+      // recognise it the same way. `NodeContext.overflow` reads this too.
+      extra.push({ id: moreId, parentId, kladOverflow: stands })
+    }
+    return { extra, hidden }
+  }
+
+  const treeSource = (): NodeData[] => {
+    let all = currentOptions.data
+    if (loadedChildren.size > 0) {
+      all = [...currentOptions.data]
+      for (const [parentId, items] of loadedChildren) {
+        for (const item of items) {
+          // A `parentId` the loader set wins, so returning a whole subtree in
+          // one call works. One it left off is the common case — "here are the
+          // children of the node you asked about" — and filling it in is what
+          // makes that call as short as it reads.
+          all.push(item.parentId === undefined ? { ...item, parentId } : item)
+        }
+      }
+    }
+    // Recomputed rather than cached: this runs per data change, not per
+    // frame, and it is the same O(n) `normalize` is about to spend anyway.
+    // Caching it would mean inventing an invalidation rule for something that
+    // has four callers and no hot path.
+    const { extra, hidden } = planOverflow(all)
+    hiddenChildIds = hidden
+    return extra.length === 0 ? all : [...all, ...extra]
+  }
+
+  // Through `treeSource()`, not `options.data`: a capped level has to be
+  // capped on the first frame too, and its aggregate node is added here.
+  let tree: Tree = normalize(treeSource())
   // Computed once per tree, never per frame and never per node on demand —
   // see `computeSubtreeStats` in core. Every consumer below (`renderNode`'s
   // context, `api.stats`) is then a plain array lookup.
@@ -1015,8 +1240,20 @@ export function createKlad(host: HTMLElement, options: Options): KladInstance {
     return typeof declared === 'function' ? declared(item) : declared
   }
 
-  const labelOf = (item: NodeData): string =>
-    currentOptions.label === undefined ? defaultLabel(item) : currentOptions.label(item)
+  /** What an aggregate node stands for, or `null` for an ordinary one. */
+  const overflowInfo = (item: NodeData): { parentId: string; count: number; ids: string[] } | null =>
+    (item.kladOverflow as { parentId: string; count: number; ids: string[] } | undefined) ?? null
+
+  const labelOf = (item: NodeData): string => {
+    const own = currentOptions.label === undefined ? defaultLabel(item) : currentOptions.label(item)
+    if (own !== '') return own
+    // An aggregate node the host's `label` had no answer for. Falling back to
+    // "+392" rather than drawing a blank card: the node is the chart's own
+    // invention, so a host that has not thought about it yet should still get
+    // something that says what it is. Any label they DO return wins.
+    const info = overflowInfo(item)
+    return info === null ? own : `+${info.count}`
+  }
 
   /**
    * Pushes the tree, every node's size and label, and the current open flags
@@ -1072,6 +1309,8 @@ export function createKlad(host: HTMLElement, options: Options): KladInstance {
     // across a `normalize`, so carrying the old mask over would keep an
     // arbitrary set of nodes.
     if (filterQuery !== null) applyFilter()
+    overflowHide = overflowMask()
+    chartHost.setOverflow(overflowHide)
     // Deferred: applyData() runs synchronously inside createKlad, before the
     // caller has had a chance to attach a 'warning' listener via `on()`. Emitting
     // here directly would drop every warning raised on the initial load. Queuing
@@ -1084,7 +1323,7 @@ export function createKlad(host: HTMLElement, options: Options): KladInstance {
         for (const warning of warnings) emit('warning', warning)
       })
     }
-    a11y?.update(tree, open, (index) => labelOf(itemFor(index)), isolatedIndex, unloaded, filterKeep)
+    a11y?.update(tree, open, (index) => labelOf(itemFor(index)), isolatedIndex, unloaded, filterKeep, overflowHide)
   }
 
   /** `options.centre` as a source index, or -1 for "the default centre" —
@@ -1389,7 +1628,7 @@ export function createKlad(host: HTMLElement, options: Options): KladInstance {
   const emitDrop = (ids: string[], target: number, mode: DropMode): void => {
     const pruned = sourceToPruned.get(target)
     if (pruned === undefined) return
-    const visible = pruneToVisible(tree, open, isolatedIndex, filterKeep)
+    const visible = pruneToVisible(tree, open, isolatedIndex, filterKeep, overflowHide)
     const position = dropPosition(visible.tree, pruned, mode)
     const parentSource = position.parent === -1 ? -1 : visible.toSource[position.parent]!
     // In tree order, so a handler applying this to its own array does not have
@@ -1525,9 +1764,6 @@ export function createKlad(host: HTMLElement, options: Options): KladInstance {
   // children live in `loadedChildren` below and are folded back in every time
   // the tree is rebuilt from `data`.
 
-  /** Parent id -> the children a loader returned for it. Insertion-ordered,
-   * which is the order they are laid out in. */
-  const loadedChildren = new Map<string, NodeData[]>()
   /** Loads in flight, by node id. Both a guard against firing a second request
    * for a node already waiting on one, and what the loading mark reads. */
   const loadingIds = new Set<string>()
@@ -1730,6 +1966,62 @@ export function createKlad(host: HTMLElement, options: Options): KladInstance {
     return matched
   }
 
+  /**
+   * Brings `index` back into view if a cap is what is hiding it — and every
+   * ancestor of it that a cap is hiding too.
+   *
+   * `true` when it did something, so the caller knows a rebuild is already
+   * under way and that its own work (opening ancestors) will happen against a
+   * tree that no longer exists.
+   */
+  const revealPath = (index: number): boolean => {
+    if (hiddenChildIds.size === 0) return false
+    const bring: string[] = []
+    for (let i = index; i !== -1; i = tree.parent[i]!) {
+      const id = tree.indexToId[i]!
+      if (hiddenChildIds.has(id)) bring.push(id)
+    }
+    if (bring.length === 0) return false
+    for (const id of bring) revealed.add(id)
+    rebuildForOverflow()
+    return true
+  }
+
+  /**
+   * Rebuilds after a cap changed — a `showMore`, a `reveal`, or a `focus` that
+   * had to dig something out.
+   *
+   * The same recipe as a lazy load: open state carried across by id, an
+   * old-to-new remap so the nodes that already existed tween rather than the
+   * whole chart shuffling, and no refit — unlike a filter, this is somebody
+   * asking for MORE of what they are already looking at, and moving the camera
+   * would take away the thing they were looking at it from.
+   */
+  const rebuildForOverflow = (): void => {
+    const openById = new Map<string, boolean>()
+    for (let i = 0; i < tree.count; i++) openById.set(tree.indexToId[i]!, open[i] === 1)
+
+    const previous = tree
+    tree = normalize(treeSource())
+    const remap = new Int32Array(previous.count).fill(-1)
+    for (let i = 0; i < previous.count; i++) {
+      remap[i] = tree.idToIndex.get(previous.indexToId[i]!) ?? -1
+    }
+    stats = computeSubtreeStats(tree)
+    rebuildItemIndex()
+    const next = new Uint8Array(tree.count)
+    for (let i = 0; i < tree.count; i++) {
+      next[i] = (openById.get(tree.indexToId[i]!) ?? opensByDefault(i)) ? 1 : 0
+    }
+    open = next
+    pendingAnchor = null
+    cameraAnchor = null
+    chartHost.animateNextLayout(remap)
+    applyData(false)
+    a11yDirty = true
+    scheduleFrame()
+  }
+
   /** `NodeStats` for a node by INDEX — six array reads, no walking. See
    * `NodeStats` and core's `computeSubtreeStats`. */
   const statsOf = (index: number): NodeStats => ({
@@ -1909,7 +2201,7 @@ export function createKlad(host: HTMLElement, options: Options): KladInstance {
     // Isolation included: an export is a picture of the chart, and the chart
     // is currently one branch. Leaving it out would put the whole org in a PNG
     // taken while the screen showed a department.
-    const visible = pruneToVisible(tree, open, isolatedIndex, filterKeep)
+    const visible = pruneToVisible(tree, open, isolatedIndex, filterKeep, overflowHide)
     const n = visible.tree.count
     const layoutName = currentOptions.layout ?? 'tidy'
     const orientation = currentOptions.orientation ?? 'tb'
@@ -2226,7 +2518,7 @@ export function createKlad(host: HTMLElement, options: Options): KladInstance {
   const refreshA11y = (): void => {
     if (!a11yDirty) return
     a11yDirty = false
-    a11y?.update(tree, open, (i) => labelOf(itemFor(i)), isolatedIndex, unloadedMask(), filterKeep)
+    a11y?.update(tree, open, (i) => labelOf(itemFor(i)), isolatedIndex, unloadedMask(), filterKeep, overflowHide)
   }
 
   const scheduleFrame = (): void => {
@@ -3148,9 +3440,31 @@ export function createKlad(host: HTMLElement, options: Options): KladInstance {
       pendingFullFit = true
       scheduleFrame()
     },
+    showMore(id) {
+      const info = overflowOf.get(id)
+      if (info === undefined) return
+      // The parent, not the aggregate node: the cap belongs to the parent and
+      // this is what lifts it.
+      uncapped.add(info.parentId)
+      rebuildForOverflow()
+    },
+    reveal(ids) {
+      let changed = false
+      for (const id of ids) {
+        if (revealed.has(id)) continue
+        revealed.add(id)
+        changed = true
+      }
+      if (changed) rebuildForOverflow()
+    },
     filter(query) {
       filterQuery = query
       const matches = applyFilter()
+      // The cap is suppressed while a filter runs, and turning one on has to
+      // take away the mask that was already sent — otherwise the two
+      // intersect and the filter's own results get capped as well.
+      overflowHide = overflowMask()
+      chartHost.setOverflow(overflowHide)
       minimapNeedsRefit = true
       a11yDirty = true
       // The chart now contains a different set of nodes at different
@@ -3164,10 +3478,14 @@ export function createKlad(host: HTMLElement, options: Options): KladInstance {
       api.fit()
     },
     focus(id, opts) {
-      const index = tree.idToIndex.get(id)
-      if (index === undefined) return
+      if (tree.idToIndex.get(id) === undefined) return
       const ring = opts?.ring === true
       api.expandTo(id)
+      // AFTER `expandTo`, not before: uncapping a level rebuilds the tree, and
+      // an index taken beforehand would point at whatever now sits where this
+      // node used to.
+      const index = tree.idToIndex.get(id)
+      if (index === undefined) return
       // Already on screen — which is every focus that expanded nothing, since
       // `expandTo` no-ops when the ancestors are open already — so its box is
       // current and the move can happen now. Worth the branch: deferring
@@ -3257,8 +3575,17 @@ export function createKlad(host: HTMLElement, options: Options): KladInstance {
       scheduleFrame()
     },
     expandTo(id) {
-      const index = tree.idToIndex.get(id)
+      let index = tree.idToIndex.get(id)
       if (index === undefined) return
+      // A capped level can hide a node just as thoroughly as a closed one, and
+      // there is no toggle for it — so opening the way to something has to
+      // uncap the way too, or `focus` on a node that fell past a cap opens
+      // every ancestor and still shows nothing. The rebuild is synchronous and
+      // replaces the tree, so the index has to be taken again afterwards.
+      if (revealPath(index)) {
+        index = tree.idToIndex.get(id)
+        if (index === undefined) return
+      }
       let node = tree.parent[index]!
       while (node !== -1) {
         open[node] = 1
@@ -3564,6 +3891,15 @@ export function createKlad(host: HTMLElement, options: Options): KladInstance {
         open: open[item.index] === 1,
         hasChildren: canHaveChildren(item.index),
         loading: loadingIds.has(item.id),
+        overflow: (() => {
+          const info = overflowInfo(itemFor(item.index))
+          if (info === null) return null
+          return {
+            ...info,
+            showMore: () => api.showMore(item.id),
+            reveal: (ids: string[]) => api.reveal(ids),
+          }
+        })(),
         toggle: () => (open[item.index] === 1 ? api.collapse(item.id) : api.expand(item.id)),
         ...statsOf(item.index),
       })

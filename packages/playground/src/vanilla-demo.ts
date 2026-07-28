@@ -65,8 +65,16 @@ function renderCard(element: HTMLElement, context: NodeContext): void {
     element.append(card)
   }
   const item = context.item
-  card.querySelector('strong')!.textContent = String(item.name ?? '')
-  card.querySelector('small')!.textContent = String(item.title ?? '')
+  // The node a capped level rolled its remainder into. It is the chart's own
+  // invention, so it has no `name` to show — what it has is a count and the
+  // ids it stands for, and a click that lifts the cap.
+  const over = context.overflow
+  card.classList.toggle('is-overflow', over !== null)
+  card.querySelector('strong')!.textContent =
+    over === null ? String(item.name ?? '') : `+${over.count} more`
+  card.querySelector('small')!.textContent =
+    over === null ? String(item.title ?? '') : 'Click to show them all'
+  card.onclick = over === null ? null : () => over.showMore()
   syncToggleButton(card, context)
 }
 

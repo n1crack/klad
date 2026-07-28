@@ -99,6 +99,8 @@ chart written before this existed already has its own meaning for a click.
 | `expandTo(id)` | Open the ancestors of a node without moving the camera. |
 | `stats(id)` | `{ directChildren, descendants, depth, height, lft, rgt }`, or `null`. Describes the whole tree, not the expanded part. |
 | `pathTo(id)` | The root-to-node id chain, inclusive. `null` for an unknown id. |
+| `showMore(id)` | Lift the cap on the parent an aggregate node belongs to. `id` is the aggregate node's own. See [Very wide levels](/guide/wide-levels). |
+| `reveal(ids)` | Bring specific children back past a cap without lifting it. |
 | `refresh()` | Re-read every node's `nodeSize`/`label` and lay out again, keeping expand/collapse, camera and highlight. See [Sizing](/guide/sizing). |
 
 ### Is this node inside that branch?

@@ -232,6 +232,7 @@ export default defineConfig({
             { text: 'Navigating', link: '/guide/navigating' },
             { text: 'Drag and drop', link: '/guide/drag-and-drop' },
             { text: 'Children on demand', link: '/guide/children-on-demand' },
+            { text: 'Very wide levels', link: '/guide/wide-levels' },
             { text: 'Sizing', link: '/guide/sizing' },
           ],
         },

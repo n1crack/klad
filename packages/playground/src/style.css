@@ -1195,6 +1195,20 @@ body {
   position: relative;
 }
 
+/* The node a capped level rolled its remainder into. Dashed and quiet: it
+   stands for people rather than being one, and it should read as a way through
+   rather than as another card in the row. */
+.card.is-overflow {
+  border-style: dashed;
+  border-color: var(--border-strong);
+  background: color-mix(in srgb, var(--accent) 7%, var(--node-bg) 93%);
+  cursor: pointer;
+}
+
+.card.is-overflow strong {
+  color: var(--accent);
+}
+
 .card strong {
   font-size: 0.95rem;
   font-weight: 700;

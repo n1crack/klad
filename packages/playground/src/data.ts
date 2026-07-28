@@ -621,6 +621,53 @@ export const REMOTE_ROOTS: NodeItem[] = [
   { id: 'srv/README.md', parentId: 'srv', name: 'README.md', kind: 'file', sizeKb: 4, ext: 'md' },
 ]
 
+
+// --- "Very wide levels": a working set inside a crowd ----------------------
+//
+// Five levels of a hundred-odd, where only a handful per level matter. The
+// point of the example is that a plain cap would show whichever eight sort
+// first, which is nobody's eight — so it pins a working set and lets the rest
+// roll up.
+
+export const WIDE_WATCHING = new Set([
+  'l1-3', 'l1-47', 'l1-88',
+  'l2-3-12', 'l2-47-4', 'l2-47-61',
+  'l3-3-12-7', 'l3-47-4-33',
+])
+
+function buildWideTree(): NodeItem[] {
+  const rows: NodeItem[] = [{ id: 'org', name: 'Everyone', kind: 'folder' }]
+  const hash = (s: string): number => {
+    let h = 2166136261
+    for (let i = 0; i < s.length; i++) {
+      h ^= s.charCodeAt(i)
+      h = Math.imul(h, 16777619)
+    }
+    return h >>> 0
+  }
+  // Deterministic per id, so the same node reads the same on every reload —
+  // which matters here because the example is about picking specific people
+  // out of a crowd, and they have to stay the same people.
+  const name = (id: string): string => `Person ${hash(id) % 9973}`
+  for (let a = 0; a < 120; a++) {
+    const l1 = `l1-${a}`
+    rows.push({ id: l1, parentId: 'org', name: name(l1), role: 'Director' })
+    if (a > 60) continue // only the first sixty go deeper, or this is 100k rows
+    for (let b = 0; b < 100; b++) {
+      const l2 = `l2-${a}-${b}`
+      rows.push({ id: l2, parentId: l1, name: name(l2), role: 'Lead' })
+      if (b > 20) continue
+      for (let c = 0; c < 40; c++) {
+        const l3 = `l3-${a}-${b}-${c}`
+        rows.push({ id: l3, parentId: l2, name: name(l3), role: 'Engineer' })
+      }
+    }
+  }
+  return rows
+}
+
+export const WIDE_DATA: NodeItem[] = buildWideTree()
+
 export const FILE_DATA: NodeItem[] = buildFileTree()
 
 /** Row height for the file-explorer example, and the width every row shares.
@@ -1079,6 +1126,21 @@ export const EXAMPLES: Example[] = [
     options: { dragAndDrop: true, selection: true, minimap: true, nodeSize: { w: 200, h: 72 } },
     content: 'card',
     dropControl: true,
+  },
+  {
+    id: 'wide',
+    name: 'Very wide levels',
+    description:
+      'Five levels of a hundred-odd people, where only a handful per level matter. A plain cap would show whichever eight sort first, which is nobody\u2019s eight \u2014 so this pins a working set and rolls the rest into one node per level. Everything hidden is still THERE: search finds it, and going to it brings it back.',
+    data: WIDE_DATA,
+    options: {
+      maxChildren: 8,
+      pinChildren: (item) => WIDE_WATCHING.has(String(item.id)),
+      collapsedByDefault: (item) => String(item.id).split('-').length > 2,
+      nodeSize: { w: 190, h: 56 },
+    },
+    content: 'card',
+    gotoControl: true,
   },
   {
     id: 'lazy',

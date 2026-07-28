@@ -102,6 +102,14 @@ export interface ChartEngine {
    */
   setFilter(keep: Uint8Array | null): void
   /**
+   * Removes the nodes in `hide` — 1 to go, SOURCE-indexed — or `null` for
+   * none. See the field of the same name: the tree still contains them, only
+   * the drawn tree does not.
+   *
+   * Relayouts, like `setFilter` and `setIsolate`.
+   */
+  setOverflow(hide: Uint8Array | null): void
+  /**
    * Centres a sunburst on one node — the drill-down. `sourceIndex` is a SOURCE
    * index, or `-1` for the default centre.
    *
@@ -1222,6 +1230,16 @@ export function createChartEngine(renderer: Renderer): ChartEngine {
    * same reason it is not a draw-time filter.
    */
   let filterKeep: Uint8Array | null = null
+  /**
+   * SOURCE-indexed: 1 for a node a capped level has pushed out of view.
+   *
+   * Deliberately a mask rather than the children simply being absent. A level
+   * of four hundred that shows eight still HAS four hundred: `search` finds
+   * the other 392, `stats` counts them, and the nested-set bounds bracket
+   * them. Only the drawn tree is smaller, which is the whole claim the feature
+   * makes.
+   */
+  let overflowHide: Uint8Array | null = null
   let open: Uint8Array = new Uint8Array(0)
   let options: EngineOptions = { ...DEFAULT_OPTIONS }
 
@@ -1469,7 +1487,7 @@ export function createChartEngine(renderer: Renderer): ChartEngine {
     // of snapping back to the layout it left.
     const prevPolarFrom = capturePolar(now, pendingRemap)
 
-    const pruned = pruneToVisible(sourceTree, open, isolateSource, filterKeep)
+    const pruned = pruneToVisible(sourceTree, open, isolateSource, filterKeep, overflowHide)
     visibleToSource = pruned.toSource
     prunedParent = pruned.tree.parent
     prunedFromSource = pruned.fromSource
@@ -2286,6 +2304,10 @@ export function createChartEngine(renderer: Renderer): ChartEngine {
     setViewport(width, height, dpr) {
       viewport = { width, height, dpr }
       renderer.resize(width, height, dpr)
+    },
+    setOverflow(hide) {
+      overflowHide = hide === null ? null : Uint8Array.from(hide)
+      layoutDirty = true
     },
     setFilter(keep) {
       // Copied rather than aliased, like every other caller-owned buffer here:

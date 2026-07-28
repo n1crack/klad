@@ -101,20 +101,23 @@ arrive mid-gesture and the drop preview re-resolves against them.
 
 ## 1.5 — showing less of a large tree
 
-Two problems with the same answer. A manager with four hundred reports or a
-folder with ten thousand files needs the first few, a **more** control, and one
-node standing in for the rest that says how many it counts. A tree of twenty
-thousand nodes needs a way to reduce itself to the nodes that match, keeping
-the ancestors that lead to them, so a search is something you can look at
-rather than step through.
+Two problems with the same answer, and the numbers that make both cheap.
 
-Nested-set bounds come with it — `lft`/`rgt` on `stats(id)`, computed by the
-same walk that already counts descendants. Not as a way of storing a tree, but
-as a number you can compare: "is this node inside that branch" stops being an
-ancestor walk of unbounded length and becomes `lft > a.lft && rgt < a.rgt`,
-which is what makes filtering a large tree by branch cheap enough to do per
-frame. They are also what a backend storing categories as nested sets needs
-back after a drag reorders them, so the same values close that loop too.
+- **`filter(query)`** — reduce the chart to the nodes that match, keeping the
+  ancestors that lead to them, so the result is a tree rather than a list and
+  you can see where each hit lives. It overrides collapse: a filter that found
+  something and then left it hidden would be answering a different question.
+- **`maxChildren` / `pinChildren`** — a level of four hundred draws eight and
+  rolls the rest into one node that says how many it stands for. The cap is the
+  budget; the pins are which ones matter, because a cap on its own shows
+  whichever children come first and that is nobody's eight. Nothing is thrown
+  away — search finds what fell past it, `stats` counts it, and `focus` digs it
+  back out.
+- **`lft` / `rgt` on `stats(id)`** — nested-set bounds, computed by the same
+  walk that already counts descendants. "Is this node inside that branch" stops
+  being an ancestor walk of unbounded length and becomes a comparison. The
+  classic interleaved numbering, so they can also go straight back to a
+  database storing a hierarchy as nested sets after a drag reorders anything.
 
 ## 1.6 — layouts and edges you supply
 

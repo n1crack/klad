@@ -56,6 +56,8 @@ what each shape is for.
 
 | Option | Type | Default | |
 |---|---|---|---|
+| `maxChildren` | `number \| ((item) => number)` | — | How many children a node draws before the rest are rolled into one node saying how many it stands for. Per parent. See [Very wide levels](/guide/wide-levels). |
+| `pinChildren` | `(item) => boolean` | — | Children shown whatever the cap says — your working set. Pins precede the budget rather than being part of it. |
 | `mayHaveChildren` | `(item) => boolean` | — | Whether a node has children, whether or not they are in `data` yet. Only consulted for nodes with none; ignored without `loadChildren`. See [Children on demand](/guide/children-on-demand). |
 | `loadChildren` | `(item) => NodeData[] \| Promise<NodeData[]>` | — | Fetches one node's children the first time it is opened. The chart keeps what you return. |
 | `dragAndDrop` | `boolean` | `false` | Dragging a node — or the whole selection, if it is in one — onto a new parent, or between two siblings. Reported through [`nodeDrop`](/api/events) before it is applied. See [Drag and drop](/guide/drag-and-drop). |

@@ -27,6 +27,13 @@ export interface VisibleTree {
  * case threaded through layout, bounds, hit-testing and export. `-1` (the
  * default) prunes the whole forest as before.
  *
+ * `hide` removes nodes outright: 1 for a node that goes, whatever else says.
+ * Separate from `keep` because the two mean opposite things and compose
+ * differently — `keep` is "only these, and they override collapse", `hide` is
+ * "not these". It exists for a capped level, where the tree still CONTAINS the
+ * children that did not fit (so search finds them, `stats` counts them and the
+ * nested-set bounds stay meaningful) and only the drawn tree is smaller.
+ *
  * `keep` filters: 1 for a node that stays, 0 for one that goes. It is the
  * COMPLETE answer — a node in the mask is kept whether or not its parent is
  * open, because the mask is only ever built by a caller who has already
@@ -46,6 +53,7 @@ export function pruneToVisible(
   open: Uint8Array,
   isolateRoot = -1,
   keep: Uint8Array | null = null,
+  hide: Uint8Array | null = null,
 ): VisibleTree {
   const n = tree.count
   const fromSource = new Int32Array(n).fill(-1)
@@ -53,6 +61,7 @@ export function pruneToVisible(
 
   for (let k = 0; k < n; k++) {
     const src = tree.order[k]!
+    if (hide !== null && hide[src] === 1) continue
     if (keep !== null && keep[src] !== 1) continue
     // The isolate root is kept whatever its own parent says — it is a root
     // now. Its descendants need no special handling at all: preorder means

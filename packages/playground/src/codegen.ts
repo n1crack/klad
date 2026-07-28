@@ -107,6 +107,10 @@ function optionsOf(snapshot: ConfigSnapshot): [key: string, value: unknown][] {
     // that sets them.
     'mayHaveChildren',
     'loadChildren',
+    // Without these the snippet reproduces an unreadable level of a hundred
+    // and change, which is the thing the example exists to not be.
+    'maxChildren',
+    'pinChildren',
   ]) {
     if (declared[key] !== undefined) entries.push([key, declared[key]])
   }
