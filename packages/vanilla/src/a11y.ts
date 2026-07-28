@@ -33,6 +33,13 @@ export interface A11yTree {
     labelOf: (index: number) => string,
     isolate?: number,
     unloaded?: Uint8Array | null,
+    /**
+     * The filter's keep mask — see `KladApi.filter`. A screen reader reading
+     * out nodes a filter has removed is a mirror that contradicts what it
+     * mirrors, which is the same reason this honours `isolate` and collapse.
+     * `null` when nothing is filtering.
+     */
+    keep?: Uint8Array | null,
   ): void
   focusNode(id: string): void
   destroy(): void
@@ -182,6 +189,9 @@ export function createA11yTree(container: HTMLElement, callbacks: A11yCallbacks)
   /** Retained like the rest, and for the same reason — key handling asks "does
    * this node have children" and an unloaded one does. See `update`. */
   let currentUnloaded: Uint8Array | null = null
+  /** The filter's keep mask, retained like the rest — key handling asks which
+   * rows exist and a filtered-out node does not. See `update`. */
+  let currentKeep: Uint8Array | null = null
   // The visible nodes in preorder, and each node id's position in that sequence.
   // Rebuilt by the cheap pass in `update()`; read by keyboard nav to re-window.
   let visibleSeq: number[] = []
@@ -403,7 +413,11 @@ export function createA11yTree(container: HTMLElement, callbacks: A11yCallbacks)
       currentTree.childStart[index + 1]! > currentTree.childStart[index]! ||
       (currentUnloaded !== null && currentUnloaded[index] === 1)
     if (!hasChildren) return
-    if (currentOpen[index] !== 1) {
+    // Under a filter the mask decides, not the open flag: everything it kept
+    // is already on screen, so there is nothing to expand and the only
+    // sensible move is inward. Without this the arrow would call `onActivate`
+    // on a node the filter has already opened, collapsing it instead.
+    if (currentKeep === null && currentOpen[index] !== 1) {
       // Collapsed: expand it. `onActivate` is the same toggle Enter/Space
       // already uses; calling it here is safe precisely because this branch
       // only runs when the node is known to be collapsed, so the toggle can
@@ -416,11 +430,18 @@ export function createA11yTree(container: HTMLElement, callbacks: A11yCallbacks)
     // `aria-expanded` reflects collapse, never row presence, so a single
     // toggle never costs a rebuild), so this is a plain synchronous focus
     // move, no rebuild to wait for.
-    const firstChild = currentTree.childIndex[currentTree.childStart[index]!]
-    if (firstChild === undefined) return
-    const childId = currentTree.indexToId[firstChild]!
-    const childPos = seqPosById.get(childId)
-    if (childPos !== undefined) focusSeqPos(childPos)
+    // The first child THE MIRROR HAS. Under a filter the earliest children may
+    // have been removed, so taking `childIndex[childStart[index]]` blindly
+    // would aim at a row that is not there and move focus nowhere.
+    const from = currentTree.childStart[index]!
+    const to = currentTree.childStart[index + 1]!
+    for (let c = from; c < to; c++) {
+      const childPos = seqPosById.get(currentTree.indexToId[currentTree.childIndex[c]!]!)
+      if (childPos !== undefined) {
+        focusSeqPos(childPos)
+        return
+      }
+    }
   }
 
   /**
@@ -471,7 +492,7 @@ export function createA11yTree(container: HTMLElement, callbacks: A11yCallbacks)
   root.addEventListener('focusin', onFocusIn)
 
   return {
-    update(tree, open, labelOf, isolate = -1, unloaded = null) {
+    update(tree, open, labelOf, isolate = -1, unloaded = null, keep = null) {
       // Focus preservation. A full rebuild used to destroy the focused
       // element outright, so focus fell back to the body — an acceptable if
       // unfriendly default. Pooling introduces a sharper hazard: a row can be
@@ -491,6 +512,7 @@ export function createA11yTree(container: HTMLElement, callbacks: A11yCallbacks)
       currentOpen = open
       currentLabelOf = labelOf
       currentUnloaded = unloaded
+      currentKeep = keep
 
       // Roving tabindex target for this render: keep whatever node last held
       // the tab stop, provided it still exists in this tree — otherwise fall
@@ -518,15 +540,18 @@ export function createA11yTree(container: HTMLElement, callbacks: A11yCallbacks)
       for (let k = 0; k < tree.count; k++) {
         const index = tree.order[k]!
         const parent = tree.parent[index]!
-        // Same rule as `pruneToVisible`: the isolate root is visible whatever
+        // Same rule as `pruneToVisible`: a filter's mask is the complete
+        // answer and overrides collapse; the isolate root is visible whatever
         // its parent says, any other genuine root is not, and everything else
         // resolves through its parent as usual.
-        const isVisible =
-          index === isolate
+        const filtered = keep !== null && keep[index] !== 1
+        const isVisible = filtered
+          ? false
+          : index === isolate
             ? true
             : parent === -1
               ? isolate === -1
-              : visible[parent] === 1 && open[parent] === 1
+              : visible[parent] === 1 && (keep !== null || open[parent] === 1)
         visible[index] = isVisible ? 1 : 0
         if (!isVisible) continue
         seqPosById.set(tree.indexToId[index]!, visibleSeq.length)
@@ -575,6 +600,7 @@ export function createA11yTree(container: HTMLElement, callbacks: A11yCallbacks)
       currentOpen = undefined
       currentLabelOf = undefined
       currentUnloaded = null
+      currentKeep = null
       visibleSeq = []
       seqPosById.clear()
       windowStart = 0

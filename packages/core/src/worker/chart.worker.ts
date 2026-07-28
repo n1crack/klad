@@ -60,6 +60,9 @@ self.onmessage = (event: MessageEvent<MainToWorker>): void => {
       case 'isolate':
         engine?.setIsolate(message.index)
         break
+      case 'filter':
+        engine?.setFilter(message.keep)
+        break
       case 'focus':
         engine?.setFocus(message.index)
         break
@@ -135,6 +138,7 @@ self.onmessage = (event: MessageEvent<MainToWorker>): void => {
       message.t === 'options' ||
       message.t === 'open' ||
       message.t === 'isolate' ||
+      message.t === 'filter' ||
       message.t === 'focus'
     ) {
       const boxes = engine.boxes.slice()

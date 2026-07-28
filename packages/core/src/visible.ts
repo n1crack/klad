@@ -27,18 +27,33 @@ export interface VisibleTree {
  * case threaded through layout, bounds, hit-testing and export. `-1` (the
  * default) prunes the whole forest as before.
  *
+ * `keep` filters: 1 for a node that stays, 0 for one that goes. It is the
+ * COMPLETE answer — a node in the mask is kept whether or not its parent is
+ * open, because the mask is only ever built by a caller who has already
+ * decided what should be on screen, and a filter whose results stayed hidden
+ * behind a collapsed ancestor would be answering a different question than
+ * the one anyone asked. Its parent still has to be in the mask, which is what
+ * makes "the ancestors that lead to a match" the caller's job rather than a
+ * second rule here. `null` (the default) filters nothing.
+ *
  * Walks the source tree in preorder, which guarantees a parent is decided before
  * its children — no recursion, so a 50k-deep chain is fine. Visible indices are
  * assigned in that same preorder, so the returned tree's `order` is simply
  * `0..count-1`.
  */
-export function pruneToVisible(tree: Tree, open: Uint8Array, isolateRoot = -1): VisibleTree {
+export function pruneToVisible(
+  tree: Tree,
+  open: Uint8Array,
+  isolateRoot = -1,
+  keep: Uint8Array | null = null,
+): VisibleTree {
   const n = tree.count
   const fromSource = new Int32Array(n).fill(-1)
   const kept: number[] = []
 
   for (let k = 0; k < n; k++) {
     const src = tree.order[k]!
+    if (keep !== null && keep[src] !== 1) continue
     // The isolate root is kept whatever its own parent says — it is a root
     // now. Its descendants need no special handling at all: preorder means
     // their ancestors were decided first, so the ordinary rule below keeps
@@ -50,8 +65,13 @@ export function pruneToVisible(tree: Tree, open: Uint8Array, isolateRoot = -1): 
       // no parent to have been excluded by.
       if (isolateRoot !== -1 && p === -1) continue
       if (p !== -1) {
-        // Hidden if the parent is hidden, or visible but closed.
-        if (fromSource[p] === -1 || open[p] !== 1) continue
+        // Hidden if the parent is hidden — and, unless a filter is deciding,
+        // if it is visible but closed. A filter overrides collapse on
+        // purpose: its mask already says what should be on screen, and
+        // results left hidden behind a closed ancestor would answer a
+        // question nobody asked.
+        if (fromSource[p] === -1) continue
+        if (keep === null && open[p] !== 1) continue
       }
     }
     fromSource[src] = kept.length

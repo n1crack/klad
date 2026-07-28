@@ -45,7 +45,7 @@ chartRef.current?.api?.fit()
 |---|---|
 | `fit()` | Zoom out to show the whole visible tree. |
 | `fitSubtree(id)` | Frame one branch instead — the smallest camera that shows `id` and everything visible below it. On a chart of thousands, "show me Engineering" is the question people actually have. |
-| `isolate(id \| null)` | Show one branch **as** the chart: `id` becomes the root and everything else stops existing — for the layout, the minimap, the keyboard tree, search and export alike. `fitSubtree` points the camera; this changes what is there. |
+| `isolate(id \| null)` | Show one branch **as** the chart: `id` becomes the root and everything else stops existing — for the layout, the minimap, the keyboard tree and export alike. `fitSubtree` points the camera; this changes what is there. |
 | `reset()` | Back to the opening view. |
 | `zoomIn()` / `zoomOut()` | One step about the viewport centre. |
 | `zoomTo(k)` | An exact scale, within `zoomLimits`. |
@@ -128,8 +128,40 @@ also on the context every card is rendered with — see [Node content](/guide/no
 
 | Method | |
 |---|---|
-| `search(query)` | Substring on the label, or your own `(item) => boolean`. Returns `{ id, item, path }[]`. |
+| `search(query)` | Substring on the label, or your own `(item) => boolean`. Returns `{ id, item, path }[]`. Scans the whole tree; changes nothing. |
+| `filter(query \| null)` | Reduce the chart to the matches and the ancestors that lead to them. Returns the ids that matched. |
 | `highlight(ids \| null)` | Light those nodes, and the connectors between any two of them that are parent and child. |
+
+### Searching and filtering are different things
+
+`search` is a **query**: it scans the whole tree — including branches that are
+collapsed, isolated away, or removed by a filter — and changes nothing. That is
+what makes it the thing the other commands are built from. "Is there a Rossi
+anywhere in this company" is not a question about the current view, and a search
+that could only find what was already on screen would be no use for getting to
+what is not.
+
+`filter` is a **command**: it changes what the chart is.
+
+```ts
+const found = chart.api.filter('schema')   // ['src/lib/schema.ts', 'src/db/schema-utils.ts']
+chart.api.filter(null)                     // back to the whole tree
+```
+
+What stays is the matches plus the ancestors that lead to them — so the result
+is a tree rather than a list, and you can see where each hit lives. A match's
+own children are hidden unless they match too: answering "where are the things
+I asked for" with their subtrees attached puts back most of what was taken
+away.
+
+It overrides collapse, because a filter that found something and then left it
+hidden behind a closed ancestor would be answering a different question. Your
+expand state is untouched underneath and comes back when you clear it.
+
+Like `isolate`, this prunes and lays out again rather than hiding things at
+draw time, so the minimap, the keyboard tree and the exports all agree with
+what is drawn. Unlike `isolate`, it is refitted afterwards for the same reason
+it prunes: whatever the camera was framing has moved or gone.
 
 ## Export
 

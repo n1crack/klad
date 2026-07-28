@@ -85,6 +85,23 @@ export interface ChartEngine {
    */
   setIsolate(sourceIndex: number): void
   /**
+   * Reduces the visible tree to the nodes in `keep` — 1 to stay, 0 to go,
+   * SOURCE-indexed — or `null` for no filter.
+   *
+   * The mask is the COMPLETE answer, including whatever ancestors are needed
+   * to reach a match. Working out which nodes match, and which ancestors lead
+   * to them, is the caller's: matching is a question about their data, which
+   * this engine addresses by index and cannot see. Turning the answer into a
+   * smaller tree is this side's.
+   *
+   * Relayouts, like `setIsolate` and for the same reason — it changes which
+   * nodes exist as far as everything downstream is concerned, rather than
+   * hiding some of them at draw time. It also overrides collapse: a filter
+   * whose results stayed behind a closed ancestor would be answering a
+   * different question than the one that was asked.
+   */
+  setFilter(keep: Uint8Array | null): void
+  /**
    * Centres a sunburst on one node — the drill-down. `sourceIndex` is a SOURCE
    * index, or `-1` for the default centre.
    *
@@ -1193,6 +1210,18 @@ export function createChartEngine(renderer: Renderer): ChartEngine {
    * mark. See the `hasHidden` block.
    */
   let sourceUnloaded: Uint8Array | null = null
+  /**
+   * SOURCE-indexed: 1 for a node a filter is keeping, `null` when nothing is
+   * filtering — which is the common case and costs a single check.
+   *
+   * The engine does no matching of its own. Deciding what counts as a match is
+   * a question about the host's data (a label, a field, a predicate they
+   * wrote), and the engine addresses nodes by index and cannot see any of it.
+   * What it does is the part the host cannot: turn that answer into a smaller
+   * tree, once, at prune time — the same thing `isolate` does, and for the
+   * same reason it is not a draw-time filter.
+   */
+  let filterKeep: Uint8Array | null = null
   let open: Uint8Array = new Uint8Array(0)
   let options: EngineOptions = { ...DEFAULT_OPTIONS }
 
@@ -1440,7 +1469,7 @@ export function createChartEngine(renderer: Renderer): ChartEngine {
     // of snapping back to the layout it left.
     const prevPolarFrom = capturePolar(now, pendingRemap)
 
-    const pruned = pruneToVisible(sourceTree, open, isolateSource)
+    const pruned = pruneToVisible(sourceTree, open, isolateSource, filterKeep)
     visibleToSource = pruned.toSource
     prunedParent = pruned.tree.parent
     prunedFromSource = pruned.fromSource
@@ -2257,6 +2286,14 @@ export function createChartEngine(renderer: Renderer): ChartEngine {
     setViewport(width, height, dpr) {
       viewport = { width, height, dpr }
       renderer.resize(width, height, dpr)
+    },
+    setFilter(keep) {
+      // Copied rather than aliased, like every other caller-owned buffer here:
+      // the main-thread path hands over a live array, and a later host-side
+      // write would otherwise reach through into a layout already computed.
+      filterKeep = keep === null ? null : Uint8Array.from(keep)
+      // A relayout, not a repaint: the set of nodes that exist just changed.
+      layoutDirty = true
     },
     setIsolate(sourceIndex) {
       if (isolateSource === sourceIndex) return

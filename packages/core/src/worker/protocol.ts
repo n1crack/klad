@@ -152,6 +152,9 @@ export type MainToWorkerMessage =
   | { t: 'resize'; width: number; height: number; dpr: number }
   | { t: 'highlight'; ids: Uint32Array | null }
   | { t: 'isolate'; index: number }
+  /** Reduces the visible tree to the nodes in `keep` — see
+   * `ChartEngine.setFilter`. `null` for no filter. */
+  | { t: 'filter'; keep: Uint8Array | null }
   /** Centres a sunburst on one node — see `ChartEngine.setFocus`. `-1` for the
    * default centre. */
   | { t: 'focus'; index: number }

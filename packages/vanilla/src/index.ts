@@ -596,7 +596,48 @@ export interface KladApi {
   expandAll(): void
   collapseAll(): void
   expandTo(id: string): void
+  /**
+   * Every node matching a label substring or a predicate, with the ancestor
+   * chain that leads to each. Case-insensitive for the string form.
+   *
+   * A QUERY: it changes nothing — not the camera, not what is drawn, not the
+   * expand state. That is what makes it the thing you build the other
+   * commands out of: feed a result's id to `focus`, or its whole set to
+   * `highlight`, or the same predicate to `filter`.
+   *
+   * Scans the WHOLE tree, including branches that are collapsed, isolated
+   * away or removed by a filter. Deliberately: "is there a Rossi anywhere in
+   * this company" is not a question about the current view, and a search that
+   * could only find what was already on screen would be no use for getting to
+   * what is not.
+   */
   search(query: string | ((item: NodeData) => boolean)): SearchResult[]
+  /**
+   * Reduces the chart to the nodes that match, plus the ancestors that lead to
+   * them. `null` clears it. Returns the ids that MATCHED — not everything left
+   * on screen, which also includes those ancestors.
+   *
+   * ```ts
+   * chart.api.filter('schema')                       // by label
+   * chart.api.filter((item) => item.status === 'open')
+   * chart.api.filter(null)                           // back to the whole tree
+   * ```
+   *
+   * A match's own children are hidden unless they match too. The question a
+   * filter answers is "where are the things I asked for", and answering it
+   * with their subtrees attached puts back most of what was taken away.
+   *
+   * Overrides collapse: results behind a closed ancestor would be a filter
+   * that did not show you what it found. Expand state is untouched underneath
+   * and comes back when the filter is cleared.
+   *
+   * Unlike `search`, which is a query that changes nothing, this changes what
+   * the chart IS — it prunes and relayouts, the way `isolate` does, so the
+   * minimap, the keyboard tree and the exports all agree with what is drawn.
+   * A filtered chart is also refitted, since whatever the camera was framing
+   * has moved or gone.
+   */
+  filter(query: string | ((item: NodeData) => boolean) | null): string[]
   /**
    * Where `id` sits in the tree and how much hangs off it — see `NodeStats`.
    * `null` for an id this chart doesn't have. The same numbers `renderNode`
@@ -1026,6 +1067,11 @@ export function createKlad(host: HTMLElement, options: Options): KladInstance {
     // twice in the same function for the sake of a shorter line.
     const unloaded = unloadedMask()
     chartHost.setData(toWireTree(tree), sizes, labels, open, unloaded)
+    // After `setData`, because the mask is indexed against the tree that was
+    // just sent. Re-derived rather than kept: a source index means nothing
+    // across a `normalize`, so carrying the old mask over would keep an
+    // arbitrary set of nodes.
+    if (filterQuery !== null) applyFilter()
     // Deferred: applyData() runs synchronously inside createKlad, before the
     // caller has had a chance to attach a 'warning' listener via `on()`. Emitting
     // here directly would drop every warning raised on the initial load. Queuing
@@ -1038,7 +1084,7 @@ export function createKlad(host: HTMLElement, options: Options): KladInstance {
         for (const warning of warnings) emit('warning', warning)
       })
     }
-    a11y?.update(tree, open, (index) => labelOf(itemFor(index)), isolatedIndex, unloaded)
+    a11y?.update(tree, open, (index) => labelOf(itemFor(index)), isolatedIndex, unloaded, filterKeep)
   }
 
   /** `options.centre` as a source index, or -1 for "the default centre" —
@@ -1343,7 +1389,7 @@ export function createKlad(host: HTMLElement, options: Options): KladInstance {
   const emitDrop = (ids: string[], target: number, mode: DropMode): void => {
     const pruned = sourceToPruned.get(target)
     if (pruned === undefined) return
-    const visible = pruneToVisible(tree, open, isolatedIndex)
+    const visible = pruneToVisible(tree, open, isolatedIndex, filterKeep)
     const position = dropPosition(visible.tree, pruned, mode)
     const parentSource = position.parent === -1 ? -1 : visible.toSource[position.parent]!
     // In tree order, so a handler applying this to its own array does not have
@@ -1647,6 +1693,43 @@ export function createKlad(host: HTMLElement, options: Options): KladInstance {
     setOpenFlag(index, true)
   }
 
+  /**
+   * Builds the keep mask from `filterQuery` and hands it to the engine.
+   * Returns the ids that MATCHED — not the ids kept, which also include the
+   * ancestors that lead to them and which nobody asked about.
+   *
+   * Re-run rather than cached whenever the tree is rebuilt: a source index
+   * means nothing across a `normalize`, so a mask from the previous tree would
+   * keep an arbitrary set of nodes.
+   */
+  const applyFilter = (): string[] => {
+    if (filterQuery === null) {
+      filterKeep = null
+      chartHost.setFilter(null)
+      return []
+    }
+    const query = filterQuery
+    const predicate =
+      typeof query === 'function'
+        ? query
+        : (item: NodeData) => labelOf(item).toLowerCase().includes(query.toLowerCase())
+
+    const keep = new Uint8Array(tree.count)
+    const matched: string[] = []
+    for (let i = 0; i < tree.count; i++) {
+      if (!predicate(itemFor(i))) continue
+      matched.push(tree.indexToId[i]!)
+      // The match, and every ancestor that leads to it. Walking up and
+      // stopping at the first node already marked keeps this O(nodes) overall
+      // rather than O(nodes x depth): an ancestor is only ever climbed once,
+      // by whichever match reaches it first.
+      for (let a = i; a !== -1 && keep[a] !== 1; a = tree.parent[a]!) keep[a] = 1
+    }
+    filterKeep = keep
+    chartHost.setFilter(keep)
+    return matched
+  }
+
   /** `NodeStats` for a node by INDEX — six array reads, no walking. See
    * `NodeStats` and core's `computeSubtreeStats`. */
   const statsOf = (index: number): NodeStats => ({
@@ -1826,7 +1909,7 @@ export function createKlad(host: HTMLElement, options: Options): KladInstance {
     // Isolation included: an export is a picture of the chart, and the chart
     // is currently one branch. Leaving it out would put the whole org in a PNG
     // taken while the screen showed a department.
-    const visible = pruneToVisible(tree, open, isolatedIndex)
+    const visible = pruneToVisible(tree, open, isolatedIndex, filterKeep)
     const n = visible.tree.count
     const layoutName = currentOptions.layout ?? 'tidy'
     const orientation = currentOptions.orientation ?? 'tb'
@@ -2115,6 +2198,18 @@ export function createKlad(host: HTMLElement, options: Options): KladInstance {
   let highlightedIds: string[] | null = null
   /** Source index the chart is re-rooted at, or -1 — see `api.isolate`. */
   let isolatedIndex = -1
+  /**
+   * The filter, as a SOURCE-indexed keep mask — 1 for a node on screen, 0 for
+   * one the filter removed — or `null` when nothing is filtering.
+   *
+   * Held here rather than as a query string because it has to be re-derived
+   * whenever the tree is rebuilt (a drop, a lazy load, `refresh`), and because
+   * three other things need the same answer: the screen-reader mirror, the
+   * export, and drop resolution each work out visibility for themselves.
+   */
+  let filterKeep: Uint8Array | null = null
+  /** What the filter was asked, kept so a rebuild can ask it again. */
+  let filterQuery: string | ((item: NodeData) => boolean) | null = null
   /** Ids of the selected nodes, in the order they were given. */
   let selectedIds: string[] = []
   /** Set when the next relayout is a different TREE — see the minimap call. */
@@ -2131,7 +2226,7 @@ export function createKlad(host: HTMLElement, options: Options): KladInstance {
   const refreshA11y = (): void => {
     if (!a11yDirty) return
     a11yDirty = false
-    a11y?.update(tree, open, (i) => labelOf(itemFor(i)), isolatedIndex, unloadedMask())
+    a11y?.update(tree, open, (i) => labelOf(itemFor(i)), isolatedIndex, unloadedMask(), filterKeep)
   }
 
   const scheduleFrame = (): void => {
@@ -3052,6 +3147,18 @@ export function createKlad(host: HTMLElement, options: Options): KladInstance {
       // is what makes isolating feel like arriving somewhere.
       pendingFullFit = true
       scheduleFrame()
+    },
+    filter(query) {
+      filterQuery = query
+      const matches = applyFilter()
+      minimapNeedsRefit = true
+      a11yDirty = true
+      // The chart now contains a different set of nodes at different
+      // positions, so whatever the camera was framing has moved or gone —
+      // same reasoning as `isolate`.
+      pendingFullFit = true
+      scheduleFrame()
+      return matches
     },
     reset() {
       api.fit()

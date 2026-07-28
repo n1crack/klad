@@ -2847,3 +2847,173 @@ describe('children on demand', () => {
     chart.destroy()
   })
 })
+
+describe('filter', () => {
+  //  a Root
+  //  ├── b Left        ── d Leaf
+  //  └── c Right
+  const cardOf = (id: string) =>
+    document.querySelector<HTMLElement>(`.klad-overlay-node[data-klad-id="${id}"]`)
+  const onScreen = () =>
+    [...document.querySelectorAll<HTMLElement>('.klad-overlay-node')].map((el) => el.dataset.kladId).sort()
+
+  function filterable(overrides: Partial<Options> = {}) {
+    return createKlad(host(), {
+      data: DATA,
+      nodeSize: { w: 120, h: 48 },
+      label: (item) => String(item.name ?? ''),
+      worker: false,
+      renderNode: (el, ctx) => {
+        el.textContent = String(ctx.item.name ?? '')
+      },
+      ...overrides,
+    })
+  }
+
+  it('keeps the matches and the ancestors that lead to them', async () => {
+    const chart = filterable()
+    await nextFrame()
+    await settle()
+    expect(onScreen()).toEqual(['a', 'b', 'c', 'd'])
+
+    const matched = chart.api.filter('Leaf')
+    await settleTransition()
+    await settle()
+
+    // `d` matched; `a` and `b` are the way to it. `c` leads nowhere and goes.
+    expect(matched).toEqual(['d'])
+    expect(onScreen()).toEqual(['a', 'b', 'd'])
+    chart.destroy()
+  })
+
+  it('returns what MATCHED, not what is left on screen', async () => {
+    // The ancestors are there because the tree has to hang together, not
+    // because anybody asked about them.
+    const chart = filterable()
+    await nextFrame()
+    await settle()
+    expect(chart.api.filter('Leaf')).toEqual(['d'])
+    expect(chart.api.filter('Root')).toEqual(['a'])
+    chart.destroy()
+  })
+
+  it('hides a match’s own children unless they match too', async () => {
+    // The question a filter answers is "where are the things I asked for".
+    // Answering it with their subtrees attached puts back most of what was
+    // taken away.
+    const chart = filterable()
+    await nextFrame()
+    await settle()
+    chart.api.filter('Left')
+    await settleTransition()
+    await settle()
+    expect(onScreen()).toEqual(['a', 'b'])
+    expect(cardOf('d')).toBeNull()
+    chart.destroy()
+  })
+
+  it('takes a predicate as well as a label substring', async () => {
+    const chart = filterable()
+    await nextFrame()
+    await settle()
+    const matched = chart.api.filter((item) => item.id === 'c')
+    await settleTransition()
+    await settle()
+    expect(matched).toEqual(['c'])
+    expect(onScreen()).toEqual(['a', 'c'])
+    chart.destroy()
+  })
+
+  it('shows results that are behind a collapsed ancestor', async () => {
+    // A filter that found something and then left it hidden would be
+    // answering a different question than the one that was asked.
+    const chart = filterable()
+    await nextFrame()
+    await settle()
+    chart.api.collapse('b')
+    await settleTransition()
+    expect(cardOf('d')).toBeNull()
+
+    chart.api.filter('Leaf')
+    await settleTransition()
+    await settle()
+    expect(onScreen()).toEqual(['a', 'b', 'd'])
+    chart.destroy()
+  })
+
+  it('gives the expand state back untouched when cleared', async () => {
+    const chart = filterable()
+    await nextFrame()
+    await settle()
+    chart.api.collapse('b')
+    await settleTransition()
+
+    chart.api.filter('Leaf')
+    await settleTransition()
+    await settle()
+    chart.api.filter(null)
+    await settleTransition()
+    await settle()
+
+    // `b` is closed again — the filter overrode collapse while it ran, it did
+    // not rewrite it.
+    expect(chart.api.getView().open).not.toContain('b')
+    expect(cardOf('d')).toBeNull()
+    expect(onScreen()).toEqual(['a', 'b', 'c'])
+    chart.destroy()
+  })
+
+  it('leaves nothing but the roots when nothing matches', async () => {
+    const chart = filterable()
+    await nextFrame()
+    await settle()
+    const matched = chart.api.filter('nothing here')
+    await settleTransition()
+    await settle()
+    expect(matched).toEqual([])
+    // Not one node: an empty chart is a clearer answer than a chart still
+    // showing a root that did not match either.
+    expect(onScreen()).toEqual([])
+    chart.destroy()
+  })
+
+  it('survives a data change, re-derived against the new tree', async () => {
+    // A source index means nothing across a `normalize`, so a mask carried
+    // over would keep an arbitrary set of nodes.
+    const chart = filterable()
+    await nextFrame()
+    await settle()
+    chart.api.filter('Leaf')
+    await settleTransition()
+    await settle()
+    expect(onScreen()).toEqual(['a', 'b', 'd'])
+
+    chart.update([
+      { id: 'a', name: 'Root' },
+      { id: 'x', parentId: 'a', name: 'Other' },
+      { id: 'y', parentId: 'x', name: 'Leaf' },
+    ])
+    await settleTransition()
+    await settle()
+    expect(onScreen()).toEqual(['a', 'x', 'y'])
+    chart.destroy()
+  })
+
+  it('tells the screen-reader tree the same thing', async () => {
+    const chart = filterable()
+    await nextFrame()
+    await settle()
+    chart.api.filter('Leaf')
+    await settleTransition()
+    await settle()
+
+    const rows = [...document.querySelectorAll('[role="treeitem"]')].map((r) =>
+      r.getAttribute('data-orgchart-id'),
+    )
+    // A screen reader reading out nodes the filter removed is a mirror that
+    // contradicts what it mirrors.
+    expect(rows).toContain('d')
+    expect(rows).not.toContain('c')
+    chart.destroy()
+  })
+})

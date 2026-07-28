@@ -30,6 +30,9 @@ export interface ChartHost {
   setViewport(width: number, height: number, dpr: number): void
   setHighlight(ids: Uint32Array | null): void
   setIsolate(index: number): void
+  /** Reduces the visible tree to the nodes in `keep` — see
+   * `ChartEngine.setFilter`. */
+  setFilter(keep: Uint8Array | null): void
   /** Centres a sunburst on one node, with the drill-down animation — see
    * `ChartEngine.setFocus`. `-1` for the default centre. */
   /** The next relayout is a move, not a load — see
@@ -276,6 +279,10 @@ export function createChartHost(
     setIsolate(index) {
       engine?.setIsolate(index)
       post({ t: 'isolate', index })
+    },
+    setFilter(keep) {
+      engine?.setFilter(keep)
+      post({ t: 'filter', keep })
     },
     setFocus(index) {
       engine?.setFocus(index)
