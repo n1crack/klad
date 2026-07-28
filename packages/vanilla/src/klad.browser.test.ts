@@ -2799,6 +2799,27 @@ describe('children on demand', () => {
     chart.destroy()
   })
 
+  it('marks an unfetched branch in the export too', async () => {
+    // The rule lives in two places by necessity — in worker mode the live
+    // engine is unreachable from the main thread, so the export recomputes it.
+    // The engine grew the unloaded branch and this mirror did not, so the mark
+    // was on the canvas and missing from the picture of the canvas.
+    const chart = lazy()
+    await nextFrame()
+    await settle()
+
+    // `hs`/`hd` are the stub-and-dot the rectangular layouts draw for "there
+    // is more inside this" — see render/svg.ts.
+    expect(chart.api.toSVG()).toContain('class="hs"')
+
+    chart.api.expand('b')
+    await settleTransition()
+    await settle()
+    // Fetched now, so nothing is hidden and nothing is marked.
+    expect(chart.api.toSVG()).not.toContain('class="hs"')
+    chart.destroy()
+  })
+
   it('keeps loaded children through refresh, and drops them on update', async () => {
     const chart = lazy()
     await nextFrame()
@@ -3526,6 +3547,117 @@ describe('very wide levels', () => {
     await settle()
     expect(laidOut(chart)).toBe(7)
     expect(chart.api.getView().uncapped).toEqual([])
+    chart.destroy()
+  })
+
+  it('caps and filters through the worker too', async () => {
+    // Both masks cross `postMessage`, and every other test here runs the
+    // engine in-process. A field missing from the wire type or dropped in
+    // host.ts would show as a chart that quietly ignores both.
+    const chart = createKlad(tallHost(), {
+      data: WIDE,
+      layout: 'file',
+      nodeSize: { w: 300, h: 26 },
+      rowGap: 4,
+      label: (item) => String(item.name ?? ''),
+      worker: true,
+      maxChildren: 5,
+      renderNode: (el, ctx) => {
+        el.textContent = ctx.overflow === null ? String(ctx.item.name ?? '') : `+${ctx.overflow.count}`
+      },
+    })
+    await nextFrame()
+    await settle()
+    await settle()
+    expect(laidOut(chart)).toBe(7)
+
+    chart.api.filter('Child 1')
+    await settleTransition()
+    await settle()
+    await settle()
+    // Eleven matches plus the root, and the cap suppressed while it runs.
+    expect(laidOut(chart)).toBe(12)
+
+    chart.api.filter(null)
+    await settleTransition()
+    await settle()
+    await settle()
+    expect(laidOut(chart)).toBe(7)
+    chart.destroy()
+  })
+
+  it('never sends its own invented node to loadChildren', async () => {
+    // The aggregate is childless by construction, so a host predicate loose
+    // enough to say yes to it — and one written for real rows will be, since
+    // it is answering about a stub with none of their fields — would put a
+    // "more inside" mark on the chart's own invention and then fetch it.
+    const asked: string[] = []
+    const chart = wide({
+      maxChildren: 5,
+      mayHaveChildren: () => true,
+      loadChildren: (item) => {
+        asked.push(String(item.id))
+        return []
+      },
+    })
+    await nextFrame()
+    await settle()
+
+    chart.api.expand('klad:more:r')
+    await settleTransition()
+    await settle()
+    expect(asked).toEqual([])
+    chart.destroy()
+  })
+
+  it('never matches its own invented node with a filter', async () => {
+    // The aggregate's fallback label is `+15`, so a filter for "1" or "5"
+    // would match it — and a filter is supposed to answer a question about
+    // the host's data, not about the chart's bookkeeping.
+    const chart = wide({ maxChildren: 5 })
+    await nextFrame()
+    await settle()
+
+    const matched = chart.api.filter('+1')
+    await settleTransition()
+    await settle()
+    expect(matched).toEqual([])
+    expect(onScreen()).toEqual([])
+    chart.destroy()
+  })
+
+  it('handles a cap of zero, and one bigger than the level', async () => {
+    const none = wide({ maxChildren: 0 })
+    await nextFrame()
+    await settle()
+    // The root and one node standing for all twenty.
+    expect(laidOut(none)).toBe(2)
+    none.destroy()
+
+    const roomy = wide({ maxChildren: 500 })
+    await nextFrame()
+    await settle()
+    // Nothing to roll up, so no invented node at all.
+    expect(laidOut(roomy)).toBe(21)
+    roomy.destroy()
+  })
+
+  it('does not cap the roots, which are nobody’s children', async () => {
+    // `maxChildren` is per PARENT and a root has none. Worth a test rather
+    // than left to be discovered: a flat forest of hundreds is a real shape,
+    // and this says plainly that it is not what the option covers.
+    const forest = Array.from({ length: 30 }, (_, i) => ({ id: `r${i}`, name: `Root ${i}` }))
+    const chart = createKlad(tallHost(), {
+      data: forest,
+      layout: 'file',
+      nodeSize: { w: 300, h: 26 },
+      worker: false,
+      maxChildren: 5,
+      renderNode: (el, ctx) => (el.textContent = ctx.id),
+    })
+    await nextFrame()
+    await settle()
+    expect(laidOut(chart)).toBe(30)
     chart.destroy()
   })
 

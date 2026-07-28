@@ -1892,6 +1892,11 @@ export function createKlad(host: HTMLElement, options: Options): KladInstance {
   const isUnloaded = (index: number): boolean => {
     if (currentOptions.loadChildren === undefined) return false
     if (childCountOf(index) > 0) return false
+    // Never the node a cap invented. It is childless by construction, so a
+    // host predicate loose enough to say yes to it — `(item) => item.kind !==
+    // 'file'` on a stub with no `kind` — would put a "more inside" mark on it
+    // and send its own invention to `loadChildren`.
+    if (overflowInfo(itemFor(index)) !== null) return false
     const mayHave = currentOptions.mayHaveChildren
     if (mayHave === undefined) return false
     if (loadedChildren.has(tree.indexToId[index]!)) return false
@@ -2061,7 +2066,13 @@ export function createKlad(host: HTMLElement, options: Options): KladInstance {
     const keep = new Uint8Array(tree.count)
     const matched: string[] = []
     for (let i = 0; i < tree.count; i++) {
-      if (!predicate(itemFor(i))) continue
+      const item = itemFor(i)
+      // Never the node a cap invented. Its fallback label is `+15`, so a
+      // filter for "1" would match it — and a filter answers a question about
+      // the host's data, not about the chart's own bookkeeping. Same rule as
+      // `search`, for the same reason.
+      if (overflowInfo(item) !== null) continue
+      if (!predicate(item)) continue
       matched.push(tree.indexToId[i]!)
       // The match, and every ancestor that leads to it. Walking up and
       // stopping at the first node already marked keeps this O(nodes) overall
@@ -2281,9 +2292,23 @@ export function createKlad(host: HTMLElement, options: Options): KladInstance {
     const count = visible.tree.count
     const marks = new Uint8Array(count)
     let any = false
+    const unloaded = unloadedMask()
     for (let i = 0; i < count; i++) {
       const src = visible.toSource[i]!
-      if (tree.childStart[src]! === tree.childStart[src + 1]!) continue
+      if (tree.childStart[src]! === tree.childStart[src + 1]!) {
+        // No children in the tree — a genuine leaf, unless the host has said
+        // this node's have not been fetched. The engine grew this branch when
+        // children on demand landed and this mirror did not, so an unloaded
+        // node carried its mark on the canvas and lost it in the export. The
+        // rule lives in two places by necessity (the live engine is
+        // unreachable from here in worker mode); keeping them in step is not
+        // optional.
+        if (unloaded !== null && unloaded[src] === 1) {
+          marks[i] = 1
+          any = true
+        }
+        continue
+      }
       let shown = false
       for (let j = visible.tree.childStart[i]!; j < visible.tree.childStart[i + 1]!; j++) {
         const child = visible.tree.childIndex[j]!

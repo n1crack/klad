@@ -43,6 +43,10 @@ of the parent:
 maxChildren: (item) => (item.kind === 'department' ? 12 : 6)
 ```
 
+It caps **children**, so it does not cap the roots — they are nobody's
+children, and there is no parent to hang the aggregate node off. A forest of
+three hundred roots draws three hundred roots.
+
 ## Nothing is thrown away
 
 The children that did not fit are still in the tree.
@@ -118,7 +122,7 @@ deliberately none of the things that would leak it into your data model:
 
 | | |
 | --- | --- |
-| `search` | Never returns it. Its `item` is a stub with nothing on it but an id. |
+| `search` / `filter` | Never return it. Its `item` is a stub with nothing on it but an id, and its fallback label would let a filter for "1" match `+15`. |
 | `stats(id)` | Does not count it. A card saying "21 reports" would be wrong about the only tree you have. |
 | Dragging | Refused, from either side. It stands for nodes rather than being one, and `nodeDrop` must never report an id you have not seen — including when a box selection swept it up. |
 
