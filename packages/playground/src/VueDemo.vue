@@ -3,7 +3,7 @@ import { Klad } from '@klad/vue'
 import type { KladApi, LayoutSettings, NodeContext, Options, Theme } from '@klad/vue'
 import { computed, onBeforeUnmount, ref } from 'vue'
 import { createAccordionSlide, createDrill, goTo } from './demo-behaviour.js'
-import { openPickerFor, overflowLabel } from './overflow-card.js'
+import { isWatched, openPickerFor, overflowLabel } from './overflow-card.js'
 import {
   DEPARTMENT_COLOR,
   accordionProgress,
@@ -271,7 +271,7 @@ function handleNodeClick({ id }: { id: string }): void {
     -->
     <template
       v-if="content !== 'none'"
-      #node="{ id, item, hasChildren, open, toggle, overflow, directChildren, descendants, depth, height }"
+      #node="{ id, item, hasChildren, open, toggle, overflow, loading, directChildren, descendants, depth, height }"
     >
       <div v-if="content === 'avatar'" class="avatar-card">
         <div class="avatar-circle" :style="{ background: departmentColor(item) }">
@@ -464,13 +464,13 @@ function handleNodeClick({ id }: { id: string }): void {
       <div
         v-else-if="overflow !== null"
         class="card is-overflow"
-        @click="(event) => openPickerFor(event.currentTarget as HTMLElement, overflow!)"
+        @click="(event) => openPickerFor(event.currentTarget as HTMLElement, overflow!, id)"
       >
         <strong>{{ overflowLabel(overflow) }}</strong>
         <small>Click to search and pick</small>
       </div>
 
-      <div v-else class="card">
+      <div v-else class="card" :class="{ 'is-loading': loading, 'is-pinned': isWatched(id) }">
         <strong>{{ String(item.name ?? '') }}</strong>
         <small>{{ String(item.title ?? '') }}</small>
         <button v-if="hasChildren" type="button" class="toggle-btn" @click="toggle">

@@ -352,6 +352,17 @@ export interface Example {
   /** Which node-content treatment to render; see {@link NodeContentKind}. */
   content: NodeContentKind
   /**
+   * How deep a node sits, when the dataset cannot answer it.
+   *
+   * The file layout shrinks each row by its own indent so they all END at a
+   * common right edge, which means it needs a depth per node — and the
+   * default reads that from `data`. A node fetched by `loadChildren` is not in
+   * `data`, so it came out as depth 0, kept its full width, and pushed its
+   * trailing column right: a staircase instead of a column you can scan.
+   * An example that grows its own tree answers this itself.
+   */
+  depth?: (item: NodeItem) => number
+  /**
    * Shows the sidebar's "Go to node" combo box for this example. Deliberately
    * a per-example opt-in rather than a control that is always there: it is the
    * point of exactly one example, and a chart-wide control that only means
@@ -647,16 +658,21 @@ export const WIDE_WATCHING = new Set<string>(['l1-3', 'l2-3-4', 'l3-0-0-7'])
  * picker. `refresh()` re-reads `pinChildren`, which is what makes the tick
  * land on the chart — see the wide-levels guide.
  */
-let onWatchingChanged: (() => void) | null = null
+let onWatchingChanged: ((keep?: string) => void) | null = null
 
-export function setWorkingSetHook(fn: (() => void) | null): void {
+export function setWorkingSetHook(fn: ((keep?: string) => void) | null): void {
   onWatchingChanged = fn
 }
 
-export function toggleWatching(id: string, next: boolean): void {
+/**
+ * `keep` is the node the viewer is working FROM — the aggregate the picker
+ * is hanging off. Ticking somebody swaps who is on that level, and without a
+ * pin the level slides out from under the panel still open over it.
+ */
+export function toggleWatching(id: string, next: boolean, keep?: string): void {
   if (next) WIDE_WATCHING.add(id)
   else WIDE_WATCHING.delete(id)
-  onWatchingChanged?.()
+  onWatchingChanged?.(keep)
 }
 
 function buildWideTree(): NodeItem[] {
@@ -787,7 +803,14 @@ export const LAYOUT_PRESETS: Record<LayoutName, LayoutPreset> = {
       // the list grows sideways, which is what a real explorer does too (and
       // is why it has a horizontal scrollbar).
       nodeSize: (item) => ({
-        w: Math.max(FILE_ROW_MIN, FILE_ROW.w - depthOf(example.data, String(item.id)) * FILE_INDENT),
+        w: Math.max(
+          FILE_ROW_MIN,
+          FILE_ROW.w -
+            (example.depth === undefined
+              ? depthOf(example.data, String(item.id))
+              : example.depth(item)) *
+              FILE_INDENT,
+        ),
         h: FILE_ROW.h,
       }),
       rowGap: 2,
@@ -1182,6 +1205,10 @@ export const EXAMPLES: Example[] = [
       loadChildren: (item) => fetchRemoteChildren(item),
       nodeSize: { w: 190, h: 56 },
     },
+    // The ids ARE paths, which is what a real filesystem gives you too — so
+    // this example can answer for nodes that only exist because they were
+    // fetched, which `data` cannot.
+    depth: (item) => String(item.id).split('/').length - 1,
     // `card`, not `row`, even though this opens as a file list: the `file`
     // preset forces rows anyway, and declaring rows here is what a viewer
     // switching to `tidy` would get instead — file rows, indent lines and all,

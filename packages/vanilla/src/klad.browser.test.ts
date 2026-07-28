@@ -3786,6 +3786,52 @@ describe('very wide levels', () => {
     chart.destroy()
   })
 
+  it('holds the node you are working from while the level swaps around it', async () => {
+    // Ticking somebody in a picker hung off an aggregate node swaps who is on
+    // that level. Without a pin the level slides out from under the panel the
+    // viewer is still reading — and the aggregate is the right anchor here,
+    // unlike a `showMore`, because the cap stays on and so does the node.
+    const watching = new Set<string>()
+    const el = document.createElement('div')
+    el.style.width = '2200px'
+    el.style.height = '700px'
+    document.body.appendChild(el)
+    const chart = createKlad(el, {
+      data: WIDE,
+      nodeSize: { w: 60, h: 34 },
+      label: (item) => String(item.name ?? ''),
+      worker: false,
+      maxChildren: 5,
+      pinChildren: (item) => watching.has(String(item.id)),
+      renderNode: (e, ctx) => (e.textContent = ctx.id),
+    })
+    await nextFrame()
+    await settle()
+
+    const boxOf = (id: string) =>
+      document.querySelector<HTMLElement>(`.klad-overlay-node[data-klad-id="${id}"]`)?.getBoundingClientRect() ??
+      null
+    const before = boxOf('klad:more:r')!
+    expect(before).not.toBeNull()
+
+    // SIX pins against a cap of five, so the level genuinely widens. Pinning
+    // one would swap it for one of the five and the level would be the same
+    // width — which moves nothing, and would let this test pass with no pin
+    // at all.
+    for (const id of ['c14', 'c15', 'c16', 'c17', 'c18', 'c19']) watching.add(id)
+    chart.api.refresh({ keep: 'klad:more:r' })
+    await settleTransition()
+    await settle()
+
+    const after = boxOf('klad:more:r')
+    expect(after).not.toBeNull()
+    expect(Math.abs(after!.left - before.left)).toBeLessThan(1.5)
+    // And the ticks landed: pins outnumber the cap, so all six are on.
+    for (const id of ['c14', 'c19']) expect(onScreen()).toContain(id)
+    chart.destroy()
+    el.remove()
+  })
+
   it('does nothing without a cap', async () => {
     const chart = wide()
     await nextFrame()

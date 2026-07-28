@@ -70,7 +70,7 @@ self.onmessage = (event: MessageEvent<MainToWorker>): void => {
         engine?.setFocus(message.index)
         break
       case 'move':
-        engine?.animateNextLayout(message.sourceRemap)
+        engine?.animateNextLayout(message.sourceRemap, message.opening)
         break
       case 'selection':
         engine?.setSelection(message.ids)

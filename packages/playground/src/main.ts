@@ -1985,7 +1985,7 @@ function show(stack: Stack, exampleId: string, layout: LayoutName): void {
         currentApi = api
         // A tick in the picker changes the working set; `refresh()` re-reads
         // `pinChildren`, which is what puts it on the chart.
-        setWorkingSetHook(() => api.refresh())
+        setWorkingSetHook((keep) => api.refresh(keep === undefined ? undefined : { keep }))
       },
       reportDrop,
       reportCentre,
@@ -2009,7 +2009,7 @@ function show(stack: Stack, exampleId: string, layout: LayoutName): void {
         currentApi = api
         // A tick in the picker changes the working set; `refresh()` re-reads
         // `pinChildren`, which is what puts it on the chart.
-        setWorkingSetHook(() => api.refresh())
+        setWorkingSetHook((keep) => api.refresh(keep === undefined ? undefined : { keep }))
       },
     })
     // VueDemo exposes `setMinimap`/`setMinimapPosition`/`setEdgeRadius`/
@@ -2047,7 +2047,7 @@ function show(stack: Stack, exampleId: string, layout: LayoutName): void {
           currentApi = api
           // A tick in the picker changes the working set; `refresh()` re-reads
           // `pinChildren`, which is what puts it on the chart.
-          setWorkingSetHook(() => api.refresh())
+          setWorkingSetHook((keep) => api.refresh(keep === undefined ? undefined : { keep }))
         },
         ref: reactHandle,
       }),

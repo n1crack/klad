@@ -40,7 +40,7 @@ export interface ChartHost {
    * `ChartEngine.setFocus`. `-1` for the default centre. */
   /** The next relayout is a move, not a load — see
    * `ChartEngine.animateNextLayout`. */
-  animateNextLayout(sourceRemap: Int32Array | null): void
+  animateNextLayout(sourceRemap: Int32Array | null, opening?: boolean): void
   setFocus(index: number): void
   setSelection(ids: Uint32Array | null): void
   setDrag(index: number): void
@@ -295,13 +295,13 @@ export function createChartHost(
       engine?.setFocus(index)
       post({ t: 'focus', index })
     },
-    animateNextLayout(sourceRemap) {
-      engine?.animateNextLayout(sourceRemap)
+    animateNextLayout(sourceRemap, opening = true) {
+      engine?.animateNextLayout(sourceRemap, opening)
       // Transferred rather than cloned, and a fresh copy per path: the
       // in-process engine above holds onto the caller's array, so handing the
       // same buffer to the worker would detach it out from under it.
       const copy = sourceRemap === null ? null : sourceRemap.slice()
-      post({ t: 'move', sourceRemap: copy }, copy === null ? [] : [copy.buffer])
+      post({ t: 'move', sourceRemap: copy, opening }, copy === null ? [] : [copy.buffer])
     },
     setHighlight(ids) {
       engine?.setHighlight(ids)

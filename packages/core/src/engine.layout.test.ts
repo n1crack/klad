@@ -641,6 +641,44 @@ describe('animateNextLayout', () => {
     expect(engine.transitioning).toBe(true)
   })
 
+  it('animates a move the same way whatever the viewer did before it', () => {
+    // The transition is two phases and which visual job each does flips with
+    // a direction flag. A move had no opinion about it, so it inherited
+    // whatever the last expand or collapse left behind — the same drop
+    // animated one way after opening a branch and the other way after closing
+    // one. `animateNextLayout` says which now.
+    const moveAfter = (toggleOpen: boolean): number[] => {
+      const renderer = fakeRenderer()
+      const { engine, tree } = seed(renderer)
+      engine.setAnimate(true)
+      engine.render(0)
+      // Whatever the viewer happened to do first — on a LEAF, so the direction
+      // is all it leaves behind. Toggling a branch would change the layout
+      // too, and then the two runs would differ for a reason that has nothing
+      // to do with this.
+      const leaf = idx(tree, 'b1')
+      engine.setOpen(leaf, false, false)
+      if (toggleOpen) engine.setOpen(leaf, true, false)
+      engine.render(1)
+      engine.render(2000)
+
+      engine.animateNextLayout(remapBetween(tree, tree))
+      engine.setData(
+        toWireTree(tree),
+        new Float64Array(tree.count * 2).fill(60),
+        tree.indexToId.slice(),
+        new Uint8Array(tree.count).fill(1),
+      )
+      engine.render(2100)
+      return Array.from(engine.lastDrawnBoxes ?? [])
+    }
+
+    const afterCollapse = moveAfter(false)
+    const afterExpand = moveAfter(true)
+    expect(afterCollapse.length).toBeGreaterThan(0)
+    expect(afterCollapse).toEqual(afterExpand)
+  })
+
   it('does nothing if the setData it describes never comes', () => {
     // The remap maps indices from ONE tree to ONE other tree. A flag left
     // standing until some unrelated relayout would animate the wrong change

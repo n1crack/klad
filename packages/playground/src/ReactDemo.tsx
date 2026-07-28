@@ -31,7 +31,7 @@ import {
 } from './data.js'
 import { createAccordionSlide, createDrill, goTo } from './demo-behaviour.js'
 import type { ThemeMode } from './theme.js'
-import { openPickerFor, overflowLabel } from './overflow-card.js'
+import { isWatched, openPickerFor, overflowLabel } from './overflow-card.js'
 
 const DEFAULT_NODE_SIZE = { w: 180, h: 64 }
 
@@ -68,6 +68,7 @@ function ToggleButton({ hasChildren, open, toggle }: NodeContext): ReactNode {
 function renderCard(context: NodeContext): ReactNode {
   const item = context.item
   const over = context.overflow
+  const id = context.id
   if (over !== null) {
     // The picker is plain DOM shared by all three stacks — see
     // `overflow-card.ts`. A React copy of a virtual list would be a second
@@ -75,15 +76,18 @@ function renderCard(context: NodeContext): ReactNode {
     return (
       <div
         className="card is-overflow"
-        onClick={(event) => openPickerFor(event.currentTarget, over)}
+        onClick={(event) => openPickerFor(event.currentTarget, over, id)}
       >
         <strong>{overflowLabel(over)}</strong>
         <small>Click to search and pick</small>
       </div>
     )
   }
+  const marks = [context.loading ? 'is-loading' : '', isWatched(id) ? 'is-pinned' : '']
+    .filter(Boolean)
+    .join(' ')
   return (
-    <div className="card">
+    <div className={`card${marks === '' ? '' : ` ${marks}`}`}>
       <strong>{String(item.name ?? '')}</strong>
       <small>{String(item.title ?? '')}</small>
       <ToggleButton {...context} />

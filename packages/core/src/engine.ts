@@ -136,13 +136,20 @@ export interface ChartEngine {
    * from wherever its index used to point, which reads as the whole chart
    * shuffling instead of one node moving.
    *
+   * `opening` says which way it reads. `true` — the default — makes room
+   * first and lets the new nodes settle into it, which is what an arriving
+   * branch or a node pinned onto a capped level wants. `false` is the reverse,
+   * for a move where nodes LEAVE: they go first and the gap closes behind
+   * them. Without it a move inherited whatever direction the last expand or
+   * collapse left behind.
+   *
    * One-shot, and specifically tied to `setData`: arming it and then not
    * calling `setData` does nothing. The remap describes ONE replacement — the
    * tree going out against the tree coming in — so a flag left standing until
    * some unrelated relayout would animate the wrong change with a mapping that
    * no longer means anything.
    */
-  animateNextLayout(sourceRemap: Int32Array | null): void
+  animateNextLayout(sourceRemap: Int32Array | null, opening?: boolean): void
   setFocus(sourceIndex: number): void
   setDrag(sourceIndex: number): void
   /**
@@ -1390,6 +1397,17 @@ export function createChartEngine(renderer: Renderer): ChartEngine {
    */
   let armedMove = false
   let armedRemap: Int32Array | null = null
+  /**
+   * Which way the armed move reads: nodes arriving, or nodes leaving.
+   *
+   * The transition is two phases and which VISUAL job each does flips with
+   * this — see `repositionRaw`. Arriving, room is made first and the new nodes
+   * settle into it; leaving, they go first and the gap closes after. Without
+   * it a move inherited whatever direction the last expand or collapse
+   * happened to leave behind, so the same action animated differently
+   * depending on what the viewer had done before it.
+   */
+  let armedOpening = true
   // The boxes actually handed to the renderer. Aliases `boxes` (zero extra
   // cost) whenever no transition is running; a real mutable copy, selectively
   // overwritten per frame for only the near-viewport entries, while one is.
@@ -2228,6 +2246,7 @@ export function createChartEngine(renderer: Renderer): ChartEngine {
       // standing, so arming without a `setData` is a no-op.
       pendingMove = armedMove
       pendingRemap = armedRemap
+      if (armedMove) pendingTransitionOpening = armedOpening
       armedMove = false
       armedRemap = null
       // Same reasoning for the ring: its SOURCE index means nothing against
@@ -2323,9 +2342,10 @@ export function createChartEngine(renderer: Renderer): ChartEngine {
       // A relayout, not a repaint: the set of nodes that exist just changed.
       layoutDirty = true
     },
-    animateNextLayout(sourceRemap) {
+    animateNextLayout(sourceRemap, opening = true) {
       armedMove = true
       armedRemap = sourceRemap
+      armedOpening = opening
     },
     setFocus(sourceIndex) {
       const next = sourceIndex < 0 ? -1 : sourceIndex

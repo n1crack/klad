@@ -766,8 +766,14 @@ export interface KladApi {
    * With a cap configured this animates, because swapping who is on a level
    * IS a move; without one it snaps, since a re-measure has no single node for
    * a transition to be anchored on.
+   *
+   * `keep` holds one node's screen position across the relayout — the same
+   * pin a drop puts on its target. Pass the node the viewer is working from:
+   * ticking somebody in a picker hung off an aggregate node swaps who is on
+   * that level, and without a pin the whole level slides out from under the
+   * panel they are still reading.
    */
-  refresh(): void
+  refresh(opts?: { keep?: string }): void
   stats(id: string): NodeStats | null
   /**
    * The chain of ids from the root down to `id`, inclusive of both — what to
@@ -2156,7 +2162,12 @@ export function createKlad(host: HTMLElement, options: Options): KladInstance {
     open = next
     pendingAnchor = null
     cameraAnchor = null
-    chartHost.animateNextLayout(remap)
+    // Which way it reads, from what actually happened: pinning somebody onto a
+    // level makes room first and lets them arrive into it; un-pinning is the
+    // reverse, they leave and the gap closes behind them. Without this the
+    // node simply appeared, which at the speed a relayout happens is not
+    // something a viewer can follow.
+    chartHost.animateNextLayout(remap, tree.count >= previous.count)
     applyData(false)
     if (pinScreen !== null && pinId !== undefined) pendingPin = { id: pinId, screen: pinScreen }
     // A level of four hundred appearing changes what the map is a map OF at
@@ -3833,7 +3844,7 @@ export function createKlad(host: HTMLElement, options: Options): KladInstance {
       }
       return path
     },
-    refresh() {
+    refresh(opts) {
       // A cap is decided from the host's own answers — `maxChildren` and
       // `pinChildren` — exactly like `nodeSize` and `label`, so re-reading
       // those means re-reading these. And it has to: a working set that has
@@ -3843,7 +3854,7 @@ export function createKlad(host: HTMLElement, options: Options): KladInstance {
       // The heavier path, because a cap is structure: which nodes stand for
       // which, and whether there is a node standing for anything at all.
       if (currentOptions.maxChildren !== undefined) {
-        rebuildForOverflow()
+        rebuildForOverflow(opts?.keep)
         if (highlightedIds !== null) api.highlight(highlightedIds)
         scheduleFrame()
         return

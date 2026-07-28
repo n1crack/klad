@@ -1195,6 +1195,53 @@ body {
   position: relative;
 }
 
+/* Waiting on `loadChildren`. A moving stripe rather than a spinner: a chart can
+   have several branches in flight at once, and several spinners is a chart
+   that looks like it is failing rather than working. */
+.card.is-loading::after,
+.avatar-card.is-loading::after,
+.status-card.is-loading::after {
+  content: '';
+  position: absolute;
+  inset-inline: 0;
+  bottom: 0;
+  height: 2px;
+  background: linear-gradient(90deg, transparent, var(--accent), transparent);
+  animation: klad-loading 1.1s linear infinite;
+}
+
+@keyframes klad-loading {
+  from {
+    transform: translateX(-100%);
+  }
+  to {
+    transform: translateX(100%);
+  }
+}
+
+@media (prefers-reduced-motion: reduce) {
+  .card.is-loading::after,
+  .avatar-card.is-loading::after,
+  .status-card.is-loading::after {
+    animation: none;
+    background: var(--accent);
+    opacity: 0.5;
+  }
+}
+
+/* In the working set — pinned onto the chart past a cap. Deliberately small:
+   it is a footnote about WHY this node is here, not what it is. */
+.card.is-pinned::before {
+  content: '';
+  position: absolute;
+  top: 0.4rem;
+  right: 0.4rem;
+  width: 5px;
+  height: 5px;
+  border-radius: 50%;
+  background: var(--accent);
+}
+
 /* The picker that opens from a capped level's aggregate node. Small on
    purpose: it is a way through a list, not a second view of the chart. */
 .overflow-panel {

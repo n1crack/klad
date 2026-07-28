@@ -1,5 +1,5 @@
 import { createKlad, type KladApi, type LayoutSettings, type Options, type Theme } from '@klad/core'
-import { openPickerFor, overflowLabel } from './overflow-card.js'
+import { isWatched, openPickerFor, overflowLabel } from './overflow-card.js'
 import {
   DEPARTMENT_COLOR,
   EDGE_RADIUS_DEFAULT,
@@ -75,7 +75,15 @@ function renderCard(element: HTMLElement, context: NodeContext): void {
     over === null ? String(item.name ?? '') : overflowLabel(over)
   card.querySelector('small')!.textContent =
     over === null ? String(item.title ?? '') : 'Click to search and pick'
-  card.onclick = over === null ? null : () => openPickerFor(card, over)
+  card.onclick = over === null ? null : () => openPickerFor(card, over, context.id)
+  // Waiting on `loadChildren`. The file row shows this on its chevron; a card
+  // has no chevron to show it on, so it says so itself — otherwise the only
+  // feedback for a click that starts a network request is nothing at all.
+  card.classList.toggle('is-loading', context.loading)
+  // Somebody in the working set. A quiet mark rather than a colour: what it
+  // says is "this one is here because you asked", which is a footnote, not the
+  // point of the card.
+  card.classList.toggle('is-pinned', isWatched(context.id))
   syncToggleButton(card, context)
 }
 
