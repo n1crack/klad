@@ -600,6 +600,47 @@ describe('animateNextLayout', () => {
     }
   })
 
+  it('survives a setFilter or setOverflow arriving after the setData', () => {
+    // The vanilla layer sends both right after the data, in the same burst.
+    // Either one setting `layoutDirty` again must not cost the move the
+    // relayout it was armed for.
+    const renderer = fakeRenderer()
+    const { engine, tree } = seed(renderer)
+    engine.setAnimate(true)
+    engine.render(0)
+
+    const sizes = new Float64Array(tree.count * 2).fill(40)
+    engine.animateNextLayout(remapBetween(tree, tree))
+    engine.setData(toWireTree(tree), sizes, tree.indexToId.slice(), new Uint8Array(tree.count).fill(1))
+    engine.setFilter(null)
+    engine.setOverflow(null)
+    engine.render(1)
+    expect(engine.transitioning).toBe(true)
+  })
+
+  it('animates a relayout that ADDS nodes, which is what a lifted cap is', () => {
+    // Every other test here replaces a tree with one of the same size. Lifting
+    // a cap replaces it with a BIGGER one — the nodes already on screen keep
+    // their ids and move, and new ones appear beside them.
+    const renderer = fakeRenderer()
+    const { engine, tree } = seed(renderer)
+    engine.setAnimate(true)
+    engine.render(0)
+
+    const grown = normalize([...DATA, { id: 'b2', parentId: 'b' }, { id: 'b3', parentId: 'b' }])
+    const remap = new Int32Array(tree.count).fill(-1)
+    for (let i = 0; i < tree.count; i++) remap[i] = grown.idToIndex.get(tree.indexToId[i]!) ?? -1
+    engine.animateNextLayout(remap)
+    engine.setData(
+      toWireTree(grown),
+      new Float64Array(grown.count * 2).fill(40),
+      grown.indexToId.slice(),
+      new Uint8Array(grown.count).fill(1),
+    )
+    engine.render(1)
+    expect(engine.transitioning).toBe(true)
+  })
+
   it('does nothing if the setData it describes never comes', () => {
     // The remap maps indices from ONE tree to ONE other tree. A flag left
     // standing until some unrelated relayout would animate the wrong change

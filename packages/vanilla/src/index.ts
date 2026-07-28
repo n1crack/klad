@@ -2723,15 +2723,24 @@ export function createKlad(host: HTMLElement, options: Options): KladInstance {
       }
       // Runs after the relayout above, so it sees the boxes the toggle actually
       // produced rather than stale ones from before it.
+      //
+      // Re-solved EVERY frame for as long as the transition runs, against the
+      // node's INTERPOLATED position rather than its settled one. Solving once
+      // against where it will end up pans the camera by the whole distance on
+      // the first frame while the nodes are still at their old positions — the
+      // entire chart jumps and then drifts back, which reads as a snap and
+      // hides the animation completely. Holding it means re-asking "where is
+      // this node being drawn right now" until it stops moving.
       if (pendingPin !== null) {
         const pin = pendingPin
-        pendingPin = null
         const index = tree.idToIndex.get(pin.id)
-        const box = index === undefined ? null : boxOfSource(index)
-        if (box !== null) {
-          const now = worldToScreen(camera, box.x + box.w / 2, box.y + box.h / 2)
-          camera = pan(camera, pin.screen.x - now.x, pin.screen.y - now.y)
+        const box = index === undefined ? null : interpolatedBoxOfSource(index)
+        if (box === null) pendingPin = null
+        else {
+          const at = worldToScreen(camera, box.x + box.w / 2, box.y + box.h / 2)
+          camera = pan(camera, pin.screen.x - at.x, pin.screen.y - at.y)
           chartHost.setCamera(camera)
+          if (!chartHost.transitioning) pendingPin = null
         }
       }
       if (pendingFullFit) {

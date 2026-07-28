@@ -3703,6 +3703,60 @@ describe('very wide levels', () => {
     el.remove()
   })
 
+  it('animates the level opening instead of snapping to it', async () => {
+    // A cap lift is the same nodes at new positions, so it goes through
+    // `animateNextLayout` like a drop does. Without the remap the engine sees
+    // a fresh dataset — every node snaps, and the fifteen arriving ones have
+    // no relationship to the five already there.
+    //
+    // `tidy` again rather than the file layout used elsewhere here: appending
+    // rows to a list leaves the rows above exactly where they were, so there
+    // is nothing to animate and nothing to measure. Widening a tier moves
+    // every sibling.
+    const el = document.createElement('div')
+    el.style.width = '2200px'
+    el.style.height = '700px'
+    document.body.appendChild(el)
+    const chart = createKlad(el, {
+      data: WIDE,
+      nodeSize: { w: 60, h: 34 },
+      label: (item) => String(item.name ?? ''),
+      worker: false,
+      maxChildren: 5,
+      renderNode: (e, ctx) => (e.textContent = ctx.id),
+    })
+    await nextFrame()
+    await settle()
+    const boxOf = (id: string) =>
+      document.querySelector<HTMLElement>(`.klad-overlay-node[data-klad-id="${id}"]`)?.getBoundingClientRect() ??
+      null
+
+    const before = Math.round(boxOf('c0')!.left)
+    chart.api.showMore('klad:more:r')
+    const samples: number[] = []
+    for (let i = 0; i < 30; i++) {
+      await nextFrame()
+      const at = boxOf('c0')
+      if (at !== null) samples.push(Math.round(at.left))
+    }
+    await settleTransition()
+    await settle()
+    const settled = Math.round(boxOf('c0')!.left)
+
+    // It genuinely moved.
+    expect(Math.abs(settled - before)).toBeGreaterThan(100)
+    // And it was caught somewhere in between — neither still at the start nor
+    // already at the end. Snapping gives every sample the settled value; a
+    // camera pinned against the SETTLED box rather than the interpolated one
+    // gives the same, because it pans the whole distance on the first frame
+    // while the nodes are still where they were.
+    const lo = Math.min(before, settled)
+    const hi = Math.max(before, settled)
+    expect(samples.some((x) => x > lo && x < hi)).toBe(true)
+    chart.destroy()
+    el.remove()
+  })
+
   it('does nothing without a cap', async () => {
     const chart = wide()
     await nextFrame()

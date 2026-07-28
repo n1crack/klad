@@ -60,6 +60,74 @@ async function medianToggle(chart: ReturnType<typeof createKlad>, runs: number):
   return samples[Math.floor(samples.length / 2)]!
 }
 
+describe('capping and filtering: cost', () => {
+  const N = 20_000
+
+  it('caps a wide level without a pass that scales worse than the tree', async () => {
+    // `planOverflow` groups the whole array by parent on every rebuild. That
+    // is the same O(n) `normalize` is about to spend, and this is here to say
+    // so with a number rather than a claim.
+    const data = bigTree(N)
+    const plain = createKlad(host(), { data, nodeSize: { w: 120, h: 40 }, worker: false })
+    await nextFrame()
+    await settle()
+    const t0 = performance.now()
+    plain.api.refresh()
+    await nextFrame()
+    await settle()
+    const plainMs = performance.now() - t0
+    plain.destroy()
+
+    const capped = createKlad(host(), {
+      data,
+      nodeSize: { w: 120, h: 40 },
+      worker: false,
+      maxChildren: 8,
+      pinChildren: (item) => item.leaf === true && String(item.id).endsWith('7'),
+    })
+    await nextFrame()
+    await settle()
+    const t1 = performance.now()
+    capped.api.refresh()
+    await nextFrame()
+    await settle()
+    const cappedMs = performance.now() - t1
+
+    console.log(`[perf] 20k refresh — plain ${plainMs.toFixed(1)}ms, capped ${cappedMs.toFixed(1)}ms`)
+    // A cap DRAWS far less, so it should not be slower in any meaningful way.
+    // Loose because a shared runner is noisy; what this rules out is the
+    // grouping pass turning quadratic.
+    expect(cappedMs).toBeLessThan(Math.max(plainMs * 3, 60))
+    capped.destroy()
+  })
+
+  it('filters twenty thousand nodes in one pass', async () => {
+    const data = bigTree(N)
+    const chart = createKlad(host(), {
+      data,
+      nodeSize: { w: 120, h: 40 },
+      worker: false,
+      label: (item) => String(item.name ?? ''),
+    })
+    await nextFrame()
+    await settle()
+
+    const t0 = performance.now()
+    const matched = chart.api.filter('n1')
+    await nextFrame()
+    await settle()
+    const ms = performance.now() - t0
+    console.log(`[perf] 20k filter — ${matched.length} matches in ${ms.toFixed(1)}ms`)
+    expect(matched.length).toBeGreaterThan(1000)
+    // The mask walks up from each match and stops at the first node already
+    // marked, so ancestors are climbed once and the whole thing is O(nodes).
+    // A version that walked the full chain per match would be O(nodes x depth)
+    // and would not come back in this budget on a wide forest.
+    expect(ms).toBeLessThan(1500)
+    chart.destroy()
+  })
+})
+
 describe('children on demand: cost', () => {
   const N = 20_000
 
