@@ -1195,6 +1195,106 @@ body {
   position: relative;
 }
 
+/* The picker that opens from a capped level's aggregate node. Small on
+   purpose: it is a way through a list, not a second view of the chart. */
+.overflow-panel {
+  position: fixed;
+  z-index: 40;
+  display: flex;
+  flex-direction: column;
+  width: 260px;
+  border-radius: var(--radius-md);
+  border: 1px solid var(--border-strong);
+  background: var(--surface-raised);
+  box-shadow: 0 10px 30px rgb(0 0 0 / 35%);
+  overflow: hidden;
+}
+
+.overflow-panel-head {
+  display: flex;
+  align-items: center;
+  gap: 0.4rem;
+  padding: 0.45rem 0.5rem;
+  border-bottom: 1px solid var(--border);
+}
+
+.overflow-panel-search {
+  font: inherit;
+  flex: 1;
+  min-width: 0;
+  font-size: 0.78rem;
+  padding: 0.25rem 0.4rem;
+  border-radius: var(--radius-sm);
+  border: 1px solid var(--border-strong);
+  background: var(--surface);
+  color: canvastext;
+}
+
+.overflow-panel-search:focus-visible {
+  outline: none;
+  border-color: var(--accent);
+  box-shadow: 0 0 0 3px color-mix(in srgb, var(--accent) 30%, transparent);
+}
+
+.overflow-panel-count {
+  flex: none;
+  font-size: 0.7rem;
+  font-variant-numeric: tabular-nums;
+  color: var(--text-muted);
+}
+
+/* The scroll container. Its child is a spacer as tall as the whole list would
+   be; only the rows in view exist. */
+.overflow-panel-list {
+  height: 240px;
+  overflow-y: auto;
+  overscroll-behavior: contain;
+}
+
+.overflow-panel-sizer {
+  position: relative;
+}
+
+.overflow-panel-rows {
+  position: absolute;
+  inset-inline: 0;
+  top: 0;
+}
+
+.overflow-panel-row {
+  display: flex;
+  align-items: center;
+  gap: 0.45rem;
+  padding: 0 0.55rem;
+  font-size: 0.78rem;
+  cursor: pointer;
+  white-space: nowrap;
+  overflow: hidden;
+}
+
+.overflow-panel-row:hover {
+  background: color-mix(in srgb, var(--accent) 9%, transparent);
+}
+
+.overflow-panel-row span {
+  overflow: hidden;
+  text-overflow: ellipsis;
+}
+
+.overflow-panel-row input {
+  flex: none;
+  accent-color: var(--accent);
+  cursor: pointer;
+}
+
+.overflow-panel-hint {
+  margin: 0;
+  padding: 0.35rem 0.55rem;
+  border-top: 1px solid var(--border);
+  font-size: 0.68rem;
+  color: var(--text-muted);
+}
+
 /* The node a capped level rolled its remainder into. Dashed and quiet: it
    stands for people rather than being one, and it should read as a way through
    rather than as another card in the row. */

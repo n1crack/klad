@@ -82,7 +82,7 @@ renderNode: (element, context) => {
     return
   }
   element.textContent = `+${over.count} more`
-  element.onclick = () => over.showMore()
+  element.onclick = () => openYourPicker(over)
 }
 ```
 
@@ -91,9 +91,10 @@ renderNode: (element, context) => {
 | | |
 | --- | --- |
 | `count` | How many it stands for. |
-| `ids` | Which — so a picker is possible without asking the chart for anything. |
-| `showMore()` | Lift the cap on this parent: draw all of them. |
+| `ids` | Which. |
+| `items` | Their data objects, in the same order — so a picker can show names without going back to your own array. |
 | `reveal(ids)` | Bring specific ones back **without** lifting the cap. |
+| `showMore()` | Lift the cap on this parent entirely. |
 
 `reveal` swaps rather than adds: the cap is a budget, and what you ask for
 takes a slot from it, so something else drops out. That is the same rule pins
@@ -106,22 +107,33 @@ does not have to reach back out for the chart instance from inside a render
 callback — the same reason `toggle` is on the context rather than being
 `expand(id)`.
 
-### A picker on the aggregate node
+### Do not offer "show them all"
 
-The reason `ids` is there. Roughly fifteen lines:
+`showMore` exists, and it is the right answer for a level of twelve with a cap
+of eight. It is the wrong answer for a level of four hundred: unreadable is the
+problem the cap is solving, and a button straight back to unreadable is that
+problem with an invitation attached.
+
+What a big level wants instead is a way to **pick**. `items` is there so you
+can build one without going back to your own data:
 
 ```ts
-const select = document.createElement('select')
-select.append(new Option(`${over.count} more…`, ''))
-for (const id of over.ids) select.append(new Option(labelFor(id), id))
-select.onchange = () => over.reveal([select.value])
+function openYourPicker(over) {
+  // A search box over `over.items`, a checkbox per row, and only the rows in
+  // view actually built — four hundred at once makes the click feel broken.
+  // Tick a row and add its id to your working set; the chart draws it from
+  // then on, because that is what `pinChildren` answers from.
+}
 ```
 
-The chart does not build this for you, deliberately: a dropdown of 390 needs
-its own search box, and at that point it is a second and worse tree browser
-inside the first one. For "find that specific person", `search` plus `focus` is
-the better answer, and it works across the whole tree rather than one parent's
-children.
+Ticking pins rather than reveals, and the difference matters: a pin is
+permanent and a reveal lasts until the next `update`. Both go through the same
+budget, so a pinned node takes a slot and something else drops out — which is
+correct, and is why "show them all" is not the shape of this.
+
+The playground's [Very wide levels](https://klad.ozdemir.be/playground/)
+example is exactly this, in about a hundred lines of plain DOM shared by all
+three framework demos.
 
 ### What it is, and is not
 
@@ -139,6 +151,21 @@ The one place it does show is `lft`/`rgt`, which are positions in the chart's
 own numbering rather than counts. Containment is unaffected; the
 `rgt - lft === 2 * descendants + 1` identity holds only where nothing is
 capped.
+
+## Changing the working set
+
+`pinChildren` is read again on every `refresh()`. That is how a set you mutate
+reaches the chart — nothing about the options object or the data changed when
+it did, so there is nothing else for the chart to notice:
+
+```ts
+watching.add('lead-42')
+chart.api.refresh()
+```
+
+Keep the *set* mutable and the *function* stable. A new `pinChildren` on every
+render is what makes Vue and React tear the chart down, which resets both the
+open branches and every cap the viewer had lifted.
 
 ## Lifting a cap sticks
 

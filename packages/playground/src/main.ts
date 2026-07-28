@@ -25,7 +25,9 @@ import {
   type Example,
   type LayoutName,
   type MinimapPosition,
+  setWorkingSetHook,
 } from './data.js'
+import { closeOverflowPanel } from './overflow-panel.js'
 import {
   applyTheme,
   chartTokens,
@@ -1911,6 +1913,10 @@ function show(stack: Stack, exampleId: string, layout: LayoutName): void {
   teardown?.()
   teardown = null
   currentApi = null
+  // The picker belongs to the chart that is going away, and so does the hook
+  // that lets a tick reach it.
+  closeOverflowPanel()
+  setWorkingSetHook(null)
   currentSetMinimap = null
   currentSetMinimapPosition = null
   currentSetMinimapSilhouette = null
@@ -1977,6 +1983,9 @@ function show(stack: Stack, exampleId: string, layout: LayoutName): void {
       mode,
       (api) => {
         currentApi = api
+        // A tick in the picker changes the working set; `refresh()` re-reads
+        // `pinChildren`, which is what puts it on the chart.
+        setWorkingSetHook(() => api.refresh())
       },
       reportDrop,
       reportCentre,
@@ -1998,6 +2007,9 @@ function show(stack: Stack, exampleId: string, layout: LayoutName): void {
       onCentreChange: reportCentre,
       onReady: (api: KladApi) => {
         currentApi = api
+        // A tick in the picker changes the working set; `refresh()` re-reads
+        // `pinChildren`, which is what puts it on the chart.
+        setWorkingSetHook(() => api.refresh())
       },
     })
     // VueDemo exposes `setMinimap`/`setMinimapPosition`/`setEdgeRadius`/
@@ -2033,6 +2045,9 @@ function show(stack: Stack, exampleId: string, layout: LayoutName): void {
         onCentreChange: reportCentre,
         onReady: (api: KladApi) => {
           currentApi = api
+          // A tick in the picker changes the working set; `refresh()` re-reads
+          // `pinChildren`, which is what puts it on the chart.
+          setWorkingSetHook(() => api.refresh())
         },
         ref: reactHandle,
       }),

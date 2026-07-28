@@ -1,4 +1,5 @@
 import { createKlad, type KladApi, type LayoutSettings, type Options, type Theme } from '@klad/core'
+import { openPickerFor, overflowLabel } from './overflow-card.js'
 import {
   DEPARTMENT_COLOR,
   EDGE_RADIUS_DEFAULT,
@@ -67,14 +68,14 @@ function renderCard(element: HTMLElement, context: NodeContext): void {
   const item = context.item
   // The node a capped level rolled its remainder into. It is the chart's own
   // invention, so it has no `name` to show — what it has is a count and the
-  // ids it stands for, and a click that lifts the cap.
+  // nodes it stands for, and a click that opens a list you can pick from.
   const over = context.overflow
   card.classList.toggle('is-overflow', over !== null)
   card.querySelector('strong')!.textContent =
-    over === null ? String(item.name ?? '') : `+${over.count} more`
+    over === null ? String(item.name ?? '') : overflowLabel(over)
   card.querySelector('small')!.textContent =
-    over === null ? String(item.title ?? '') : 'Click to show them all'
-  card.onclick = over === null ? null : () => over.showMore()
+    over === null ? String(item.title ?? '') : 'Click to search and pick'
+  card.onclick = over === null ? null : () => openPickerFor(card, over)
   syncToggleButton(card, context)
 }
 

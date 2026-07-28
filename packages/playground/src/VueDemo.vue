@@ -3,6 +3,7 @@ import { Klad } from '@klad/vue'
 import type { KladApi, LayoutSettings, NodeContext, Options, Theme } from '@klad/vue'
 import { computed, onBeforeUnmount, ref } from 'vue'
 import { createAccordionSlide, createDrill, goTo } from './demo-behaviour.js'
+import { openPickerFor, overflowLabel } from './overflow-card.js'
 import {
   DEPARTMENT_COLOR,
   accordionProgress,
@@ -270,7 +271,7 @@ function handleNodeClick({ id }: { id: string }): void {
     -->
     <template
       v-if="content !== 'none'"
-      #node="{ id, item, hasChildren, open, toggle, directChildren, descendants, depth, height }"
+      #node="{ id, item, hasChildren, open, toggle, overflow, directChildren, descendants, depth, height }"
     >
       <div v-if="content === 'avatar'" class="avatar-card">
         <div class="avatar-circle" :style="{ background: departmentColor(item) }">
@@ -455,6 +456,18 @@ function handleNodeClick({ id }: { id: string }): void {
             @click.stop="toggle"
           >{{ open ? '−' : '+' }}</button>
         </div>
+      </div>
+
+      <!-- The node a capped level rolled its remainder into. The picker it
+           opens is plain DOM shared by all three stacks — see
+           `overflow-card.ts`. -->
+      <div
+        v-else-if="overflow !== null"
+        class="card is-overflow"
+        @click="(event) => openPickerFor(event.currentTarget as HTMLElement, overflow!)"
+      >
+        <strong>{{ overflowLabel(overflow) }}</strong>
+        <small>Click to search and pick</small>
       </div>
 
       <div v-else class="card">

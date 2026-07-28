@@ -3757,6 +3757,35 @@ describe('very wide levels', () => {
     el.remove()
   })
 
+  it('re-reads the working set on refresh, which is how a pin lands', async () => {
+    // `pinChildren` closes over a set the host mutates. Nothing about the
+    // options object or the data changes when that set does, so `refresh` is
+    // the only way in — and it has to re-plan rather than just re-measure,
+    // because a cap is structure.
+    const watching = new Set<string>()
+    const chart = wide({
+      maxChildren: 5,
+      pinChildren: (item) => watching.has(String(item.id)),
+    })
+    await nextFrame()
+    await settle()
+    expect(onScreen()).not.toContain('c18')
+
+    watching.add('c18')
+    chart.api.refresh()
+    await settleTransition()
+    await settle()
+    expect(onScreen()).toContain('c18')
+
+    // And back out again — the same call in reverse.
+    watching.delete('c18')
+    chart.api.refresh()
+    await settleTransition()
+    await settle()
+    expect(onScreen()).not.toContain('c18')
+    chart.destroy()
+  })
+
   it('does nothing without a cap', async () => {
     const chart = wide()
     await nextFrame()

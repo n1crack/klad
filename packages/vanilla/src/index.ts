@@ -143,6 +143,9 @@ export interface NodeContext extends NodeStats {
     parentId: string
     count: number
     ids: string[]
+    /** The same nodes' data objects, in the same order — so a picker can show
+     * names without going back to your own array to look each one up. */
+    items: NodeData[]
     /** Lift the cap on this node's parent: draw all of them. */
     showMore(): void
     /** Bring specific ones back without lifting the cap — what a picker calls. */
@@ -756,8 +759,13 @@ export interface KladApi {
    * wrong tool for it: that replaces the data and resets the tree's open
    * state, throwing away exactly what the user was looking at.
    *
-   * The relayout snaps rather than animating: this is a re-measure, not a
-   * toggle, and there is no single node for a transition to be anchored on.
+   * It also re-reads `maxChildren` and `pinChildren`, and that is how a
+   * changed working set reaches the chart. Those are per-node answers from
+   * the host exactly as `nodeSize` is, and a set that changed has no other way
+   * in: the options object is the same object and the data is the same data.
+   * With a cap configured this animates, because swapping who is on a level
+   * IS a move; without one it snaps, since a re-measure has no single node for
+   * a transition to be anchored on.
    */
   refresh(): void
   stats(id: string): NodeStats | null
@@ -3826,6 +3834,20 @@ export function createKlad(host: HTMLElement, options: Options): KladInstance {
       return path
     },
     refresh() {
+      // A cap is decided from the host's own answers — `maxChildren` and
+      // `pinChildren` — exactly like `nodeSize` and `label`, so re-reading
+      // those means re-reading these. And it has to: a working set that has
+      // changed has no other way to reach the chart, since neither the options
+      // object nor the data did.
+      //
+      // The heavier path, because a cap is structure: which nodes stand for
+      // which, and whether there is a node standing for anything at all.
+      if (currentOptions.maxChildren !== undefined) {
+        rebuildForOverflow()
+        if (highlightedIds !== null) api.highlight(highlightedIds)
+        scheduleFrame()
+        return
+      }
       applyData(false)
       // `setData` clears highlight — it holds source indices, which a genuine
       // data swap invalidates. A refresh is not a data swap, so what the
@@ -4105,6 +4127,7 @@ export function createKlad(host: HTMLElement, options: Options): KladInstance {
           if (info === null) return null
           return {
             ...info,
+            items: info.ids.map((each) => itemById.get(each) ?? { id: each }),
             showMore: () => api.showMore(item.id),
             reveal: (ids: string[]) => api.reveal(ids),
           }

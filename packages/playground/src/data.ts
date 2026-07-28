@@ -629,11 +629,35 @@ export const REMOTE_ROOTS: NodeItem[] = [
 // first, which is nobody's eight — so it pins a working set and lets the rest
 // roll up.
 
-export const WIDE_WATCHING = new Set([
-  'l1-3', 'l1-47', 'l1-88',
-  'l2-3-12', 'l2-47-4', 'l2-47-61',
-  'l3-3-12-7', 'l3-47-4-33',
-])
+/**
+ * The working set: the nodes this viewer is actually dealing with.
+ *
+ * MUTABLE and shared, deliberately. `pinChildren` closes over it and is never
+ * rebuilt, so checking somebody in the picker changes what the chart draws
+ * without changing the options object — which is what stops Vue's deep watch
+ * and React's identity check from tearing the chart down on every change. See
+ * the wide-levels guide.
+ */
+export const WIDE_WATCHING = new Set<string>(['l1-3', 'l2-3-4', 'l3-0-0-7'])
+
+/**
+ * How a change to the working set reaches the chart.
+ *
+ * Registered by whichever stack currently has one mounted; called by the
+ * picker. `refresh()` re-reads `pinChildren`, which is what makes the tick
+ * land on the chart — see the wide-levels guide.
+ */
+let onWatchingChanged: (() => void) | null = null
+
+export function setWorkingSetHook(fn: (() => void) | null): void {
+  onWatchingChanged = fn
+}
+
+export function toggleWatching(id: string, next: boolean): void {
+  if (next) WIDE_WATCHING.add(id)
+  else WIDE_WATCHING.delete(id)
+  onWatchingChanged?.()
+}
 
 function buildWideTree(): NodeItem[] {
   const rows: NodeItem[] = [{ id: 'org', name: 'Everyone', kind: 'folder' }]
@@ -649,17 +673,21 @@ function buildWideTree(): NodeItem[] {
   // which matters here because the example is about picking specific people
   // out of a crowd, and they have to stay the same people.
   const name = (id: string): string => `Person ${hash(id) % 9973}`
-  for (let a = 0; a < 120; a++) {
+  // Four levels of a hundred-odd, which is the shape this example is about —
+  // and about four thousand nodes, which is not. An earlier version fanned out
+  // to fifty-seven thousand and made the page crawl: the cap draws almost
+  // nothing either way, but every pass that decides WHAT to draw is over the
+  // whole array, so the size that matters here is the data's, not the chart's.
+  for (let a = 0; a < 140; a++) {
     const l1 = `l1-${a}`
     rows.push({ id: l1, parentId: 'org', name: name(l1), role: 'Director' })
-    if (a > 60) continue // only the first sixty go deeper, or this is 100k rows
-    for (let b = 0; b < 100; b++) {
+    if (a >= 24) continue
+    for (let b = 0; b < 110; b++) {
       const l2 = `l2-${a}-${b}`
       rows.push({ id: l2, parentId: l1, name: name(l2), role: 'Lead' })
-      if (b > 20) continue
-      for (let c = 0; c < 40; c++) {
-        const l3 = `l3-${a}-${b}-${c}`
-        rows.push({ id: l3, parentId: l2, name: name(l3), role: 'Engineer' })
+      if (a >= 6 || b >= 10) continue
+      for (let c = 0; c < 100; c++) {
+        rows.push({ id: `l3-${a}-${b}-${c}`, parentId: l2, name: name(`l3-${a}-${b}-${c}`), role: 'Engineer' })
       }
     }
   }
@@ -1131,10 +1159,10 @@ export const EXAMPLES: Example[] = [
     id: 'wide',
     name: 'Very wide levels',
     description:
-      'Five levels of a hundred-odd people, where only a handful per level matter. A plain cap would show whichever eight sort first, which is nobody\u2019s eight \u2014 so this pins a working set and rolls the rest into one node per level. Everything hidden is still THERE: search finds it, and going to it brings it back.',
+      'Four levels of a hundred-odd people, where only a handful per level matter. Every level draws three and rolls the rest into one node \u2014 click it for a searchable list, and tick the people you are working with to pin them onto the chart. The whole level is never shown, because a level of a hundred is the problem this is solving.',
     data: WIDE_DATA,
     options: {
-      maxChildren: 8,
+      maxChildren: 3,
       pinChildren: (item) => WIDE_WATCHING.has(String(item.id)),
       collapsedByDefault: (item) => String(item.id).split('-').length > 2,
       nodeSize: { w: 190, h: 56 },
@@ -1152,8 +1180,14 @@ export const EXAMPLES: Example[] = [
       layout: 'file',
       mayHaveChildren: (item) => item.kind === 'folder',
       loadChildren: (item) => fetchRemoteChildren(item),
+      nodeSize: { w: 190, h: 56 },
     },
-    content: 'row',
+    // `card`, not `row`, even though this opens as a file list: the `file`
+    // preset forces rows anyway, and declaring rows here is what a viewer
+    // switching to `tidy` would get instead — file rows, indent lines and all,
+    // laid out as a tiered chart. Children on demand is not a file-layout
+    // feature and should not look like one the moment you leave it.
+    content: 'card',
   },
   {
     id: 'file-tree',
