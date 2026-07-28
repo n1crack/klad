@@ -1,5 +1,5 @@
 import { openOverflowPanel } from './overflow-panel.js'
-import { toggleWatching, WIDE_DATA, WIDE_WATCHING } from './data.js'
+import { curateWide, toggleWatching, WIDE_DATA, WIDE_WATCHING } from './data.js'
 
 /** What `NodeContext.overflow` carries, as far as this module needs it. */
 export interface OverflowInfo {
@@ -21,10 +21,6 @@ export function overflowLabel(over: { count: number }): string {
   return `+${over.count} more`
 }
 
-/** Whether a node is in the working set — what `pinChildren` answers from. */
-export function isWatched(id: string): boolean {
-  return WIDE_WATCHING.has(id)
-}
 
 /** Opens the picker for one aggregate node. Shared by all three stacks: what
  * it builds is a DOM list widget, and three copies of a virtual list is three
@@ -37,6 +33,17 @@ export function openPickerFor(anchor: HTMLElement, over: OverflowInfo, keep: str
   // can check things into and never uncheck them out of.
   const siblings = WIDE_DATA.filter((row) => String(row.parentId ?? '') === over.parentId)
   const items = siblings.length > 0 ? siblings : over.items
+  // Everything this aggregate stands for is, by definition, what is NOT on the
+  // chart — so its complement among the siblings is what is.
+  const hidden = new Set(over.ids)
+  // Opening the picker takes the level over: whatever is on it right now
+  // becomes pinned, so from here a ticked box means exactly "on the chart".
+  // Without this the cap's budget refills with whoever was just unticked, and
+  // a box you cleared ticks itself straight back on.
+  curateWide(
+    over.parentId,
+    items.map((item) => String(item.id)).filter((id) => !hidden.has(id)),
+  )
   openOverflowPanel({
     anchor,
     items: items.map((item) => ({ id: String(item.id), label: String(item.name ?? item.id) })),

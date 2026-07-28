@@ -669,6 +669,36 @@ export function setWorkingSetHook(fn: ((keep?: string) => void) | null): void {
  * is hanging off. Ticking somebody swaps who is on that level, and without a
  * pin the level slides out from under the panel still open over it.
  */
+/**
+ * Parents the viewer has opened the picker on.
+ *
+ * Once they have, that level shows exactly what is ticked and nothing else —
+ * see `WIDE_CAP`. Before they have, it shows the first few, which is what
+ * makes the chart readable on arrival.
+ */
+export const WIDE_CURATED = new Set<string>()
+
+/** The cap for one parent. Zero once curated: the budget would otherwise
+ * refill with whoever was just unticked, so a box you cleared would tick
+ * itself straight back on. */
+export function wideCap(item: NodeItem): number {
+  return WIDE_CURATED.has(String(item.id)) ? 0 : 3
+}
+
+/**
+ * Takes over a level: pins whatever is currently on it, so the picker's boxes
+ * are exactly what the chart is showing.
+ *
+ * Deliberately does NOT notify — the chart draws the same nodes either way, by
+ * the budget before and by these pins after, so there is nothing to redraw and
+ * a rebuild here would be a flicker for no reason.
+ */
+export function curateWide(parentId: string, showing: string[]): void {
+  if (WIDE_CURATED.has(parentId)) return
+  WIDE_CURATED.add(parentId)
+  for (const id of showing) WIDE_WATCHING.add(id)
+}
+
 export function toggleWatching(id: string, next: boolean, keep?: string): void {
   if (next) WIDE_WATCHING.add(id)
   else WIDE_WATCHING.delete(id)
@@ -1185,7 +1215,7 @@ export const EXAMPLES: Example[] = [
       'Four levels of a hundred-odd people, where only a handful per level matter. Every level draws three and rolls the rest into one node \u2014 click it for a searchable list, and tick the people you are working with to pin them onto the chart. The whole level is never shown, because a level of a hundred is the problem this is solving.',
     data: WIDE_DATA,
     options: {
-      maxChildren: 3,
+      maxChildren: wideCap,
       pinChildren: (item) => WIDE_WATCHING.has(String(item.id)),
       collapsedByDefault: (item) => String(item.id).split('-').length > 2,
       nodeSize: { w: 190, h: 56 },

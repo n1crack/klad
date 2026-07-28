@@ -38,7 +38,13 @@ export interface OverflowPanelOptions {
   /** The card the panel hangs off. Used for placement only. */
   anchor: HTMLElement
   items: OverflowPanelItem[]
-  /** Ids already pinned. These sort to the top and start checked. */
+  /**
+   * What the chart is showing. Ticked, and sorted to the top.
+   *
+   * Read live rather than copied: ticking a row mutates this set and the chart
+   * is rebuilt from it, so a snapshot would leave the panel disagreeing with
+   * the chart the moment anything changed.
+   */
   checked: Set<string>
   /** A row was checked or unchecked. The panel does not update itself from
    * this — the chart rebuilds, and whoever owns the working set decides. */
@@ -84,7 +90,7 @@ export function openOverflowPanel(options: OverflowPanelOptions): void {
 
   const hint = document.createElement('p')
   hint.className = 'overflow-panel-hint'
-  hint.textContent = 'Checked nodes stay on the chart.'
+  hint.textContent = 'Checked is what the chart shows.'
 
   root.append(head, scroller, hint)
   document.body.append(root)

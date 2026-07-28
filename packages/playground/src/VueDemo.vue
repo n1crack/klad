@@ -3,7 +3,7 @@ import { Klad } from '@klad/vue'
 import type { KladApi, LayoutSettings, NodeContext, Options, Theme } from '@klad/vue'
 import { computed, onBeforeUnmount, ref } from 'vue'
 import { createAccordionSlide, createDrill, goTo } from './demo-behaviour.js'
-import { isWatched, openPickerFor, overflowLabel } from './overflow-card.js'
+import { openPickerFor, overflowLabel } from './overflow-card.js'
 import {
   DEPARTMENT_COLOR,
   accordionProgress,
@@ -470,7 +470,7 @@ function handleNodeClick({ id }: { id: string }): void {
         <small>Click to search and pick</small>
       </div>
 
-      <div v-else class="card" :class="{ 'is-loading': loading, 'is-pinned': isWatched(id) }">
+      <div v-else class="card" :class="{ 'is-loading': loading }">
         <strong>{{ String(item.name ?? '') }}</strong>
         <small>{{ String(item.title ?? '') }}</small>
         <button v-if="hasChildren" type="button" class="toggle-btn" @click="toggle">

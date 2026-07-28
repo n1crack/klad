@@ -1229,19 +1229,6 @@ body {
   }
 }
 
-/* In the working set — pinned onto the chart past a cap. Deliberately small:
-   it is a footnote about WHY this node is here, not what it is. */
-.card.is-pinned::before {
-  content: '';
-  position: absolute;
-  top: 0.4rem;
-  right: 0.4rem;
-  width: 5px;
-  height: 5px;
-  border-radius: 50%;
-  background: var(--accent);
-}
-
 /* The picker that opens from a capped level's aggregate node. Small on
    purpose: it is a way through a list, not a second view of the chart. */
 .overflow-panel {

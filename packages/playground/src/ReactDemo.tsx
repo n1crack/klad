@@ -31,7 +31,7 @@ import {
 } from './data.js'
 import { createAccordionSlide, createDrill, goTo } from './demo-behaviour.js'
 import type { ThemeMode } from './theme.js'
-import { isWatched, openPickerFor, overflowLabel } from './overflow-card.js'
+import { openPickerFor, overflowLabel } from './overflow-card.js'
 
 const DEFAULT_NODE_SIZE = { w: 180, h: 64 }
 
@@ -83,11 +83,8 @@ function renderCard(context: NodeContext): ReactNode {
       </div>
     )
   }
-  const marks = [context.loading ? 'is-loading' : '', isWatched(id) ? 'is-pinned' : '']
-    .filter(Boolean)
-    .join(' ')
   return (
-    <div className={`card${marks === '' ? '' : ` ${marks}`}`}>
+    <div className={`card${context.loading ? ' is-loading' : ''}`}>
       <strong>{String(item.name ?? '')}</strong>
       <small>{String(item.title ?? '')}</small>
       <ToggleButton {...context} />
