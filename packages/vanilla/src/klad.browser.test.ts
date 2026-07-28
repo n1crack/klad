@@ -1,5 +1,5 @@
 import { describe, expect, it } from 'vitest'
-import { createKlad } from './index.js'
+import { createKlad, type NodeData, type Options } from './index.js'
 
 const DATA = [
   { id: 'a', name: 'Root' },
@@ -2534,5 +2534,255 @@ describe('drag and drop', () => {
     expect(getComputedStyle(el).position).toBe('relative')
     chart.destroy()
     el.remove()
+  })
+})
+
+describe('children on demand', () => {
+  const ROOTS = [
+    { id: 'a', name: 'Root' },
+    { id: 'b', parentId: 'a', name: 'Branch', childCount: 2 },
+    { id: 'c', parentId: 'a', name: 'Leaf', childCount: 0 },
+  ]
+  const KIDS = [
+    { id: 'b1', name: 'First' },
+    { id: 'b2', name: 'Second' },
+  ]
+
+  function lazy(overrides: Partial<Options> = {}) {
+    return createKlad(host(), {
+      data: ROOTS,
+      nodeSize: { w: 120, h: 48 },
+      label: (item) => String(item.name ?? ''),
+      worker: false,
+      mayHaveChildren: (item) => Number(item.childCount ?? 0) > 0,
+      loadChildren: () => KIDS,
+      renderNode: (el, ctx) => {
+        el.textContent = String(ctx.item.name ?? '')
+      },
+      ...overrides,
+    })
+  }
+
+  const cardOf = (id: string) =>
+    document.querySelector<HTMLElement>(`.klad-overlay-node[data-klad-id="${id}"]`)
+
+  it('fetches a node’s children the first time it is opened', async () => {
+    let calls = 0
+    const loaded: { id: string; count: number }[] = []
+    const chart = lazy({
+      loadChildren: (item) => {
+        calls++
+        expect(item.id).toBe('b')
+        return KIDS
+      },
+    })
+    chart.on('childrenLoaded', ({ id, items }) => loaded.push({ id, count: items.length }))
+    await nextFrame()
+    await settle()
+    expect(cardOf('b1')).toBeNull()
+
+    chart.api.expand('b')
+    await settleTransition()
+    await settle()
+
+    expect(calls).toBe(1)
+    expect(loaded).toEqual([{ id: 'b', count: 2 }])
+    // Its own item, not the `{ id }` stub `itemFor` falls back to — every
+    // per-item callback (`label`, `nodeSize`, `renderNode`) reads through the
+    // same index, so a fetched node missing from it draws as its own id.
+    expect(cardOf('b1')!.textContent).toBe('First')
+    expect(chart.api.search('Second').map((r) => r.id)).toEqual(['b2'])
+    expect(chart.api.stats('b')!.directChildren).toBe(2)
+    // Opened by the load, not before it — an empty branch that says "nothing
+    // here" for the length of a request is the one thing that is not true.
+    expect(chart.api.getView().open).toContain('b')
+
+    // Asked for once. The second open is an ordinary toggle.
+    chart.api.collapse('b')
+    await settleTransition()
+    chart.api.expand('b')
+    await settleTransition()
+    expect(calls).toBe(1)
+    chart.destroy()
+  })
+
+  it('does not ask twice while a load is in flight', async () => {
+    let calls = 0
+    let release: ((items: unknown[]) => void) | null = null
+    const chart = lazy({
+      loadChildren: () => {
+        calls++
+        return new Promise((resolve) => {
+          release = resolve as (items: unknown[]) => void
+        })
+      },
+    })
+    await nextFrame()
+    await settle()
+
+    chart.api.expand('b')
+    chart.api.expand('b')
+    chart.api.expand('b')
+    await nextFrame()
+    expect(calls).toBe(1)
+
+    release!(KIDS)
+    await settleTransition()
+    await settle()
+    expect(cardOf('b1')).not.toBeNull()
+    chart.destroy()
+  })
+
+  it('reports a failed load and lets the next click retry', async () => {
+    let calls = 0
+    const warnings: { code: string; ids: string[] }[] = []
+    const chart = lazy({
+      loadChildren: () => {
+        calls++
+        return calls === 1 ? Promise.reject(new Error('offline')) : KIDS
+      },
+    })
+    chart.on('warning', (w) => warnings.push({ code: w.code, ids: w.ids }))
+    await nextFrame()
+    await settle()
+
+    chart.api.expand('b')
+    await settleTransition()
+    expect(warnings).toEqual([{ code: 'load-failed', ids: ['b'] }])
+    expect(cardOf('b1')).toBeNull()
+
+    // Left unloaded on purpose, so this is a retry rather than a no-op.
+    chart.api.expand('b')
+    await settleTransition()
+    await settle()
+    expect(calls).toBe(2)
+    expect(cardOf('b1')).not.toBeNull()
+    chart.destroy()
+  })
+
+  it('offers a way in on a node whose children have not arrived', async () => {
+    // `hasChildren` drives a host's own chevron and the screen-reader tree's
+    // `aria-expanded`. If an unloaded node read as a leaf there would be
+    // nothing to click, and the children could never be asked for.
+    const seen = new Map<string, boolean>()
+    const chart = lazy({
+      renderNode: (el, ctx) => {
+        seen.set(ctx.id, ctx.hasChildren)
+        el.textContent = ctx.id
+      },
+    })
+    await nextFrame()
+    await settle()
+    expect(seen.get('b')).toBe(true)
+    expect(seen.get('c')).toBe(false)
+
+    const row = document.querySelector(`[role="treeitem"][data-orgchart-id="b"]`)
+    expect(row?.getAttribute('aria-expanded')).toBe('false')
+    chart.destroy()
+  })
+
+  it('says which node is waiting, and only while it waits', async () => {
+    let release: ((items: NodeData[]) => void) | null = null
+    const loading: string[] = []
+    const chart = lazy({
+      loadChildren: () =>
+        new Promise<NodeData[]>((resolve) => {
+          release = resolve
+        }),
+      renderNode: (el, ctx) => {
+        if (ctx.loading) loading.push(ctx.id)
+        el.textContent = ctx.id
+      },
+    })
+    await nextFrame()
+    await settle()
+    expect(loading).toEqual([])
+
+    chart.api.expand('b')
+    await nextFrame()
+    await nextFrame()
+    expect(new Set(loading)).toEqual(new Set(['b']))
+
+    loading.length = 0
+    release!(KIDS)
+    await settleTransition()
+    await settle()
+    // Cleared when the answer lands — a card left saying "waiting" after the
+    // children are on screen is worse than never having said it.
+    expect(loading).toEqual([])
+    chart.destroy()
+  })
+
+  it('starts a freshly loaded folder closed if it too has children to fetch', async () => {
+    // `b1` comes back marked as having children of its own. It must arrive
+    // CLOSED, whatever `collapsedByDefault` says: an unloaded node reported as
+    // open claims there is nothing inside, and — worse — opening it is the
+    // only thing that ever asks for a load, so one that starts open can never
+    // be fetched at all.
+    const chart = lazy({
+      loadChildren: () => [
+        { id: 'b1', name: 'First', childCount: 3 },
+        { id: 'b2', name: 'Second', childCount: 0 },
+      ],
+    })
+    await nextFrame()
+    await settle()
+    chart.api.expand('b')
+    await settleTransition()
+    await settle()
+
+    const open = chart.api.getView().open
+    expect(open).toContain('b')
+    expect(open).not.toContain('b1')
+    expect(open).toContain('b2')
+    chart.destroy()
+  })
+
+  it('keeps loaded children through refresh, and drops them on update', async () => {
+    const chart = lazy()
+    await nextFrame()
+    await settle()
+    chart.api.expand('b')
+    await settleTransition()
+    await settle()
+    expect(cardOf('b1')).not.toBeNull()
+
+    // `refresh()` says the data did not change. What was fetched belongs to
+    // the tree that is still on screen.
+    chart.api.refresh()
+    await settleTransition()
+    await settle()
+    expect(cardOf('b1')).not.toBeNull()
+
+    // `update()` is a new dataset — the fetched branch belonged to the old one.
+    chart.update([...ROOTS])
+    await settleTransition()
+    await settle()
+    expect(cardOf('b1')).toBeNull()
+    chart.destroy()
+  })
+
+  it('does nothing lazy without a loader', async () => {
+    // `mayHaveChildren` alone would put a mark on a node inviting a click that
+    // cannot lead anywhere.
+    const chart = createKlad(host(), {
+      data: ROOTS,
+      nodeSize: { w: 120, h: 48 },
+      label: (item) => String(item.name ?? ''),
+      worker: false,
+      mayHaveChildren: (item) => Number(item.childCount ?? 0) > 0,
+      renderNode: (el, ctx) => {
+        el.textContent = String(ctx.item.name ?? '')
+      },
+    })
+    await nextFrame()
+    await settle()
+    const seen: boolean[] = []
+    chart.api.search('Branch').forEach((r) => seen.push(chart.api.stats(r.id)!.directChildren > 0))
+    expect(seen).toEqual([false])
+    chart.api.expand('b')
+    await settleTransition()
+    expect(cardOf('b1')).toBeNull()
+    chart.destroy()
   })
 })

@@ -11,7 +11,15 @@ import type { Bounds } from '../types.js'
 import type { EngineOptions, MainToWorkerMessage, WireTree, WorkerToMain } from './protocol.js'
 
 export interface ChartHost {
-  setData(tree: WireTree, sizes: Float64Array, labels: string[], open: Uint8Array): void
+  /** `unloaded` marks nodes whose children the host has not fetched yet — see
+   * `ChartEngine.setData`. Omit for a host that loads nothing on demand. */
+  setData(
+    tree: WireTree,
+    sizes: Float64Array,
+    labels: string[],
+    open: Uint8Array,
+    unloaded?: Uint8Array | null,
+  ): void
   setOptions(partial: Partial<EngineOptions>): void
   /** See `ChartEngine.setOpen`'s docblock — `ring` defaults to `true` here too. */
   setOpen(index: number, open: boolean, ring?: boolean): void
@@ -241,9 +249,9 @@ export function createChartHost(
       return worker !== null
     },
 
-    setData(tree, sizes, labels, open) {
-      engine?.setData(tree, sizes, labels, open)
-      post({ t: 'data', tree, sizes, labels, open })
+    setData(tree, sizes, labels, open, unloaded = null) {
+      engine?.setData(tree, sizes, labels, open, unloaded)
+      post({ t: 'data', tree, sizes, labels, open, unloaded })
     },
     setOptions(partial) {
       engine?.setOptions(partial)

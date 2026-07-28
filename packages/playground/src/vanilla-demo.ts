@@ -108,8 +108,13 @@ function renderRow(element: HTMLElement, context: NodeContext): void {
   // A leaf keeps the chevron's WIDTH but not its glyph, so every name in a run
   // of siblings starts at the same x — a list where leaves and branches begin
   // at different offsets reads as broken indentation.
-  chevron.textContent = context.hasChildren ? '▸' : ''
-  chevron.classList.toggle('is-open', context.open)
+  // While a fetch is in flight the chevron says so, in the one place the eye
+  // is already on: the thing that was just clicked. It also stops rotating —
+  // a chevron that pointed down at a row with nothing under it would be
+  // claiming the branch is open when it is still on its way.
+  chevron.textContent = context.loading ? '⋯' : context.hasChildren ? '▸' : ''
+  chevron.classList.toggle('is-open', context.open && !context.loading)
+  chevron.classList.toggle('is-loading', context.loading)
   chevron.disabled = !context.hasChildren
   chevron.setAttribute('aria-hidden', context.hasChildren ? 'false' : 'true')
   chevron.onclick = (event) => {

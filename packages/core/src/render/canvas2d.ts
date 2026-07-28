@@ -2,7 +2,7 @@ import type { TextMeasurer } from '../text/measure.js'
 import type { DrawCallStats, Frame, Renderer, RenderSurface } from './renderer.js'
 import type { Theme } from './theme.js'
 import { easeInQuad, easeOutCubic } from '../viewport.js'
-import { edgeAnchors } from './edge-geometry.js'
+import { edgeAnchors, hiddenStub } from './edge-geometry.js'
 import { computeNodeFills, inkOn } from './palette.js'
 import {
   isSectorVisible,
@@ -12,6 +12,16 @@ import {
   SECTOR_LABEL_PAD,
   sectorPath,
 } from './sector.js'
+
+/**
+ * The rectangular "more inside" mark, in SCREEN pixels: how far the stub
+ * reaches out of the node, and the radius of the dot it ends in. Screen rather
+ * than world so the mark is the same size at every zoom — it exists to be
+ * noticed from far out, which is exactly where a world-scaled one would be
+ * sub-pixel. Shared with `svg.ts`, whose export has to match the canvas.
+ */
+export const HIDDEN_STUB_PX = 9
+export const HIDDEN_DOT_PX = 2.5
 
 /**
  * Canvas2D backend.
@@ -528,6 +538,41 @@ export function createCanvas2DRenderer(
           ctx.strokeStyle = fills !== null ? fillFor(i) : theme.labelColour
           ctx.globalAlpha = 0.5
           ctx.stroke()
+          ctx.globalAlpha = 1
+        } else {
+          // Rectangular layouts: a short stub leaving the node the way its
+          // first connector would, ending in a dot. Same idea as the wheel's
+          // inner arc — the beginning of the branch that is there but not
+          // drawn — and it is the ONLY thing on a tidy or file chart that says
+          // so at a zoom where the cards are gone and there is no toggle
+          // button to notice.
+          const stub = hiddenStub(
+            frame.edgeStyle,
+            frame.horizontal,
+            frame.rtl,
+            boxes[i * 4]!,
+            boxes[i * 4 + 1]!,
+            boxes[i * 4 + 2]!,
+            boxes[i * 4 + 3]!,
+          )
+          if (stub === null) continue
+          // Screen-space length, so the mark stays the same size however far
+          // out the camera is — a world-length stub would vanish at the zoom
+          // where it matters most.
+          const sx = stub.x * k + camera.x
+          const sy = stub.y * k + camera.y
+          const ex = sx + stub.dx * HIDDEN_STUB_PX
+          const ey = sy + stub.dy * HIDDEN_STUB_PX
+          ctx.strokeStyle = theme.edgeStroke
+          ctx.globalAlpha = 0.75
+          ctx.beginPath()
+          ctx.moveTo(sx, sy)
+          ctx.lineTo(ex, ey)
+          ctx.stroke()
+          ctx.beginPath()
+          ctx.arc(ex, ey, HIDDEN_DOT_PX, 0, Math.PI * 2, false)
+          ctx.fillStyle = theme.edgeStroke
+          ctx.fill()
           ctx.globalAlpha = 1
         }
       }

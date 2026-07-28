@@ -74,18 +74,30 @@ one node changes sibling separation all the way up. And it would buy nothing
 worth the risk: a full relayout of 20,000 nodes measures 2–12ms, once, and the
 existing transition tweens the result for free.
 
-## 1.4 — children on demand
+## 1.4 — released: children on demand
 
-The one thing 1.2 promised and did not deliver. Today a chart needs its whole
-tree up front, which rules out the trees where the shape matters most: a file
-system you cannot enumerate, a taxonomy behind an API, an org of a hundred
-thousand people. Opening a branch should be able to ask for its children and
-fill them in, with the node marked as having more below it in the meantime and
-the layout settling around the answer rather than jumping to it.
+A chart needed its whole tree up front, which ruled out the trees where the
+shape matters most: a file system you cannot enumerate, a taxonomy behind an
+API, an org of a hundred thousand people. Now `data` is only what you already
+have.
 
-This is first because everything below is easier to justify once a tree can
-exceed what fits in memory, and because drag and drop already has a hole shaped
-like it — you cannot yet drop into a branch that has not been opened.
+- **`mayHaveChildren`** — a node with no children in `data` is otherwise
+  indistinguishable from a leaf, so this is how you say there is more. "May" is
+  the honest word: you are answering from a count, and a node that turns out to
+  have none simply becomes a leaf.
+- **`loadChildren`** — fetches one node's children the first time it is opened.
+  The chart keeps what you return; your array stays as you gave it. The node
+  opens when they arrive, and the layout settles around them rather than
+  jumping.
+
+Asked for once per node, whatever a viewer clicks. A rejection is a
+`load-failed` warning and leaves the node unloaded, so the next click retries —
+nothing retries on its own. `expandAll()` fetches nothing: "open everything" on
+a tree of unknown size is a request nobody means to make.
+
+This also closed the hole 1.3 left. A drag resting on a closed branch springs
+it open, and now that includes one that has not been fetched — the children
+arrive mid-gesture and the drop preview re-resolves against them.
 
 ## 1.5 — showing less of a large tree
 

@@ -21,6 +21,7 @@ const emit = defineEmits<{
    * so the veto travels on the payload rather than as a return value.
    */
   nodeDrop: Parameters<KladEvents['nodeDrop']>
+  childrenLoaded: Parameters<KladEvents['childrenLoaded']>
   toggle: Parameters<KladEvents['toggle']>
   warning: Parameters<KladEvents['warning']>
   ready: Parameters<KladEvents['ready']>
@@ -86,6 +87,7 @@ onMounted(() => {
   // Emitted SYNCHRONOUSLY, which is what makes `preventDefault()` on the
   // payload work: the vanilla layer reads it back the instant this returns.
   chart.on('nodeDrop', (event) => emit('nodeDrop', event))
+  chart.on('childrenLoaded', (event) => emit('childrenLoaded', event))
   chart.on('toggle', (event) => emit('toggle', event))
   chart.on('warning', (warning) => emit('warning', warning))
   chart.on('ready', () => emit('ready'))

@@ -231,6 +231,7 @@ export default defineConfig({
             { text: 'Node content', link: '/guide/node-content' },
             { text: 'Navigating', link: '/guide/navigating' },
             { text: 'Drag and drop', link: '/guide/drag-and-drop' },
+            { text: 'Children on demand', link: '/guide/children-on-demand' },
             { text: 'Sizing', link: '/guide/sizing' },
           ],
         },

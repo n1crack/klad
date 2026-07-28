@@ -2017,6 +2017,14 @@ body {
   transform: rotate(90deg);
 }
 
+/* Waiting on `loadChildren`. No rotation and no spin — the glyph is already
+   an ellipsis, and a chart of ten thousand rows should not be running an
+   animation per row that happens to be fetching. */
+.surface.is-file .file-chevron.is-loading {
+  color: var(--accent);
+  transform: none;
+}
+
 .surface.is-file .file-chevron:disabled {
   cursor: default;
   /* Kept in the layout, not hidden: a leaf whose chevron collapsed would start

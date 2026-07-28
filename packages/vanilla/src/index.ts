@@ -84,7 +84,19 @@ export interface NodeContext extends NodeStats {
   id: string
   item: NodeData
   open: boolean
+  /** Whether this node offers a way in — including one whose children have
+   * not been fetched yet, which is what makes them reachable at all. See
+   * `Options.mayHaveChildren`. */
   hasChildren: boolean
+  /**
+   * A `loadChildren` for this node is in flight.
+   *
+   * The chart cannot draw this for you: what a card looks like while it waits
+   * is a decision about your card. All it can do is say when, which is this —
+   * a spinner, a dimmed row, a "…" in place of the chevron, whatever suits.
+   * Always `false` without `loadChildren`.
+   */
+  loading: boolean
   toggle(): void
 }
 
@@ -156,6 +168,60 @@ export interface Options {
    * outermost ring stays thick enough to carry a label. Defaults to 3.
    */
   maxRings?: number
+  /**
+   * Whether a node has children, whether or not they are in `data` yet.
+   *
+   * Without it the chart can only know what it has been given, so a node whose
+   * children have not been fetched is indistinguishable from a leaf: no mark,
+   * no chevron, nothing to click. This is how a host says "there is more here"
+   * for a tree it has not fully sent — typically from a count the API already
+   * returns.
+   *
+   * ```ts
+   * mayHaveChildren: (item) => Number(item.childCount) > 0
+   * ```
+   *
+   * Only consulted for nodes with no children in `data`; a node that already
+   * has some is not waiting for anything. "May" is the honest word — the host
+   * is answering from a count, and a count can be wrong. A node that turns out
+   * to have none after `loadChildren` returns simply becomes a leaf.
+   *
+   * Meaningless without `loadChildren`, and ignored without it: a mark
+   * inviting a click that cannot lead anywhere is worse than no mark.
+   */
+  mayHaveChildren?: (item: NodeData) => boolean
+  /**
+   * Fetches one node's children, the first time it is opened.
+   *
+   * ```ts
+   * loadChildren: (item) => fetch(`/api/children/${item.id}`).then((r) => r.json())
+   * ```
+   *
+   * The chart keeps what you return — your `data` array stays as you gave it.
+   * A `childrenLoaded` event fires with the same items if you want to persist
+   * them yourself; you do not have to.
+   *
+   * Returned items are ordinary `NodeData`. A `parentId` you set is honoured,
+   * so returning a whole subtree at once works; one you leave off is filled in
+   * with the node being loaded, so the common case is just the children.
+   *
+   * The node opens when the children arrive, and the layout settles around
+   * them rather than jumping — the same transition a drag uses. Until then it
+   * is marked as loading, and it stays where it is on screen while the tree
+   * grows underneath.
+   *
+   * A rejection is reported as a `load-failed` warning and leaves the node
+   * unloaded, so clicking it again retries. Nothing is retried automatically:
+   * a chart that re-fired a failing request on its own would do it for every
+   * node the viewer touches.
+   *
+   * Only the single-node open paths ask for a load — a click, `expand(id)`,
+   * the keyboard, a drag resting on the node. `expandAll()` and
+   * `expand(id, true)` open what is already there and fetch nothing, because
+   * "open everything" on a tree of unknown size is a request nobody means to
+   * make.
+   */
+  loadChildren?: (item: NodeData) => NodeData[] | Promise<NodeData[]>
   /**
    * Drag a node — or the whole selection, if the node is in one — onto a new
    * parent, or between two siblings.
@@ -408,6 +474,17 @@ export interface KladEvents {
    * `dropPosition` in core.
    */
   nodeDrop: (event: NodeDropEvent) => void
+  /**
+   * `loadChildren` returned, and the chart has taken the children in.
+   *
+   * Purely informational — the chart holds them either way, so a host that
+   * does not need to persist anything can ignore this. `items` is exactly what
+   * the loader returned, before the chart filled in any missing `parentId`.
+   *
+   * A load that failed does not fire this; it arrives as a `load-failed`
+   * warning instead.
+   */
+  childrenLoaded: (event: { id: string; item: NodeData; items: NodeData[] }) => void
   toggle: (event: { id: string; open: boolean }) => void
   viewportChange: (event: { camera: Camera }) => void
   warning: (warning: Warning) => void
@@ -761,6 +838,36 @@ export function createKlad(host: HTMLElement, options: Options): KladInstance {
   host.appendChild(overlayRoot)
 
   let currentOptions = options
+  /**
+   * What the tree is built from: the host's array, plus everything
+   * `loadChildren` has returned.
+   *
+   * Declared before `tree` and used by every `normalize` call in this file, so
+   * there is exactly one answer to "what is in this chart" — a second rebuild
+   * that forgot the loaded children would silently throw away every branch the
+   * viewer had opened.
+   *
+   * Children come after the host's own items rather than being spliced in
+   * beside their parent. `normalize` orders siblings by their appearance in
+   * the array, and every child of one parent arrives in one batch, so a batch
+   * appended whole keeps its own order — which is the order the loader
+   * returned, and the only order anyone has expressed an opinion about.
+   */
+  const treeSource = (): NodeData[] => {
+    if (loadedChildren.size === 0) return currentOptions.data
+    const all = [...currentOptions.data]
+    for (const [parentId, items] of loadedChildren) {
+      for (const item of items) {
+        // A `parentId` the loader set wins, so returning a whole subtree in
+        // one call works. One it left off is the common case — "here are the
+        // children of the node you asked about" — and filling it in is what
+        // makes that call as short as it reads.
+        all.push(item.parentId === undefined ? { ...item, parentId } : item)
+      }
+    }
+    return all
+  }
+
   let tree: Tree = normalize(options.data)
   // Computed once per tree, never per frame and never per node on demand —
   // see `computeSubtreeStats` in core. Every consumer below (`renderNode`'s
@@ -885,7 +992,7 @@ export function createKlad(host: HTMLElement, options: Options): KladInstance {
       focus: centreIndex(),
       lod,
     })
-    chartHost.setData(toWireTree(tree), sizes, labels, open)
+    chartHost.setData(toWireTree(tree), sizes, labels, open, unloadedMask())
     // Deferred: applyData() runs synchronously inside createKlad, before the
     // caller has had a chance to attach a 'warning' listener via `on()`. Emitting
     // here directly would drop every warning raised on the initial load. Queuing
@@ -898,7 +1005,7 @@ export function createKlad(host: HTMLElement, options: Options): KladInstance {
         for (const warning of warnings) emit('warning', warning)
       })
     }
-    a11y?.update(tree, open, (index) => labelOf(itemFor(index)), isolatedIndex)
+    a11y?.update(tree, open, (index) => labelOf(itemFor(index)), isolatedIndex, unloadedMask())
   }
 
   /** `options.centre` as a source index, or -1 for "the default centre" —
@@ -909,15 +1016,34 @@ export function createKlad(host: HTMLElement, options: Options): KladInstance {
     return id === undefined || id === null ? -1 : (tree.idToIndex.get(id) ?? -1)
   }
 
+  /** `collapsedByDefault`, resolved for one item. Shared by `initOpen` and by
+   * the nodes a load brings in, which have to start the same way they would
+   * have if they had been in `data` from the beginning. */
+  const collapsedFor = (item: NodeData): boolean => {
+    const collapsed = currentOptions.collapsedByDefault
+    if (collapsed === true) return true
+    if (typeof collapsed === 'function') return collapsed(item)
+    return false
+  }
+
+  /**
+   * Whether a node starts open — `collapsedByDefault`, with one node type it
+   * cannot override.
+   *
+   * A node whose children have not been fetched starts CLOSED whatever the
+   * option says, because "open" is a claim about what is on screen and an
+   * unloaded node has nothing to show. Left open it would report itself
+   * expanded to a screen reader while displaying nothing, and — worse — the
+   * only thing that asks for a load is opening it, so a node that was already
+   * open could never be fetched at all. Closed, it carries the "more inside"
+   * mark and one click both loads and opens it.
+   */
+  const opensByDefault = (index: number): boolean =>
+    !collapsedFor(itemFor(index)) && !isUnloaded(index)
+
   const initOpen = (): void => {
     open = new Uint8Array(tree.count)
-    const collapsed = currentOptions.collapsedByDefault
-    for (let i = 0; i < tree.count; i++) {
-      if (collapsed === true) open[i] = 0
-      else if (typeof collapsed === 'function') {
-        open[i] = collapsed(itemFor(i)) ? 0 : 1
-      } else open[i] = 1
-    }
+    for (let i = 0; i < tree.count; i++) open[i] = opensByDefault(i) ? 1 : 0
   }
 
   // Both of these are consulted per node per frame, so neither may scan.
@@ -926,7 +1052,12 @@ export function createKlad(host: HTMLElement, options: Options): KladInstance {
   // slideshow. Both maps are rebuilt only when their source changes.
   let itemById = new Map<string, NodeData>()
   const rebuildItemIndex = (): void => {
-    itemById = new Map(currentOptions.data.map((item) => [item.id, item]))
+    // `treeSource()`, not `currentOptions.data`: everything `normalize` was
+    // given has to be findable here, or a loaded node falls through
+    // `itemFor`'s `{ id }` fallback and every per-item callback — `label`,
+    // `nodeSize`, `renderNode` — is handed a stub with nothing on it but its
+    // id. Which is exactly what a fetched row then draws.
+    itemById = new Map(treeSource().map((item) => [item.id, item]))
   }
 
   const itemFor = (index: number): NodeData => {
@@ -1094,9 +1225,6 @@ export function createKlad(host: HTMLElement, options: Options): KladInstance {
    */
   let sprungOpen: string[] = []
 
-  const hasChildren = (index: number): boolean =>
-    tree.childStart[index + 1]! > tree.childStart[index]!
-
   const cancelSpring = (): void => {
     if (springTimer !== null) clearTimeout(springTimer)
     springTimer = null
@@ -1112,7 +1240,7 @@ export function createKlad(host: HTMLElement, options: Options): KladInstance {
     if (index === -1 || dragMask === null) return
     // Already open, childless, or part of what is being carried: nothing to
     // reveal, and in the last case nothing that could legally be dropped in.
-    if (open[index] === 1 || !hasChildren(index) || dragMask[index] === 1) return
+    if (open[index] === 1 || !canHaveChildren(index) || dragMask[index] === 1) return
     springIndex = index
     springTimer = setTimeout(() => {
       springTimer = null
@@ -1122,7 +1250,11 @@ export function createKlad(host: HTMLElement, options: Options): KladInstance {
       if (dragMask === null || target === -1 || target >= tree.count) return
       if (open[target] === 1) return
       sprungOpen.push(tree.indexToId[target]!)
-      setOpenFlag(target, true)
+      // `requestOpen`, not `setOpenFlag`: a branch nobody has opened yet is
+      // exactly the branch a drag cannot reach, which is what spring-loading
+      // is for. The fetch lands mid-gesture and the drop preview re-resolves
+      // against the children it brought in.
+      requestOpen(target)
     }, SPRING_DELAY_MS)
   }
 
@@ -1239,7 +1371,10 @@ export function createKlad(host: HTMLElement, options: Options): KladInstance {
     const openById = new Map<string, boolean>()
     for (let i = 0; i < tree.count; i++) openById.set(tree.indexToId[i]!, open[i] === 1)
 
-    const source = currentOptions.data
+    // Everything, loaded children included — a reparent rebuilds the array
+    // the chart lays out, and one built from `currentOptions.data` alone would
+    // throw away every branch that had been fetched.
+    const source = treeSource()
     const moved: NodeData[] = []
     const rest: NodeData[] = []
     for (const item of source) {
@@ -1260,6 +1395,12 @@ export function createKlad(host: HTMLElement, options: Options): KladInstance {
     rest.splice(insertAt, 0, ...moved)
 
     currentOptions = { ...currentOptions, data: rest }
+    // The two stores collapse into one here. `rest` already contains what had
+    // been loaded, so leaving it in the map as well would duplicate every
+    // fetched node on the next rebuild. From this point they are ordinary
+    // data, which they are: the host's array was replaced a line ago either
+    // way, and the nodes stay loaded — they just have one home instead of two.
+    loadedChildren.clear()
     const previous = tree
     tree = normalize(rest)
 
@@ -1295,6 +1436,182 @@ export function createKlad(host: HTMLElement, options: Options): KladInstance {
     if (pinScreen !== null && pinId !== undefined) pendingPin = { id: pinId, screen: pinScreen }
     a11yDirty = true
     scheduleFrame()
+  }
+
+  // --- children on demand -------------------------------------------------
+  //
+  // The chart holds what `loadChildren` returns; the host's `data` array stays
+  // as it was handed over. That is the whole of the ownership story, and it is
+  // what keeps this from leaking into `refresh()` and `update()`: the loaded
+  // children live in `loadedChildren` below and are folded back in every time
+  // the tree is rebuilt from `data`.
+
+  /** Parent id -> the children a loader returned for it. Insertion-ordered,
+   * which is the order they are laid out in. */
+  const loadedChildren = new Map<string, NodeData[]>()
+  /** Loads in flight, by node id. Both a guard against firing a second request
+   * for a node already waiting on one, and what the loading mark reads. */
+  const loadingIds = new Set<string>()
+
+  /** Children this node has in the tree right now — loaded or given. */
+  const childCountOf = (index: number): number =>
+    tree.childStart[index + 1]! - tree.childStart[index]!
+
+  /**
+   * True for a node the host says has children that have not been fetched.
+   *
+   * Deliberately requires an EMPTY node: `mayHaveChildren` is answering "is
+   * there more here", and once children are in the tree the answer is visibly
+   * yes. A host whose count says "5" for a node that already has 3 is telling
+   * us something we cannot act on — there is no way to ask for "the other
+   * two" — so the honest reading is that this node is done.
+   */
+  const isUnloaded = (index: number): boolean => {
+    if (currentOptions.loadChildren === undefined) return false
+    if (childCountOf(index) > 0) return false
+    const mayHave = currentOptions.mayHaveChildren
+    if (mayHave === undefined) return false
+    if (loadedChildren.has(tree.indexToId[index]!)) return false
+    return mayHave(itemFor(index))
+  }
+
+  /**
+   * Whether a node should offer a way in — the question a chevron, a toggle
+   * button and the keyboard's right-arrow all ask. A node waiting to be
+   * fetched answers yes, which is the point: something has to be clickable or
+   * the children can never be asked for.
+   */
+  const canHaveChildren = (index: number): boolean =>
+    childCountOf(index) > 0 || isUnloaded(index)
+
+  /** The SOURCE-indexed mask the engine needs to mark unloaded nodes as having
+   * more inside — see `ChartEngine.setData`. `null` when nothing is lazy,
+   * which is the common case and puts nothing on the wire. */
+  const unloadedMask = (): Uint8Array | null => {
+    if (currentOptions.loadChildren === undefined) return null
+    let any = false
+    const mask = new Uint8Array(tree.count)
+    for (let i = 0; i < tree.count; i++) {
+      if (isUnloaded(i)) {
+        mask[i] = 1
+        any = true
+      }
+    }
+    return any ? mask : null
+  }
+
+  /**
+   * Fetches a node's children and folds them in, once.
+   *
+   * The node is NOT opened first. Opening an empty branch and then filling it
+   * would flash a node that says "nothing here" for the length of a network
+   * round trip, which is the one thing that is not true. It opens when the
+   * children arrive, in the same relayout that brings them.
+   */
+  const loadChildrenOf = async (index: number): Promise<void> => {
+    const load = currentOptions.loadChildren
+    if (load === undefined) return
+    const id = tree.indexToId[index]!
+    if (loadingIds.has(id) || loadedChildren.has(id)) return
+    // Where the node is on screen right now. Held across the relayout below,
+    // exactly as a drop holds its target: the viewer is looking at the node
+    // they just clicked, and the tree growing underneath it is no reason for
+    // it to move.
+    const box = boxOfSource(index)
+    const screen = box === null ? null : worldToScreen(camera, box.x + box.w / 2, box.y + box.h / 2)
+    const item = itemFor(index)
+
+    loadingIds.add(id)
+    // Repaint: the node is marked as loading from here until it is not.
+    a11yDirty = true
+    scheduleFrame()
+    try {
+      const items = await load(item)
+      // The chart may have been torn down, or the whole dataset replaced,
+      // while this was in flight. Either way the answer is about a tree that
+      // no longer exists.
+      if (destroyed || tree.idToIndex.get(id) === undefined) return
+      loadedChildren.set(id, [...items])
+      rebuildFromLoad(id, screen)
+      emit('childrenLoaded', { id, item, items })
+    } catch (error) {
+      if (destroyed) return
+      // Left unloaded on purpose, so clicking again retries. Nothing retries
+      // on its own: a chart that re-fired a failing request would do it for
+      // every node the viewer touches, and the host is the only one who knows
+      // whether the failure was worth repeating.
+      emit('warning', {
+        code: 'load-failed',
+        detail: error instanceof Error ? error.message : String(error),
+        ids: [id],
+      })
+    } finally {
+      loadingIds.delete(id)
+      a11yDirty = true
+      scheduleFrame()
+    }
+  }
+
+  /**
+   * Rebuilds the tree around children that have just arrived, opening the node
+   * they belong to and settling rather than jumping.
+   *
+   * The same recipe as `applyReparent`: open state carried across by id, an
+   * old-to-new index remap so the transition tweens the nodes that already
+   * existed instead of shuffling the whole chart, and a screen-space pin on
+   * the one node the viewer is looking at.
+   */
+  const rebuildFromLoad = (id: string, screen: { x: number; y: number } | null): void => {
+    const openById = new Map<string, boolean>()
+    for (let i = 0; i < tree.count; i++) openById.set(tree.indexToId[i]!, open[i] === 1)
+
+    const previous = tree
+    tree = normalize(treeSource())
+    const remap = new Int32Array(previous.count).fill(-1)
+    for (let i = 0; i < previous.count; i++) {
+      remap[i] = tree.idToIndex.get(previous.indexToId[i]!) ?? -1
+    }
+    stats = computeSubtreeStats(tree)
+    rebuildItemIndex()
+    const next = new Uint8Array(tree.count)
+    for (let i = 0; i < tree.count; i++) {
+      // Nodes that already existed keep what they were; the ones that just
+      // arrived take `collapsedByDefault`, the same rule they would have had
+      // if they had been in `data` all along.
+      const nodeId = tree.indexToId[i]!
+      const was = openById.get(nodeId)
+      next[i] = (was ?? opensByDefault(i)) ? 1 : 0
+    }
+    open = next
+    // The node the viewer clicked. Opening it is the whole point of the fetch,
+    // and it is the one open-state change a load is entitled to make.
+    const index = tree.idToIndex.get(id)
+    if (index !== undefined) open[index] = 1
+    pendingAnchor = null
+    cameraAnchor = null
+    chartHost.animateNextLayout(remap)
+    applyData(false)
+    if (screen !== null) pendingPin = { id, screen }
+    a11yDirty = true
+    emit('toggle', { id, open: true })
+    scheduleFrame()
+  }
+
+  /**
+   * Opens a node, fetching its children first if they have not arrived.
+   *
+   * Every single-node open goes through here rather than straight to
+   * `setOpenFlag` — a click, the keyboard, `expand(id)`, a drag resting on a
+   * folder. That is deliberate: an unloaded node is only reachable through one
+   * of those, so a path that skipped this would open a branch that stays
+   * permanently empty with no way to ever ask for its contents.
+   */
+  const requestOpen = (index: number): void => {
+    if (isUnloaded(index)) {
+      void loadChildrenOf(index)
+      return
+    }
+    setOpenFlag(index, true)
   }
 
   /** `NodeStats` for a node by INDEX — four array reads, no walking. See
@@ -1779,7 +2096,7 @@ export function createKlad(host: HTMLElement, options: Options): KladInstance {
   const refreshA11y = (): void => {
     if (!a11yDirty) return
     a11yDirty = false
-    a11y?.update(tree, open, (i) => labelOf(itemFor(i)), isolatedIndex)
+    a11y?.update(tree, open, (i) => labelOf(itemFor(i)), isolatedIndex, unloadedMask())
   }
 
   const scheduleFrame = (): void => {
@@ -2510,10 +2827,12 @@ export function createKlad(host: HTMLElement, options: Options): KladInstance {
           // competing one.
           emit('nodeClick', { id, item })
           if (currentOptions.toggleOnNodeClick === true && !isInteractiveTarget(target)) {
-            const hasChildren = tree.childStart[index + 1]! > tree.childStart[index]!
+            const hasChildren = canHaveChildren(index)
             // A leaf has nothing to toggle — do nothing rather than emit a
             // pointless `toggle` event for it.
-            if (hasChildren) setOpenFlag(index, open[index] !== 1)
+            if (!hasChildren) return
+            if (open[index] === 1) setOpenFlag(index, false)
+            else requestOpen(index)
           }
         }
       })
@@ -2720,7 +3039,12 @@ export function createKlad(host: HTMLElement, options: Options): KladInstance {
     expand(id, deep = false) {
       const index = tree.idToIndex.get(id)
       if (index === undefined) return
-      if (!deep) return setOpenFlag(index, true)
+      // The single-node case fetches if it has to; the deep case below does
+      // not. "Open this and everything under it" is a request about a tree the
+      // caller can see; on one that is still arriving it would fan out into a
+      // request per node, of unknown number, that nobody meant to make. See
+      // `Options.loadChildren`.
+      if (!deep) return requestOpen(index)
       const stack = [index]
       // This is still ONE user action on ONE node — a deep expand of `index`
       // — even though it opens every descendant too. Only the very first
@@ -3096,7 +3420,8 @@ export function createKlad(host: HTMLElement, options: Options): KladInstance {
         id: item.id,
         item: itemFor(item.index),
         open: open[item.index] === 1,
-        hasChildren: tree.childStart[item.index + 1]! > tree.childStart[item.index]!,
+        hasChildren: canHaveChildren(item.index),
+        loading: loadingIds.has(item.id),
         toggle: () => (open[item.index] === 1 ? api.collapse(item.id) : api.expand(item.id)),
         ...statsOf(item.index),
       })
@@ -3109,7 +3434,8 @@ export function createKlad(host: HTMLElement, options: Options): KladInstance {
     onActivate(id) {
       const index = tree.idToIndex.get(id)
       if (index === undefined) return
-      setOpenFlag(index, open[index] !== 1)
+      if (open[index] === 1) setOpenFlag(index, false)
+      else requestOpen(index)
     },
     onFocus(id) {
       api.focus(id)
@@ -3175,7 +3501,13 @@ export function createKlad(host: HTMLElement, options: Options): KladInstance {
     },
     update(data, partial) {
       currentOptions = { ...currentOptions, ...partial, data }
-      tree = normalize(data)
+      // A new dataset. What was fetched belonged to the old one — its parents
+      // may not even be here any more — and keeping it would graft the
+      // previous tree's branches onto this one. `refresh()` is the call that
+      // keeps them, because it is the call that says the data did not change.
+      loadedChildren.clear()
+      loadingIds.clear()
+      tree = normalize(treeSource())
       stats = computeSubtreeStats(tree)
       rebuildItemIndex()
       syncAnimate()

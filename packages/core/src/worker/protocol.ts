@@ -119,7 +119,17 @@ export interface EngineOptions {
  */
 export type MainToWorkerMessage =
   | { t: 'init'; canvas: unknown; dpr: number; width: number; height: number; theme: unknown }
-  | { t: 'data'; tree: WireTree; sizes: Float64Array; labels: string[]; open: Uint8Array }
+  /** `unloaded` is SOURCE-indexed and marks nodes whose children the host has
+   * not fetched yet — see `ChartEngine.setData`. `null` for a host that loads
+   * nothing on demand, which is the common case and puts nothing on the wire. */
+  | {
+      t: 'data'
+      tree: WireTree
+      sizes: Float64Array
+      labels: string[]
+      open: Uint8Array
+      unloaded: Uint8Array | null
+    }
   | { t: 'options'; options: Partial<EngineOptions> }
   | { t: 'camera'; camera: Camera }
   /**

@@ -550,6 +550,77 @@ function buildFileTree(): NodeItem[] {
   return rows
 }
 
+
+// --- "Children on demand": a tree that is not in the page ------------------
+//
+// Every other example ships its whole dataset. This one ships four rows and
+// fetches the rest, because that is the only way to demonstrate a feature
+// whose entire point is a tree the page does not have. The "server" below is
+// a plain function with a delay in it; in an app it is your API.
+
+/** Names the fake server hands out, so a fetched folder looks like a folder
+ * rather than a row of `node-3-1`. */
+const REMOTE_FOLDERS = ['assets', 'components', 'config', 'docs', 'hooks', 'lib', 'modules', 'routes', 'schemas', 'services', 'shared', 'stores', 'tests', 'types', 'utils', 'views', 'workers']
+const REMOTE_FILES = ['index.ts', 'client.ts', 'helpers.ts', 'options.ts', 'parser.ts', 'reducer.ts', 'schema.ts', 'server.ts', 'state.ts', 'worker.ts']
+
+/** Deterministic per id — the same folder opened twice gives the same
+ * children, which is what an API would do and what makes the example
+ * inspectable. */
+function remoteHash(id: string): number {
+  let h = 2166136261
+  for (let i = 0; i < id.length; i++) {
+    h ^= id.charCodeAt(i)
+    h = Math.imul(h, 16777619)
+  }
+  return h >>> 0
+}
+
+/** How deep the fake filesystem goes. Past this, folders come back empty —
+ * which the chart handles by quietly turning them into leaves, and which is
+ * worth showing: `mayHaveChildren` is a guess, and this is what a wrong guess
+ * looks like. */
+const REMOTE_MAX_DEPTH = 6
+
+/**
+ * One directory listing. Async and slowed on purpose: a fetch that resolved
+ * instantly would hide the whole loading state, which is half of what this
+ * example is about.
+ */
+export function fetchRemoteChildren(item: NodeItem): Promise<NodeItem[]> {
+  const id = String(item.id)
+  const depth = id.split('/').length - 1
+  const hash = remoteHash(id)
+  const rows: NodeItem[] = []
+  if (depth < REMOTE_MAX_DEPTH) {
+    const folders = 1 + (hash % 3)
+    for (let i = 0; i < folders; i++) {
+      const name = REMOTE_FOLDERS[(hash + i * 7) % REMOTE_FOLDERS.length]!
+      rows.push({ id: `${id}/${name}`, name, kind: 'folder', sizeKb: 0, ext: '' })
+    }
+  }
+  const files = 2 + ((hash >>> 3) % 4)
+  for (let i = 0; i < files; i++) {
+    const name = REMOTE_FILES[(hash + i * 11) % REMOTE_FILES.length]!
+    rows.push({
+      id: `${id}/${i}-${name}`,
+      name,
+      kind: 'file',
+      sizeKb: 1 + ((hash >>> (i + 1)) % 240),
+      ext: name.split('.').pop() ?? '',
+    })
+  }
+  return new Promise((resolve) => setTimeout(() => resolve(rows), 260 + (hash % 340)))
+}
+
+/** What the page actually has: one root and its top level. Everything below
+ * arrives on demand. */
+export const REMOTE_ROOTS: NodeItem[] = [
+  { id: 'srv', name: 'production', kind: 'folder', sizeKb: 0, ext: '' },
+  { id: 'srv/app', parentId: 'srv', name: 'app', kind: 'folder', sizeKb: 0, ext: '' },
+  { id: 'srv/packages', parentId: 'srv', name: 'packages', kind: 'folder', sizeKb: 0, ext: '' },
+  { id: 'srv/README.md', parentId: 'srv', name: 'README.md', kind: 'file', sizeKb: 4, ext: 'md' },
+]
+
 export const FILE_DATA: NodeItem[] = buildFileTree()
 
 /** Row height for the file-explorer example, and the width every row shares.
@@ -1008,6 +1079,19 @@ export const EXAMPLES: Example[] = [
     options: { dragAndDrop: true, selection: true, minimap: true, nodeSize: { w: 200, h: 72 } },
     content: 'card',
     dropControl: true,
+  },
+  {
+    id: 'lazy',
+    name: 'Children on demand',
+    description:
+      'The page has four rows; everything else is fetched when you open a folder. A folder that has not been read yet carries a mark and opens on the first click, then settles rather than jumping. The deepest folders come back empty — `mayHaveChildren` is a guess, and this is what a wrong guess looks like.',
+    data: REMOTE_ROOTS,
+    options: {
+      layout: 'file',
+      mayHaveChildren: (item) => item.kind === 'folder',
+      loadChildren: (item) => fetchRemoteChildren(item),
+    },
+    content: 'row',
   },
   {
     id: 'file-tree',

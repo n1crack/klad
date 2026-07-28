@@ -26,7 +26,18 @@ import type { Tree } from './tree.js'
 declare const performance: { now(): number }
 
 export interface ChartEngine {
-  setData(tree: WireTree, sizes: Float64Array, labels: string[], open: Uint8Array): void
+  /**
+   * `unloaded` is SOURCE-indexed and marks nodes whose children the host has
+   * not fetched yet — see the field of the same name. Omitted or `null` for a
+   * host that loads nothing on demand.
+   */
+  setData(
+    tree: WireTree,
+    sizes: Float64Array,
+    labels: string[],
+    open: Uint8Array,
+    unloaded?: Uint8Array | null,
+  ): void
   setOptions(partial: Partial<EngineOptions>): void
   /**
    * `ring` says whether THIS toggle should arm the one-shot confirmation
@@ -1170,6 +1181,18 @@ export function createChartEngine(renderer: Renderer): ChartEngine {
   })
   let sourceSizes: Float64Array = new Float64Array(0)
   let sourceLabels: string[] = []
+  /**
+   * SOURCE-indexed: 1 where the host has said a node has children it has not
+   * fetched yet. `null` when the host does no lazy loading, which is the
+   * common case and costs nothing.
+   *
+   * The engine does no loading of its own and never asks for one — it cannot,
+   * being pure and possibly in a worker. This is one bit of knowledge it needs
+   * for one purpose: a node whose children have not arrived has none in the
+   * tree, so without being told it reads as a leaf and gets no "more inside"
+   * mark. See the `hasHidden` block.
+   */
+  let sourceUnloaded: Uint8Array | null = null
   let open: Uint8Array = new Uint8Array(0)
   let options: EngineOptions = { ...DEFAULT_OPTIONS }
 
@@ -1534,7 +1557,19 @@ export function createChartEngine(renderer: Renderer): ChartEngine {
         const src = visibleToSource[i]!
         const sourceFrom = sourceTree.childStart[src]!
         const sourceTo = sourceTree.childStart[src + 1]!
-        if (sourceFrom === sourceTo) continue // a genuine leaf; nothing hidden
+        if (sourceFrom === sourceTo) {
+          // No children in the tree. That is a genuine leaf — unless the host
+          // has said this node's children simply have not been fetched, which
+          // is the same fact to a viewer as a collapsed branch and wants the
+          // same mark. Without this an unloaded node is indistinguishable from
+          // a leaf, so there is nothing to tell anyone there is more inside,
+          // and nothing to invite the click that would go and get it.
+          if (sourceUnloaded !== null && sourceUnloaded[src] === 1) {
+            marks[i] = 1
+            any = true
+          }
+          continue
+        }
         let shown = false
         for (let j = childStart[i]!; j < childStart[i + 1]!; j++) {
           const child = childIndex[j]!
@@ -2098,7 +2133,7 @@ export function createChartEngine(renderer: Renderer): ChartEngine {
   }
 
   return {
-    setData(tree, sizes, labels, openFlags) {
+    setData(tree, sizes, labels, openFlags, unloaded) {
       sourceTree = wireTreeToTree(tree)
       // Defensive-copy every caller-owned buffer. In the worker path these
       // arrive as structured clones the engine already owns, but the
@@ -2108,6 +2143,17 @@ export function createChartEngine(renderer: Renderer): ChartEngine {
       // worker/main-thread paths would disagree about when a change lands.
       sourceSizes = Float64Array.from(sizes)
       sourceLabels = [...labels]
+      // Defensive-copied like every other caller-owned buffer, and sized to
+      // the tree rather than to whatever length arrived — a short mask
+      // zero-extends to "everything else is loaded", which is the safe
+      // reading: it under-marks rather than inventing children.
+      if (unloaded === undefined || unloaded === null) {
+        sourceUnloaded = null
+      } else {
+        const mask = new Uint8Array(tree.count)
+        mask.set(unloaded.subarray(0, Math.min(unloaded.length, tree.count)))
+        sourceUnloaded = mask
+      }
       // Size the copy to the tree, not to whatever length the caller passed:
       // zero-extend a short `open` (Uint8Array defaults new slots to 0 —
       // "closed", so a chart degrades to its roots instead of reading

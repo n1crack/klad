@@ -100,6 +100,53 @@ export function edgeAnchors(
 }
 
 /**
+ * Where a "there is more inside this" mark hangs off a node, for the
+ * rectangular layouts — the direction its first connector WOULD leave in, as a
+ * unit vector, plus the point it would leave from.
+ *
+ * Deliberately the connector's own exit rather than some free-floating badge
+ * in a corner. The mark means "a branch continues here", and the place a
+ * branch continues from is not a matter of opinion: it is wherever the edges
+ * to this node's children attach, which is what `edgeAnchors` above already
+ * decides. A badge somewhere else would be a second, competing answer to a
+ * question the layout has settled.
+ *
+ * `null` for the polar styles, which have their own mark drawn in their own
+ * geometry (an arc inside the segment, a halo around the dot) — a stub poking
+ * out of a sector would point at the ring that is already there.
+ *
+ * World units and a unit direction; the caller scales the length, so the mark
+ * keeps the same size on screen at any zoom.
+ */
+export function hiddenStub(
+  style: EdgeStyle,
+  horizontal: boolean,
+  rtl: boolean,
+  x: number,
+  y: number,
+  w: number,
+  h: number,
+): { x: number; y: number; dx: number; dy: number } | null {
+  switch (style) {
+    case 'folder':
+      // Straight down, out of the bottom of the row, where the gutter spine
+      // starts. Not offset into the gutter by `FOLDER_SPINE_FRAC`: that
+      // fraction is derived from the CHILD's leading edge, and there is no
+      // child here to derive it from — which is the whole point of the mark.
+      return { x: rtl ? x + w : x, y: y + h, dx: 0, dy: 1 }
+    case 'tiered':
+      return horizontal
+        ? { x: x + w, y: y + h / 2, dx: 1, dy: 0 }
+        : { x: x + w / 2, y: y + h, dx: 0, dy: 1 }
+    default:
+      // `spoke` and `none`: a radial chart marks its own nodes with a halo and
+      // a sunburst with an inner arc, and a chart with no connectors at all
+      // has nothing for a stub to be the beginning of.
+      return null
+  }
+}
+
+/**
  * False for a style that draws nothing, so the engine can skip building an
  * edge index at all rather than building one and having the renderer ignore
  * it. On a sunburst that saves an O(n) pass and an entire quadtree per

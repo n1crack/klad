@@ -45,6 +45,7 @@ off()
 | `toggle` | `{ id, open }` | A node was expanded or collapsed, however it happened. |
 | `selectionChange` | `{ ids, items }` | The selection changed. Carries the whole selection, not a delta. |
 | `nodeDrop` | `NodeDropEvent` | A node was dropped somewhere new. Fires BEFORE anything moves. |
+| `childrenLoaded` | `{ id, item, items }` | `loadChildren` returned and the chart took the children in. Informational — it holds them either way. |
 | `viewportChange` | `{ camera }` | Any camera change — pan, zoom, ease, kinetic coast. Fires per frame while one is running. |
 | `warning` | `Warning` | Something in the data could not be honoured. |
 
@@ -80,15 +81,23 @@ Bad data draws. A `parentId` naming nothing, a duplicate `id`, a cycle — each
 one is resolved in a defined way and reported rather than thrown:
 
 ```ts
-chart.on('warning', (warning) => {
-  console.warn(warning.code, warning.message, warning.id)
+chart.on('warning', ({ code, detail, ids }) => {
+  console.warn(code, detail, ids)
 })
 ```
 
-An org chart is usually built from data somebody else owns, and refusing to
-render because one row of ten thousand points at a deleted manager is not
-useful behaviour. The chart shows you the other 9,999 and tells you about the
-one.
+| `code` | |
+| --- | --- |
+| `duplicate-id` | Two rows share an `id`. The later one is dropped. |
+| `orphan-parent` | A `parentId` names nothing. The node becomes a root. |
+| `cycle` | A node is its own ancestor. The link that closes the loop is cut. |
+| `load-failed` | A [`loadChildren`](/guide/children-on-demand) rejected. The node stays unloaded and the next click retries. |
+
+A tree is usually built from data somebody else owns, and refusing to render
+because one row of ten thousand points at a deleted manager is not useful
+behaviour. The chart shows you the other 9,999 and tells you about the one.
+`load-failed` is the odd one out — nothing is wrong with your data, a request
+did not come back — but it reaches you the same way for the same reason.
 
 Warnings from the initial load are emitted after construction returns, so a
 listener attached on the next line still hears them.

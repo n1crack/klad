@@ -102,6 +102,11 @@ function optionsOf(snapshot: ConfigSnapshot): [key: string, value: unknown][] {
     // reader with no way to find out why.
     'dragAndDrop',
     'selection',
+    // Both default to absent, and a snippet without them reproduces a chart
+    // that has its whole tree already — which is the opposite of the example
+    // that sets them.
+    'mayHaveChildren',
+    'loadChildren',
   ]) {
     if (declared[key] !== undefined) entries.push([key, declared[key]])
   }

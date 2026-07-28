@@ -20,7 +20,20 @@ export interface A11yTree {
    * node: a screen reader reading out nodes the chart is not showing is a
    * mirror that contradicts what it mirrors.
    */
-  update(tree: Tree, open: Uint8Array, labelOf: (index: number) => string, isolate?: number): void
+  /**
+   * `unloaded` marks nodes whose children have not been fetched yet. Without
+   * it they read as leaves — no `aria-expanded`, and the right arrow does
+   * nothing — which would leave every lazily loaded branch unreachable from
+   * the keyboard while a pointer could open it by clicking. `null` for a chart
+   * that loads nothing on demand.
+   */
+  update(
+    tree: Tree,
+    open: Uint8Array,
+    labelOf: (index: number) => string,
+    isolate?: number,
+    unloaded?: Uint8Array | null,
+  ): void
   focusNode(id: string): void
   destroy(): void
 }
@@ -166,6 +179,9 @@ export function createA11yTree(container: HTMLElement, callbacks: A11yCallbacks)
   let currentTree: Tree | undefined
   let currentOpen: Uint8Array | undefined
   let currentLabelOf: ((index: number) => string) | undefined
+  /** Retained like the rest, and for the same reason — key handling asks "does
+   * this node have children" and an unloaded one does. See `update`. */
+  let currentUnloaded: Uint8Array | null = null
   // The visible nodes in preorder, and each node id's position in that sequence.
   // Rebuilt by the cheap pass in `update()`; read by keyboard nav to re-window.
   let visibleSeq: number[] = []
@@ -219,7 +235,9 @@ export function createA11yTree(container: HTMLElement, callbacks: A11yCallbacks)
     for (let pos = start; pos < end; pos++) {
       const index = visibleSeq[pos]!
       const id = currentTree!.indexToId[index]!
-      const hasChildren = currentTree!.childStart[index + 1]! > currentTree!.childStart[index]!
+      const hasChildren =
+        currentTree!.childStart[index + 1]! > currentTree!.childStart[index]! ||
+        (currentUnloaded !== null && currentUnloaded[index] === 1)
       const level = String(currentTree!.depth[index]! + 1)
       const label = currentLabelOf!(index) || id
       const expanded = hasChildren ? (currentOpen![index] === 1 ? 'true' : 'false') : undefined
@@ -381,7 +399,9 @@ export function createA11yTree(container: HTMLElement, callbacks: A11yCallbacks)
     if (currentTree === undefined || currentOpen === undefined) return
     const index = currentTree.idToIndex.get(id)
     if (index === undefined) return
-    const hasChildren = currentTree.childStart[index + 1]! > currentTree.childStart[index]!
+    const hasChildren =
+      currentTree.childStart[index + 1]! > currentTree.childStart[index]! ||
+      (currentUnloaded !== null && currentUnloaded[index] === 1)
     if (!hasChildren) return
     if (currentOpen[index] !== 1) {
       // Collapsed: expand it. `onActivate` is the same toggle Enter/Space
@@ -451,7 +471,7 @@ export function createA11yTree(container: HTMLElement, callbacks: A11yCallbacks)
   root.addEventListener('focusin', onFocusIn)
 
   return {
-    update(tree, open, labelOf, isolate = -1) {
+    update(tree, open, labelOf, isolate = -1, unloaded = null) {
       // Focus preservation. A full rebuild used to destroy the focused
       // element outright, so focus fell back to the body — an acceptable if
       // unfriendly default. Pooling introduces a sharper hazard: a row can be
@@ -470,6 +490,7 @@ export function createA11yTree(container: HTMLElement, callbacks: A11yCallbacks)
       currentTree = tree
       currentOpen = open
       currentLabelOf = labelOf
+      currentUnloaded = unloaded
 
       // Roving tabindex target for this render: keep whatever node last held
       // the tab stop, provided it still exists in this tree — otherwise fall
@@ -553,6 +574,7 @@ export function createA11yTree(container: HTMLElement, callbacks: A11yCallbacks)
       currentTree = undefined
       currentOpen = undefined
       currentLabelOf = undefined
+      currentUnloaded = null
       visibleSeq = []
       seqPosById.clear()
       windowStart = 0

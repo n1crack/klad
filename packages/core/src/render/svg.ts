@@ -2,8 +2,9 @@ import type { Bounds } from '../types.js'
 import type { EdgeStyle, RenderContext2D } from './renderer.js'
 import type { Theme } from './theme.js'
 import { resolveTheme } from './theme.js'
-import { edgeAnchors, edgeStyleDrawsConnectors } from './edge-geometry.js'
+import { edgeAnchors, edgeStyleDrawsConnectors, hiddenStub } from './edge-geometry.js'
 import { computeNodeFills, inkOn } from './palette.js'
+import { HIDDEN_DOT_PX, HIDDEN_STUB_PX } from './canvas2d.js'
 import {
   isSectorVisible,
   labelPlacement,
@@ -575,6 +576,34 @@ export function toSVG(data: ExportData, opts: SvgExportOptions = {}): string {
           ` r="${fmt(Math.max(w, h) / 2 + 3)}"/>`,
       )
     }
+  } else if (hidden !== null) {
+    // Rectangular: the same stub-and-dot the canvas draws. An export is at
+    // 1:1, so the canvas's SCREEN-pixel lengths are world units here — which
+    // is exactly the size the canvas draws them at a zoom of 1.
+    for (let i = 0; i < n; i++) {
+      if (hidden[i] !== 1) continue
+      const o = i * 4
+      const stub = hiddenStub(
+        data.edgeStyle,
+        data.horizontal,
+        data.rtl,
+        boxes[o]!,
+        boxes[o + 1]!,
+        boxes[o + 2]!,
+        boxes[o + 3]!,
+      )
+      if (stub === null) continue
+      const sx = stub.x + offsetX
+      const sy = stub.y + offsetY
+      const ex = sx + stub.dx * HIDDEN_STUB_PX
+      const ey = sy + stub.dy * HIDDEN_STUB_PX
+      const ink = escapeXml(theme.edgeStroke)
+      nodeParts.push(
+        `<path class="hs" stroke="${ink}" d="M${fmt(sx)} ${fmt(sy)}L${fmt(ex)} ${fmt(ey)}"/>` +
+          `<circle class="hd" fill="${ink}"` +
+          ` cx="${fmt(ex)}" cy="${fmt(ey)}" r="${fmt(HIDDEN_DOT_PX)}"/>`,
+      )
+    }
   }
 
   const labelParts: string[] = []
@@ -654,6 +683,12 @@ export function toSVG(data: ExportData, opts: SvgExportOptions = {}): string {
     // two straight sides meet its arcs from spiking outward at narrow angles.
     `.s{stroke:${css(theme.surface)};stroke-width:${css(theme.sectorGap)};stroke-linejoin:round}` +
     `.h{fill:none;stroke-width:1.5;opacity:0.55}` +
+    // The rectangular mark, at the canvas's own alpha for it. Its own classes
+    // rather than `.h`: that rule's `fill:none` would beat the dot's own
+    // `fill` attribute (a stylesheet always does), leaving a hollow ring where
+    // the canvas draws a solid dot.
+    `.hs{fill:none;stroke-width:1.5;opacity:0.75}` +
+    `.hd{stroke:none;opacity:0.75}` +
     `.e{fill:none;stroke:${css(theme.edgeStroke)};stroke-width:${css(theme.edgeWidth)}}` +
     `.l{fill:${css(theme.labelColour)};font:${css(theme.labelFont)};dominant-baseline:middle}`
 

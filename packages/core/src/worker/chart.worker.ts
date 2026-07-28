@@ -40,7 +40,7 @@ self.onmessage = (event: MessageEvent<MainToWorker>): void => {
         renderer?.setTheme(message.theme as Theme)
         break
       case 'data':
-        engine?.setData(message.tree, message.sizes, message.labels, message.open)
+        engine?.setData(message.tree, message.sizes, message.labels, message.open, message.unloaded)
         break
       case 'options':
         engine?.setOptions(message.options)
