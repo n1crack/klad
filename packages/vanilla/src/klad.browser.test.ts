@@ -2963,6 +2963,31 @@ describe('filter', () => {
     chart.destroy()
   })
 
+  it('does not wedge on a focus for something the filter removed', async () => {
+    // `focus` defers when the target has no box yet, waiting for the relayout
+    // that reveals it. Under a filter that relayout never comes for a node the
+    // filter excluded, so the wait has to end rather than sit there asking for
+    // frames forever.
+    const chart = filterable()
+    await nextFrame()
+    await settle()
+    chart.api.filter('Leaf')
+    await settleTransition()
+    await settle()
+
+    chart.api.focus('c')
+    await settleTransition()
+    await settle()
+
+    // Still the filtered chart, and still responsive: a later command lands.
+    expect(onScreen()).toEqual(['a', 'b', 'd'])
+    chart.api.filter(null)
+    await settleTransition()
+    await settle()
+    expect(onScreen()).toEqual(['a', 'b', 'c', 'd'])
+    chart.destroy()
+  })
+
   it('leaves nothing but the roots when nothing matches', async () => {
     const chart = filterable()
     await nextFrame()
@@ -3059,6 +3084,33 @@ describe('very wide levels', () => {
   /** How many nodes the chart is actually laying out — the pruned count, not
    * whatever happens to be in the viewport. */
   const laidOut = (chart: ReturnType<typeof createKlad>) => chart.api.getState().visibleCount
+
+  /** Drags one node onto another. `bias` shifts the release point within the
+   * target row as a fraction of its height — 0 is the middle ("into"), +0.35
+   * lands in the trailing band ("after"). */
+  async function dragOnto(fromId: string, toId: string, bias = 0) {
+    const overlay = document.querySelector<HTMLElement>('.klad-overlay-node')!.parentElement!
+    const rect = overlay.getBoundingClientRect()
+    const boxOf = (id: string) =>
+      document.querySelector<HTMLElement>(`.klad-overlay-node[data-klad-id="${id}"]`)!.getBoundingClientRect()
+    const from = boxOf(fromId)
+    const to = boxOf(toId)
+    const a = { x: from.left + from.width / 2, y: from.top + from.height / 2 }
+    const b = { x: to.left + to.width / 2, y: to.top + to.height * (0.5 + bias) }
+    const ev = (t: string, p: { x: number; y: number }) =>
+      new PointerEvent(t, { clientX: p.x, clientY: p.y, pointerId: 1, button: 0, bubbles: true })
+    overlay.dispatchEvent(ev('pointerdown', a))
+    for (let i = 1; i <= 5; i++) {
+      window.dispatchEvent(
+        ev('pointermove', { x: a.x + ((b.x - a.x) * i) / 5, y: a.y + ((b.y - a.y) * i) / 5 }),
+      )
+      await nextFrame()
+    }
+    window.dispatchEvent(ev('pointerup', b))
+    await nextFrame()
+    await nextFrame()
+    void rect
+  }
 
   it('draws the first few and rolls the rest into one node', async () => {
     const chart = wide({ maxChildren: 5 })
@@ -3390,6 +3442,90 @@ describe('very wide levels', () => {
     await settle()
     expect(laidOut(other)).toBe(21)
     other.destroy()
+    chart.destroy()
+  })
+
+  it('does not bake the invented node into the data on a drop', async () => {
+    // A reparent rebuilds the host's array from the chart's current rows. If
+    // that includes the node a cap invented, it becomes ordinary data — and
+    // the next rebuild plans a SECOND aggregate for the same parent, on top
+    // of the fossil of the first.
+    const warnings: string[] = []
+    const chart = wide({ maxChildren: 5, dragAndDrop: true })
+    chart.on('warning', (w) => warnings.push(w.code))
+    await nextFrame()
+    await settle()
+
+    await dragOnto('c1', 'c0')
+    await settleTransition()
+    await settle()
+
+    expect(chart.api.stats('c0')!.directChildren).toBe(1)
+    expect(warnings).not.toContain('duplicate-id')
+    // The chart's node count must not have grown. A second aggregate for the
+    // same parent, on top of the fossil of the first, shows up here.
+    // It takes a SECOND drop to show. The first writes the invented node into
+    // the array; the second renormalises that array, plans another aggregate
+    // for the same parent, and lands on a duplicate id.
+    await dragOnto('c2', 'c3')
+    await settleTransition()
+    await settle()
+
+    expect(warnings).not.toContain('duplicate-id')
+    expect(chart.api.getState().nodeCount).toBe(22) // 21 real + one aggregate
+    chart.destroy()
+  })
+
+  it('reports a drop index among ALL the siblings, not the drawn ones', async () => {
+    // `dropPosition` works on the pruned tree, where a capped parent has five
+    // children and an aggregate. "After the last drawn one" is not "after the
+    // fifth of twenty", and a handler told index 5 would put the node in the
+    // wrong place in its own array.
+    const seen: number[] = []
+    // Pinning c19 is what makes the two index spaces genuinely disagree: the
+    // root's drawn children are c0..c3 and c19, so c19 is the FIFTH drawn but
+    // the TWENTIETH child. Without a pin the hidden ones are all at the tail
+    // and the two numbers coincide, which is why this needs one.
+    const chart = wide({
+      maxChildren: 5,
+      dragAndDrop: true,
+      pinChildren: (item) => String(item.id) === 'c19',
+    })
+    chart.on('nodeDrop', ({ index, preventDefault }) => {
+      seen.push(index)
+      preventDefault()
+    })
+    await nextFrame()
+    await settle()
+
+    // Drop c0 after c19. Among the root's twenty children c19 sits at 19, so
+    // "after it" is 20 — the index counts before the moving nodes are taken
+    // out, which is what `nodeDrop` documents. Not 5, which is where c19 sits
+    // among the five the cap left drawn.
+    await dragOnto('c0', 'c19', 0.35)
+    await settleTransition()
+    expect(seen.length).toBe(1)
+    expect(seen[0]).toBe(20)
+    chart.destroy()
+  })
+
+  it('forgets lifted caps when the data is replaced', async () => {
+    // `uncapped` and `revealed` name nodes in the dataset being replaced.
+    // Left standing they lift caps on ids that no longer exist — or, worse,
+    // on ones that happen to exist again and that nobody has opened.
+    const chart = wide({ maxChildren: 5 })
+    await nextFrame()
+    await settle()
+    chart.api.showMore('klad:more:r')
+    await settleTransition()
+    await settle()
+    expect(laidOut(chart)).toBe(21)
+
+    chart.update(WIDE)
+    await settleTransition()
+    await settle()
+    expect(laidOut(chart)).toBe(7)
+    expect(chart.api.getView().uncapped).toEqual([])
     chart.destroy()
   })
 

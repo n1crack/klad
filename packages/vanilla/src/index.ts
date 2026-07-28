@@ -1157,20 +1157,35 @@ export function createKlad(host: HTMLElement, options: Options): KladInstance {
     return { extra, hidden }
   }
 
-  const treeSource = (): NodeData[] => {
-    let all = currentOptions.data
-    if (loadedChildren.size > 0) {
-      all = [...currentOptions.data]
-      for (const [parentId, items] of loadedChildren) {
-        for (const item of items) {
-          // A `parentId` the loader set wins, so returning a whole subtree in
-          // one call works. One it left off is the common case — "here are the
-          // children of the node you asked about" — and filling it in is what
-          // makes that call as short as it reads.
-          all.push(item.parentId === undefined ? { ...item, parentId } : item)
-        }
+  /**
+   * Every row that came from OUTSIDE the chart: the host's array, plus
+   * everything `loadChildren` returned.
+   *
+   * Separate from `treeSource()` because a reparent rebuilds the host's array
+   * from these, and the nodes a cap invents must not end up in it. They did:
+   * one drop wrote an aggregate into `data`, and the next renormalised that
+   * array, planned a second aggregate for the same parent and landed on a
+   * duplicate id. Loaded children are a different case and belong here — they
+   * came from the host, and folding them in is deliberate (see
+   * `applyReparent`).
+   */
+  const baseRows = (): NodeData[] => {
+    if (loadedChildren.size === 0) return currentOptions.data
+    const all = [...currentOptions.data]
+    for (const [parentId, items] of loadedChildren) {
+      for (const item of items) {
+        // A `parentId` the loader set wins, so returning a whole subtree in
+        // one call works. One it left off is the common case — "here are the
+        // children of the node you asked about" — and filling it in is what
+        // makes that call as short as it reads.
+        all.push(item.parentId === undefined ? { ...item, parentId } : item)
       }
     }
+    return all
+  }
+
+  const treeSource = (): NodeData[] => {
+    const all = baseRows()
     // Recomputed rather than cached: this runs per data change, not per
     // frame, and it is the same O(n) `normalize` is about to spend anyway.
     // Caching it would mean inventing an invalidation rule for something that
@@ -1672,12 +1687,52 @@ export function createKlad(host: HTMLElement, options: Options): KladInstance {
    * meaningful — a handler that had to undo a move it did not want would have
    * to know how to undo it, and would flash the wrong tree on the way.
    */
+  /**
+   * Translates a position among a parent's DRAWN children into one among all
+   * of them.
+   *
+   * Only ever differs when something is removing siblings from the drawn tree
+   * — a cap, or a filter — and then it differs by however many of them sit
+   * before the landing point, which pinning can make any number at all.
+   *
+   * The anchor is the drawn child the drop lands after; the answer is one past
+   * wherever that child really is. Index 0 has no anchor and stays 0: before
+   * everything drawn is before everything, since the drawn children are a
+   * subsequence in the same order.
+   */
+  const sourceChildIndex = (
+    parentSource: number,
+    visible: ReturnType<typeof pruneToVisible>,
+    drawnIndex: number,
+  ): number => {
+    if (drawnIndex === 0 || parentSource === -1) return drawnIndex
+    const parentPruned = visible.fromSource[parentSource]
+    if (parentPruned === undefined || parentPruned === -1) return drawnIndex
+    const from = visible.tree.childStart[parentPruned]!
+    const anchorPruned = visible.tree.childIndex[from + drawnIndex - 1]
+    if (anchorPruned === undefined) return drawnIndex
+    const anchorSource = visible.toSource[anchorPruned]!
+    const sourceFrom = tree.childStart[parentSource]!
+    const sourceTo = tree.childStart[parentSource + 1]!
+    for (let c = sourceFrom; c < sourceTo; c++) {
+      if (tree.childIndex[c] === anchorSource) return c - sourceFrom + 1
+    }
+    return drawnIndex
+  }
+
   const emitDrop = (ids: string[], target: number, mode: DropMode): void => {
     const pruned = sourceToPruned.get(target)
     if (pruned === undefined) return
     const visible = pruneToVisible(tree, open, isolatedIndex, filterKeep, overflowHide)
     const position = dropPosition(visible.tree, pruned, mode)
     const parentSource = position.parent === -1 ? -1 : visible.toSource[position.parent]!
+    // `dropPosition` counts among the DRAWN siblings, and a capped level draws
+    // eight of four hundred. Reported and applied as-is, "after the last one
+    // you can see" lands wherever the eighth child happens to be — so the
+    // index is translated back into the parent's real child list here, by
+    // taking the drawn sibling it lands after and finding where THAT one
+    // really sits.
+    const dropIndex = sourceChildIndex(parentSource, visible, position.index)
     // In tree order, so a handler applying this to its own array does not have
     // to work the ordering out. `tree.order` is preorder, which is the order a
     // viewer sees them in.
@@ -1690,7 +1745,7 @@ export function createKlad(host: HTMLElement, options: Options): KladInstance {
       ids: ordered,
       items: ordered.map((id) => itemById.get(id) ?? { id }),
       parentId: parentSource === -1 ? null : tree.indexToId[parentSource]!,
-      index: position.index,
+      index: dropIndex,
       mode,
       preventDefault: () => {
         refused = true
@@ -1702,7 +1757,7 @@ export function createKlad(host: HTMLElement, options: Options): KladInstance {
     applyReparent(
       ordered,
       parentSource === -1 ? null : tree.indexToId[parentSource]!,
-      position.index,
+      dropIndex,
       target,
     )
   }
@@ -1736,10 +1791,12 @@ export function createKlad(host: HTMLElement, options: Options): KladInstance {
     const openById = new Map<string, boolean>()
     for (let i = 0; i < tree.count; i++) openById.set(tree.indexToId[i]!, open[i] === 1)
 
-    // Everything, loaded children included — a reparent rebuilds the array
-    // the chart lays out, and one built from `currentOptions.data` alone would
-    // throw away every branch that had been fetched.
-    const source = treeSource()
+    // Everything that came from outside the chart — loaded children included,
+    // since one built from `currentOptions.data` alone would throw away every
+    // branch that had been fetched. NOT `treeSource()`: that adds the nodes a
+    // cap invents, and writing those into the host's array makes the next
+    // rebuild plan a second aggregate for the same parent.
+    const source = baseRows()
     const moved: NodeData[] = []
     const rest: NodeData[] = []
     for (const item of source) {
@@ -1767,7 +1824,11 @@ export function createKlad(host: HTMLElement, options: Options): KladInstance {
     // way, and the nodes stay loaded — they just have one home instead of two.
     loadedChildren.clear()
     const previous = tree
-    tree = normalize(rest)
+    // Through `treeSource()` rather than `rest` directly: the caps have to be
+    // planned again against the array this drop just produced, and a
+    // `normalize(rest)` would leave the chart with no aggregate node at all
+    // until something else forced a full rebuild.
+    tree = normalize(treeSource())
 
     // OLD source index -> NEW. A source index only means anything within one
     // `normalize`, and the array was just rebuilt, so without this the
@@ -3511,6 +3572,10 @@ export function createKlad(host: HTMLElement, options: Options): KladInstance {
       rebuildForOverflow()
     },
     reveal(ids) {
+      // Nothing to be revealed from. Without this the call still costs a full
+      // renormalise and a transition, and quietly grows a set of ids that
+      // will start meaning something if a cap is ever turned on.
+      if (currentOptions.maxChildren === undefined) return
       let changed = false
       for (const id of ids) {
         if (revealed.has(id)) continue
@@ -3527,6 +3592,11 @@ export function createKlad(host: HTMLElement, options: Options): KladInstance {
       // intersect and the filter's own results get capped as well.
       overflowHide = overflowMask()
       chartHost.setOverflow(overflowHide)
+      // A deferred focus is waiting for a relayout that reveals its target.
+      // For a node this filter excludes that relayout never comes — and when
+      // the filter is cleared later, the wait would finally resolve and jump
+      // the camera somewhere nobody asked to go any more.
+      pendingFocus = null
       minimapNeedsRefit = true
       a11yDirty = true
       // The chart now contains a different set of nodes at different
@@ -4073,6 +4143,12 @@ export function createKlad(host: HTMLElement, options: Options): KladInstance {
       // keeps them, because it is the call that says the data did not change.
       loadedChildren.clear()
       loadingIds.clear()
+      // Same reasoning for the caps: `uncapped` and `revealed` name nodes in
+      // the dataset that is being replaced. Left standing they would keep
+      // lifting caps on ids that no longer exist and, worse, on ones that
+      // happen to exist again in the new data and that nobody has opened.
+      uncapped.clear()
+      revealed.clear()
       tree = normalize(treeSource())
       stats = discountAggregates(computeSubtreeStats(tree))
       rebuildItemIndex()
