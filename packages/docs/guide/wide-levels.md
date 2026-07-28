@@ -139,6 +139,23 @@ else. Both are carried in `getView()` / `setView()` — a link that restored
 everything except what the viewer had opened up would come back a different
 chart.
 
+## In Vue and React
+
+Both options pass straight through. One caveat in both, and it bites harder
+here than elsewhere: define `pinChildren` and `maxChildren` **outside** the
+render, or memoise them. Vue watches the options object deeply and React
+compares it by identity, so a function rebuilt every render triggers
+`update()` every render — which resets the open branches *and* every cap the
+viewer had lifted.
+
+If your working set is reactive, keep the *set* reactive and the *function*
+stable:
+
+```ts
+const watching = new Set<string>()          // mutate this
+const pinChildren = (item) => watching.has(String(item.id))   // never rebuilt
+```
+
 ## With a filter
 
 A filter suppresses capping entirely. Someone who has asked for specific nodes

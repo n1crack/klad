@@ -2020,6 +2020,9 @@ export function createKlad(host: HTMLElement, options: Options): KladInstance {
     chartHost.animateNextLayout(remap)
     applyData(false)
     if (screen !== null) pendingPin = { id, screen }
+    // Same reasoning as a lifted cap: a branch that just arrived can be
+    // bigger than everything already on screen.
+    minimapNeedsRefit = true
     a11yDirty = true
     emit('toggle', { id, open: true })
     scheduleFrame()
@@ -2116,7 +2119,17 @@ export function createKlad(host: HTMLElement, options: Options): KladInstance {
    * asking for MORE of what they are already looking at, and moving the camera
    * would take away the thing they were looking at it from.
    */
-  const rebuildForOverflow = (): void => {
+  const rebuildForOverflow = (pinId?: string): void => {
+    // Where the parent whose cap is being lifted sits right now. Held across
+    // the rebuild, the way a drop holds its target: clicking "+392 more"
+    // makes that level explode sideways, and the node you clicked from is the
+    // one place you want to still be looking at afterwards. The aggregate
+    // itself is no anchor — lifting the cap is what removes it.
+    const pinIndex = pinId === undefined ? -1 : (tree.idToIndex.get(pinId) ?? -1)
+    const pinBox = pinIndex === -1 ? null : boxOfSource(pinIndex)
+    const pinScreen =
+      pinBox === null ? null : worldToScreen(camera, pinBox.x + pinBox.w / 2, pinBox.y + pinBox.h / 2)
+
     const openById = new Map<string, boolean>()
     for (let i = 0; i < tree.count; i++) openById.set(tree.indexToId[i]!, open[i] === 1)
 
@@ -2137,6 +2150,11 @@ export function createKlad(host: HTMLElement, options: Options): KladInstance {
     cameraAnchor = null
     chartHost.animateNextLayout(remap)
     applyData(false)
+    if (pinScreen !== null && pinId !== undefined) pendingPin = { id: pinId, screen: pinScreen }
+    // A level of four hundred appearing changes what the map is a map OF at
+    // least as much as isolating does — and holding the old frame leaves the
+    // whole chart drawn in the corner the capped one used to occupy.
+    minimapNeedsRefit = true
     a11yDirty = true
     scheduleFrame()
   }
@@ -3594,7 +3612,7 @@ export function createKlad(host: HTMLElement, options: Options): KladInstance {
       // The parent, not the aggregate node: the cap belongs to the parent and
       // this is what lifts it.
       uncapped.add(info.parentId)
-      rebuildForOverflow()
+      rebuildForOverflow(info.parentId)
     },
     reveal(ids) {
       // Nothing to be revealed from. Without this the call still costs a full
@@ -3607,7 +3625,11 @@ export function createKlad(host: HTMLElement, options: Options): KladInstance {
         revealed.add(id)
         changed = true
       }
-      if (changed) rebuildForOverflow()
+      // Pinned on the parent the revealed children belong to, when they share
+      // one — which a picker on a single aggregate node always does.
+      const first = ids[0] === undefined ? undefined : tree.idToIndex.get(ids[0])
+      const parent = first === undefined ? -1 : tree.parent[first]!
+      if (changed) rebuildForOverflow(parent === -1 ? undefined : tree.indexToId[parent])
     },
     filter(query) {
       filterQuery = query

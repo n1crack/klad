@@ -3661,6 +3661,48 @@ describe('very wide levels', () => {
     chart.destroy()
   })
 
+  it('holds the parent still while the level explodes around it', async () => {
+    // Clicking "+15 more" makes that level fifteen nodes wider. The node you
+    // clicked from is the one place you want to still be looking at — and the
+    // aggregate itself is no anchor, since lifting the cap removes it.
+    //
+    // `tidy` rather than the file layout used elsewhere here: a tidy parent is
+    // centred over its children, so widening the level is exactly what moves
+    // it. In a file list the rows below simply grow downward and the parent
+    // never moves, pin or no pin.
+    const el = document.createElement('div')
+    el.style.width = '2200px'
+    el.style.height = '700px'
+    document.body.appendChild(el)
+    const chart = createKlad(el, {
+      data: WIDE,
+      nodeSize: { w: 60, h: 34 },
+      label: (item) => String(item.name ?? ''),
+      worker: false,
+      maxChildren: 5,
+      renderNode: (e, ctx) => (e.textContent = ctx.id),
+    })
+    await nextFrame()
+    await settle()
+
+    const boxOf = (id: string) =>
+      document.querySelector<HTMLElement>(`.klad-overlay-node[data-klad-id="${id}"]`)?.getBoundingClientRect() ??
+      null
+    const before = boxOf('r')!
+    expect(before).not.toBeNull()
+
+    chart.api.showMore('klad:more:r')
+    await settleTransition()
+    await settle()
+
+    const after = boxOf('r')
+    expect(after).not.toBeNull()
+    expect(Math.abs(after!.left - before.left)).toBeLessThan(1.5)
+    expect(Math.abs(after!.top - before.top)).toBeLessThan(1.5)
+    chart.destroy()
+    el.remove()
+  })
+
   it('does nothing without a cap', async () => {
     const chart = wide()
     await nextFrame()
