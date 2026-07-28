@@ -188,6 +188,11 @@ export interface Options {
    *
    * Meaningless without `loadChildren`, and ignored without it: a mark
    * inviting a click that cannot lead anywhere is worse than no mark.
+   *
+   * Keep it cheap. It is called once per node whenever the data changes — a
+   * property read or a comparison, not a lookup that walks something. At
+   * twenty thousand nodes a trivial predicate costs well under a millisecond
+   * and does not show; one that does real work per node would.
    */
   mayHaveChildren?: (item: NodeData) => boolean
   /**
@@ -992,7 +997,12 @@ export function createKlad(host: HTMLElement, options: Options): KladInstance {
       focus: centreIndex(),
       lod,
     })
-    chartHost.setData(toWireTree(tree), sizes, labels, open, unloadedMask())
+    // Built once and handed to both consumers. It calls the host's
+    // `mayHaveChildren` per node, so on a tree big enough to care that is
+    // twenty thousand calls into somebody else's code — worth not doing
+    // twice in the same function for the sake of a shorter line.
+    const unloaded = unloadedMask()
+    chartHost.setData(toWireTree(tree), sizes, labels, open, unloaded)
     // Deferred: applyData() runs synchronously inside createKlad, before the
     // caller has had a chance to attach a 'warning' listener via `on()`. Emitting
     // here directly would drop every warning raised on the initial load. Queuing
@@ -1005,7 +1015,7 @@ export function createKlad(host: HTMLElement, options: Options): KladInstance {
         for (const warning of warnings) emit('warning', warning)
       })
     }
-    a11y?.update(tree, open, (index) => labelOf(itemFor(index)), isolatedIndex, unloadedMask())
+    a11y?.update(tree, open, (index) => labelOf(itemFor(index)), isolatedIndex, unloaded)
   }
 
   /** `options.centre` as a source index, or -1 for "the default centre" —

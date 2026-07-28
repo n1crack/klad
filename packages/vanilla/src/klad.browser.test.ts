@@ -2738,6 +2738,38 @@ describe('children on demand', () => {
     chart.destroy()
   })
 
+  it('works in worker mode, mask and all', async () => {
+    // Every other test here runs the engine in-process. The `unloaded` mask is
+    // the one piece of this feature that crosses `postMessage`, so it is also
+    // the one piece the in-process tests cannot vouch for — a field missing
+    // from the wire type, or dropped in `host.ts`, would leave the marks off
+    // and nothing else would notice.
+    const chart = createKlad(host(), {
+      data: ROOTS,
+      nodeSize: { w: 120, h: 48 },
+      label: (item) => String(item.name ?? ''),
+      worker: true,
+      mayHaveChildren: (item) => Number(item.childCount ?? 0) > 0,
+      loadChildren: () => KIDS,
+      renderNode: (el, ctx) => {
+        el.textContent = String(ctx.item.name ?? '')
+      },
+    })
+    await nextFrame()
+    await settle()
+    await settle()
+    expect(cardOf('b1')).toBeNull()
+
+    chart.api.expand('b')
+    await settleTransition()
+    await settle()
+    await settle()
+
+    expect(cardOf('b1')?.textContent).toBe('First')
+    expect(chart.api.stats('b')!.directChildren).toBe(2)
+    chart.destroy()
+  })
+
   it('keeps loaded children through refresh, and drops them on update', async () => {
     const chart = lazy()
     await nextFrame()

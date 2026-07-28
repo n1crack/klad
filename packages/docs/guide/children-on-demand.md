@@ -37,6 +37,11 @@ already has some is not waiting for anything — and ignored entirely without
 `loadChildren`, because a mark inviting a click that cannot lead anywhere is
 worse than no mark.
 
+Keep it cheap: it runs once per node whenever the data changes. A property
+read or a comparison. At twenty thousand nodes a trivial predicate costs well
+under a millisecond against a ~27ms toggle and does not show; one that does
+real work per node would.
+
 ## What happens on a click
 
 1. The node is marked as having more inside, and starts **closed**. Whatever

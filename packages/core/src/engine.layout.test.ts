@@ -462,6 +462,37 @@ describe('hidden-children marks', () => {
     expect(at('b')).toBe(0)
   })
 
+  it('flags a node whose children have not been fetched', () => {
+    // An unloaded node has NO children in the source tree, so it takes the
+    // genuine-leaf early-out and would get no mark at all — leaving it
+    // indistinguishable from a leaf, with nothing to say there is more inside
+    // and nothing to invite the click that would go and get it.
+    const renderer = fakeRenderer()
+    const engine = createChartEngine(renderer)
+    const tree = normalize(DATA)
+    const sizes = new Float64Array(tree.count * 2).fill(40)
+    const unloaded = new Uint8Array(tree.count)
+    // `b1` is a genuine leaf in this dataset; the host says otherwise.
+    unloaded[idx(tree, 'b1')] = 1
+    engine.setViewport(800, 600, 1)
+    engine.setData(
+      toWireTree(tree),
+      sizes,
+      tree.indexToId.slice(),
+      new Uint8Array(tree.count).fill(1),
+      unloaded,
+    )
+    engine.render(0)
+
+    const marks = renderer.frames.at(-1)!.hasHidden
+    expect(marks).not.toBeNull()
+    const at = (id: string): number => marks![engine.visibleToSource.indexOf(idx(tree, id))]!
+    expect(at('b1')).toBe(1)
+    // Every other leaf is untouched — the mask says nothing about them.
+    expect(at('a1')).toBe(0)
+    expect(at('a2')).toBe(0)
+  })
+
   it('is null when nothing is hiding anything', () => {
     // The whole steady state of a fully expanded chart — no array allocated,
     // no per-node pass in the renderer.
