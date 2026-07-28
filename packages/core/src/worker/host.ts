@@ -96,6 +96,12 @@ export interface ChartHost {
    * mode this comes from each `frame` message's own field of the same name.
    */
   readonly lastDrawnAlpha: Float32Array | null
+  /** Mirrors `ChartEngine.lastGhostSource` and its two companions on either
+   * path — the nodes leaving this frame, so a DOM overlay can fade their
+   * cards rather than dropping them. */
+  readonly lastGhostSource: Uint32Array | null
+  readonly lastGhostBoxes: Float64Array | null
+  readonly lastGhostAlpha: Float32Array | null
   /**
    * Mirrors `ChartEngine.transitionStartedAt` on either path — the origin the
    * running transition's curve is measured from, `null` when none is running.
@@ -169,6 +175,10 @@ export function createChartHost(
   // Mirrors `engine.lastDrawnBoxes` for worker mode, updated from each
   // `frame` message's own field of the same name.
   let workerLastDrawnBoxes: Float64Array | null = null
+  // Same mirroring for the ghosts.
+  let workerGhostSource: Uint32Array | null = null
+  let workerGhostBoxes: Float64Array | null = null
+  let workerGhostAlpha: Float32Array | null = null
   // Same mirroring for `engine.lastDrawnAlpha`.
   let workerLastDrawnAlpha: Float32Array | null = null
 
@@ -203,6 +213,9 @@ export function createChartHost(
           workerRingActive = message.ringActive
           workerLastDrawnBoxes = message.lastDrawnBoxes
           workerLastDrawnAlpha = message.lastDrawnAlpha
+          workerGhostSource = message.ghostSource
+          workerGhostBoxes = message.ghostBoxes
+          workerGhostAlpha = message.ghostAlpha
           if (pendingFrame !== null && framesReceived >= pendingFrame.target) {
             pendingFrame.resolve(message.visible)
             pendingFrame = null
@@ -390,6 +403,15 @@ export function createChartHost(
     },
     get lastDrawnAlpha() {
       return engine !== null ? engine.lastDrawnAlpha : workerLastDrawnAlpha
+    },
+    get lastGhostSource() {
+      return engine !== null ? engine.lastGhostSource : workerGhostSource
+    },
+    get lastGhostBoxes() {
+      return engine !== null ? engine.lastGhostBoxes : workerGhostBoxes
+    },
+    get lastGhostAlpha() {
+      return engine !== null ? engine.lastGhostAlpha : workerGhostAlpha
     },
     get lastDrawnBoxes() {
       return engine !== null ? engine.lastDrawnBoxes : workerLastDrawnBoxes

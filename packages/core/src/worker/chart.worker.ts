@@ -113,9 +113,17 @@ self.onmessage = (event: MessageEvent<MainToWorker>): void => {
     // frames than `lastDrawnBoxes` is (only an expand with something actually
     // fading on screen produces one), so the common case is untouched.
     const lastDrawnAlpha = engine.lastDrawnAlpha
+    // Same reasoning again for the nodes leaving — `null` on all but the tail
+    // of a collapse or a swap, and bounded by how many are actually going.
+    const ghostSource = engine.lastGhostSource
+    const ghostBoxes = engine.lastGhostBoxes
+    const ghostAlpha = engine.lastGhostAlpha
     const transfer: Transferable[] = [drawn.buffer]
     if (lastDrawnBoxes !== null) transfer.push(lastDrawnBoxes.buffer)
     if (lastDrawnAlpha !== null) transfer.push(lastDrawnAlpha.buffer)
+    if (ghostSource !== null) transfer.push(ghostSource.buffer)
+    if (ghostBoxes !== null) transfer.push(ghostBoxes.buffer)
+    if (ghostAlpha !== null) transfer.push(ghostAlpha.buffer)
     post(
       {
         t: 'frame',
@@ -125,6 +133,9 @@ self.onmessage = (event: MessageEvent<MainToWorker>): void => {
         ringActive: engine.ringActive,
         lastDrawnBoxes,
         lastDrawnAlpha,
+        ghostSource,
+        ghostBoxes,
+        ghostAlpha,
       },
       transfer,
     )

@@ -270,6 +270,29 @@ export interface ChartEngine {
    * something is actually fading.
    */
   readonly lastDrawnAlpha: Float32Array | null
+  /**
+   * The nodes that have LEFT the tree and are still fading, this frame:
+   * their SOURCE indices, their interpolated boxes and their alphas, three
+   * arrays of the same length. `null` whenever nothing is leaving.
+   *
+   * The canvas has drawn these since 1.0 — a collapse's children shrink back
+   * into their parent — but the host's DOM overlay never heard about them,
+   * because they are not in `visible` and never will be. So a chart with real
+   * cards on it faded a box on the canvas while the card sitting on top of
+   * that box vanished on the first frame.
+   *
+   * Nowhere is that more visible than a capped level, where pinning somebody
+   * swaps them into a slot another node was occupying: the old card blinked
+   * out, the new one faded in, and what it read as was the whole thing
+   * re-rendering.
+   *
+   * Bounded by the number of nodes actually leaving, never by the tree, and
+   * `null` on every frame where none are — so the steady state is untouched,
+   * exactly like `lastDrawnBoxes`.
+   */
+  readonly lastGhostSource: Uint32Array | null
+  readonly lastGhostBoxes: Float64Array | null
+  readonly lastGhostAlpha: Float32Array | null
   readonly bounds: Bounds
   /**
    * Polar geometry per pruned node — `[cx, cy, innerR, outerR, a0, a1]` — for
@@ -1433,6 +1456,11 @@ export function createChartEngine(renderer: Renderer): ChartEngine {
   // allocation discipline, for the reveal alpha — see
   // `ChartEngine.lastDrawnAlpha`.
   let lastDrawnAlpha: Float32Array | null = null
+  // Companions to the two above, for the nodes on their way OUT — see
+  // `ChartEngine.lastGhostSource`.
+  let lastGhostSource: Uint32Array | null = null
+  let lastGhostBoxes: Float64Array | null = null
+  let lastGhostAlpha: Float32Array | null = null
 
   // --- one-shot toggle ring state ---
   // `setOpen` arms a CANDIDATE here — but only when its caller-supplied
@@ -2194,6 +2222,31 @@ export function createChartEngine(renderer: Renderer): ChartEngine {
     }
     lastDrawnBoxes = drawnBoxes
     lastDrawnAlpha = drawnAlpha
+
+    // The nodes on their way out, for the host's overlay — see
+    // `ChartEngine.lastGhostSource`. Copied rather than aliased for the same
+    // reason the two above are: these buffers are reused every frame, and the
+    // host may still be reading last frame's when the next one lands.
+    if (ghostCount === 0 || transition === null) {
+      lastGhostSource = null
+      lastGhostBoxes = null
+      lastGhostAlpha = null
+    } else {
+      const source = new Uint32Array(ghostCount)
+      const boxes = new Float64Array(ghostCount * 4)
+      const alpha = new Float32Array(ghostCount)
+      for (let g = 0; g < ghostCount; g++) {
+        source[g] = transition.ghosts[g]!.source
+        boxes[g * 4] = ghostDrawBoxes[g * 4]!
+        boxes[g * 4 + 1] = ghostDrawBoxes[g * 4 + 1]!
+        boxes[g * 4 + 2] = ghostDrawBoxes[g * 4 + 2]!
+        boxes[g * 4 + 3] = ghostDrawBoxes[g * 4 + 3]!
+        alpha[g] = ghostDrawAlpha[g]!
+      }
+      lastGhostSource = source
+      lastGhostBoxes = boxes
+      lastGhostAlpha = alpha
+    }
     return drawn
   }
 
@@ -2408,6 +2461,15 @@ export function createChartEngine(renderer: Renderer): ChartEngine {
     },
     get lastDrawnAlpha() {
       return lastDrawnAlpha
+    },
+    get lastGhostSource() {
+      return lastGhostSource
+    },
+    get lastGhostBoxes() {
+      return lastGhostBoxes
+    },
+    get lastGhostAlpha() {
+      return lastGhostAlpha
     },
     get bounds() {
       return bounds

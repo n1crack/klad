@@ -2249,6 +2249,10 @@ export function createKlad(host: HTMLElement, options: Options): KladInstance {
   /** This frame's reveal alpha for a node, `1` (fully opaque) for anything
    * not currently fading — see `renderAlphaBySource`. */
   const alphaOfSource = (source: number): number => renderAlphaBySource?.get(source) ?? 1
+  /** Overlay entries for the nodes leaving this frame — see
+   * `refreshRenderBoxBySource`. Empty on all but the tail of a collapse or a
+   * swap. */
+  let ghostIds: { index: number; id: string }[] = []
 
   /**
    * Rebuilds `renderBoxBySource` from whatever `chartHost.lastDrawnBoxes` says
@@ -2271,12 +2275,48 @@ export function createKlad(host: HTMLElement, options: Options): KladInstance {
       renderAlphaBySource = alphas
     }
 
+    // The nodes on their way OUT, folded into the same two maps. They are not
+    // in `drawn` and never will be — they have left the tree — but the canvas
+    // is still fading them, and a card sitting on top of one of those boxes
+    // that simply vanished on the first frame is what made a swap on a capped
+    // level read as the whole chart re-rendering.
+    const ghostSource = chartHost.lastGhostSource
+    const ghostBoxes = chartHost.lastGhostBoxes
+    const ghostAlpha = chartHost.lastGhostAlpha
+    ghostIds = []
+    if (ghostSource !== null && ghostBoxes !== null && ghostAlpha !== null) {
+      const alphas = renderAlphaBySource ?? new Map<number, number>()
+      for (let g = 0; g < ghostSource.length; g++) {
+        const source = ghostSource[g]!
+        const id = tree.indexToId[source]
+        if (id === undefined) continue
+        alphas.set(source, ghostAlpha[g]!)
+        ghostIds.push({ index: source, id })
+      }
+      renderAlphaBySource = alphas
+    }
+
     const lastDrawnBoxes = chartHost.lastDrawnBoxes
-    if (lastDrawnBoxes === null) {
+    if (lastDrawnBoxes === null && ghostIds.length === 0) {
       renderBoxBySource = null
       return
     }
     const map = new Map<number, { x: number; y: number; w: number; h: number }>()
+    if (ghostSource !== null && ghostBoxes !== null) {
+      for (let g = 0; g < ghostSource.length; g++) {
+        const o = g * 4
+        map.set(ghostSource[g]!, {
+          x: ghostBoxes[o]!,
+          y: ghostBoxes[o + 1]!,
+          w: ghostBoxes[o + 2]!,
+          h: ghostBoxes[o + 3]!,
+        })
+      }
+    }
+    if (lastDrawnBoxes === null) {
+      renderBoxBySource = map
+      return
+    }
     for (let i = 0; i < drawn.length; i++) {
       const o = i * 4
       map.set(drawn[i]!, {
@@ -2905,7 +2945,7 @@ export function createKlad(host: HTMLElement, options: Options): KladInstance {
       if (overlay !== null) {
         if (overlayEnabled(camera.k, lod) && currentOptions.renderNode !== undefined) {
           overlay.update(
-            Array.from(drawn, (index) => ({ index, id: tree.indexToId[index]! })),
+            [...Array.from(drawn, (index) => ({ index, id: tree.indexToId[index]! })), ...ghostIds],
             interpolatedBoxOfSource,
             camera,
             alphaOfSource,

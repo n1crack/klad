@@ -3867,6 +3867,47 @@ describe('very wide levels', () => {
     chart.destroy()
   })
 
+  it('fades the card that lost its slot instead of dropping it', async () => {
+    // The canvas has faded leaving nodes since 1.0, but the overlay never
+    // heard about them — they are not in `visible` and never will be. So the
+    // old card blinked out on the first frame while the new one faded in, and
+    // a swap in one slot read as the whole chart re-rendering.
+    const watching = new Set<string>()
+    const chart = wide({
+      maxChildren: 3,
+      pinChildren: (item) => watching.has(String(item.id)),
+    })
+    await nextFrame()
+    await settle()
+    expect(onScreen()).toContain('c2')
+
+    const alphaOf = (id: string) => {
+      const el = document.querySelector<HTMLElement>(`.klad-overlay-node[data-klad-id="${id}"]`)
+      if (el === null) return null
+      return el.style.opacity === '' ? 1 : Number(el.style.opacity)
+    }
+
+    watching.add('c17')
+    chart.api.refresh()
+
+    // c2 lost its slot. For several frames it is still there and on its way
+    // out, rather than gone between one frame and the next.
+    let sawFading = false
+    for (let i = 0; i < 12; i++) {
+      await nextFrame()
+      const a = alphaOf('c2')
+      if (a !== null && a > 0 && a < 1) sawFading = true
+    }
+    await settleTransition()
+    await settle()
+
+    expect(sawFading).toBe(true)
+    // And it is gone once the transition ends.
+    expect(alphaOf('c2')).toBeNull()
+    expect(onScreen()).toContain('c17')
+    chart.destroy()
+  })
+
   it('does nothing without a cap', async () => {
     const chart = wide()
     await nextFrame()

@@ -258,5 +258,13 @@ export type WorkerToMain =
        * getter's docblock for why it cannot be inferred from the host's own
        * frame clock in worker mode. */
       transitionStartedAt: number | null
+      /** Mirrors `ChartEngine.lastGhostSource` and its two companions: the
+       * nodes on their way OUT this frame, so the main thread's DOM overlay
+       * can fade their cards instead of dropping them. Three aligned arrays,
+       * `null` together whenever nothing is leaving — which is every frame
+       * except the tail of a collapse or a swap. */
+      ghostSource: Uint32Array | null
+      ghostBoxes: Float64Array | null
+      ghostAlpha: Float32Array | null
     }
   | { t: 'error'; message: string }
