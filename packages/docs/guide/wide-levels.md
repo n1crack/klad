@@ -43,6 +43,9 @@ of the parent:
 maxChildren: (item) => (item.kind === 'department' ? 12 : 6)
 ```
 
+On a `radial` or `sunburst` wheel it caps a ring the same way, and the node
+standing for the rest takes a segment of its own.
+
 It caps **children**, so it does not cap the roots — they are nobody's
 children, and there is no parent to hang the aggregate node off. A forest of
 three hundred roots draws three hundred roots.
@@ -91,6 +94,12 @@ renderNode: (element, context) => {
 | `ids` | Which — so a picker is possible without asking the chart for anything. |
 | `showMore()` | Lift the cap on this parent: draw all of them. |
 | `reveal(ids)` | Bring specific ones back **without** lifting the cap. |
+
+`reveal` swaps rather than adds: the cap is a budget, and what you ask for
+takes a slot from it, so something else drops out. That is the same rule pins
+follow — both get first claim, and the total stays at the cap unless they
+alone exceed it. If you want more on screen rather than different things on
+screen, that is `showMore`.
 
 `showMore` and `reveal` are bound to this node, so a card is self-contained and
 does not have to reach back out for the chart instance from inside a render

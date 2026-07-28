@@ -3766,3 +3766,97 @@ describe('very wide levels', () => {
     chart.destroy()
   })
 })
+
+describe('the wheels, with the 1.5 masks', () => {
+  // Enough breadth that a cap has something to do on a ring.
+  const WHEEL = [
+    { id: 'w', name: 'Hub' },
+    ...Array.from({ length: 12 }, (_, i) => ({ id: `s${i}`, parentId: 'w', name: `Slice ${i}` })),
+    ...Array.from({ length: 6 }, (_, i) => ({ id: `s0-${i}`, parentId: 's0', name: `Leaf ${i}` })),
+  ]
+
+  function wheel(overrides: Partial<Options> = {}) {
+    return createKlad(host(), {
+      data: WHEEL,
+      label: (item) => String(item.name ?? ''),
+      worker: false,
+      ...overrides,
+    })
+  }
+
+  for (const layout of ['sunburst', 'radial'] as const) {
+    it(`filters a ${layout} without leaving it mid-animation`, async () => {
+      // A filter is a hard cut, like `isolate`: the nodes that leave have
+      // nowhere to animate FROM. On a wheel that matters more than on a tier,
+      // because the polar transition tweens four numbers per node and a stale
+      // one describes an arc that never existed.
+      const chart = wheel({ layout })
+      await nextFrame()
+      await settle()
+
+      const matched = chart.api.filter('Leaf 3')
+      await settleTransition()
+      await settle()
+
+      expect(matched).toEqual(['s0-3'])
+      // Three nodes left: the hub, s0, and the match. The DISC does not
+      // shrink — a wheel's radius follows its ring count, not how many
+      // segments are on each ring — which is exactly why the count, and not
+      // the bounds, is the thing that says a filter worked here.
+      expect(chart.api.getState().visibleCount).toBe(3)
+
+      chart.api.filter(null)
+      await settleTransition()
+      await settle()
+      expect(chart.api.getState().visibleCount).toBe(19)
+      chart.destroy()
+    })
+
+    it(`caps a ${layout} ring and still reaches what fell off it`, async () => {
+      const chart = wheel({ layout, maxChildren: 4 })
+      await nextFrame()
+      await settle()
+      // The hub keeps four slices plus one node for the other eight; s0 is
+      // among the four and keeps four of its six leaves plus one more node.
+      expect(chart.api.getState().visibleCount).toBe(11)
+
+      // Reaching one that fell off the ring works the same as anywhere else.
+      const capped = chart.api.getState().visibleCount
+      const rows = () =>
+        [...document.querySelectorAll('[role="treeitem"]')].map((r) => r.getAttribute('data-orgchart-id'))
+      expect(rows()).not.toContain('s11')
+
+      chart.api.focus('s11')
+      await settleTransition()
+      await settle()
+
+      // Revealing SWAPS rather than adds: the cap is a budget, and the one
+      // you asked for takes a slot from it — same as a pin does. So the count
+      // is unchanged and membership is the thing to assert.
+      expect(rows()).toContain('s11')
+      expect(chart.api.getState().visibleCount).toBe(capped)
+      chart.destroy()
+    })
+  }
+
+  it('marks a sunburst segment whose children have not been fetched', async () => {
+    // The wheel's own "more inside" mark is an arc just inside the segment,
+    // and an unfetched branch has to earn it the same way a collapsed one
+    // does — this is the layout the mark was originally built for.
+    const chart = wheel({
+      layout: 'sunburst',
+      data: [
+        { id: 'w', name: 'Hub' },
+        { id: 'a', parentId: 'w', name: 'A', kids: 3 },
+        { id: 'b', parentId: 'w', name: 'B', kids: 0 },
+      ],
+      mayHaveChildren: (item) => Number(item.kids ?? 0) > 0,
+      loadChildren: () => [{ id: 'a1', name: 'A1' }],
+    })
+    await nextFrame()
+    await settle()
+    // `h` is the sunburst's inner-arc mark — see render/svg.ts.
+    expect(chart.api.toSVG()).toContain('class="h"')
+    chart.destroy()
+  })
+})
