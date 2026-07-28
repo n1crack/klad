@@ -2,15 +2,19 @@ import { describe, expect, it } from 'vitest'
 import { createKlad, type NodeData } from './index.js'
 
 /**
- * Two questions this file exists to answer, both about the cost of children on
- * demand rather than about its behaviour (which lives in klad.browser.test.ts).
+ * What children on demand costs, on a tree big enough for it to show.
  *
- *  - Does a chart that does NO lazy loading pay anything for the feature? It
- *    must not: `loadChildren` is undefined for every existing user.
- *  - What does a chart that DOES pay, on a tree big enough for it to show?
- *    The bad case is not a small lazily-grown tree — that is small by
- *    construction — but a host that hands over twenty thousand nodes AND a
- *    loader, so the whole array is rescanned on every toggle.
+ * The bad case is not a small lazily-grown tree — that is small by
+ * construction — but a host that hands over twenty thousand nodes AND a
+ * loader, so the whole array is rescanned whenever the data changes.
+ *
+ * The load-bearing assertion here COUNTS rather than times. An earlier version
+ * of this file asserted milliseconds against a fixed bound, which passed on a
+ * developer machine at 28ms and failed on a CI runner at 139ms — the number it
+ * was measuring was the runner, not the code. A call count is the same on
+ * every machine, and it is also the thing that actually goes wrong: the mask
+ * calls the host's predicate once per node, so a regression that builds it
+ * twice, or per frame, shows up here as a multiple and nowhere else.
  */
 
 function host(): HTMLElement {
@@ -40,8 +44,8 @@ function bigTree(n: number): NodeData[] {
 const nextFrame = () => new Promise((r) => requestAnimationFrame(() => r(null)))
 const settle = () => new Promise<void>((resolve) => setTimeout(() => resolve(), 300))
 
-/** Median of `runs` toggles, in ms. Median rather than mean: one GC pause in
- * the middle of a run should not decide the number. */
+/** Median of `runs` collapse-and-expand pairs, in ms. Median rather than mean:
+ * one GC pause in the middle of a run should not decide the number. */
 async function medianToggle(chart: ReturnType<typeof createKlad>, runs: number): Promise<number> {
   const samples: number[] = []
   for (let i = 0; i < runs; i++) {
@@ -59,38 +63,74 @@ async function medianToggle(chart: ReturnType<typeof createKlad>, runs: number):
 describe('children on demand: cost', () => {
   const N = 20_000
 
-  it('costs a chart with no loader nothing measurable', async () => {
+  it('scans the tree once per data change, not twice', async () => {
+    // `applyData` used to build the mask twice in the same function — once for
+    // the engine and once for the screen-reader mirror — so a 20k tree made
+    // forty thousand calls into somebody else's predicate per data change
+    // instead of twenty.
     const data = bigTree(N)
-    const chart = createKlad(host(), { data, nodeSize: { w: 120, h: 40 }, worker: false })
-    await nextFrame()
-    await settle()
-    const ms = await medianToggle(chart, 9)
-    // Not a tight bound — the point is the ORDER. This path is a single
-    // `loadChildren === undefined` check per call; anything near the lazy
-    // number below would mean the early-out is not where it is supposed to be.
-    expect(ms).toBeLessThan(120)
-    console.log(`[perf] 20k, no loader: ${ms.toFixed(1)}ms per collapse+expand`)
-    chart.destroy()
-  })
-
-  it('stays in the same order with a loader over the whole array', async () => {
-    const data = bigTree(N)
-    let asked = 0
+    let calls = 0
     const chart = createKlad(host(), {
       data,
       nodeSize: { w: 120, h: 40 },
       worker: false,
       mayHaveChildren: (item) => {
-        asked++
+        calls++
         return item.leaf === true
       },
       loadChildren: () => [],
     })
     await nextFrame()
     await settle()
-    const ms = await medianToggle(chart, 9)
-    console.log(`[perf] 20k, loader over the whole array: ${ms.toFixed(1)}ms, ${asked} predicate calls`)
-    expect(ms).toBeLessThan(250)
+
+    // Only nodes with NO children reach the predicate — a node that already
+    // has some is not waiting for anything, and `isUnloaded` returns before
+    // asking. So the expected count is the leaf count, not the node count.
+    const parents = new Set(data.map((item) => item.parentId).filter((id) => id !== undefined))
+    const leaves = data.filter((item) => !parents.has(item.id)).length
+    expect(leaves).toBeGreaterThan(19_000) // this shape is almost all leaves
+
+    calls = 0
+    chart.api.refresh()
+    await nextFrame()
+    await settle()
+
+    // Exactly one pass over the leaves. Both consumers of the mask — the
+    // engine and the screen-reader mirror — are handed the same array.
+    expect(calls).toBe(leaves)
     chart.destroy()
+  })
+
+  it('costs a chart with a loader no more than one without', async () => {
+    // A ratio, not a bound: the absolute number is whatever machine this runs
+    // on. What must not change is the ORDER — a mask built per frame, or a
+    // predicate called per node per node, would show as a multiple here.
+    const data = bigTree(N)
+    const plain = createKlad(host(), { data, nodeSize: { w: 120, h: 40 }, worker: false })
+    await nextFrame()
+    await settle()
+    const plainMs = await medianToggle(plain, 7)
+    plain.destroy()
+
+    const lazy = createKlad(host(), {
+      data,
+      nodeSize: { w: 120, h: 40 },
+      worker: false,
+      mayHaveChildren: (item) => item.leaf === true,
+      loadChildren: () => [],
+    })
+    await nextFrame()
+    await settle()
+    const lazyMs = await medianToggle(lazy, 7)
+    lazy.destroy()
+
+    console.log(
+      `[perf] 20k collapse+expand — no loader ${plainMs.toFixed(1)}ms, with loader ${lazyMs.toFixed(1)}ms`,
+    )
+    // Generous, deliberately. Timing on a shared runner is noisy enough that a
+    // tight ratio would fail for reasons that have nothing to do with this
+    // code; 2x still catches every regression worth catching, all of which are
+    // order-of-magnitude.
+    expect(lazyMs).toBeLessThan(Math.max(plainMs * 2, 40))
   })
 })
