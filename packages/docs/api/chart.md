@@ -137,7 +137,7 @@ The counts leave out the nodes a [capped level](/guide/wide-levels) invents;
 | Method | |
 |---|---|
 | `search(query)` | Substring on the label, or your own `(item) => boolean`. Returns `{ id, item, path }[]`. Scans the whole tree; changes nothing. |
-| `filter(query \| null)` | Reduce the chart to the matches and the ancestors that lead to them. Returns the ids that matched. |
+| `filter(query \| null)` | Reduce the chart to the matches and the ancestors that lead to them. Returns the ids that matched. See [Filtering](/guide/filtering). |
 | `highlight(ids \| null)` | Light those nodes, and the connectors between any two of them that are parent and child. |
 
 ### Searching and filtering are different things

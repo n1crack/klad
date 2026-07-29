@@ -99,25 +99,29 @@ This also closed the hole 1.3 left. A drag resting on a closed branch springs
 it open, and now that includes one that has not been fetched — the children
 arrive mid-gesture and the drop preview re-resolves against them.
 
-## 1.5 — showing less of a large tree
+## 1.5 — released: showing less of a large tree
 
-Two problems with the same answer, and the numbers that make both cheap.
+Two ways a big tree stops being readable, and the numbers that make both cheap.
 
 - **`filter(query)`** — reduce the chart to the nodes that match, keeping the
   ancestors that lead to them, so the result is a tree rather than a list and
-  you can see where each hit lives. It overrides collapse: a filter that found
-  something and then left it hidden would be answering a different question.
-- **`maxChildren` / `pinChildren`** — a level of four hundred draws eight and
-  rolls the rest into one node that says how many it stands for. The cap is the
-  budget; the pins are which ones matter, because a cap on its own shows
-  whichever children come first and that is nobody's eight. Nothing is thrown
+  you can see where each hit lives. It opens what it needs to: a filter that
+  found something and then left it behind a collapsed branch would be answering
+  a different question.
+- **`maxChildren` / `pinChildren`** — a level of four hundred draws a handful
+  and rolls the rest into one node that says how many it stands for. The cap is
+  the budget; the pins are which ones matter, because a cap on its own shows
+  whichever children come first and that is nobody's handful. Nothing is thrown
   away — search finds what fell past it, `stats` counts it, and `focus` digs it
   back out.
 - **`lft` / `rgt` on `stats(id)`** — nested-set bounds, computed by the same
   walk that already counts descendants. "Is this node inside that branch" stops
   being an ancestor walk of unbounded length and becomes a comparison. The
   classic interleaved numbering, so they can also go straight back to a
-  database storing a hierarchy as nested sets after a drag reorders anything.
+  database storing a hierarchy as nested sets.
+
+Along the way a node leaving the chart stopped disappearing between one frame
+and the next: it fades out now, the way an arriving one fades in.
 
 ## 1.6 — layouts and edges you supply
 

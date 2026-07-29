@@ -1390,6 +1390,58 @@ function reportDrop(detail: { ids: string[]; parentId: string | null; mode: stri
       : `${what} → ${detail.mode} a sibling, under ${detail.parentId ?? 'the root'}`
 }
 
+/**
+ * The filter box.
+ *
+ * A text input and a count, because that is the whole of the feature from the
+ * outside: type, and the chart becomes the matches plus the ancestors that
+ * lead to them. The count is what makes "nothing matched" different from
+ * "something is broken".
+ */
+const filterInput = document.createElement('input')
+filterInput.type = 'search'
+filterInput.className = 'select'
+filterInput.placeholder = 'Filter by name…'
+filterInput.setAttribute('aria-label', 'Filter the chart')
+
+const filterCount = document.createElement('span')
+filterCount.className = 'panel-note'
+
+const filterField = document.createElement('div')
+filterField.className = 'surface-panel'
+filterField.append(
+  Object.assign(document.createElement('label'), { textContent: 'Filter' }),
+  filterInput,
+  filterCount,
+)
+
+// The panel sits over the canvas, which claims pointer and wheel gestures for
+// panning and zooming — see input.ts. Without this, typing in the box is fine
+// but scrolling over it moves the chart underneath.
+for (const type of ['pointerdown', 'wheel'] as const) {
+  filterField.addEventListener(type, (event) => event.stopPropagation())
+}
+
+filterInput.oninput = () => {
+  const query = filterInput.value.trim()
+  const matched = currentApi?.filter(query === '' ? null : query) ?? []
+  filterCount.textContent =
+    query === ''
+      ? 'The whole tree.'
+      : matched.length === 0
+        ? 'Nothing matched.'
+        : `${matched.length} ${matched.length === 1 ? 'match' : 'matches'}, and the way to each.`
+}
+
+/** Shows the filter box for the example that asked for it. */
+function syncFilterControl(example: Example): void {
+  filterField.remove()
+  if (example.filterControl !== true) return
+  filterInput.value = ''
+  filterCount.textContent = 'The whole tree.'
+  surface.append(filterField)
+}
+
 let selectionListenersBound = false
 
 /** Shows the selection panel for the example that asked for it. */
@@ -2071,6 +2123,7 @@ function show(stack: Stack, exampleId: string, layout: LayoutName): void {
   syncSelectionControl(example)
   syncCentreControl(example, layout)
   syncDropControl(example)
+  syncFilterControl(example)
 }
 
 function refresh(): void {

@@ -230,6 +230,7 @@ export default defineConfig({
             { text: 'Layouts', link: '/guide/layouts' },
             { text: 'Node content', link: '/guide/node-content' },
             { text: 'Navigating', link: '/guide/navigating' },
+            { text: 'Filtering', link: '/guide/filtering' },
             { text: 'Drag and drop', link: '/guide/drag-and-drop' },
             { text: 'Children on demand', link: '/guide/children-on-demand' },
             { text: 'Very wide levels', link: '/guide/wide-levels' },

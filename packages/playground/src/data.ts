@@ -389,6 +389,11 @@ export interface Example {
    * one example would be worse than none.
    */
   dropControl?: boolean
+  /**
+   * Shows the filter box, and the count of what it matched. Per-example like
+   * the others: a search field on a chart of eight nodes teaches nothing.
+   */
+  filterControl?: boolean
 }
 
 // Shared by every example except "Large", which needs its own scale and its
@@ -398,6 +403,10 @@ export interface Example {
 // is realistic but spreads subtrees thousands of pixels apart, so you only ever see
 // a vertical slice of it — which is what the Large example is for.
 const SHARED_DATA = buildOrg(28)
+
+/** Big enough that finding somebody by eye is not an option, which is the
+ * situation a filter is for. */
+const FILTER_DATA = buildOrg(600)
 
 /**
  * The accordion example's two node heights, and how far a given card is
@@ -1208,6 +1217,20 @@ export const EXAMPLES: Example[] = [
     options: { dragAndDrop: true, selection: true, minimap: true, nodeSize: { w: 200, h: 72 } },
     content: 'card',
     dropControl: true,
+  },
+  {
+    id: 'filter',
+    name: 'Filter',
+    description:
+      'Type a name. The chart becomes the nodes that match plus the ancestors that lead to them \u2014 a tree rather than a list, so you can see where each hit lives. A match\u2019s own children are hidden unless they match too, and a collapsed branch opens if the answer is inside it. Clear the box and the expand state you had comes back untouched.',
+    data: FILTER_DATA,
+    options: {
+      collapsedByDefault: (item) => depthOf(FILTER_DATA, String(item.id)) > 1,
+      nodeSize: { w: 190, h: 56 },
+      minimap: true,
+    },
+    content: 'card',
+    filterControl: true,
   },
   {
     id: 'bounds',
