@@ -1,6 +1,6 @@
 ---
 title: Roadmap
-description: 'What has shipped and what is next: layouts, drag and drop, children on demand, very wide levels, and multi-parent graphs.'
+description: 'What has shipped and what is next: layouts, drag and drop, children on demand, filtering, your own layouts, editing with undo, and multi-parent graphs.'
 ---
 
 # Roadmap
@@ -123,14 +123,57 @@ Two ways a big tree stops being readable, and the numbers that make both cheap.
 Along the way a node leaving the chart stopped disappearing between one frame
 and the next: it fades out now, the way an arriving one fades in.
 
-## 1.6 — layouts and edges you supply
+## 1.6 — the shape is yours to write
 
-`LayoutFn` is already the shape every built-in layout is written to — a pure
-`(tree, sizes, opts)` function returning boxes, and optionally the polar
-geometry a wheel needs. What is missing is a way to hand your own across the
-worker boundary, which a name cannot carry. Edge shape comes with it: which
-connector a layout draws is part of that layout's identity, not a separate
-setting, and the built-ins already choose theirs this way.
+Today you pick a layout by name from the ones built in. Next you hand in your
+own: a function that is given the tree and every node's size, and answers where
+each one goes. The built-in layouts are already written that way — what is
+missing is a way to pass yours through to where the work happens.
+
+The connector style comes with it. Which line a layout draws between a parent
+and a child is part of that layout, not a setting beside it, so writing one
+means saying both.
+
+**And one thing every per-node option is currently missing: where the node
+sits.** `nodeSize`, `label`, `collapsedByDefault`, `mayHaveChildren` and
+`pinChildren` are each handed the node's data and nothing else — so none of
+them can answer a question about its depth or its place among its siblings. A
+file list, which narrows every row by its own indent, needs exactly that; and
+a row that arrived through `loadChildren` is not in the array you could have
+worked it out from. The chart knows. It should say.
+
+## 1.7 — editing, with a way back and a way out
+
+Dragging a node is the only edit there is. Adding one, removing one, renaming,
+moving without a pointer — all of it is still you rebuilding your own array and
+handing it back, and each rebuild loses the viewer's place unless you are
+careful. The chart already does this properly for a drop: it splices, keeps the
+open branches by id, and animates the result. That should be something you can
+call.
+
+Three things arrive with it.
+
+- **Undo and redo.** A drag that restructures somebody's organisation with no
+  way back is a frightening thing to hand a user. Refusing a move before it
+  happens is not the same as reversing one after you have seen it.
+- **The chart knows when it has unsaved changes.** Ask it, or be told — either
+  way, a "you have unsaved work" banner should not be something you have to
+  track yourself.
+- **The changes, as data.** Read what has been done since the last save and
+  send it wherever it goes. When you save is your business, and so is the
+  button: the chart holds the edits, it does not decide what to do with them.
+
+## 1.8 — data that keeps arriving
+
+`update(data)` is a reload. It resets the open branches, the children that were
+fetched, the levels that were opened up — right for a different dataset, wrong
+for the same one again, which is what a poll, a socket or a save comes back
+with. `refresh()` covers it only if you changed your array in place, and a host
+reading from a server generally has not.
+
+What is missing is a reconcile: match what arrives against what is on screen by
+id, keep everything the viewer did, and animate only what actually changed. The
+machinery is there — it is what a drop and a fetched branch already do.
 
 ## 2.0 — beyond trees
 
