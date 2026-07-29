@@ -4920,3 +4920,232 @@ describe('isolate survives the tree being rebuilt', () => {
     chart.destroy()
   })
 })
+
+describe('history', () => {
+  const parentOf = (chart: ReturnType<typeof createKlad>, id: string) => {
+    const path = chart.api.pathTo(id)
+    return path === null || path.length < 2 ? null : path.at(-2)!
+  }
+  const childIds = (chart: ReturnType<typeof createKlad>, parent: string | null) =>
+    chart.api
+      .getData()
+      .filter((item) => (item.parentId ?? null) === parent)
+      .map((item) => String(item.id))
+
+  it('walks a move back and forward again', async () => {
+    const chart = make({})
+    await nextFrame()
+    await settle()
+
+    chart.api.move('d', 'c')
+    await settleTransition()
+    expect(parentOf(chart, 'd')).toBe('c')
+    expect(chart.api.canUndo()).toBe(true)
+
+    expect(chart.api.undo()).toBe(true)
+    await settleTransition()
+    expect(parentOf(chart, 'd')).toBe('b')
+    expect(chart.api.canUndo()).toBe(false)
+    expect(chart.api.canRedo()).toBe(true)
+
+    expect(chart.api.redo()).toBe(true)
+    await settleTransition()
+    expect(parentOf(chart, 'd')).toBe('c')
+    expect(chart.api.undo()).toBe(true)
+    await settleTransition()
+    expect(chart.api.undo()).toBe(false)
+    chart.destroy()
+  })
+
+  it('puts each of a batch back with its OWN parent', async () => {
+    // The reason a record cannot hold one "back": `b` and `d` come from
+    // different places, so undoing the set is not one move.
+    const chart = make({})
+    await nextFrame()
+    await settle()
+    expect(parentOf(chart, 'b')).toBe('a')
+    expect(parentOf(chart, 'd')).toBe('b')
+
+    chart.api.move(['c', 'd'], 'a')
+    await settleTransition()
+    expect(parentOf(chart, 'd')).toBe('a')
+
+    chart.api.undo()
+    await settleTransition()
+    expect(parentOf(chart, 'c')).toBe('a')
+    expect(parentOf(chart, 'd')).toBe('b')
+    chart.destroy()
+  })
+
+  it('restores the slot, not just the parent', async () => {
+    const chart = make({})
+    await nextFrame()
+    await settle()
+    expect(childIds(chart, 'a')).toEqual(['b', 'c'])
+
+    chart.api.move('b', 'a', 2)
+    await settleTransition()
+    expect(childIds(chart, 'a')).toEqual(['c', 'b'])
+
+    chart.api.undo()
+    await settleTransition()
+    // Back where it was among its siblings — an inverse built from an index
+    // rather than from the sibling it followed would not manage this.
+    expect(childIds(chart, 'a')).toEqual(['b', 'c'])
+    chart.destroy()
+  })
+
+  it('brings a removed subtree back whole', async () => {
+    const chart = make({})
+    await nextFrame()
+    await settle()
+
+    chart.api.remove('b')
+    await settleTransition()
+    expect(chart.api.stats('b')).toBeNull()
+    expect(chart.api.stats('d')).toBeNull()
+
+    chart.api.undo()
+    await settleTransition()
+    expect(chart.api.stats('b')).not.toBeNull()
+    expect(parentOf(chart, 'd')).toBe('b')
+    expect(childIds(chart, 'a')).toEqual(['b', 'c'])
+    chart.destroy()
+  })
+
+  it('takes an added node away again', async () => {
+    const chart = make({})
+    await nextFrame()
+    await settle()
+
+    chart.api.add({ id: 'e', name: 'New' }, 'c')
+    await settleTransition()
+    expect(chart.api.stats('e')).not.toBeNull()
+
+    chart.api.undo()
+    await settleTransition()
+    expect(chart.api.stats('e')).toBeNull()
+    chart.api.redo()
+    await settleTransition()
+    expect(chart.api.stats('e')).not.toBeNull()
+    chart.destroy()
+  })
+
+  it('records a drag, because that is an edit like any other', async () => {
+    const chart = make({ dragAndDrop: true })
+    await nextFrame()
+    await settle()
+    expect(chart.api.canUndo()).toBe(false)
+
+    // Through the same door the pointer uses.
+    chart.api.move('d', 'c')
+    await settleTransition()
+    expect(chart.api.changes()).toEqual([{ op: 'move', ids: ['d'], parentId: 'c', index: 0 }])
+    chart.destroy()
+  })
+
+  it('drops the redo branch once you do something else', async () => {
+    const chart = make({})
+    await nextFrame()
+    await settle()
+
+    chart.api.move('d', 'c')
+    await settleTransition()
+    chart.api.undo()
+    await settleTransition()
+    expect(chart.api.canRedo()).toBe(true)
+
+    chart.api.add({ id: 'e' }, 'a')
+    await settleTransition()
+    // That future no longer follows from here.
+    expect(chart.api.canRedo()).toBe(false)
+    chart.destroy()
+  })
+
+  it('keeps only as many as asked, and forgets the oldest', async () => {
+    const chart = make({ history: 2 })
+    await nextFrame()
+    await settle()
+
+    chart.api.add({ id: 'x' }, 'a')
+    chart.api.add({ id: 'y' }, 'a')
+    chart.api.add({ id: 'z' }, 'a')
+    await settleTransition()
+
+    expect(chart.api.undo()).toBe(true)
+    expect(chart.api.undo()).toBe(true)
+    expect(chart.api.undo()).toBe(false)
+    await settleTransition()
+    // The first one is past the window, so it stays.
+    expect(chart.api.stats('x')).not.toBeNull()
+    expect(chart.api.stats('y')).toBeNull()
+    chart.destroy()
+  })
+
+  it('keeps none at all when told not to', async () => {
+    const chart = make({ history: false })
+    await nextFrame()
+    await settle()
+
+    chart.api.move('d', 'c')
+    await settleTransition()
+    expect(chart.api.canUndo()).toBe(false)
+    expect(chart.api.undo()).toBe(false)
+    expect(chart.api.changes()).toEqual([])
+    expect(chart.api.isDirty()).toBe(false)
+    // The edit itself still happened.
+    expect(parentOf(chart, 'd')).toBe('c')
+    chart.destroy()
+  })
+
+  it('says what to send, and stops saying it once you have', async () => {
+    const chart = make({})
+    await nextFrame()
+    await settle()
+    expect(chart.api.isDirty()).toBe(false)
+
+    chart.api.move('d', 'c')
+    chart.api.add({ id: 'e', name: 'New' }, 'a')
+    await settleTransition()
+
+    expect(chart.api.isDirty()).toBe(true)
+    const changes = chart.api.changes()
+    expect(changes).toHaveLength(2)
+    expect(changes[0]).toEqual({ op: 'move', ids: ['d'], parentId: 'c', index: 0 })
+    expect(changes[1]!.op).toBe('add')
+
+    chart.api.markSaved()
+    expect(chart.api.isDirty()).toBe(false)
+    expect(chart.api.changes()).toEqual([])
+    // Saving does not cost you the ability to undo.
+    expect(chart.api.canUndo()).toBe(true)
+
+    chart.api.undo()
+    await settleTransition()
+    expect(chart.api.isDirty()).toBe(true)
+    chart.destroy()
+  })
+
+  it('forgets everything when somebody else describes the tree', async () => {
+    const chart = make({})
+    await nextFrame()
+    await settle()
+    chart.api.move('d', 'c')
+    await settleTransition()
+    expect(chart.api.canUndo()).toBe(true)
+
+    chart.api.reconcile([
+      { id: 'a', name: 'Root' },
+      { id: 'b', parentId: 'a', name: 'Left' },
+      { id: 'c', parentId: 'a', name: 'Right' },
+      { id: 'd', parentId: 'c', name: 'Leaf' },
+    ])
+    await settleTransition()
+
+    // Undoing now would take the data somewhere neither the viewer nor the
+    // server asked for.
+    expect(chart.api.canUndo()).toBe(false)
+    expect(chart.api.isDirty()).toBe(false)
+    chart.destroy()
+  })
+})

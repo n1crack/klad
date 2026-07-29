@@ -141,9 +141,11 @@ you discover by looking.
 | Method | |
 |---|---|
 | `move(ids, toParentId, index?)` | Move one or several under a new parent, at `index` among its children — appended when omitted, `null` makes them roots. |
-| `add(items, parentId?, index?)` | Add rows. Omitted parent makes them roots. |
+| `add(items, parentId?, index?)` | Add rows. Omit the parent and each row keeps its own `parentId`; pass `null` to make them roots. |
 | `remove(ids)` | Remove them **and everything below them**. |
 | `getData()` | The rows the chart holds right now — your data with the edits applied. A copy. |
+| `undo()` / `redo()` | Reverse the last edit, or put it back. See [Undo, redo and what to save](#undo-redo-and-what-to-save). |
+| `changes()` / `isDirty()` / `markSaved()` | What to send, whether there is anything, and "sent". |
 | `reconcile(data)` | Take a fresh copy of the tree without losing where the viewer is. See [Data that keeps arriving](#data-that-keeps-arriving). |
 
 ```ts
@@ -194,6 +196,46 @@ pointer move.
   invents.** It is a real node in the tree, but it is the chart's own
   bookkeeping rather than a row of yours, so moving or deleting it would mean
   nothing. It is also left out of `getData()`, for the same reason.
+
+### Undo, redo and what to save
+
+```ts
+saveButton.onclick = async () => {
+  await fetch('/api/tree', { method: 'PATCH', body: JSON.stringify(chart.api.changes()) })
+  chart.api.markSaved()
+}
+```
+
+`changes()` describes what to **do** — `move`, `add`, `remove`, with ids rather
+than indices, so a change still means the same thing after your own store has
+moved on. What it takes to *reverse* each edit the chart keeps to itself.
+
+**The log is the product; undo is the convenience.** An app with its own undo
+stack does not want a second one underneath it — two stacks make Ctrl+Z a coin
+toss. Set [`history: false`](/api/options), read `changes()`, and drive the
+chart from yours.
+
+Reversing a move puts each node back with **its own** former parent and slot,
+which is not always the set's: a batch move can have come from several parents.
+Reversing a remove puts the whole subtree back.
+
+Positions are remembered as the sibling a node sat *after*, never as an index —
+an index is only right until the next edit moves something in front of it.
+
+`history` defaults to 100 edits, and costs memory rather than speed: nothing on
+the drawing path reads it, and on a 20,000-node chart a move measures 328ms
+without history and 337ms with. A record names ids, so it follows how much you
+edit rather than how big the chart is. `remove` is the exception — it holds the
+subtree it took out until that record falls off the end.
+
+**Fresh data clears it.** `update` and `reconcile` are both somebody else
+describing the tree, and an edit made before that description refers to a shape
+nobody is claiming any more.
+
+One limit stated rather than rounded: undoing back *past* the save point leaves
+`isDirty()` true with nothing in `changes()` to send. The chart differs from
+what was saved by an edit being **absent**, which no forward operation
+describes — send `getData()` in that case.
 
 ### Data that keeps arriving
 

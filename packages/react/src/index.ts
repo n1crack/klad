@@ -3,6 +3,7 @@ export type { KladHandle, KladProps } from './Klad.js'
 export { useKlad } from './useKlad.js'
 export type { KladContextValue } from './useKlad.js'
 export type {
+  Change,
   ChartState,
   ChartView,
   EdgeStyle,

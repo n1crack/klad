@@ -394,6 +394,21 @@ export interface Options {
    * dragged node itself, or anything inside it — are refused by the chart and
    * never reach the event.
    */
+  /**
+   * How many edits `undo` can walk back. `false` turns history off entirely;
+   * omitted, it is `DEFAULT_HISTORY` (100).
+   *
+   * Off is worth having: an app with its own undo stack does not want a second
+   * one underneath it, and two stacks make Ctrl+Z a coin toss. Such a host
+   * reads `changes()` and drives the chart from their own.
+   *
+   * What it costs is memory, not speed — nothing on the drawing path reads it,
+   * and an edit is a full relayout that a record is invisible beside. The
+   * memory follows how much you EDIT rather than how big the chart is, since
+   * a record names ids rather than copying rows. A `remove` is the exception:
+   * it holds the subtree it took out until that record falls off the end.
+   */
+  history?: number | false
   dragAndDrop?: boolean
   /**
    * Your rule on whether a move is allowed. `true` to permit it; omitted,
@@ -633,6 +648,18 @@ export interface ChartView {
  * should not mean digging the shape back out of `KladEvents['nodeDrop']`.
  * Every adapter re-exports it.
  */
+/**
+ * One edit, as something to send somewhere — see `KladApi.changes`.
+ *
+ * Deliberately not the chart's own record, which also carries what it takes to
+ * REVERSE the edit. That half is the chart's business; this is the half a
+ * server needs.
+ */
+export type Change =
+  | { op: 'move'; ids: string[]; parentId: string | null; index: number }
+  | { op: 'add'; items: NodeData[]; parentId: string | null }
+  | { op: 'remove'; ids: string[] }
+
 export interface NodeDropEvent {
   ids: string[]
   items: NodeData[]
@@ -952,6 +979,45 @@ export interface KladApi {
    * one thing the chart cannot make sense of.
    */
   reconcile(data: NodeData[]): void
+  /**
+   * Reverses the last edit, or does nothing and returns `false` when there is
+   * none. `redo` puts it back.
+   *
+   * Off with `history: false`, in which case both always return `false`. An
+   * app with its own undo stack wants that: two stacks make Ctrl+Z a coin
+   * toss, and such a host reads `changes()` and drives the chart from theirs.
+   *
+   * Reversing a move puts each node back with its own former parent and slot,
+   * which is not always the set's — a batch move can have come from several.
+   * Reversing a remove puts the whole subtree back.
+   *
+   * Fresh data clears the history: `update` and `reconcile` are both somebody
+   * else describing the tree, and an edit made before that description refers
+   * to a shape nobody is claiming any more.
+   */
+  undo(): boolean
+  redo(): boolean
+  canUndo(): boolean
+  canRedo(): boolean
+  /**
+   * The edits made since the last `markSaved()`, oldest first — what to send
+   * when the viewer presses your save button.
+   *
+   * Describes what to DO, not how to take it back; the chart keeps the second
+   * half to itself. Ids rather than indices, so a change still means the same
+   * thing after your own store has moved on.
+   *
+   * Undoing back past the save point leaves `isDirty()` true with nothing here
+   * to send: the chart differs from what was saved by an edit being ABSENT,
+   * which no forward operation describes. Send `getData()` in that case.
+   */
+  changes(): Change[]
+  /** Whether anything has changed since the last `markSaved()`. Undoing back
+   * to that point makes it false again. */
+  isDirty(): boolean
+  /** "The server has this now." Sets the baseline `changes()` and `isDirty()`
+   * are measured from; the undo history is untouched. */
+  markSaved(): void
 
   stats(id: string): NodeStats | null
   /**
@@ -1103,6 +1169,16 @@ const DEFAULT_LIMITS: ZoomLimits = { minK: 0.05, maxK: 4 }
  * one mistake this option makes easy.
  */
 export const DEFAULT_NODE_SIZE: Size = { w: 180, h: 64 }
+
+/**
+ * How many edits `undo` can walk back by default.
+ *
+ * A cap rather than no cap: the stack is the one thing in a chart that grows
+ * with how long the page has been open rather than with what is on it, and a
+ * removed subtree is held in it until it falls off the end. A hundred is well
+ * past what anybody reaches for and still bounded.
+ */
+export const DEFAULT_HISTORY = 100
 
 /**
  * The label used when `label` is not given: whichever of `name`, `label` or
@@ -2284,8 +2360,185 @@ export function createKlad(host: HTMLElement, options: Options): KladInstance {
    * Dropping a node is not a reason to fold up the branch you dropped it
    * into, and doing so would hide the result of the action just taken.
    */
+  // --- history --------------------------------------------------------------
+  //
+  // An operation log, not snapshots. A snapshot per edit is an array of every
+  // row, so its cost follows the size of the TREE; a record follows the size
+  // of the EDIT, which is what a person actually does. The one exception is a
+  // remove, which has to hold the rows it took out in order to put them back.
+  //
+  // Positions are recorded as the id a node sat AFTER, never as an index.
+  // Indices move when anything around them moves, so an inverse built from one
+  // is right only until the next edit; an anchor names a specific sibling and
+  // stays true.
+
+  /** One applied edit, with what it takes to reverse it. */
+  type EditRecord =
+    | {
+        op: 'move'
+        /** Where each id was BEFORE, in the order they appear in the tree. */
+        was: { id: string; parentId: string | null; after: string | null }[]
+        to: string | null
+        index: number
+      }
+    | { op: 'add'; items: NodeData[]; parentId: string | null }
+    | {
+        op: 'remove'
+        /** Everything that went, subtree included, in source order. */
+        rows: NodeData[]
+        /** Where the top of what went sat, so it can go back there. */
+        was: { id: string; parentId: string | null; after: string | null }[]
+      }
+
+  let undoStack: EditRecord[] = []
+  let redoStack: EditRecord[] = []
+  /** True while `undo`/`redo` is applying, so the edit it makes is not itself
+   * recorded — which would push what was just undone straight back on. */
+  let replaying = false
+
+  /** How deep the undo stack was when the host last said it had saved. */
+  let savedDepth = 0
+
+  /** The cap, or `0` for a chart that keeps no history at all. */
+  const historyLimit = (): number => {
+    const declared = currentOptions.history
+    if (declared === false) return 0
+    if (declared === undefined) return DEFAULT_HISTORY
+    return Number.isFinite(declared) && declared > 0 ? Math.floor(declared) : 0
+  }
+
+  /**
+   * Where each of `ids` sits right now: its parent, and the sibling it
+   * follows.
+   *
+   * One pass for the whole set rather than a scan per id. The obvious shape is
+   * O(ids x rows), which is invisible for a drag of one and is two million
+   * comparisons for a hundred ids on a twenty-thousand-node tree — the same
+   * trap `remove` had.
+   */
+  const positionsOf = (
+    ids: string[],
+    rows: NodeData[],
+  ): { id: string; parentId: string | null; after: string | null }[] => {
+    const wanted = new Set(ids)
+    const found = new Map<string, { id: string; parentId: string | null; after: string | null }>()
+    /** The last row seen under each parent, which is what a match sits after. */
+    const previous = new Map<string | null, string>()
+    for (const item of rows) {
+      const id = String(item.id)
+      const parentId = (item.parentId ?? null) === null ? null : String(item.parentId)
+      if (wanted.has(id)) found.set(id, { id, parentId, after: previous.get(parentId) ?? null })
+      previous.set(parentId, id)
+    }
+    // In the caller's order, and skipping any id the rows do not have.
+    return ids.map((id) => found.get(id)).filter((at): at is NonNullable<typeof at> => at !== undefined)
+  }
+
+  const recordEdit = (record: EditRecord): void => {
+    if (replaying) return
+    const limit = historyLimit()
+    if (limit === 0) return
+    undoStack.push(record)
+    // A new edit makes the redo branch unreachable — it described a future
+    // that no longer follows from here.
+    redoStack = []
+    if (undoStack.length > limit) {
+      const dropped = undoStack.length - limit
+      undoStack = undoStack.slice(dropped)
+      // The save marker travels with the window, or it would point past the
+      // end of a stack that has been trimmed from the front.
+      savedDepth = Math.max(0, savedDepth - dropped)
+    }
+  }
+
+  const clearHistory = (): void => {
+    undoStack = []
+    redoStack = []
+    savedDepth = 0
+  }
+
+  /** One record as the host sees it: what to do, not how to take it back. */
+  const publicChange = (record: EditRecord): Change =>
+    record.op === 'move'
+      ? { op: 'move', ids: record.was.map((was) => was.id), parentId: record.to, index: record.index }
+      : record.op === 'add'
+        ? { op: 'add', items: record.items.map((item) => ({ ...item })), parentId: record.parentId }
+        : { op: 'remove', ids: record.was.map((was) => was.id) }
+
+  /** `after` translated into an index among `parentId`'s children right now. */
+  const indexAfter = (parentId: string | null, after: string | null): number => {
+    if (after === null) return 0
+    const rows = baseRows()
+    let index = 0
+    for (const item of rows) {
+      const itsParent = (item.parentId ?? null) === null ? null : String(item.parentId)
+      if (itsParent !== parentId) continue
+      index++
+      if (String(item.id) === after) return index
+    }
+    return index
+  }
+
+  /**
+   * Undoes one record.
+   *
+   * A move goes back one node at a time, each to its own former parent and
+   * slot — a batch move can have come FROM several parents, so there is no
+   * single "back" for the set. Deepest-last, because restoring a node whose
+   * anchor is itself still misplaced would aim at a moving target.
+   */
+  const invert = (record: EditRecord): void => {
+    if (record.op === 'move') {
+      for (const was of record.was) {
+        applyReparent([was.id], was.parentId, indexAfter(was.parentId, was.after))
+      }
+      return
+    }
+    if (record.op === 'add') {
+      const present = record.items.map((item) => String(item.id)).filter((id) => tree.idToIndex.has(id))
+      if (present.length > 0) api.remove(present)
+      return
+    }
+    // A remove goes back as the rows themselves. They carry their own
+    // `parentId`, so the subtree reassembles from the data rather than from a
+    // second description of the same shape; only the tops need placing.
+    const tops = new Set(record.was.map((was) => was.id))
+    for (const was of record.was) {
+      const row = record.rows.find((item) => String(item.id) === was.id)
+      if (row === undefined) continue
+      api.add({ ...row }, was.parentId, indexAfter(was.parentId, was.after))
+    }
+    const rest = record.rows.filter((item) => !tops.has(String(item.id)))
+    if (rest.length > 0) api.add(rest.map((item) => ({ ...item })))
+  }
+
+  /** Redoes one record — the edit exactly as it was made. */
+  const reapply = (record: EditRecord): void => {
+    if (record.op === 'move') {
+      applyReparent(
+        record.was.map((was) => was.id).filter((id) => tree.idToIndex.has(id)),
+        record.to,
+        record.index,
+      )
+      return
+    }
+    if (record.op === 'add') {
+      // The rows already carry the parent they were added under, so they go
+      // back the same way a restored subtree does — see `add`'s `owns`.
+      api.add(record.items.map((item) => ({ ...item })))
+      return
+    }
+    const present = record.was.map((was) => was.id).filter((id) => tree.idToIndex.has(id))
+    if (present.length > 0) api.remove(present)
+  }
+
   const applyReparent = (ids: string[], parentId: string | null, index: number, pinSource = -1): void => {
     const moving = new Set(ids)
+    // Captured before anything moves — afterwards there is no way back to it.
+    if (!replaying && historyLimit() > 0) {
+      const rows = baseRows()
+      recordEdit({ op: 'move', was: positionsOf(ids, rows), to: parentId, index })
+    }
     applyEdit(
       (source) => {
         const moved: NodeData[] = []
@@ -4398,7 +4651,7 @@ export function createKlad(host: HTMLElement, options: Options): KladInstance {
       applyReparent(ordered, toParentId, at)
       return true
     },
-    add(items, parentId = null, index) {
+    add(items, parentId, index) {
       const list = Array.isArray(items) ? items : [items]
       if (list.length === 0) return false
       const fresh = new Set<string>()
@@ -4409,15 +4662,26 @@ export function createKlad(host: HTMLElement, options: Options): KladInstance {
         if (id === '' || tree.idToIndex.has(id) || fresh.has(id)) return false
         fresh.add(id)
       }
-      if (parentId !== null) {
+      // `undefined` and `null` mean different things here. `null` says "make
+      // these roots"; leaving it off says "each row already knows where it
+      // goes" — which is what putting a removed subtree back needs, and the
+      // same rule `loadChildren` follows for the rows it returns.
+      const owns = parentId === undefined
+      if (!owns && parentId !== null) {
         const at = tree.idToIndex.get(parentId)
         if (at === undefined || overflowInfo(itemFor(at)) !== null) return false
       }
-      const rows = list.map((item) => ({ ...item, parentId }))
+      const rows = list.map((item) => (owns ? { ...item } : { ...item, parentId }))
+      const under = owns ? null : parentId
+      recordEdit({ op: 'add', items: rows.map((item) => ({ ...item })), parentId: under })
       applyEdit(
         (source) => {
           const next = [...source]
-          const siblings = source.filter((item) => (item.parentId ?? null) === parentId)
+          // Each row already says where it belongs, so there is no sibling
+          // list to find a slot in — order among them comes from the rows
+          // themselves and `normalize` reads it off the array.
+          if (owns) return [...next, ...rows]
+          const siblings = source.filter((item) => (item.parentId ?? null) === under)
           // The sibling these should sit AFTER; `undefined` means first.
           const anchorRow =
             index === undefined ? siblings.at(-1) : siblings[Math.min(index, siblings.length) - 1]
@@ -4428,18 +4692,18 @@ export function createKlad(host: HTMLElement, options: Options): KladInstance {
               : siblings.length > 0
                 ? // First among siblings that already exist: just ahead of them.
                   rowAt(siblings[0]!)
-                : parentId === null
+                : under === null
                   ? next.length
                   : // The parent's first child. Right after the parent rather
                     // than at the head of the array — `normalize` reads either
                     // one the same way, but an array where a child precedes
                     // its own parent is a strange thing to hand back to
                     // somebody through `getData()`.
-                    next.findIndex((item) => String(item.id) === parentId) + 1
+                    next.findIndex((item) => String(item.id) === under) + 1
           next.splice(insertAt, 0, ...rows)
           return next
         },
-        { openParent: parentId },
+        { openParent: under },
       )
       return true
     },
@@ -4468,6 +4732,17 @@ export function createKlad(host: HTMLElement, options: Options): KladInstance {
             break
           }
         }
+      }
+      if (!replaying && historyLimit() > 0) {
+        const rows = baseRows()
+        recordEdit({
+          op: 'remove',
+          rows: rows.filter((item) => doomed.has(String(item.id))).map((item) => ({ ...item })),
+          // Only the tops. Everything below them goes back by carrying its own
+          // `parentId`, so anchoring each one would be recording the same
+          // shape twice.
+          was: positionsOf(list, rows),
+        })
       }
       applyEdit((source) => source.filter((item) => !doomed.has(String(item.id))))
       return true
@@ -4503,7 +4778,55 @@ export function createKlad(host: HTMLElement, options: Options): KladInstance {
         else if (kept.length !== items.length) loadedChildren.set(parentId, kept)
       }
 
+      // Somebody else has described the tree. An edit made before that
+      // description refers to a shape nobody is claiming any more, so undoing
+      // it would take the data somewhere neither you nor the server asked for
+      // — and the viewer could not see that it had. Clearing is the less
+      // surprising of the two wrong-looking answers.
+      clearHistory()
       applyEdit(() => data, { preserveLoaded: true })
+    },
+    undo() {
+      const record = undoStack.pop()
+      if (record === undefined) return false
+      replaying = true
+      try {
+        invert(record)
+      } finally {
+        replaying = false
+      }
+      redoStack.push(record)
+      return true
+    },
+    redo() {
+      const record = redoStack.pop()
+      if (record === undefined) return false
+      replaying = true
+      try {
+        reapply(record)
+      } finally {
+        replaying = false
+      }
+      undoStack.push(record)
+      return true
+    },
+    canUndo() {
+      return undoStack.length > 0
+    },
+    canRedo() {
+      return redoStack.length > 0
+    },
+    changes() {
+      // Only what has been done SINCE the last save. Undoing back past that
+      // point leaves the chart dirty with nothing to send forward — see
+      // `isDirty`, and `getData()` for the answer in that case.
+      return undoStack.slice(savedDepth).map(publicChange)
+    },
+    isDirty() {
+      return undoStack.length !== savedDepth
+    },
+    markSaved() {
+      savedDepth = undoStack.length
     },
     getData() {
       return baseRows().map((item) => ({ ...item }))
@@ -4919,6 +5242,7 @@ export function createKlad(host: HTMLElement, options: Options): KladInstance {
       // happen to exist again in the new data and that nobody has opened.
       uncapped.clear()
       revealed.clear()
+      clearHistory()
       tree = normalize(treeSource())
       stats = discountAggregates(computeSubtreeStats(tree))
       rebuildItemIndex()

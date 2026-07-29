@@ -247,3 +247,54 @@ describe('where a node sits: cost', () => {
     placed.destroy()
   })
 })
+
+describe('history: what it costs', () => {
+  const N = 20_000
+
+  it('records an edit without it showing, and holds nothing per node', async () => {
+    // The claim the option's docblock makes: a record follows the size of the
+    // EDIT, not the size of the tree. Snapshots would have been an array of
+    // every row per entry — 20,000 pointers each, on this tree.
+    const data = bigTree(N)
+    const off = createKlad(host(), {
+      data,
+      nodeSize: { w: 120, h: 40 },
+      worker: false,
+      history: false,
+    })
+    await nextFrame()
+    await settle()
+    const t0 = performance.now()
+    off.api.move('b1-0', 'b2')
+    await nextFrame()
+    await settle()
+    const withoutMs = performance.now() - t0
+    off.destroy()
+
+    const on = createKlad(host(), { data, nodeSize: { w: 120, h: 40 }, worker: false })
+    await nextFrame()
+    await settle()
+    const t1 = performance.now()
+    on.api.move('b1-1', 'b2')
+    await nextFrame()
+    await settle()
+    const withMs = performance.now() - t1
+
+    // Fill the window right up, so the stack is as deep as it ever gets.
+    const t2 = performance.now()
+    for (let k = 2; k < 102; k++) on.api.move(`b1-${k}`, 'b3')
+    await nextFrame()
+    await settle()
+    const hundredMs = performance.now() - t2
+
+    console.log(
+      `[history] 20k — one move without ${withoutMs.toFixed(0)}ms, with ${withMs.toFixed(0)}ms, ` +
+        `100 more ${hundredMs.toFixed(0)}ms, changes ${on.api.changes().length}`,
+    )
+    // Recording is a handful of ids next to a 350ms relayout.
+    expect(withMs).toBeLessThan(Math.max(withoutMs * 1.5, 60))
+    // And the window held.
+    expect(on.api.changes().length).toBe(100)
+    on.destroy()
+  }, 120_000)
+})

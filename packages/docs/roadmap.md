@@ -148,24 +148,33 @@ without any of that.
 
 ## 1.7 — editing, with a way back and a way out
 
-Dragging a node is the only edit there is. Adding one, removing one, renaming,
-moving without a pointer — all of it is still you rebuilding your own array and
-handing it back, and each rebuild loses the viewer's place unless you are
-careful. The chart already does this properly for a drop: it splices, keeps the
-open branches by id, and animates the result. That should be something you can
-call.
+Dragging a node was the only edit there was, and everything else meant
+rebuilding your own array and handing it back — losing the viewer's place each
+time unless you were careful. `move`, `add` and `remove` are calls now, through
+the same door a drop already used: the open branches survive by id, the camera
+holds still, and the difference animates.
 
-Three things arrive with it.
+There is no rename, and there cannot be. A node's text comes from your `label`
+reading your own row, so the chart does not know which field is the name. It
+owns the shape; you own the content.
 
+Three things arrived with it.
+
+- **A rule of your own, asked while the pointer is still down.** Refusing in
+  `nodeDrop` answers after the viewer has committed — the indicator said yes
+  and the node snaps back. `canMove` turns it red under the pointer instead,
+  and binds the API too, because a rule only the pointer path honours is a
+  hint.
 - **Undo and redo.** A drag that restructures somebody's organisation with no
-  way back is a frightening thing to hand a user. Refusing a move before it
-  happens is not the same as reversing one after you have seen it.
-- **The chart knows when it has unsaved changes.** Ask it, or be told — either
-  way, a "you have unsaved work" banner should not be something you have to
-  track yourself.
-- **The changes, as data.** Read what has been done since the last save and
-  send it wherever it goes. When you save is your business, and so is the
-  button: the chart holds the edits, it does not decide what to do with them.
+  way back is a frightening thing to hand a user. Off with `history: false`,
+  for an app that has its own stack — two make Ctrl+Z a coin toss.
+- **The changes, as data.** `changes()` says what has been done since the last
+  save; `markSaved()` says it has gone. When you save is your business, and so
+  is the button: the chart holds the edits, it does not decide what to do with
+  them.
+
+The log is the product and undo is the convenience, which is why the log works
+with the history turned off.
 
 ## 1.8 — data that keeps arriving
 

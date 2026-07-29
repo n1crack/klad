@@ -5,6 +5,7 @@ export { Klad }
 export { useKlad } from './useKlad.js'
 export type { KladContext } from './useKlad.js'
 export type {
+  Change,
   ChartState,
   ChartView,
   EdgeStyle,

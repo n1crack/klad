@@ -1423,6 +1423,9 @@ function syncDropControl(example: Example): void {
 
 /** Called by the demo when a drop lands — see `playground:drop`. */
 function reportDrop(detail: { ids: string[]; parentId: string | null; mode: string }): void {
+  // A drag is an edit like any other, so the Edit panel's buttons have to
+  // notice one even though nothing in that panel was clicked.
+  if (editField.isConnected) syncEditState()
   if (!dropField.isConnected) return
   const what = detail.ids.length === 1 ? detail.ids[0]! : `${detail.ids.length} nodes`
   dropLog.textContent =
@@ -1478,6 +1481,7 @@ const editAdd = sidebarButton('Add a report', () => {
   editLog.textContent = api.add(row, under)
     ? `Added ${row.name} under ${under}.`
     : `Refused — ${under} already has a ${row.id}?`
+  syncEditState()
 })
 
 const editRemove = sidebarButton('Remove', () => {
@@ -1493,6 +1497,42 @@ const editRemove = sidebarButton('Remove', () => {
   editLog.textContent = gone
     ? `Removed ${selected.length === 1 ? selected[0]! : `${selected.length} people`}, and everyone under them.`
     : 'Refused.'
+  syncEditState()
+})
+
+/** Reflects what the chart says about its own history, so the buttons cannot
+ * claim something the API would refuse. */
+function syncEditState(): void {
+  const api = currentApi
+  if (api === null) return
+  editUndo.disabled = !api.canUndo()
+  editRedo.disabled = !api.canRedo()
+  editSave.disabled = !api.isDirty()
+  editSave.textContent = api.isDirty() ? `Save ${api.changes().length}` : 'Saved'
+}
+
+const editUndo = sidebarButton('Undo', () => {
+  currentApi?.undo()
+  syncEditState()
+})
+
+const editRedo = sidebarButton('Redo', () => {
+  currentApi?.redo()
+  syncEditState()
+})
+
+const editSave = sidebarButton('Saved', () => {
+  const api = currentApi
+  if (api === null) return
+  // What an app would PATCH. Shown rather than sent, since there is nothing
+  // here to send it to — and what it would send is the interesting part.
+  const changes = api.changes()
+  editLog.textContent =
+    changes.length === 0
+      ? 'Nothing to save.'
+      : `Sent: ${changes.map((change) => `${change.op} ${'ids' in change ? change.ids.join(', ') : change.items.map((item) => String(item.id)).join(', ')}`).join(' · ')}`
+  api.markSaved()
+  syncEditState()
 })
 
 const editPoll = sidebarButton('A poll arrives', () => {
@@ -1517,6 +1557,8 @@ const editPoll = sidebarButton('A poll arrives', () => {
   }
   api.reconcile([...rows, ...editAdded.filter((item) => !editRemoved.has(String(item.id)))])
   editLog.textContent = 'The tree changed. Your open branches and camera did not.'
+  // Fresh data clears the history — see `reconcile`.
+  syncEditState()
 })
 
 const editField = document.createElement('div')
@@ -1525,6 +1567,9 @@ editField.append(
   Object.assign(document.createElement('label'), { textContent: 'Edit' }),
   editAdd,
   editRemove,
+  editUndo,
+  editRedo,
+  editSave,
   editPoll,
   editLog,
 )
@@ -1541,6 +1586,7 @@ function syncEditControl(example: Example): void {
   editHires = 0
   editLog.textContent = 'Drag between departments to see the rule refuse.'
   surface.append(editField)
+  syncEditState()
 }
 
 /**
