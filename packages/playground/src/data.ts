@@ -1257,7 +1257,11 @@ export const EXAMPLES: Example[] = [
       nodeSize: { w: 190, h: 56 },
     },
     content: 'card',
-    gotoControl: true,
+    // No "Go to node" here. It is a plain `<select>` with one option per node,
+    // which on this dataset is nearly nine thousand of them — a DOM cost on
+    // every mount and, on a phone, a native picker nobody can scroll. The
+    // example already has a way to find somebody: the picker on the aggregate
+    // node, which is searchable and builds only the rows in view.
   },
   {
     id: 'lazy',

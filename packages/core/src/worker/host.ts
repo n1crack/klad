@@ -230,6 +230,16 @@ export function createChartHost(
           quad = buildQuadTree(message.boxes, message.bounds)
         } else if (message.t === 'error') {
           console.error(`Klad worker: ${message.message}`)
+          // A frame was asked for and will never come: the worker threw before
+          // it could draw one. Whoever is awaiting it has to be let go, or the
+          // chart stops for good — the frame loop only asks for its NEXT frame
+          // after this promise settles, so one unresolved await is not a
+          // dropped frame, it is the end of the animation loop. An empty
+          // `visible` is the honest answer: nothing was drawn.
+          if (pendingFrame !== null) {
+            pendingFrame.resolve(new Uint32Array(0))
+            pendingFrame = null
+          }
         }
       }
       post(
@@ -353,6 +363,12 @@ export function createChartHost(
       // merely imprecise.
       if (engine !== null) return Promise.resolve(engine.render(now))
       return new Promise<Uint32Array>((resolve) => {
+        // Two renders in flight at once: the older one's frame is about to be
+        // counted against the newer one's target, so its promise would never
+        // settle. Hand it the same answer rather than orphaning it — a caller
+        // stuck on a promise that cannot resolve is the same permanent freeze
+        // as the error case above.
+        pendingFrame?.resolve(new Uint32Array(0))
         pendingFrame = { target: sentCount + 1, resolve }
         post({ t: 'render' }, [], now)
       })

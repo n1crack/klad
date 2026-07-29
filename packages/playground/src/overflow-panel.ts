@@ -162,7 +162,14 @@ export function openOverflowPanel(options: OverflowPanelOptions): void {
     if (event.key === 'Escape') closeOverflowPanel()
   }
   const onDown = (event: PointerEvent): void => {
-    if (!root.contains(event.target as Node)) closeOverflowPanel()
+    if (root.contains(event.target as Node)) return
+    closeOverflowPanel()
+    // The tap that dismisses a popover dismisses it and nothing else. Without
+    // this the same press reaches the chart underneath and starts a pan — and
+    // if anything then eats its `pointerup`, the chart is left following the
+    // finger with no way out. Capture phase is what makes stopping it here
+    // enough: the chart's own listener never sees it.
+    event.stopPropagation()
   }
   // `pointerdown` on the window rather than a click on a backdrop: a backdrop
   // would swallow the pan and zoom the chart underneath still wants.
