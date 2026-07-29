@@ -1200,7 +1200,7 @@ export const EXAMPLES: Example[] = [
     id: 'editing',
     name: 'Editing',
     description:
-      'Drag somebody onto a manager in the SAME department and it lands. Onto a different one and it goes red under the pointer, before you let go \u2014 that is a rule of your own, not one of the chart\u2019s. Add and remove people with the buttons. Then press \u201cA poll arrives\u201d: the tree changes underneath you and nothing you had opened folds back up.',
+      'Drag somebody onto a manager in the SAME department and it lands. Onto a different one and it goes red under the pointer, before you let go \u2014 that is a rule of your own, not one of the chart\u2019s. Add and remove people with the buttons, and take any of it back with Undo. \u201cSend\u201d shows what an app would post to its server. \u201cNew data from the server\u201d is the other direction: somebody else changed the tree, and it arrives without folding up what you had open or moving where you were looking.',
     data: SHARED_DATA,
     options: {
       dragAndDrop: true,

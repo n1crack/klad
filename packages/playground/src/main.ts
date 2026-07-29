@@ -1508,7 +1508,12 @@ function syncEditState(): void {
   editUndo.disabled = !api.canUndo()
   editRedo.disabled = !api.canRedo()
   editSave.disabled = !api.isDirty()
-  editSave.textContent = api.isDirty() ? `Save ${api.changes().length}` : 'Saved'
+  const pending = api.changes().length
+  // What the button will DO, and how much of it — "Saved" read as a state and
+  // left you wondering what the number beside it had meant.
+  editSave.textContent = api.isDirty()
+    ? `Send ${pending} change${pending === 1 ? '' : 's'}`
+    : 'Nothing to send'
 }
 
 const editUndo = sidebarButton('Undo', () => {
@@ -1521,7 +1526,7 @@ const editRedo = sidebarButton('Redo', () => {
   syncEditState()
 })
 
-const editSave = sidebarButton('Saved', () => {
+const editSave = sidebarButton('Nothing to send', () => {
   const api = currentApi
   if (api === null) return
   // What an app would PATCH. Shown rather than sent, since there is nothing
@@ -1529,13 +1534,13 @@ const editSave = sidebarButton('Saved', () => {
   const changes = api.changes()
   editLog.textContent =
     changes.length === 0
-      ? 'Nothing to save.'
-      : `Sent: ${changes.map((change) => `${change.op} ${'ids' in change ? change.ids.join(', ') : change.items.map((item) => String(item.id)).join(', ')}`).join(' · ')}`
+      ? 'Nothing to send.'
+      : `A real app would send this: ${changes.map((change) => `${change.op} ${'ids' in change ? change.ids.join(', ') : change.items.map((item) => String(item.id)).join(', ')}`).join(' · ')}`
   api.markSaved()
   syncEditState()
 })
 
-const editPoll = sidebarButton('A poll arrives', () => {
+const editPoll = sidebarButton('New data from the server', () => {
   const api = currentApi
   if (api === null) return
   // What a server would send: the tree as IT sees it. Deliberately built from
@@ -1556,7 +1561,7 @@ const editPoll = sidebarButton('A poll arrives', () => {
     }
   }
   api.reconcile([...rows, ...editAdded.filter((item) => !editRemoved.has(String(item.id)))])
-  editLog.textContent = 'The tree changed. Your open branches and camera did not.'
+  editLog.textContent = 'The tree changed. What you had open, and where you were looking, did not.'
   // Fresh data clears the history — see `reconcile`.
   syncEditState()
 })
