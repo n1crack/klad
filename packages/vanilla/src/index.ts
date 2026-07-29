@@ -4783,6 +4783,15 @@ export function createKlad(host: HTMLElement, options: Options): KladInstance {
       // it would take the data somewhere neither you nor the server asked for
       // — and the viewer could not see that it had. Clearing is the less
       // surprising of the two wrong-looking answers.
+      // The caps you lifted are part of where you are, so they survive — but
+      // only for nodes that are still here. `update` clears these outright and
+      // its comment says why the alternative bites: an id that leaves and
+      // later comes back arrives with its cap already lifted, which is a
+      // decision about a node nobody has seen. Keeping the ones that stayed
+      // and dropping the ones that went is the half of that reasoning a
+      // reconcile is entitled to.
+      for (const id of uncapped) if (!incoming.has(id)) uncapped.delete(id)
+      for (const id of revealed) if (!incoming.has(id)) revealed.delete(id)
       clearHistory()
       applyEdit(() => data, { preserveLoaded: true })
     },

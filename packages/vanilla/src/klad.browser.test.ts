@@ -5149,3 +5149,111 @@ describe('history', () => {
     chart.destroy()
   })
 })
+
+describe('editing, where it meets the rest', () => {
+  it('moves correctly into a parent whose level is capped', async () => {
+    // The index a move lands at counts REAL children, and a capped parent
+    // draws eight of forty. If the two were ever confused, "put it third"
+    // would land wherever the third drawn child happens to be.
+    const kids = Array.from({ length: 10 }, (_, i) => ({ id: `k${i}`, parentId: 'a', name: `K${i}` }))
+    const chart = createKlad(host(), {
+      data: [{ id: 'a', name: 'Root' }, { id: 'z', name: 'Other' }, ...kids],
+      nodeSize: { w: 120, h: 48 },
+      label: (item) => String(item.name ?? ''),
+      worker: false,
+      maxChildren: 3,
+    })
+    await nextFrame()
+    await settle()
+
+    expect(chart.api.move('z', 'a', 5)).toBe(true)
+    await settleTransition()
+    const children = chart.api
+      .getData()
+      .filter((item) => (item.parentId ?? null) === 'a')
+      .map((item) => String(item.id))
+    expect(children).toEqual(['k0', 'k1', 'k2', 'k3', 'k4', 'z', 'k5', 'k6', 'k7', 'k8', 'k9'])
+    chart.destroy()
+  })
+
+  it('edits while a filter is running without the filter drifting', async () => {
+    const chart = make({})
+    await nextFrame()
+    await settle()
+
+    chart.api.filter('Leaf')
+    await settleTransition()
+    expect(chart.api.getState().visibleCount).toBe(3) // a -> b -> d
+
+    chart.api.add({ id: 'z', name: 'Leaf too' }, 'c')
+    await settleTransition()
+    await settle()
+
+    // The mask is source-indexed and the tree was just renumbered. If it were
+    // carried rather than rebuilt, the filter would now be keeping an
+    // arbitrary set.
+    expect(chart.api.getState().visibleCount).toBe(5) // a -> b -> d, a -> c -> z
+    chart.destroy()
+  })
+
+  it('undoes a move a rule would refuse, because going back is not a new edit', async () => {
+    let strict = false
+    const chart = make({ canMove: () => !strict })
+    await nextFrame()
+    await settle()
+
+    chart.api.move('d', 'c')
+    await settleTransition()
+    // The rule tightens — a server said so, a viewer locked the branch.
+    strict = true
+    expect(chart.api.move('d', 'b')).toBe(false)
+
+    // Undo still works. It is not proposing a new arrangement, it is
+    // withdrawing one, and refusing would strand the viewer in a state the
+    // rule also forbids.
+    expect(chart.api.undo()).toBe(true)
+    await settleTransition()
+    expect(chart.api.pathTo('d')).toEqual(['a', 'b', 'd'])
+    chart.destroy()
+  })
+
+  it('does not carry a lifted cap onto a node that merely reuses an id', async () => {
+    // `update` clears `uncapped` and says why: an id that leaves and comes
+    // back would arrive with its cap already lifted, which nobody asked for.
+    // `reconcile` keeps them on purpose — the caps you lifted are part of
+    // where you are — so the returning-id case has to be checked, not assumed.
+    const wide = (parent: string) =>
+      Array.from({ length: 6 }, (_, i) => ({ id: `${parent}-${i}`, parentId: parent, name: `${parent}${i}` }))
+    const chart = createKlad(host(), {
+      data: [{ id: 'a', name: 'Root' }, { id: 'p', parentId: 'a', name: 'Parent' }, ...wide('p')],
+      nodeSize: { w: 120, h: 48 },
+      label: (item) => String(item.name ?? ''),
+      worker: false,
+      maxChildren: 2,
+    })
+    await nextFrame()
+    await settle()
+    chart.api.showMore('klad:more:p')
+    await settleTransition()
+    const lifted = chart.api.getState().visibleCount
+
+    // `p` leaves...
+    chart.api.reconcile([{ id: 'a', name: 'Root' }])
+    await settleTransition()
+    await settle()
+    // ...and a different `p` arrives, with its own crowd.
+    chart.api.reconcile([
+      { id: 'a', name: 'Root' },
+      { id: 'p', parentId: 'a', name: 'A different parent' },
+      ...wide('p'),
+    ])
+    await settleTransition()
+    await settle()
+
+    const now = chart.api.getState().visibleCount
+    console.log(`[intersect] lifted ${lifted}, after the id came back ${now}`)
+    // Capped again: 'a', 'p', two children and the node standing for the rest.
+    expect(now).toBe(5)
+    chart.destroy()
+  })
+})
