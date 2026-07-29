@@ -1,5 +1,160 @@
 # @klad/engine
 
+## 1.5.0
+
+### Minor Changes
+
+- 433c79c: Cards fade out when their node leaves, instead of vanishing.
+
+  The canvas has faded leaving nodes since 1.0 — a collapse's children shrink
+  back into their parent — but the host's DOM overlay never heard about them.
+  They are not in `visible` and never will be, so a chart with real cards on it
+  faded a box on the canvas while the card sitting on that box blinked out on the
+  first frame.
+
+  Nowhere was that worse than a capped level. Pinning somebody below the cap does
+  not widen the level, it takes the slot off whoever was last — so two cards
+  swapped in one place, one vanishing instantly and one fading in. What it read
+  as was the whole chart re-rendering, which is exactly how it was reported.
+
+  The engine now exposes `lastGhostSource`, `lastGhostBoxes` and
+  `lastGhostAlpha`: the nodes on their way out this frame, their interpolated
+  boxes and their alphas, three aligned arrays. `null` together on every frame
+  where nothing is leaving, and bounded by how many actually are — so the steady
+  state is untouched, the same way `lastDrawnBoxes` is. They cross the worker
+  boundary transferred rather than cloned, like their siblings.
+
+  The vanilla overlay folds them into the same box and alpha maps it already
+  keeps, so a leaving card animates exactly as an arriving one does. Every
+  collapse gets this too, not just a capped level.
+
+- a854c03: `filter(query)` — reduce the chart to what matches.
+
+  ```ts
+  const found = chart.api.filter("schema"); // the ids that matched
+  chart.api.filter(null); // back to the whole tree
+  ```
+
+  A substring on the label, or your own predicate. What stays is the matches
+  plus the ancestors that lead to them, so the result is a tree rather than a
+  list and you can see where each hit lives. A match's own children are hidden
+  unless they match too: answering "where are the things I asked for" with their
+  subtrees attached puts back most of what was taken away.
+
+  It overrides collapse. A filter that found something and then left it hidden
+  behind a closed ancestor would be answering a different question than the one
+  that was asked. Expand state is untouched underneath and comes back when the
+  filter is cleared.
+
+  Like `isolate`, this prunes and lays out again rather than hiding nodes at draw
+  time — so the minimap, the screen-reader tree, drop resolution and the exports
+  all agree with what is drawn, without any of them learning about filtering.
+  Under a filter the keyboard's right arrow moves inward rather than expanding,
+  since the mask has already decided what is on screen.
+
+  The engine's half is `setFilter(keep)`, a source-indexed mask. Working out what
+  matches, and which ancestors lead to it, stays with the caller: matching is a
+  question about their data, which the engine addresses by index and cannot see.
+
+  Also corrected: `isolate`'s documentation claimed it constrained `search`. It
+  never has. `search` deliberately scans the whole tree — including branches that
+  are collapsed, isolated away or filtered out — because "is there a Rossi
+  anywhere in this company" is not a question about the current view, and a
+  search that could only find what was already on screen would be no use for
+  getting to what is not. That is now what the docs say, and `search`'s own
+  docblock says why.
+
+- fec4c77: Fixed: a move had no transition in worker mode.
+
+  The worker renders after every message. The vanilla layer sent the filter and
+  cap masks as their own calls right after `setData`, so the relayout that built
+  the move's transition was followed immediately by one that dirtied the layout
+  and threw it away. On the main thread both land inside a single frame and one
+  relayout sees everything — which is why nothing caught it: every test for this
+  ran the engine in-process.
+
+  The masks now travel with the data, as two more optional arguments to
+  `setData`. They are indexed against that tree and belong in the same breath as
+  it. `setFilter` and `setOverflow` remain for changing either without a data
+  change.
+
+  What this fixes in practice: pinning a node onto a capped level animates. The
+  card that lost its slot fades out while room is being made; the pinned one
+  fades in after. Before, in a worker-backed chart — which is the default — both
+  happened between one frame and the next.
+
+- 36e1a49: `stats(id)` now carries nested-set bounds: `lft` and `rgt`.
+
+  A node's pair brackets every pair below it, which turns "is this node inside
+  that branch" from a walk up the parent chain of unbounded length into two
+  comparisons:
+
+  ```ts
+  const branch = chart.api.stats("engineering")!;
+  const node = chart.api.stats("lead-42")!;
+  const inside = node.lft > branch.lft && node.rgt < branch.rgt;
+  ```
+
+  That is what makes filtering a large tree by branch cheap enough to do per
+  frame, which is what they are here for. Strict on both sides, so a node is not
+  inside itself, and `rgt - lft` is `2 * descendants + 1`, so the pair carries
+  the subtree size too.
+
+  The classic interleaved numbering rather than a half-open range, because it is
+  also what a database storing a hierarchy as nested sets uses — so these can go
+  straight back after a drag reorders anything. Numbered across the whole forest,
+  so two roots' ranges never overlap.
+
+  Free, in the sense that matters: computed by the same `computeSubtreeStats`
+  pass that already counts descendants, as a flat sweep over the existing
+  preorder rather than the enter/exit recursion the numbering is usually
+  described with. A 50,000-deep chain is a supported input and there is a test
+  that would blow the stack if this stopped being a sweep.
+
+  The six numbers are also on the context every card is rendered with, since
+  `NodeContext extends NodeStats`.
+
+- 89233a3: Very wide levels: `maxChildren` and `pinChildren`.
+
+  ```ts
+  createKlad(host, {
+    data,
+    maxChildren: 8,
+    pinChildren: (item) => watching.has(String(item.id)),
+  });
+  ```
+
+  Eight children are drawn as themselves and everything after them is replaced
+  by a single node saying how many it stands for.
+
+  Two options rather than one, because a cap on its own is a truncation and
+  truncation shows whichever children come first. Working through five levels of
+  a hundred where seven or eight per level matter, that is nobody's eight.
+  `pinChildren` says which. Pins precede the budget rather than being part of it
+  — pin ten with a cap of eight and you get ten, because a pin is an instruction
+  and a cap is a default — and order stays the data's own, so a pinned child does
+  not get hoisted to the front.
+
+  **Nothing is thrown away.** The children that did not fit are still in the
+  tree: `search` finds them, `stats` counts them, `filter` matches them, and
+  `focus` digs one back out. That last is not a nicety — a cap has no toggle the
+  way a collapsed branch does, so without it a node whose ancestor fell past a
+  cap would be permanently unreachable.
+
+  `NodeContext.overflow` is `null` on ordinary nodes and on the aggregate carries
+  `count`, the `ids` it stands for, and `showMore()` / `reveal(ids)` bound to that
+  node — so a card, or a picker built from `ids`, is self-contained rather than
+  having to reach back out for the chart instance from inside a render callback.
+  `showMore` and `reveal` are also on the chart API. A lift sticks: somebody
+  asked for it and a rebuild is not an undo.
+
+  A filter suppresses capping entirely, since asking for specific nodes has
+  already said which ones you want.
+
+  The engine's half is `setOverflow(hide)`, a source-indexed mask. Hidden rather
+  than absent is the load-bearing choice: only the drawn tree is smaller, which
+  is what lets every other claim above be true.
+
 ## 1.4.0
 
 ### Minor Changes

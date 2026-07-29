@@ -1,5 +1,338 @@
 # @klad/core
 
+## 1.5.0
+
+### Minor Changes
+
+- 433c79c: Cards fade out when their node leaves, instead of vanishing.
+
+  The canvas has faded leaving nodes since 1.0 — a collapse's children shrink
+  back into their parent — but the host's DOM overlay never heard about them.
+  They are not in `visible` and never will be, so a chart with real cards on it
+  faded a box on the canvas while the card sitting on that box blinked out on the
+  first frame.
+
+  Nowhere was that worse than a capped level. Pinning somebody below the cap does
+  not widen the level, it takes the slot off whoever was last — so two cards
+  swapped in one place, one vanishing instantly and one fading in. What it read
+  as was the whole chart re-rendering, which is exactly how it was reported.
+
+  The engine now exposes `lastGhostSource`, `lastGhostBoxes` and
+  `lastGhostAlpha`: the nodes on their way out this frame, their interpolated
+  boxes and their alphas, three aligned arrays. `null` together on every frame
+  where nothing is leaving, and bounded by how many actually are — so the steady
+  state is untouched, the same way `lastDrawnBoxes` is. They cross the worker
+  boundary transferred rather than cloned, like their siblings.
+
+  The vanilla overlay folds them into the same box and alpha maps it already
+  keeps, so a leaving card animates exactly as an arriving one does. Every
+  collapse gets this too, not just a capped level.
+
+- a854c03: `filter(query)` — reduce the chart to what matches.
+
+  ```ts
+  const found = chart.api.filter("schema"); // the ids that matched
+  chart.api.filter(null); // back to the whole tree
+  ```
+
+  A substring on the label, or your own predicate. What stays is the matches
+  plus the ancestors that lead to them, so the result is a tree rather than a
+  list and you can see where each hit lives. A match's own children are hidden
+  unless they match too: answering "where are the things I asked for" with their
+  subtrees attached puts back most of what was taken away.
+
+  It overrides collapse. A filter that found something and then left it hidden
+  behind a closed ancestor would be answering a different question than the one
+  that was asked. Expand state is untouched underneath and comes back when the
+  filter is cleared.
+
+  Like `isolate`, this prunes and lays out again rather than hiding nodes at draw
+  time — so the minimap, the screen-reader tree, drop resolution and the exports
+  all agree with what is drawn, without any of them learning about filtering.
+  Under a filter the keyboard's right arrow moves inward rather than expanding,
+  since the mask has already decided what is on screen.
+
+  The engine's half is `setFilter(keep)`, a source-indexed mask. Working out what
+  matches, and which ancestors lead to it, stays with the caller: matching is a
+  question about their data, which the engine addresses by index and cannot see.
+
+  Also corrected: `isolate`'s documentation claimed it constrained `search`. It
+  never has. `search` deliberately scans the whole tree — including branches that
+  are collapsed, isolated away or filtered out — because "is there a Rossi
+  anywhere in this company" is not a question about the current view, and a
+  search that could only find what was already on screen would be no use for
+  getting to what is not. That is now what the docs say, and `search`'s own
+  docblock says why.
+
+- 36e1a49: `stats(id)` now carries nested-set bounds: `lft` and `rgt`.
+
+  A node's pair brackets every pair below it, which turns "is this node inside
+  that branch" from a walk up the parent chain of unbounded length into two
+  comparisons:
+
+  ```ts
+  const branch = chart.api.stats("engineering")!;
+  const node = chart.api.stats("lead-42")!;
+  const inside = node.lft > branch.lft && node.rgt < branch.rgt;
+  ```
+
+  That is what makes filtering a large tree by branch cheap enough to do per
+  frame, which is what they are here for. Strict on both sides, so a node is not
+  inside itself, and `rgt - lft` is `2 * descendants + 1`, so the pair carries
+  the subtree size too.
+
+  The classic interleaved numbering rather than a half-open range, because it is
+  also what a database storing a hierarchy as nested sets uses — so these can go
+  straight back after a drag reorders anything. Numbered across the whole forest,
+  so two roots' ranges never overlap.
+
+  Free, in the sense that matters: computed by the same `computeSubtreeStats`
+  pass that already counts descendants, as a flat sweep over the existing
+  preorder rather than the enter/exit recursion the numbering is usually
+  described with. A 50,000-deep chain is a supported input and there is a test
+  that would blow the stack if this stopped being a sweep.
+
+  The six numbers are also on the context every card is rendered with, since
+  `NodeContext extends NodeStats`.
+
+- 1c9d1da: Picking, not "show them all".
+
+  `NodeContext.overflow` now carries `items` alongside `ids` — the hidden nodes'
+  own data objects, in the same order — so a picker can show names without going
+  back to the host's array to look each one up.
+
+  And `refresh()` re-reads `maxChildren` and `pinChildren`. That is how a working
+  set reaches the chart: `pinChildren` closes over a set the host mutates, and
+  when that set changes neither the options object nor the data has, so there was
+  nothing for the chart to notice. Those are per-node answers from the host
+  exactly as `nodeSize` is, and re-reading those means re-reading these. With a
+  cap configured `refresh()` now takes the heavier path and animates, because a
+  cap is structure rather than a measurement.
+
+  Together these are what a big level actually needs. `showMore` is right for a
+  level of twelve with a cap of eight; it is wrong for a level of four hundred,
+  where unreadable is the problem the cap is solving and a button back to
+  unreadable is that problem with an invitation attached. The guide now says so
+  and shows the picker instead.
+
+- 560c51e: `refresh({ keep })` — hold one node's screen position across the relayout.
+
+  Ticking somebody in a picker hung off an aggregate node swaps who is on that
+  level, and without a pin the level slid out from under the panel the viewer was
+  still reading. `keep` is the same pin a drop puts on its target. The aggregate
+  node is the right anchor here, unlike a `showMore`: the cap stays on, so the
+  node stays too.
+
+  `animateNextLayout` also takes the direction now — `opening`, defaulting to
+  `true`. The transition is two phases and which visual job each does flips with
+  it: arriving, room is made first and the new nodes settle into it; leaving,
+  they go first and the gap closes behind them. A move previously had no opinion
+  and inherited whatever the last expand or collapse left behind, so the same
+  action could animate one way after opening a branch and the other after closing
+  one. A cap change derives it from what actually happened to the tree.
+
+- 89233a3: Very wide levels: `maxChildren` and `pinChildren`.
+
+  ```ts
+  createKlad(host, {
+    data,
+    maxChildren: 8,
+    pinChildren: (item) => watching.has(String(item.id)),
+  });
+  ```
+
+  Eight children are drawn as themselves and everything after them is replaced
+  by a single node saying how many it stands for.
+
+  Two options rather than one, because a cap on its own is a truncation and
+  truncation shows whichever children come first. Working through five levels of
+  a hundred where seven or eight per level matter, that is nobody's eight.
+  `pinChildren` says which. Pins precede the budget rather than being part of it
+  — pin ten with a cap of eight and you get ten, because a pin is an instruction
+  and a cap is a default — and order stays the data's own, so a pinned child does
+  not get hoisted to the front.
+
+  **Nothing is thrown away.** The children that did not fit are still in the
+  tree: `search` finds them, `stats` counts them, `filter` matches them, and
+  `focus` digs one back out. That last is not a nicety — a cap has no toggle the
+  way a collapsed branch does, so without it a node whose ancestor fell past a
+  cap would be permanently unreachable.
+
+  `NodeContext.overflow` is `null` on ordinary nodes and on the aggregate carries
+  `count`, the `ids` it stands for, and `showMore()` / `reveal(ids)` bound to that
+  node — so a card, or a picker built from `ids`, is self-contained rather than
+  having to reach back out for the chart instance from inside a render callback.
+  `showMore` and `reveal` are also on the chart API. A lift sticks: somebody
+  asked for it and a rebuild is not an undo.
+
+  A filter suppresses capping entirely, since asking for specific nodes has
+  already said which ones you want.
+
+  The engine's half is `setOverflow(hide)`, a source-indexed mask. Hidden rather
+  than absent is the load-bearing choice: only the drawn tree is smaller, which
+  is what lets every other claim above be true.
+
+### Patch Changes
+
+- 41ddf0d: Four gaps found reviewing 1.5, all of them the node a capped level invents
+  leaking somewhere it does not belong.
+
+  - **It could be dragged, and dropped into.** Both are now refused, from the
+    pointer and from the keyboard. It stands for other nodes rather than being
+    one, so moving it has no meaning — and `nodeDrop` must never report an id the
+    host has never seen. That included the case where a box or lasso selection
+    swept it up and a drag carried the whole selection.
+  - **`search` returned it.** Its `item` is a stub with nothing on it but an id,
+    so a caller looping results to read a field would find nothing there.
+  - **`stats` counted it.** A card reading `directChildren` to say "20 reports"
+    said 21. The counts now leave the invented nodes out; `lft`/`rgt`, being
+    positions rather than counts, still include them, which leaves containment
+    correct and scopes the `rgt - lft === 2 * descendants + 1` identity to a
+    chart with nothing capped.
+  - **A view did not carry the caps or the filter.** `getView`/`setView` now
+    round-trip `filter`, `uncapped` and `revealed` alongside `isolated` — a link
+    that restored everything except what the viewer had filtered and opened up
+    would come back a different chart. A filter set with a predicate is the one
+    thing a view cannot carry, since a function does not go in a URL; that is
+    stated rather than silently rounded to "no filter".
+
+- f35d7e0: Four bugs found hunting through 1.5, three of them where a capped level meets
+  something else.
+
+  **Two drops in a row corrupted the data.** A reparent rebuilds the host's array
+  from the chart's current rows, and those included the node a cap invents. So
+  the first drop wrote an aggregate into `data`; the second renormalised that
+  array, planned a second aggregate for the same parent, and landed on a
+  duplicate id. The rows that came from outside the chart are now a separate
+  thing from the rows the chart adds to them, and only the first kind is ever
+  written back.
+
+  **A drop after that also lost the cap.** The same reparent normalised its own
+  array directly instead of replanning, so the aggregate vanished until something
+  else forced a full rebuild.
+
+  **`nodeDrop` reported the wrong index.** It counted among the DRAWN siblings,
+  and a capped level draws eight of four hundred. With a pin in the mix the two
+  numbers diverge by any amount: dropping after a pinned twentieth child reported 5. The index is now translated back into the parent's real child list, which
+  fixes the same divergence under a filter.
+
+  **Lifted caps survived `update(data)`.** They name nodes in the dataset being
+  replaced, so they lifted caps on ids that no longer existed — or on ones that
+  happened to exist again and that nobody had opened. Cleared now, like the
+  loaded children beside them.
+
+  Also: a `filter` drops a pending `focus`. A deferred focus waits for the
+  relayout that reveals its target, which for a node the filter excludes never
+  comes — and clearing the filter later would resolve the wait and jump the
+  camera somewhere nobody had asked to go any more. And `reveal` returns early
+  without a cap, rather than paying a full relayout to reveal nothing.
+
+- ba57e19: Three more from the bug hunt, each one the chart's own bookkeeping showing
+  through somewhere it should not.
+
+  **The export lost the "more inside" mark on an unfetched branch.** That rule
+  lives in two places by necessity — in worker mode the live engine is
+  unreachable from the main thread, so the export recomputes it — and children on
+  demand taught the engine about unloaded nodes without teaching the mirror. The
+  mark was on the canvas and missing from the picture of the canvas.
+
+  **A cap's aggregate node could be sent to `loadChildren`.** It is childless by
+  construction, so any `mayHaveChildren` loose enough to say yes to a stub with
+  none of the host's fields would put a "more inside" mark on the chart's own
+  invention and then fetch it.
+
+  **A filter could match it.** Its fallback label is `+15`, so `filter('1')`
+  matched. `search` already refused it; `filter` now does too, for the same
+  reason: both answer questions about the host's data, not about the chart's
+  bookkeeping.
+
+  Also covered: caps and filters through the worker, which every other test for
+  them ran in-process; a cap of zero and a cap bigger than the level; and the
+  fact that `maxChildren` caps children and therefore not roots, which is now
+  stated in the guide rather than left to be found.
+
+- 23ed03b: Lifting a cap, and loading a branch, now hold their place.
+
+  **The camera.** Clicking "+392 more" makes that level three hundred and
+  ninety-two nodes wider, and a `tidy` parent is centred over its children — so
+  the node you clicked from slid hundreds of pixels away while you were looking
+  at it. The parent is now pinned across the rebuild, the same way a drop pins
+  its target. Not the aggregate node: lifting the cap is what removes it.
+
+  **The minimap.** Neither a lifted cap nor an arriving branch asked it to refit,
+  though both change what the map is a map OF at least as much as isolating does
+  — which has asked for one since 1.1. Without it the whole chart ends up drawn
+  in the corner the capped level used to occupy.
+
+  Also documented: `maxChildren` and `pinChildren` must be defined outside the
+  render in Vue and React, or memoised. Both adapters call `update()` when the
+  options object changes identity, and that now resets every cap the viewer had
+  lifted as well as the open branches — so an inline arrow undoes their work on
+  every render.
+
+- fec4c77: Fixed: a move had no transition in worker mode.
+
+  The worker renders after every message. The vanilla layer sent the filter and
+  cap masks as their own calls right after `setData`, so the relayout that built
+  the move's transition was followed immediately by one that dirtied the layout
+  and threw it away. On the main thread both land inside a single frame and one
+  relayout sees everything — which is why nothing caught it: every test for this
+  ran the engine in-process.
+
+  The masks now travel with the data, as two more optional arguments to
+  `setData`. They are indexed against that tree and belong in the same breath as
+  it. `setFilter` and `setOverflow` remain for changing either without a data
+  change.
+
+  What this fixes in practice: pinning a node onto a capped level animates. The
+  card that lost its slot fades out while room is being made; the pinned one
+  fades in after. Before, in a worker-backed chart — which is the default — both
+  happened between one frame and the next.
+
+- 075963e: The camera pin now rides the transition instead of jumping ahead of it.
+
+  A pin holds one node's screen position across a relayout — the target of a
+  drop, the parent of a lifted cap, the node a lazy load hung off. It solved once
+  against where that node would END UP, on the first frame, while every node was
+  still drawn where it had been. So the whole chart jumped the full distance and
+  then drifted back into place, which reads as a snap and hides the animation
+  completely.
+
+  It is now re-solved every frame against the node's interpolated position, for
+  as long as the transition runs. The pinned node stays genuinely still and
+  everything reflows around it, which is what a pin was supposed to mean.
+
+  Visible on any pin where the node moves far. Lifting a cap on a level of twenty
+  moved the chart 532 pixels on frame one; drops mostly got away with it because
+  a drop target rarely moves much.
+
+  Also measured and written down: on a 20,000-node forest a full relayout is
+  328ms uncapped and 315ms with a cap and a pin predicate, and filtering the same
+  tree to 11,000 matches costs about what a plain `refresh()` does.
+
+- 7197a12: A pin that swaps says which node it brought in.
+
+  With slots to spare, pinning somebody does not widen a capped level — it takes
+  the slot off whoever was last. That is a cross-fade in the same place, and what
+  it reads as is "the whole thing re-rendered" rather than one node arriving. The
+  chart now flashes its confirmation ring on the arrival: the existing "the thing
+  you asked for is HERE" marker, and one node arriving is exactly the single-node
+  action it was built for.
+
+  Only when exactly one node comes out from behind the cap. A `showMore` brings
+  back fifteen at once and rings none of them, because fifteen rings is a strobe.
+
+  The two behaviours this makes legible were already correct and are now covered:
+  below the cap a pin SWAPS — three stay three, and the one that lost its slot is
+  the last of them — and past the cap the pins win and the level grows instead.
+
+- Updated dependencies [433c79c]
+- Updated dependencies [a854c03]
+- Updated dependencies [fec4c77]
+- Updated dependencies [36e1a49]
+- Updated dependencies [89233a3]
+  - @klad/engine@1.5.0
+
 ## 1.4.0
 
 ### Minor Changes

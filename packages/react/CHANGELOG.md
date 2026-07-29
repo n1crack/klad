@@ -1,5 +1,57 @@
 # @klad/react
 
+## 1.5.0
+
+### Minor Changes
+
+- 36e1a49: `stats(id)` now carries nested-set bounds: `lft` and `rgt`.
+
+  A node's pair brackets every pair below it, which turns "is this node inside
+  that branch" from a walk up the parent chain of unbounded length into two
+  comparisons:
+
+  ```ts
+  const branch = chart.api.stats("engineering")!;
+  const node = chart.api.stats("lead-42")!;
+  const inside = node.lft > branch.lft && node.rgt < branch.rgt;
+  ```
+
+  That is what makes filtering a large tree by branch cheap enough to do per
+  frame, which is what they are here for. Strict on both sides, so a node is not
+  inside itself, and `rgt - lft` is `2 * descendants + 1`, so the pair carries
+  the subtree size too.
+
+  The classic interleaved numbering rather than a half-open range, because it is
+  also what a database storing a hierarchy as nested sets uses — so these can go
+  straight back after a drag reorders anything. Numbered across the whole forest,
+  so two roots' ranges never overlap.
+
+  Free, in the sense that matters: computed by the same `computeSubtreeStats`
+  pass that already counts descendants, as a flat sweep over the existing
+  preorder rather than the enter/exit recursion the numbering is usually
+  described with. A 50,000-deep chain is a supported input and there is a test
+  that would blow the stack if this stopped being a sweep.
+
+  The six numbers are also on the context every card is rendered with, since
+  `NodeContext extends NodeStats`.
+
+### Patch Changes
+
+- Updated dependencies [41ddf0d]
+- Updated dependencies [f35d7e0]
+- Updated dependencies [ba57e19]
+- Updated dependencies [23ed03b]
+- Updated dependencies [433c79c]
+- Updated dependencies [a854c03]
+- Updated dependencies [fec4c77]
+- Updated dependencies [36e1a49]
+- Updated dependencies [1c9d1da]
+- Updated dependencies [560c51e]
+- Updated dependencies [075963e]
+- Updated dependencies [7197a12]
+- Updated dependencies [89233a3]
+  - @klad/core@1.5.0
+
 ## 1.4.0
 
 ### Minor Changes
