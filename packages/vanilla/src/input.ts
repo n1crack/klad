@@ -197,6 +197,17 @@ export function attachInput(
     // Checked before `activePointers` is touched so a right-click can't count
     // toward the two-pointer pinch either.
     if (event.button !== 0) return
+    // A previous gesture that never ended. It should not be possible —
+    // `pointerup` and `pointercancel` both finish one — but a browser that
+    // takes a gesture away without saying so leaves this layer claiming the
+    // pointer forever, and then every move pans the camera and nothing works
+    // again until the page is reloaded. Ending it here costs one comparison
+    // per press and makes that unrecoverable state merely a glitch.
+    if (claimed) {
+      claimed = false
+      dragging = false
+      callbacks.onDragCancel()
+    }
     callbacks.cancelAnimation()
     activePointers.set(event.pointerId, { x: event.clientX, y: event.clientY })
     if (activePointers.size === 2) {

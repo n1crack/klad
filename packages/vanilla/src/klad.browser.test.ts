@@ -2384,6 +2384,51 @@ describe('drag and drop', () => {
     chart.destroy()
   })
 
+  it('recovers from a gesture that never ended', async () => {
+    // A browser that takes a gesture away without sending `pointerup` or
+    // `pointercancel` leaves this layer claiming the pointer forever: every
+    // move pans, nothing works, and only a reload fixes it. Reported on iOS
+    // around a dropdown dismissal.
+    const dropped: unknown[] = []
+    const chart = make({
+      dragAndDrop: true,
+      renderNode: (el: HTMLElement, ctx: { item: { name?: unknown } }) => {
+        el.textContent = String(ctx.item.name ?? '')
+      },
+    })
+    chart.on('nodeDrop', (event) => dropped.push(event))
+    await nextFrame()
+    await settle()
+
+    const host = document.querySelector<HTMLElement>('.klad-overlay-node')!.parentElement!
+    const hostRect = host.getBoundingClientRect()
+    const from = centreOfCard('d')!
+    const to = centreOfCard('c')!
+    // A drag that is claimed and then simply abandoned — no up, no cancel.
+    await dragHold(
+      host,
+      { x: from.x - hostRect.left, y: from.y - hostRect.top },
+      { x: to.x - hostRect.left, y: to.y - hostRect.top },
+    )
+    expect(chartHostEl().classList.contains('klad-dragging')).toBe(true)
+
+    // The next press finds the stale gesture and ends it rather than adding
+    // to it.
+    host.dispatchEvent(
+      new PointerEvent('pointerdown', {
+        clientX: hostRect.left + 20,
+        clientY: hostRect.top + 20,
+        pointerId: 2,
+        button: 0,
+        bubbles: true,
+      }),
+    )
+    await nextFrame()
+    expect(chartHostEl().classList.contains('klad-dragging')).toBe(false)
+    expect(dropped.length).toBe(0)
+    chart.destroy()
+  })
+
   it('cancels when the browser takes the gesture away', async () => {
     // `pointercancel` used to route to the same place as `pointerup`, so a
     // gesture the browser reclaimed — a touch it decided was a scroll — moved

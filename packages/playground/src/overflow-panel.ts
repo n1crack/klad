@@ -172,7 +172,21 @@ export function openOverflowPanel(options: OverflowPanelOptions): void {
   open = () => {
     window.removeEventListener('keydown', onKey)
     window.removeEventListener('pointerdown', onDown, true)
-    root.remove()
+
+    // Let go of focus BEFORE the element goes, and take the element out on the
+    // next task rather than inside the event that closed it.
+    //
+    // Both are for iOS. Removing the node that holds the focused input, from
+    // inside a `pointerdown`, leaves Safari trying to scroll a element that no
+    // longer exists into view while it is also dismissing the on-screen
+    // keyboard — which locks the page rather than throwing. Blurring first
+    // means the keyboard is already on its way out, and deferring means the
+    // gesture that triggered this finishes against a document that still makes
+    // sense.
+    const focused = document.activeElement
+    if (focused instanceof HTMLElement && root.contains(focused)) focused.blur()
+    root.style.pointerEvents = 'none'
+    setTimeout(() => root.remove(), 0)
     open = null
   }
 

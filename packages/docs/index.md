@@ -125,8 +125,14 @@ createKlad(el, { data, layout: 'sunburst' })  // nested arcs you can drill into
 
 File explorers, ASTs, taxonomies, dependency trees, family trees, disk usage —
 all the same shape of problem, and the reason this is a tree engine rather than
-an org chart component. Try all four in the
-[playground](/playground/).
+an org chart component. Try them in the
+<a href="/playground/" target="_self">playground</a>.
+
+<!-- A raw anchor, not a markdown link. The playground is a separate Vite app
+     copied in under `public/`, not one of VitePress's own routes — so a
+     markdown link hands it to the SPA router, which finds no page for it and
+     renders a 404. The nav entry has carried `target: '_self'` for this reason
+     since it was added; this one did not. -->
 
 ## One Thing to Know
 
