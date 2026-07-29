@@ -393,6 +393,41 @@ export interface Options {
    */
   dragAndDrop?: boolean
   /**
+   * Your rule on whether a move is allowed. `true` to permit it; omitted,
+   * everything the chart itself considers legal is permitted.
+   *
+   * This is where a business rule goes — a contractor cannot report to a
+   * director, a locked branch cannot be reorganised. The alternative was
+   * refusing in `nodeDrop`, and that answers too late: the drop indicator has
+   * already told the viewer "yes, here", and the node snaps back after they
+   * let go. Asked here, the indicator turns red under the pointer and the
+   * cursor says no-drop, before anything is committed to.
+   *
+   * ```ts
+   * canMove: ({ items, parentId }) =>
+   *   parentId === null || items.every((item) => item.kind !== 'contractor')
+   * ```
+   *
+   * Asked by the drag, by the drop, and by `api.move` — all three, because a
+   * rule enforced only in the pointer path is not a rule but a hint, and
+   * anything calling the API walks straight past it.
+   *
+   * `parentId` is `null` for a move that makes a root; `index` is the
+   * position among that parent's real children. The chart's own rules are
+   * applied first and are not negotiable through this: a move into a node's
+   * own subtree is refused whatever you return, because the result would not
+   * be a tree.
+   *
+   * Keep it cheap, but not anxiously so — during a drag it is consulted only
+   * when the target node or the drop mode changes, not on every pointer move.
+   */
+  canMove?: (event: {
+    ids: string[]
+    items: NodeData[]
+    parentId: string | null
+    index: number
+  }) => boolean
+  /**
    * Fill each node with its top-level branch's colour from `theme.palette`.
    * Omitted, the layout decides: on for `sunburst`, whose segments have
    * neither position nor connectors to carry structure, and off for every
@@ -1715,6 +1750,16 @@ export function createKlad(host: HTMLElement, options: Options): KladInstance {
   let dropTargetIndex = -1
   let dropTargetMode: DropMode = 'into'
   let dropTargetValid = true
+  /**
+   * The host rule's answer for the target the pointer is over, cached for as
+   * long as it stays over it.
+   *
+   * Resolving where a drop would land prunes the tree, and `canMove` is
+   * somebody else's function — neither belongs on a path that runs on every
+   * pointer move. The answer can only change when the target node or the drop
+   * mode does, so that is when it is asked.
+   */
+  let ruleCache: { index: number; mode: DropMode; allowed: boolean } | null = null
 
   /** Screen px from the edge within which a drag starts panning, and how fast
    * it goes at the very edge (px per frame). */
@@ -1761,6 +1806,22 @@ export function createKlad(host: HTMLElement, options: Options): KladInstance {
    * `klad-drag-refused` are still set alongside, for a host that wants a
    * different look; this is the floor, not the ceiling.
    */
+  /**
+   * `canMove`, for the target the pointer is over — cached per (target, mode)
+   * so a slow rule costs once per node crossed rather than once per frame.
+   */
+  const ruleAllows = (index: number, mode: DropMode): boolean => {
+    if (currentOptions.canMove === undefined) return true
+    if (ruleCache !== null && ruleCache.index === index && ruleCache.mode === mode) {
+      return ruleCache.allowed
+    }
+    const landing = dropLanding(index, mode)
+    const allowed =
+      landing === null ? true : moveAllowed(inTreeOrder(dragIds), landing.parentId, landing.index)
+    ruleCache = { index, mode, allowed }
+    return allowed
+  }
+
   const setDragCursor = (cursor: string): void => {
     host.style.cursor = cursor
     canvas.style.cursor = cursor
@@ -1779,6 +1840,9 @@ export function createKlad(host: HTMLElement, options: Options): KladInstance {
   const teardownDrag = (): void => {
     dragIds = []
     dragMask = null
+    // Keyed by target index, and the next gesture may well start over the
+    // same node with a different selection in hand.
+    ruleCache = null
     dragGhost.hide()
     stopEdgePan()
     cancelSpring()
@@ -1950,9 +2014,22 @@ export function createKlad(host: HTMLElement, options: Options): KladInstance {
     return drawnIndex
   }
 
-  const emitDrop = (ids: string[], target: number, mode: DropMode): void => {
+  /**
+   * Where a drop on `target` in `mode` would actually land: the parent it
+   * would become a child of, and its position among that parent's REAL
+   * children.
+   *
+   * Shared by the drop itself and by the drag, which has to ask the host's
+   * rule the same question while the pointer is still down. Not cheap — it
+   * prunes the tree — so the drag caches the answer and only comes back here
+   * when the target or the mode changes, not on every pointer move.
+   */
+  const dropLanding = (
+    target: number,
+    mode: DropMode,
+  ): { parentSource: number; parentId: string | null; index: number } | null => {
     const pruned = sourceToPruned.get(target)
-    if (pruned === undefined) return
+    if (pruned === undefined) return null
     const visible = pruneToVisible(tree, open, isolatedIndex, filterKeep, overflowHide)
     const position = dropPosition(visible.tree, pruned, mode)
     const parentSource = position.parent === -1 ? -1 : visible.toSource[position.parent]!
@@ -1962,19 +2039,56 @@ export function createKlad(host: HTMLElement, options: Options): KladInstance {
     // index is translated back into the parent's real child list here, by
     // taking the drawn sibling it lands after and finding where THAT one
     // really sits.
-    const dropIndex = sourceChildIndex(parentSource, visible, position.index)
-    // In tree order, so a handler applying this to its own array does not have
-    // to work the ordering out. `tree.order` is preorder, which is the order a
-    // viewer sees them in.
-    const ordered = Array.from(tree.order)
+    return {
+      parentSource,
+      parentId: parentSource === -1 ? null : tree.indexToId[parentSource]!,
+      index: sourceChildIndex(parentSource, visible, position.index),
+    }
+  }
+
+  /** `ids` in tree order — preorder, which is the order a viewer sees them
+   * in, so a handler applying the move to its own array does not have to work
+   * the ordering out. */
+  const inTreeOrder = (ids: string[]): string[] =>
+    Array.from(tree.order)
       .map((index) => tree.indexToId[index]!)
       .filter((id) => ids.includes(id))
+
+  /**
+   * The host's own rule on a move, or `true` when they have not written one.
+   *
+   * Asked by the drag (so the indicator can refuse BEFORE the pointer comes
+   * up), by the drop, and by `api.move`. All three, because a rule enforced
+   * only in the pointer path is not a rule — it is a hint that anything
+   * calling the API can walk straight past.
+   */
+  const moveAllowed = (ids: string[], parentId: string | null, index: number): boolean => {
+    const rule = currentOptions.canMove
+    if (rule === undefined) return true
+    return rule({
+      ids,
+      items: ids.map((id) => itemById.get(id) ?? { id }),
+      parentId,
+      index,
+    })
+  }
+
+  const emitDrop = (ids: string[], target: number, mode: DropMode): void => {
+    const landing = dropLanding(target, mode)
+    if (landing === null) return
+    const parentSource = landing.parentSource
+    const dropIndex = landing.index
+    const ordered = inTreeOrder(ids)
+    // Asked again here, not only during the drag. The drag caches its answer
+    // per target, and an option change or a load mid-gesture could have moved
+    // the ground under it — this is the one that decides.
+    if (!moveAllowed(ordered, landing.parentId, dropIndex)) return
 
     let refused = false
     emit('nodeDrop', {
       ids: ordered,
       items: ordered.map((id) => itemById.get(id) ?? { id }),
-      parentId: parentSource === -1 ? null : tree.indexToId[parentSource]!,
+      parentId: landing.parentId,
       index: dropIndex,
       mode,
       preventDefault: () => {
@@ -1984,12 +2098,7 @@ export function createKlad(host: HTMLElement, options: Options): KladInstance {
     if (refused) return
     // Pinned to the node that was dropped ONTO, not the one that moved — see
     // `applyReparent`.
-    applyReparent(
-      ordered,
-      parentSource === -1 ? null : tree.indexToId[parentSource]!,
-      dropIndex,
-      target,
-    )
+    applyReparent(ordered, landing.parentId, dropIndex, target)
   }
 
   /**
@@ -3878,7 +3987,7 @@ export function createKlad(host: HTMLElement, options: Options): KladInstance {
       // make the moved node a child of something that does not exist as far
       // as the host is concerned.
       const legal = isDropAllowed(dragMask, index) && overflowInfo(itemFor(index)) === null
-      setDropTarget(index, mode, legal)
+      setDropTarget(index, mode, legal && ruleAllows(index, mode))
       // Only an "into" hover springs a folder. On the leading or trailing
       // quarter the viewer is aiming BETWEEN two rows, and opening the one
       // they are beside would push their target out from under them.
@@ -4210,7 +4319,11 @@ export function createKlad(host: HTMLElement, options: Options): KladInstance {
       sources.sort((a, b) => a - b)
       const ordered = sources.map((at) => tree.indexToId[at]!)
       const childCount = parentAt === -1 ? tree.roots.length : childCountOf(parentAt)
-      applyReparent(ordered, toParentId, index === undefined ? childCount : Math.max(0, index))
+      const at = index === undefined ? childCount : Math.max(0, index)
+      // The host's rule applies here too. A rule the pointer path honours and
+      // the API does not is not a rule.
+      if (!moveAllowed(ordered, toParentId, at)) return false
+      applyReparent(ordered, toParentId, at)
       return true
     },
     add(items, parentId = null, index) {
@@ -4261,17 +4374,27 @@ export function createKlad(host: HTMLElement, options: Options): KladInstance {
     remove(ids) {
       const list = typeof ids === 'string' ? [ids] : ids
       if (list.length === 0) return false
-      const doomed = new Set<string>()
+      // The bounds of each branch being removed, collected first. Then ONE
+      // pass over the tree: the obvious shape — a scan per id — is O(ids x
+      // nodes), which nobody notices at a handful but is twenty million
+      // comparisons for a thousand ids on a twenty-thousand-node tree.
+      const ranges: { lft: number; rgt: number }[] = []
       for (const id of list) {
         const at = tree.idToIndex.get(id)
         if (at === undefined || overflowInfo(itemFor(at)) !== null) return false
-        // The node and everything below it, read straight off the bounds
-        // rather than walked — a subtree is exactly the nodes whose pair sits
-        // inside this one's.
-        const lft = stats.lft[at]!
-        const rgt = stats.rgt[at]!
-        for (let i = 0; i < tree.count; i++) {
-          if (stats.lft[i]! >= lft && stats.rgt[i]! <= rgt) doomed.add(tree.indexToId[i]!)
+        ranges.push({ lft: stats.lft[at]!, rgt: stats.rgt[at]! })
+      }
+      // A subtree is exactly the nodes whose nested-set pair sits inside its
+      // own — no walk, which is what 1.5 added the bounds for.
+      const doomed = new Set<string>()
+      for (let i = 0; i < tree.count; i++) {
+        const lft = stats.lft[i]!
+        const rgt = stats.rgt[i]!
+        for (const range of ranges) {
+          if (lft >= range.lft && rgt <= range.rgt) {
+            doomed.add(tree.indexToId[i]!)
+            break
+          }
         }
       }
       applyEdit((source) => source.filter((item) => !doomed.has(String(item.id))))

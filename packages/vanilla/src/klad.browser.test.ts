@@ -2615,6 +2615,98 @@ describe('drag and drop', () => {
     chart.destroy()
     el.remove()
   })
+
+  describe('a rule of your own on a move', () => {
+    it('refuses under the pointer, before anything is let go of', async () => {
+      // The point of the option. Refusing in `nodeDrop` answers after the
+      // viewer has committed: the indicator said yes, then the node snaps back.
+      const asked: { ids: string[]; parentId: string | null }[] = []
+      const chart = make({
+        dragAndDrop: true,
+        canMove: ({ ids, parentId }: { ids: string[]; parentId: string | null }) => {
+          asked.push({ ids, parentId })
+          return parentId !== 'c'
+        },
+        renderNode: (el: HTMLElement, ctx: { item: { name?: unknown } }) => {
+          el.textContent = String(ctx.item.name ?? '')
+        },
+      })
+      await nextFrame()
+      await settle()
+
+      const host = document.querySelector<HTMLElement>('.klad-overlay-node')!.parentElement!
+      const hostRect = host.getBoundingClientRect()
+      const local = (id: string) => {
+        const c = centreOfCard(id)!
+        return { x: c.x - hostRect.left, y: c.y - hostRect.top }
+      }
+      const chartHost = chartHostEl()
+
+      // `c` is a legal target as far as the chart is concerned — nothing about
+      // the tree forbids it. Only the rule does.
+      const gesture = await dragHold(host, local('d'), local('c'))
+      expect(chartHost.style.cursor).toBe('no-drop')
+      expect(chartHost.classList.contains('klad-drag-refused')).toBe(true)
+      expect(asked.at(-1)).toEqual({ ids: ['d'], parentId: 'c' })
+
+      // And the chart's own answer still wins where it applies: `b` is `d`'s
+      // parent, so hovering it in "into" mode is refused by the tree rule
+      // whatever the host says.
+      await gesture.hover(local('b'))
+      await gesture.release(local('b'))
+      await settleTransition()
+      expect(chart.api.pathTo('d')).toEqual(['a', 'b', 'd'])
+      chart.destroy()
+    })
+
+    it('is asked once per target crossed, not once per pointer move', async () => {
+      let calls = 0
+      const chart = make({
+        dragAndDrop: true,
+        canMove: () => {
+          calls++
+          return true
+        },
+        renderNode: (el: HTMLElement, ctx: { item: { name?: unknown } }) => {
+          el.textContent = String(ctx.item.name ?? '')
+        },
+      })
+      await nextFrame()
+      await settle()
+
+      const host = document.querySelector<HTMLElement>('.klad-overlay-node')!.parentElement!
+      const hostRect = host.getBoundingClientRect()
+      const local = (id: string) => {
+        const c = centreOfCard(id)!
+        return { x: c.x - hostRect.left, y: c.y - hostRect.top }
+      }
+      const gesture = await dragHold(host, local('d'), local('c'))
+      const afterFirst = calls
+      // Four more moves, same node, same mode. Resolving where a drop lands
+      // prunes the tree, so this is not just about somebody's slow predicate.
+      for (let i = 0; i < 4; i++) await gesture.hover(local('c'))
+      expect(calls).toBe(afterFirst)
+
+      await gesture.escape()
+      chart.destroy()
+    })
+
+    it('binds api.move too, or it is a hint rather than a rule', async () => {
+      const chart = make({
+        canMove: ({ parentId }: { parentId: string | null }) => parentId !== 'c',
+      })
+      await nextFrame()
+      await settle()
+
+      expect(chart.api.move('d', 'c')).toBe(false)
+      expect(chart.api.pathTo('d')).toEqual(['a', 'b', 'd'])
+      expect(chart.api.move('d', 'a')).toBe(true)
+      await settleTransition()
+      expect(chart.api.pathTo('d')).toEqual(['a', 'd'])
+      chart.destroy()
+    })
+  })
+
 })
 
 describe('children on demand', () => {

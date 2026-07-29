@@ -158,8 +158,32 @@ the chart does not know which field is the name and has no business writing
 one. Change the row and call `refresh()`. The same goes for any other field:
 the chart owns the shape, you own the content.
 
+### A rule of your own
+
+The chart's own rules are about what is a tree. Yours are about what your data
+allows, and they go in [`canMove`](/api/options):
+
+```ts
+createKlad(el, {
+  data,
+  dragAndDrop: true,
+  canMove: ({ items, parentId }) =>
+    parentId === null || items.every((item) => item.kind !== 'contractor'),
+})
+```
+
+Asked **during the drag**, so the indicator turns red and the cursor says
+no-drop while the pointer is still down — refusing in `nodeDrop` answers after
+the viewer has already committed and the node snaps back. Asked again at the
+drop, and by `move()`, because a rule the pointer path honours and the API does
+not is a hint rather than a rule.
+
+During a drag it is consulted once per target node crossed, not once per
+pointer move.
+
 ### What gets refused
 
+- **Your own `canMove`**, if you wrote one.
 - **A move into its own subtree**, because the result would not be a tree.
   Moving a node onto itself is the same test's degenerate case.
 - **An id this chart does not have**, on either end.
@@ -169,6 +193,25 @@ the chart owns the shape, you own the content.
   invents.** It is a real node in the tree, but it is the chart's own
   bookkeeping rather than a row of yours, so moving or deleting it would mean
   nothing. It is also left out of `getData()`, for the same reason.
+
+### One call, not a loop
+
+An edit lays the tree out again — the whole tree, because a move changes where
+everything after it sits. On a 20,000-node chart that is around 350ms, which a
+person dragging one node never sees (the transition covers it) and a loop of a
+hundred calls very much does.
+
+Every method takes an array for this reason. Measured on the same 20,000-node
+chart:
+
+| | |
+| --- | --- |
+| One `move` | ~350 ms |
+| 100 separate `move` calls | ~1300 ms |
+| **100 ids in one `move` call** | **~355 ms** |
+
+So a bulk reassign is one call with a hundred ids, not a hundred calls. Same
+for `add` and `remove`.
 
 ### Removing takes the subtree
 
