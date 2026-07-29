@@ -2503,6 +2503,59 @@ describe('drag and drop', () => {
     chart.destroy()
   })
 
+  it('keeps the drag\u2019s own subtree off limits after a spring-load rebuilds the tree', async () => {
+    // `dragMask` is a SOURCE-indexed mask, built once when the gesture starts.
+    // Spring-loading an unfetched folder mid-drag renormalizes the tree, and
+    // whether the mask is still pointing at the right nodes afterwards rests
+    // on loaded rows being APPENDED so existing indices survive. That is true
+    // — and true by accident, stated nowhere. This is the statement.
+    const chart = createKlad(host(), {
+      data: [
+        { id: 'a', name: 'Root' },
+        { id: 'b', parentId: 'a', name: 'Carried' },
+        { id: 'd', parentId: 'b', name: 'Its child' },
+        { id: 'c', parentId: 'a', name: 'Folder', childCount: 2 },
+      ],
+      nodeSize: { w: 120, h: 48 },
+      label: (item) => String(item.name ?? ''),
+      worker: false,
+      dragAndDrop: true,
+      mayHaveChildren: (item) => Number(item.childCount ?? 0) > 0,
+      loadChildren: () => [{ id: 'c1', name: 'Fetched one' }, { id: 'c2', name: 'Fetched two' }],
+      renderNode: (el: HTMLElement, ctx: NodeContext) => {
+        el.textContent = String(ctx.item.name ?? '')
+      },
+    })
+    await nextFrame()
+    await settle()
+
+    const el = document.querySelector<HTMLElement>('.klad-overlay-node')!.parentElement!
+    const rect = el.getBoundingClientRect()
+    const local = (id: string) => {
+      const c = centreOfCard(id)!
+      return { x: c.x - rect.left, y: c.y - rect.top }
+    }
+    const chartHost = chartHostEl()
+
+    // Pick up `b`, rest on the unfetched folder until it springs and loads.
+    const gesture = await dragHold(el, local('b'), local('c'))
+    await new Promise((r) => setTimeout(r, 900))
+    await settle()
+    expect(chart.api.stats('c1')).not.toBeNull()
+
+    // The tree has been rebuilt underneath the gesture. `d` is still `b`'s
+    // child, so it is still off limits — a stale mask would say otherwise.
+    await gesture.hover(local('d'))
+    expect(chartHost.classList.contains('klad-drag-refused')).toBe(true)
+
+    // And a node that was never part of it is still a legal target.
+    await gesture.hover(local('c1'))
+    expect(chartHost.classList.contains('klad-drag-refused')).toBe(false)
+
+    await gesture.escape()
+    chart.destroy()
+  })
+
   it('springs a closed branch open when the drag rests on it', async () => {
     // Without this a closed branch is a wall: its children are off screen, so
     // there is nothing to aim at and no way to open it while both hands are
@@ -4790,6 +4843,80 @@ describe('reconcile', () => {
 
     expect(chart.api.stats('b1')).toBeNull()
     expect(warnings).toHaveLength(0)
+    chart.destroy()
+  })
+})
+
+describe('isolate survives the tree being rebuilt', () => {
+  // `isolatedIndex` is a SOURCE index, and a source index means nothing across
+  // a `normalize` — the same hazard `buildFilterMask`'s docblock describes for
+  // the filter mask, which is re-run for exactly this reason. Nothing was
+  // re-deriving this one.
+  it('still points at the node you isolated after an edit', async () => {
+    const chart = make({})
+    await nextFrame()
+    await settle()
+
+    chart.api.isolate('b')
+    await settleTransition()
+    expect(chart.api.getState().isolated).toBe('b')
+
+    // Any edit renormalizes, and `b` need not land on the same index.
+    chart.api.add({ id: 'z', name: 'First' }, 'a', 0)
+    await settleTransition()
+    await settle()
+
+    expect(chart.api.getState().isolated).toBe('b')
+    // And the chart really is still showing that branch, not whatever now
+    // sits at the old index.
+    expect(chart.api.stats('d')).not.toBeNull()
+    chart.destroy()
+  })
+
+  it('still points at it after a reconcile', async () => {
+    const chart = make({})
+    await nextFrame()
+    await settle()
+    chart.api.isolate('c')
+    await settleTransition()
+
+    chart.api.reconcile([
+      { id: 'z', name: 'New root child' },
+      { id: 'a', name: 'Root' },
+      { id: 'b', parentId: 'a', name: 'Left' },
+      { id: 'c', parentId: 'a', name: 'Right' },
+      { id: 'd', parentId: 'b', name: 'Leaf' },
+    ])
+    await settleTransition()
+    await settle()
+
+    expect(chart.api.getState().isolated).toBe('c')
+    // A plain sanity check that the chart is still drawing. Worth saying what
+    // it does NOT do: reconciling while isolated used to crash the engine's
+    // transition builder (see `toNewSource` there), and that surfaces as an
+    // unhandled rejection inside the worker host rather than as a failed
+    // assertion here — the frame still arrives, empty or not. What catches a
+    // regression is vitest failing the run on the unhandled error, which it
+    // does; this line is not standing in for that.
+    expect(chart.api.getState().visibleCount).toBeGreaterThan(0)
+    chart.destroy()
+  })
+
+  it('lets go when the node it was pointing at leaves', async () => {
+    const chart = make({})
+    await nextFrame()
+    await settle()
+    chart.api.isolate('b')
+    await settleTransition()
+
+    chart.api.remove('b')
+    await settleTransition()
+    await settle()
+
+    // Nothing to isolate any more. Holding a stale index would show an
+    // arbitrary branch and report somebody else's id for it.
+    expect(chart.api.getState().isolated).toBeNull()
+    expect(chart.api.stats('c')).not.toBeNull()
     chart.destroy()
   })
 })

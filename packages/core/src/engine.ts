@@ -1050,6 +1050,27 @@ function buildTransition(
   // walk from) with the same memoization trick as `resolveRevealAnchor`, and
   // likewise returns a PRUNED INDEX rather than a baked box.
   const ghosts: Ghost[] = []
+  /**
+   * An OLD source index in the NEW source space, or -1 for a node the rebuild
+   * dropped altogether.
+   *
+   * Everything below walks the PREVIOUS tree — `prevVisibleToSource` and
+   * `prevTransition.ghosts` are both in the old index space — and then reads
+   * `prunedFromSource` (indexed by the new one) and `prevPositionBySource`
+   * (keyed by the new one, see the remap where it is filled). Without this
+   * the two spaces are silently mixed, which is harmless only while
+   * `sourceRemap` is null. Every rebuild that reorders the array passes a real
+   * one, and then a ghost is looked up under the wrong key, comes back
+   * `undefined` for a `Box`, and the first `.x` read off it takes the whole
+   * relayout down.
+   *
+   * It needs a departure AND a reorder to bite, which is why it survived: a
+   * drop reorders but nothing leaves the visible tree, and a collapse has
+   * things leave but does not reorder. Isolating a branch and then
+   * reconciling does both.
+   */
+  const toNewSource = (source: number): number =>
+    source === -1 ? -1 : sourceRemap === null ? source : (sourceRemap[source] ?? -1)
   const ancestorCache = new Map<number, number>()
   const resolveGhostAnchor = (oldIdx: number): number => {
     const path: number[] = []
@@ -1062,7 +1083,10 @@ function buildTransition(
         result = cached
         break
       }
-      const newIdx = prunedFromSource[src]!
+      const newSrc = toNewSource(src)
+      // -1 means this ancestor is not in the new tree at all, so it cannot be
+      // what a ghost collapses toward — keep walking up.
+      const newIdx = newSrc === -1 ? -1 : prunedFromSource[newSrc]!
       if (newIdx !== -1) {
         result = newIdx
         break
@@ -1075,9 +1099,15 @@ function buildTransition(
   }
 
   for (let i = 0; i < prevVisibleToSource.length; i++) {
-    const src = prevVisibleToSource[i]!
+    const src = toNewSource(prevVisibleToSource[i]!)
+    // Gone from the data entirely rather than merely out of view: there is no
+    // "where it went", so nothing to fade.
+    if (src === -1) continue
     if (prunedFromSource[src] !== -1) continue // survives into the new tree
-    const from = prevPositionBySource.get(src)!
+    const from = prevPositionBySource.get(src)
+    // Degrade gracefully rather than assert a Box the map may not hold — the
+    // same rule the anchor resolution follows when it finds no ancestor.
+    if (from === undefined) continue
     const anchor = resolveGhostAnchor(i)
     ghosts.push({ source: src, from, anchor, anchorSource: anchor === -1 ? -1 : visibleToSource[anchor]! })
   }
@@ -1096,15 +1126,33 @@ function buildTransition(
   // ghost then just fades in place, same degrade-gracefully fallback as
   // "no ancestor found" elsewhere in this function).
   if (prevTransition !== null) {
+    // Everything here has to be said in the NEW source space. A carried-over
+    // ghost's `source` and `anchorSource` are indices in the tree it was made
+    // in, `prunedFromSource` is indexed by the new one, and
+    // `prevPositionBySource` is keyed by the new one (see the remap where it
+    // is filled). Reading any of them with an old index is only harmless when
+    // `sourceRemap` is null — and every rebuild that changes the array passes
+    // a real one, so a still-fading ghost was looked up under the wrong key
+    // and came back `undefined` for a `Box` the code went on to read `.x`
+    // off. Which crashed the relayout, taking the frame with it.
     for (const ghost of prevTransition.ghosts) {
-      if (prunedFromSource[ghost.source] !== -1) continue // reappeared; handled as a reveal above
-      const from = prevPositionBySource.get(ghost.source)!
-      const anchor = ghost.anchorSource === -1 ? -1 : prunedFromSource[ghost.anchorSource]!
+      const source = toNewSource(ghost.source)
+      // Not in the new tree's index space at all: the node it stood for is
+      // gone for good, so there is nothing left to fade.
+      if (source === -1) continue
+      if (prunedFromSource[source] !== -1) continue // reappeared; handled as a reveal above
+      const from = prevPositionBySource.get(source)
+      // No position to fade from — the same degrade-gracefully rule the rest
+      // of this function follows, rather than a `!` that asserts a Box the
+      // map may not hold.
+      if (from === undefined) continue
+      const anchorSource = toNewSource(ghost.anchorSource)
+      const anchor = anchorSource === -1 ? -1 : prunedFromSource[anchorSource]!
       ghosts.push({
-        source: ghost.source,
+        source,
         from,
         anchor,
-        anchorSource: anchor === -1 ? -1 : ghost.anchorSource,
+        anchorSource: anchor === -1 ? -1 : anchorSource,
       })
     }
   }

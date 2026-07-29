@@ -1666,6 +1666,34 @@ export function createKlad(host: HTMLElement, options: Options): KladInstance {
     // immediately by one that threw it away.
     if (filterQuery !== null) buildFilterMask()
     overflowHide = overflowMask()
+    // The THIRD thing in this function subject to that same hazard, and the
+    // one that was quietly carrying a stale index: `isolatedIndex`. Held by
+    // id and resolved here, so an edit that renumbers the tree does not leave
+    // the chart isolating whichever node inherited the old slot — and does
+    // not report that node's id back through `getState().isolated`.
+    //
+    // Sent BEFORE `setData` on the rare pass where it changed, for the reason
+    // the masks travel WITH it: the worker renders after every message, so a
+    // message arriving afterwards relayouts again and throws away the
+    // transition the data message just built.
+    // And a FOURTH, live only while a gesture is: the mask marking what the
+    // drag is carrying. It is sized to the tree it was built from, and
+    // `isDropAllowed` refuses any index past its end — so every child a
+    // spring-loaded folder fetched mid-drag came back as an illegal target,
+    // which is the exact opposite of what spring-loading is for. Rebuilt from
+    // the ids, which are what survive a rebuild.
+    if (dragIds.length > 0) {
+      const roots = dragIds
+        .map((id) => tree.idToIndex.get(id))
+        .filter((index): index is number => index !== undefined)
+      dragMask = roots.length === 0 ? null : subtreeMask(tree, roots)
+    }
+    const wasIsolated = isolatedIndex
+    isolatedIndex = isolatedId === null ? -1 : (tree.idToIndex.get(isolatedId) ?? -1)
+    // The node it named is gone. Isolating nothing is the whole tree, which is
+    // the only honest answer — the alternative is framing an arbitrary branch.
+    if (isolatedIndex === -1) isolatedId = null
+    if (isolatedIndex !== wasIsolated) chartHost.setIsolate(isolatedIndex)
     chartHost.setData(toWireTree(tree), sizes, labels, open, unloaded, filterKeep, overflowHide)
     // Deferred: applyData() runs synchronously inside createKlad, before the
     // caller has had a chance to attach a 'warning' listener via `on()`. Emitting
@@ -3142,6 +3170,10 @@ export function createKlad(host: HTMLElement, options: Options): KladInstance {
   let highlightedIds: string[] | null = null
   /** Source index the chart is re-rooted at, or -1 — see `api.isolate`. */
   let isolatedIndex = -1
+  /** The isolated node by ID, which is what survives a rebuild — see the
+   * re-derivation in `applyData`. `isolatedIndex` is only ever a cache of
+   * where that id currently sits. */
+  let isolatedId: string | null = null
   /**
    * The filter, as a SOURCE-indexed keep mask — 1 for a node on screen, 0 for
    * one the filter removed — or `null` when nothing is filtering.
@@ -4119,6 +4151,7 @@ export function createKlad(host: HTMLElement, options: Options): KladInstance {
       const next = id === null ? -1 : (tree.idToIndex.get(id) ?? -1)
       if (next === isolatedIndex) return
       isolatedIndex = next
+      isolatedId = next === -1 ? null : tree.indexToId[next]!
       chartHost.setIsolate(next)
       minimapNeedsRefit = true
       a11yDirty = true
