@@ -45,6 +45,7 @@ off()
 | `toggle` | `{ id, open }` | A node was expanded or collapsed, however it happened. |
 | `selectionChange` | `{ ids, items }` | The selection changed. Carries the whole selection, not a delta. |
 | `nodeDrop` | `NodeDropEvent` | A node was dropped somewhere new. Fires BEFORE anything moves. |
+| `addRequested` | `{ afterId, parentId, index }` | The viewer pressed `Shift+Enter` on a node and wants a sibling after it. A request, not an action — see [Without a pointer](/api/chart#without-a-pointer). |
 | `childrenLoaded` | `{ id, item, items }` | `loadChildren` returned and the chart took the children in. Informational — it holds them either way. |
 | `viewportChange` | `{ camera }` | Any camera change — pan, zoom, ease, kinetic coast. Fires per frame while one is running. |
 | `warning` | `Warning` | Something in the data could not be honoured. |

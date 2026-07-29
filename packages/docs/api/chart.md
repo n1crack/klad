@@ -197,6 +197,45 @@ pointer move.
   bookkeeping rather than a row of yours, so moving or deleting it would mean
   nothing. It is also left out of `getData()`, for the same reason.
 
+### Without a pointer
+
+Turn on [`keyboardEditing`](/api/options) and the focused node can be
+restructured from the keyboard:
+
+| | |
+| --- | --- |
+| `Alt` + `↑` / `↓` | One slot among its siblings. |
+| `Alt` + `←` | Out one level, to just after its old parent. |
+| `Alt` + `→` | In one level, under the sibling above it. |
+| `Delete` / `Backspace` | The node and everything under it. |
+| `Shift` + `Enter` | Asks for a new sibling — see below. |
+
+Separate from `dragAndDrop`, which already gives the keyboard its own version
+of a drag: `m` picks a node up, arrows carry the focus, `m` drops it there,
+`Escape` puts it back. That one can only drop **into** a node, because dropping
+between two means pointing at a gap and a list of rows has no gap to point at.
+The keys above say "one up" instead, which needs no gap — and reordering is most
+of what an outline or a taxonomy is made of.
+
+They are kept as separate permissions because they are not the same one:
+carrying a node somewhere is a rearrangement, and `Delete` is not.
+
+`canMove` applies to every move here, exactly as it does to a drag. Each is one
+edit, so one `undo` takes it back — including the whole subtree a `Delete` took.
+
+**Adding is a request, not an action.** A new node needs a row and the chart
+does not know what your rows look like — the same reason there is no rename. So
+`Shift+Enter` emits [`addRequested`](/api/events) and waits:
+
+```ts
+chart.on('addRequested', ({ parentId, index }) => {
+  const name = prompt('Name?')
+  if (name !== null) chart.api.add({ id: crypto.randomUUID(), name }, parentId, index)
+})
+```
+
+Ignore it and nothing happens.
+
 ### Undo, redo and what to save
 
 ```ts

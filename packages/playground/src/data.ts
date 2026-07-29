@@ -1200,11 +1200,12 @@ export const EXAMPLES: Example[] = [
     id: 'editing',
     name: 'Editing',
     description:
-      'Drag somebody onto a manager in the SAME department and it lands. Onto a different one and it goes red under the pointer, before you let go \u2014 that is a rule of your own, not one of the chart\u2019s. Add and remove people with the buttons, and take any of it back with Undo. \u201cSend\u201d shows what an app would post to its server. \u201cNew data from the server\u201d is the other direction: somebody else changed the tree, and it arrives without folding up what you had open or moving where you were looking.',
+      'Drag somebody onto a manager in the SAME department and it lands. Onto a different one and it goes red under the pointer, before you let go \u2014 that is a rule of your own, not one of the chart\u2019s. No pointer needed either: tab into the chart and use Alt with the arrow keys to move somebody up, down, in or out, or Delete to remove them. Take any of it back with Undo. \u201cSend\u201d shows what an app would post to its server; \u201cNew data from the server\u201d is the other direction, arriving without folding up what you had open.',
     data: SHARED_DATA,
     options: {
       dragAndDrop: true,
       selection: true,
+      keyboardEditing: true,
       nodeSize: { w: 210, h: 78 },
       // The rule the example exists to show. Departments are written on the
       // cards, so a refusal is something you can see the reason for rather

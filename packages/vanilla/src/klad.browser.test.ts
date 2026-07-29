@@ -5257,3 +5257,161 @@ describe('editing, where it meets the rest', () => {
     chart.destroy()
   })
 })
+
+describe('editing from the keyboard', () => {
+  const DEEP = [
+    { id: 'a', name: 'Root' },
+    { id: 'b', parentId: 'a', name: 'First' },
+    { id: 'c', parentId: 'a', name: 'Second' },
+    { id: 'd', parentId: 'a', name: 'Third' },
+    { id: 'b1', parentId: 'b', name: 'Under first' },
+  ]
+  const keys = (overrides: Partial<Options> = {}) =>
+    createKlad(host(), {
+      data: DEEP,
+      nodeSize: { w: 120, h: 48 },
+      label: (item) => String(item.name ?? ''),
+      worker: false,
+      keyboardEditing: true,
+      ...overrides,
+    })
+  const rowOf = (id: string) =>
+    [...document.querySelectorAll<HTMLElement>('[role="treeitem"]')].find(
+      (el) => el.dataset.orgchartId === id,
+    )!
+  const press = async (id: string, key: string, mods: Partial<KeyboardEventInit> = {}) => {
+    const row = rowOf(id)
+    row.focus()
+    row.dispatchEvent(new KeyboardEvent('keydown', { key, bubbles: true, ...mods }))
+    await settleTransition()
+    await settle()
+  }
+  const childIds = (chart: ReturnType<typeof createKlad>, parent: string | null) =>
+    chart.api
+      .getData()
+      .filter((item) => (item.parentId ?? null) === parent)
+      .map((item) => String(item.id))
+
+  it('nudges a node one slot among its siblings', async () => {
+    const chart = keys()
+    await nextFrame()
+    await settle()
+    expect(childIds(chart, 'a')).toEqual(['b', 'c', 'd'])
+
+    await press('c', 'ArrowDown', { altKey: true })
+    expect(childIds(chart, 'a')).toEqual(['b', 'd', 'c'])
+
+    await press('c', 'ArrowUp', { altKey: true })
+    expect(childIds(chart, 'a')).toEqual(['b', 'c', 'd'])
+    chart.destroy()
+  })
+
+  it('stops at the ends rather than wrapping', async () => {
+    const chart = keys()
+    await nextFrame()
+    await settle()
+
+    await press('b', 'ArrowUp', { altKey: true })
+    expect(childIds(chart, 'a')).toEqual(['b', 'c', 'd'])
+    await press('d', 'ArrowDown', { altKey: true })
+    expect(childIds(chart, 'a')).toEqual(['b', 'c', 'd'])
+
+    // And it declined rather than doing a no-op move. The order looks the same
+    // either way, because `move` clamps the index — but a no-op move is a full
+    // relayout and an undo entry for nothing.
+    expect(chart.api.canUndo()).toBe(false)
+    expect(chart.api.isDirty()).toBe(false)
+    chart.destroy()
+  })
+
+  it('goes in under the sibling above, and back out after its old parent', async () => {
+    const chart = keys()
+    await nextFrame()
+    await settle()
+
+    // `c` goes under `b`, which is the row above it.
+    await press('c', 'ArrowRight', { altKey: true })
+    expect(chart.api.pathTo('c')).toEqual(['a', 'b', 'c'])
+    expect(childIds(chart, 'b')).toEqual(['b1', 'c'])
+
+    // And out again: a sibling of `b`, directly after it.
+    await press('c', 'ArrowLeft', { altKey: true })
+    expect(chart.api.pathTo('c')).toEqual(['a', 'c'])
+    expect(childIds(chart, 'a')).toEqual(['b', 'c', 'd'])
+    chart.destroy()
+  })
+
+  it('refuses to go in when there is nothing above it, or out of a root', async () => {
+    const chart = keys()
+    await nextFrame()
+    await settle()
+
+    await press('b', 'ArrowRight', { altKey: true })
+    expect(chart.api.pathTo('b')).toEqual(['a', 'b'])
+    await press('a', 'ArrowLeft', { altKey: true })
+    expect(chart.api.pathTo('a')).toEqual(['a'])
+    chart.destroy()
+  })
+
+  it('removes the node and everything under it', async () => {
+    const chart = keys()
+    await nextFrame()
+    await settle()
+
+    await press('b', 'Delete')
+    expect(chart.api.stats('b')).toBeNull()
+    expect(chart.api.stats('b1')).toBeNull()
+    expect(chart.api.stats('c')).not.toBeNull()
+    // And it is one edit, so one undo puts the branch back.
+    chart.api.undo()
+    await settleTransition()
+    expect(chart.api.stats('b1')).not.toBeNull()
+    chart.destroy()
+  })
+
+  it('asks for a sibling rather than inventing one', async () => {
+    const asked: { afterId: string; parentId: string | null; index: number }[] = []
+    const chart = keys()
+    chart.on('addRequested', (event) => asked.push(event))
+    await nextFrame()
+    await settle()
+
+    await press('c', 'Enter', { shiftKey: true })
+    // Nothing appeared — the chart does not know what a row of yours looks
+    // like, the same reason there is no rename.
+    expect(childIds(chart, 'a')).toEqual(['b', 'c', 'd'])
+    expect(asked).toEqual([{ afterId: 'c', parentId: 'a', index: 2 }])
+
+    // And the values it handed over are the ones `add` wants.
+    chart.api.add({ id: 'new', name: 'Added' }, asked[0]!.parentId, asked[0]!.index)
+    await settleTransition()
+    expect(childIds(chart, 'a')).toEqual(['b', 'c', 'new', 'd'])
+    chart.destroy()
+  })
+
+  it('does nothing at all unless asked for', async () => {
+    const chart = keys({ keyboardEditing: false })
+    await nextFrame()
+    await settle()
+
+    await press('c', 'ArrowDown', { altKey: true })
+    await press('b', 'Delete')
+    expect(childIds(chart, 'a')).toEqual(['b', 'c', 'd'])
+    expect(chart.api.stats('b')).not.toBeNull()
+    chart.destroy()
+  })
+
+  it('honours your rule, exactly as a drag does', async () => {
+    const chart = keys({ canMove: ({ parentId }: { parentId: string | null }) => parentId !== 'b' })
+    await nextFrame()
+    await settle()
+
+    // Going in would put it under `b`, which the rule forbids.
+    await press('c', 'ArrowRight', { altKey: true })
+    expect(chart.api.pathTo('c')).toEqual(['a', 'c'])
+    // Reordering within `a` is still fine.
+    await press('c', 'ArrowDown', { altKey: true })
+    expect(childIds(chart, 'a')).toEqual(['b', 'd', 'c'])
+    chart.destroy()
+  })
+})

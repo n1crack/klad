@@ -409,6 +409,28 @@ export interface Options {
    * it holds the subtree it took out until that record falls off the end.
    */
   history?: number | false
+  /**
+   * Structural edits from the keyboard, on the focused node:
+   *
+   *  - `Alt+ArrowUp` / `Alt+ArrowDown` — one slot among its siblings.
+   *  - `Alt+ArrowLeft` — out one level, to just after its old parent.
+   *  - `Alt+ArrowRight` — in one level, under the sibling above it.
+   *  - `Delete` / `Backspace` — the node and everything under it.
+   *  - `Shift+Enter` — asks for a new sibling; see the `addRequested` event.
+   *
+   * Separate from `dragAndDrop`, which already gives the keyboard an `m`-to-
+   * pick-up, `m`-to-drop equivalent of a drag. That one can only drop INTO a
+   * node, because dropping between two means pointing at a gap and a list of
+   * rows has none to point at. These say "one up" instead, which needs no gap
+   * — and reordering is most of what an outline or a taxonomy is made of.
+   *
+   * Kept a separate permission because they are not the same one: carrying a
+   * node somewhere is a rearrangement, and `Delete` is not. `canMove` applies
+   * to every move here, exactly as it does to a drag.
+   *
+   * Default `false`.
+   */
+  keyboardEditing?: boolean
   dragAndDrop?: boolean
   /**
    * Your rule on whether a move is allowed. `true` to permit it; omitted,
@@ -708,6 +730,16 @@ export interface KladEvents {
    * `dropPosition` in core.
    */
   nodeDrop: (event: NodeDropEvent) => void
+  /**
+   * The viewer pressed `Shift+Enter` on a node and wants a sibling after it —
+   * see `keyboardEditing`.
+   *
+   * A request rather than an action, and it has to be: a new node needs a row,
+   * and the chart does not know what your rows look like. Show whatever you
+   * show, then call `add(item, parentId, index)` with the values handed here.
+   * Nothing happens if you ignore it.
+   */
+  addRequested: (event: { afterId: string; parentId: string | null; index: number }) => void
   /**
    * `loadChildren` returned, and the chart has taken the children in.
    *
@@ -5205,6 +5237,66 @@ export function createKlad(host: HTMLElement, options: Options): KladInstance {
       return moved !== undefined && landed !== undefined && tree.parent[moved] === landed
         ? 'moved'
         : 'refused'
+    },
+    /**
+     * The edits a key can ask for on its own — see `A11yCallbacks.onEditKey`.
+     *
+     * Behind `keyboardEditing` rather than `dragAndDrop`, which gates the `m`
+     * grab. They are not the same permission: carrying a node somewhere is a
+     * rearrangement, and Delete is not.
+     */
+    onEditKey(id, action) {
+      if (currentOptions.keyboardEditing !== true) return false
+      const index = tree.idToIndex.get(id)
+      if (index === undefined) return false
+      // The mirror lists the node a cap invented, and it is neither something
+      // to move nor something to delete. Same rule as everywhere else.
+      if (overflowInfo(itemFor(index)) !== null) return false
+
+      if (action === 'remove') return api.remove(id)
+      if (action === 'add') {
+        const parent = tree.parent[index]!
+        emit('addRequested', {
+          afterId: id,
+          parentId: parent === -1 ? null : tree.indexToId[parent]!,
+          index: siblingIndexes()[index]! + 1,
+        })
+        return true
+      }
+
+      const parent = tree.parent[index]!
+      const slot = siblingIndexes()[index]!
+      const siblings =
+        parent === -1 ? tree.roots.length : tree.childStart[parent + 1]! - tree.childStart[parent]!
+      const parentId = parent === -1 ? null : tree.indexToId[parent]!
+
+      if (action === 'up' || action === 'down') {
+        // `index` on a move counts among the siblings BEFORE the node is taken
+        // out — see `applyReparent` — which is what makes one slot either way
+        // plain arithmetic rather than an off-by-one waiting to happen.
+        if (action === 'up' && slot === 0) return false
+        if (action === 'down' && slot >= siblings - 1) return false
+        return api.move(id, parentId, action === 'up' ? slot - 1 : slot + 1)
+      }
+
+      if (action === 'out') {
+        // A root has nothing to come out of.
+        if (parent === -1) return false
+        const grand = tree.parent[parent]!
+        return api.move(
+          id,
+          grand === -1 ? null : tree.indexToId[grand]!,
+          siblingIndexes()[parent]! + 1,
+        )
+      }
+
+      // 'in': under the sibling above, at the end. The first child of a parent
+      // has nothing above it to go under.
+      if (slot === 0) return false
+      const above =
+        parent === -1 ? tree.roots[slot - 1]! : tree.childIndex[tree.childStart[parent]! + slot - 1]!
+      const aboveId = tree.indexToId[above]!
+      return api.move(id, aboveId, tree.childStart[above + 1]! - tree.childStart[above]!)
     },
   })
 

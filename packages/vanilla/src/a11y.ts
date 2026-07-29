@@ -51,6 +51,16 @@ export interface A11yTree {
   destroy(): void
 }
 
+/** How each keyboard move reads out loud. */
+const MOVED = {
+  up: 'up',
+  down: 'down',
+  out: 'out one level',
+  in: 'in one level',
+  remove: 'removed',
+  add: 'added',
+} as const
+
 export interface A11yCallbacks {
   /** Enter or Space on a row. */
   onActivate(id: string): void
@@ -71,6 +81,26 @@ export interface A11yCallbacks {
    * within a parent is a job for the host's own UI.
    */
   onMove(id: string, to: string | null): 'moved' | 'refused' | 'cancelled'
+  /**
+   * A structural edit asked for with a key rather than by carrying something.
+   *
+   * `onMove` above deliberately only does `into`, because dropping BETWEEN two
+   * things means pointing at a gap and a list of rows gives a keyboard user
+   * nothing to point at. These sidestep that rather than argue with it: you do
+   * not indicate a position, you say "one up" and the chart works out what
+   * that means.
+   *
+   *  - `'up'` / `'down'` — one slot among its own siblings.
+   *  - `'out'` — a sibling of its parent, directly after it.
+   *  - `'in'` — the last child of the sibling above it.
+   *  - `'remove'` — the node and everything under it.
+   *  - `'add'` — only a REQUEST. A new node needs a row and this module does
+   *    not know what a row looks like, the same reason there is no rename.
+   *
+   * Returns whether it happened, so this module can say so — a keyboard user
+   * gets no preview, which makes the announcement the entire feedback.
+   */
+  onEditKey(id: string, action: 'up' | 'down' | 'out' | 'in' | 'remove' | 'add'): boolean
 }
 
 /**
@@ -364,6 +394,48 @@ export function createA11yTree(container: HTMLElement, callbacks: A11yCallbacks)
       grabbed = null
       callbacks.onMove(from, null)
       announce(`${labelFor(from)} put back.`)
+      return
+    }
+
+    // Alt carries the node instead of the focus. Checked before the plain
+    // arrow cases below, which move focus and would otherwise swallow these.
+    if (event.altKey) {
+      const action =
+        event.key === 'ArrowUp'
+          ? 'up'
+          : event.key === 'ArrowDown'
+            ? 'down'
+            : event.key === 'ArrowLeft'
+              ? 'out'
+              : event.key === 'ArrowRight'
+                ? 'in'
+                : null
+      if (action !== null) {
+        event.preventDefault()
+        const label = labelFor(id)
+        const done = callbacks.onEditKey(id, action)
+        announce(done ? `${label} moved ${MOVED[action]}.` : `${label} could not be moved ${MOVED[action]}.`)
+        // The row list is rebuilt around the move, so the element that had
+        // focus is gone; put it back on the same NODE.
+        queueMicrotask(() => rowsById.get(id)?.focus())
+        return
+      }
+    }
+    if (event.key === 'Delete' || event.key === 'Backspace') {
+      event.preventDefault()
+      const label = labelFor(id)
+      announce(
+        callbacks.onEditKey(id, 'remove')
+          ? `${label} and everything under it removed.`
+          : `${label} could not be removed.`,
+      )
+      return
+    }
+    // Shift+Enter rather than a key of its own: Insert is missing from most
+    // laptop keyboards, and plain Enter is already how a row is opened.
+    if (event.key === 'Enter' && event.shiftKey) {
+      event.preventDefault()
+      callbacks.onEditKey(id, 'add')
       return
     }
 

@@ -396,7 +396,8 @@ describe('pooled row reuse', () => {
   function makeA11y(): { host: HTMLElement; a11y: A11yTree } {
     const host = document.createElement('div')
     document.body.appendChild(host)
-    const a11y = createA11yTree(host, { onActivate() {}, onFocus() {}, onMove: () => 'moved' as const })
+    const a11y = createA11yTree(host, { onActivate() {}, onFocus() {}, onMove: () => 'moved' as const,
+      onEditKey: () => true as const })
     return { host, a11y }
   }
 
@@ -519,7 +520,8 @@ describe('pooled update performance', () => {
     for (let r = 0; r < RUNS; r++) {
       const host = document.createElement('div')
       document.body.appendChild(host)
-      const a11y = createA11yTree(host, { onActivate() {}, onFocus() {}, onMove: () => 'moved' as const })
+      const a11y = createA11yTree(host, { onActivate() {}, onFocus() {}, onMove: () => 'moved' as const,
+      onEditKey: () => true as const })
       const open = new Uint8Array(tree.count).fill(1)
       const start = performance.now()
       a11y.update(tree, open, labelOf)
@@ -536,7 +538,8 @@ describe('pooled update performance', () => {
     for (let r = 0; r < RUNS; r++) {
       const host = document.createElement('div')
       document.body.appendChild(host)
-      const a11y = createA11yTree(host, { onActivate() {}, onFocus() {}, onMove: () => 'moved' as const })
+      const a11y = createA11yTree(host, { onActivate() {}, onFocus() {}, onMove: () => 'moved' as const,
+      onEditKey: () => true as const })
       const open = new Uint8Array(tree.count).fill(1)
       a11y.update(tree, open, labelOf) // first call: populates the mirror
       open[tree.roots[0]!] = 0 // simulate collapsing the root
@@ -631,6 +634,7 @@ describe('accessibility tree windowing', () => {
       onActivate: () => {},
       onFocus: (id) => focused.push(id),
       onMove: () => 'moved' as const,
+      onEditKey: () => true as const,
     })
     const open = new Uint8Array(tree.count).fill(1)
     a11y.update(tree, open, (idx) => tree.indexToId[idx]!, -1)

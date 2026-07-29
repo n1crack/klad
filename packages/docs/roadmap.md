@@ -169,10 +169,22 @@ The connector style was the half worth keeping.
 
 ## 1.7 — editing without a pointer
 
-Every edit still needs a mouse. Moving a node from the keyboard, adding a
-sibling, deleting a branch — the chart already has a focus ring and a
-screen-reader tree, and none of it can change anything. For a lot of the places
-a chart like this ends up, that is not a nicety.
+Less missing than it first looked. A node can already be moved from the
+keyboard: `M` picks it up, you navigate to a target, `M` drops it there, Escape
+puts it back. It goes through the same `nodeDrop` and the same `canMove` as the
+pointer, because a move made with the keyboard is not a different kind of move.
+
+Three things it cannot do.
+
+- **Reorder.** The keyboard can only drop INTO a node. The pointer can drop
+  between two siblings, so the one thing an outline or a taxonomy is mostly
+  made of — "this goes above that" — has no keyboard equivalent at all.
+- **Remove.** There is no key for it. A viewer who can restructure a tree but
+  cannot delete from it is halfway to being able to work.
+- **Add.** And this one cannot be a key that acts on its own, for the same
+  reason there is no rename: a new node needs a row, and the chart does not
+  know what your rows look like. It can say "the viewer asked for a sibling
+  here" and let you supply it.
 
 The other loose end is smaller and stated in the docs already: undo back past
 the point you last saved and the chart is dirty with nothing to send, because
