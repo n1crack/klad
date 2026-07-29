@@ -1,5 +1,11 @@
 import { describe, expect, it } from 'vitest'
-import { createKlad, type NodeContext, type NodeData, type Options } from './index.js'
+import {
+  createKlad,
+  type NodeContext,
+  type NodeData,
+  type NodePlace,
+  type Options,
+} from './index.js'
 
 const DATA = [
   { id: 'a', name: 'Root' },
@@ -4111,6 +4117,230 @@ describe('the wheels, with the 1.5 masks', () => {
     await settle()
     // `h` is the sunburst's inner-arc mark — see render/svg.ts.
     expect(chart.api.toSVG()).toContain('class="h"')
+    chart.destroy()
+  })
+})
+
+describe('where a node sits', () => {
+  // a -> b -> d, and a -> c. So `d` is the only node at depth 2, and `b`/`c`
+  // are the only pair of siblings — enough to tell every field apart.
+  type Seen = { id: string; depth: number; index: number; siblings: number; parent: string | null }
+  const record = (into: Seen[]) => (item: NodeData, at: NodePlace) => {
+    into.push({
+      id: String(item.id),
+      depth: at.depth,
+      index: at.index,
+      siblings: at.siblings,
+      parent: at.parent === null ? null : String(at.parent.id),
+    })
+    return String(item.name ?? '')
+  }
+  const of = (seen: Seen[], id: string) => seen.find((s) => s.id === id)!
+
+  it('tells label and nodeSize the depth, the sibling slot and the parent', async () => {
+    const seen: Seen[] = []
+    const sized: Seen[] = []
+    const chart = make({
+      label: record(seen),
+      nodeSize: (item: NodeData, at: NodePlace) => {
+        record(sized)(item, at)
+        return { w: 120, h: 48 }
+      },
+    })
+    await nextFrame()
+    await settle()
+
+    expect(of(seen, 'a')).toEqual({ id: 'a', depth: 0, index: 0, siblings: 1, parent: null })
+    expect(of(seen, 'b')).toEqual({ id: 'b', depth: 1, index: 0, siblings: 2, parent: 'a' })
+    expect(of(seen, 'c')).toEqual({ id: 'c', depth: 1, index: 1, siblings: 2, parent: 'a' })
+    expect(of(seen, 'd')).toEqual({ id: 'd', depth: 2, index: 0, siblings: 1, parent: 'b' })
+    // Both options are told the same thing about the same node.
+    expect(of(sized, 'd')).toEqual(of(seen, 'd'))
+    chart.destroy()
+  })
+
+  it('carries what the label made of it all the way to search', async () => {
+    const chart = make({ label: (item: NodeData, at: NodePlace) => `${item.name}@${at.depth}` })
+    await nextFrame()
+    await settle()
+
+    // `search` resolves labels through the same resolver the canvas draws
+    // with, so a depth the label used has to survive that far or the chart
+    // would find something different from what it shows.
+    expect(chart.api.search('Leaf@2').map((r) => r.id)).toEqual(['d'])
+    expect(chart.api.search('@1').map((r) => r.id)).toEqual(['b', 'c'])
+    chart.destroy()
+  })
+
+  it('orders roots against each other', async () => {
+    const seen: Seen[] = []
+    const chart = createKlad(host(), {
+      data: [{ id: 'r1' }, { id: 'r2' }, { id: 'r3', parentId: 'r1' }],
+      nodeSize: { w: 120, h: 48 },
+      label: record(seen),
+      worker: false,
+    })
+    await nextFrame()
+    await settle()
+
+    expect(of(seen, 'r1')).toEqual({ id: 'r1', depth: 0, index: 0, siblings: 2, parent: null })
+    expect(of(seen, 'r2')).toEqual({ id: 'r2', depth: 0, index: 1, siblings: 2, parent: null })
+    chart.destroy()
+  })
+
+  it('does not change when a branch is folded away', async () => {
+    const seen: Seen[] = []
+    const chart = make({ label: record(seen) })
+    await nextFrame()
+    await settle()
+    const before = of(seen, 'd')
+    expect(before.depth).toBe(2)
+
+    chart.api.collapse('b')
+    await settleTransition()
+    seen.length = 0
+    chart.api.refresh()
+    await settle()
+
+    // `d` is behind a collapsed parent and off screen — but its place in the
+    // data has not moved, and an option told otherwise would give a different
+    // answer the moment the branch came back.
+    expect(of(seen, 'd')).toEqual(before)
+    expect(of(seen, 'd').parent).toBe('b')
+    chart.destroy()
+  })
+
+  it('counts siblings in the data, not the ones a filter left standing', async () => {
+    const seen: Seen[] = []
+    const chart = make({ label: record(seen) })
+    await nextFrame()
+    await settle()
+
+    chart.api.filter('Left')
+    await settleTransition()
+    seen.length = 0
+    chart.api.toSVG()
+
+    // The export walks the PRUNED tree, where `b` is the only child left. Its
+    // sibling slot is still one of two.
+    expect(of(seen, 'b')).toEqual({ id: 'b', depth: 1, index: 0, siblings: 2, parent: 'a' })
+    chart.destroy()
+  })
+
+  it('tells collapsedByDefault the depth, including for rows a load brought in', async () => {
+    const seen: Seen[] = []
+    const chart = createKlad(host(), {
+      data: [
+        { id: 'a', name: 'Root' },
+        { id: 'b', parentId: 'a', name: 'Branch', childCount: 1 },
+      ],
+      nodeSize: { w: 120, h: 48 },
+      label: (item) => String(item.name ?? ''),
+      worker: false,
+      mayHaveChildren: (item) => Number(item.childCount ?? 0) > 0,
+      loadChildren: () => [{ id: 'b1', name: 'Fetched', childCount: 1 }],
+      // Everything from depth 2 down starts folded.
+      collapsedByDefault: (item: NodeData, at: NodePlace) => {
+        seen.push({
+          id: String(item.id),
+          depth: at.depth,
+          index: at.index,
+          siblings: at.siblings,
+          parent: at.parent === null ? null : String(at.parent.id),
+        })
+        return at.depth >= 2
+      },
+    })
+    await nextFrame()
+    await settle()
+    expect(of(seen, 'b').depth).toBe(1)
+
+    seen.length = 0
+    chart.api.expand('b')
+    await settleTransition()
+    await settle()
+
+    // The row `loadChildren` returned is in no array the host holds, so its
+    // depth is the one thing the host could not have worked out itself.
+    expect(of(seen, 'b1')).toEqual({ id: 'b1', depth: 2, index: 0, siblings: 1, parent: 'b' })
+    // And the answer was acted on: at depth 2 it starts folded.
+    expect(chart.api.getView().open).not.toContain('b1')
+    chart.destroy()
+  })
+
+  it('tells mayHaveChildren the depth', async () => {
+    const depths = new Map<string, number>()
+    const chart = make({
+      loadChildren: () => [],
+      mayHaveChildren: (item: NodeData, at: NodePlace) => {
+        depths.set(String(item.id), at.depth)
+        return at.depth < 2
+      },
+    })
+    await nextFrame()
+    await settle()
+
+    // Only the childless nodes are asked — `c` at depth 1 and `d` at depth 2.
+    expect(depths.get('c')).toBe(1)
+    expect(depths.get('d')).toBe(2)
+    // The answer was acted on. A node waiting to be fetched starts CLOSED
+    // whatever else says otherwise, so `c` — which said yes at depth 1 — is
+    // not open, while `d`, a plain leaf at depth 2, is.
+    const open = chart.api.getView().open
+    expect(open).not.toContain('c')
+    expect(open).toContain('d')
+    chart.destroy()
+  })
+
+  it('tells pinChildren its slot among its siblings, before there is a tree', async () => {
+    const seen: Seen[] = []
+    const kids = Array.from({ length: 10 }, (_, i) => ({
+      id: `k${i}`,
+      parentId: 'b',
+      name: `Kid ${i}`,
+    }))
+    // Tall, narrow and indented, so every row is on screen at once and "is
+    // this drawn" is a question about the cap rather than about the camera.
+    const el = document.createElement('div')
+    el.style.width = '600px'
+    el.style.height = '1400px'
+    document.body.appendChild(el)
+    const chart = createKlad(el, {
+      data: [{ id: 'a', name: 'Root' }, { id: 'b', parentId: 'a', name: 'Branch' }, ...kids],
+      layout: 'file',
+      nodeSize: { w: 300, h: 26 },
+      label: (item) => String(item.name ?? ''),
+      worker: false,
+      renderNode: (node: HTMLElement, ctx: NodeContext) => {
+        node.textContent = String(ctx.item.name ?? '')
+      },
+      maxChildren: 3,
+      // Pin the last one. Reachable only through the slot, which is the whole
+      // point: `planOverflow` runs before `normalize`, so this is the one
+      // place the position cannot be read off a tree.
+      pinChildren: (item: NodeData, at: NodePlace) => {
+        seen.push({
+          id: String(item.id),
+          depth: at.depth,
+          index: at.index,
+          siblings: at.siblings,
+          parent: at.parent === null ? null : String(at.parent.id),
+        })
+        return at.index === at.siblings - 1
+      },
+    })
+    await nextFrame()
+    await settle()
+
+    expect(of(seen, 'k0')).toEqual({ id: 'k0', depth: 2, index: 0, siblings: 10, parent: 'b' })
+    expect(of(seen, 'k9')).toEqual({ id: 'k9', depth: 2, index: 9, siblings: 10, parent: 'b' })
+    // The pin landed: the last kid is drawn even though the cap of 3 would
+    // have stopped at `k2`.
+    const shown = [...document.querySelectorAll<HTMLElement>('.klad-overlay-node')].map(
+      (node) => node.dataset.kladId!,
+    )
+    expect(shown).toContain('k9')
+    expect(shown).not.toContain('k5')
     chart.destroy()
   })
 })

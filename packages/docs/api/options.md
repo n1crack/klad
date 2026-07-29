@@ -14,8 +14,8 @@ that produces a usable chart.
 | Option | Type | Default | |
 |---|---|---|---|
 | `data` | `NodeData[]` | — | Flat array. Every item is `{ id, parentId?, ...yours }`; an unresolvable `parentId` makes a root and emits a `warning`. |
-| `nodeSize` | `Size \| (item) => Size` | `{ w: 180, h: 64 }` | The box each node occupies. Declared, never measured — see [Sizing](/guide/sizing). Exported as `DEFAULT_NODE_SIZE`. |
-| `label` | `(item) => string` | `name` → `label` → `title` → `id` | The text the **canvas** draws inside a node, independent of whatever your card renders. Return `''` for a node that should stay blank. |
+| `nodeSize` | `Size \| (item, at) => Size` | `{ w: 180, h: 64 }` | The box each node occupies. Declared, never measured — see [Sizing](/guide/sizing). Exported as `DEFAULT_NODE_SIZE`. |
+| `label` | `(item, at) => string` | `name` → `label` → `title` → `id` | The text the **canvas** draws inside a node, independent of whatever your card renders. Return `''` for a node that should stay blank. |
 
 ## Layout
 
@@ -35,7 +35,7 @@ what each shape is for.
 | `orientation` | `'tb' \| 'bt' \| 'lr' \| 'rl'` | `'tb'` | Which way the tree grows. **`tidy` only** — a file list is a vertical list of rows whatever you set, and a wheel has no reading direction. |
 | `rtl` | `boolean` | `false` | Mirrors sibling order; the growth direction is unaffected. |
 | `spacing` | `{ x?, y?: number }` | `{ x: 16, y: 48 }` | Gaps between siblings and between levels, in world units. |
-| `collapsedByDefault` | `boolean \| (item) => boolean` | `false` | Which nodes start closed. |
+| `collapsedByDefault` | `boolean \| (item, at) => boolean` | `false` | Which nodes start closed. Often a question about depth — see [Where a node sits](#where-a-node-sits). |
 
 ## Content
 
@@ -57,8 +57,8 @@ what each shape is for.
 | Option | Type | Default | |
 |---|---|---|---|
 | `maxChildren` | `number \| ((item) => number)` | — | How many children a node draws before the rest are rolled into one node saying how many it stands for. Per parent. See [Very wide levels](/guide/wide-levels). |
-| `pinChildren` | `(item) => boolean` | — | Children shown whatever the cap says — your working set. Pins precede the budget rather than being part of it. |
-| `mayHaveChildren` | `(item) => boolean` | — | Whether a node has children, whether or not they are in `data` yet. Only consulted for nodes with none; ignored without `loadChildren`. See [Children on demand](/guide/children-on-demand). |
+| `pinChildren` | `(item, at) => boolean` | — | Children shown whatever the cap says — your working set. Pins precede the budget rather than being part of it. |
+| `mayHaveChildren` | `(item, at) => boolean` | — | Whether a node has children, whether or not they are in `data` yet. Only consulted for nodes with none; ignored without `loadChildren`. See [Children on demand](/guide/children-on-demand). |
 | `loadChildren` | `(item) => NodeData[] \| Promise<NodeData[]>` | — | Fetches one node's children the first time it is opened. The chart keeps what you return. |
 | `dragAndDrop` | `boolean` | `false` | Dragging a node — or the whole selection, if it is in one — onto a new parent, or between two siblings. Reported through [`nodeDrop`](/api/events) before it is applied. See [Drag and drop](/guide/drag-and-drop). |
 | `selection` | `boolean` | `false` | Selecting nodes with the pointer — click, ctrl/cmd-click, shift-click, shift-drag for a box, alt-drag for a lasso. `select()` and `selectionChange` work either way; this is only about the pointer. |
@@ -69,6 +69,42 @@ what each shape is for.
 | `toggleOnNodeClick` | `boolean` | `false` | Tapping a node's body expands or collapses it. For cards with no room for a toggle button. |
 | `worker` | `boolean` | `true` | Renders in a Web Worker. Falls back to the main thread on its own — a CSP that blocks workers, a canvas whose context was already taken — with a warning, never a failure. |
 
+## Where a node sits
+
+Every per-node option gets a second argument saying where in the tree the node
+is:
+
+```ts
+createKlad(el, {
+  data,
+  collapsedByDefault: (item, at) => at.depth > 2,
+})
+```
+
+```ts
+interface NodePlace {
+  depth: number            // distance from a root; a root is 0
+  index: number            // its slot among its own siblings, in data order
+  siblings: number         // how many siblings it has, counting itself
+  parent: NodeData | null  // the parent's data, or null for a root
+}
+```
+
+`nodeSize`, `label`, `collapsedByDefault`, `mayHaveChildren` and `pinChildren`
+all receive it.
+
+A flat `{ id, parentId }` array does not say what depth anything is at, so the
+alternative was walking parent links yourself — once per node, per data change.
+And the option that most often wants depth is the one you could not answer
+anyway: `collapsedByDefault` runs against rows that may have arrived from
+[`loadChildren`](/guide/children-on-demand), which are in no array you hold.
+
+Every field is about the node's place in your **data**, not on screen. Depth is
+the same whether the chart is drawn tiered, indented or as a wheel, and it does
+not change when a branch is collapsed or a filter hides its siblings — an
+option that answered differently once something was folded away would give a
+different result the moment you unfolded it.
+
 ## Types
 
 ```ts
@@ -78,7 +114,7 @@ type Orientation = 'tb' | 'bt' | 'lr' | 'rl'
 type Camera = { x: number; y: number; k: number }
 ```
 
-`NodeData`, `Size`, `Orientation`, `Camera`, `Bounds`, `Theme`,
+`NodeData`, `NodePlace`, `Size`, `Orientation`, `Camera`, `Bounds`, `Theme`,
 `LodThresholds`, `ZoomLimits` and `Warning` are all re-exported from the
 binding you installed — you never have to reach past it into the core to name
 something it already hands you.

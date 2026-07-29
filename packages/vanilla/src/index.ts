@@ -154,6 +154,38 @@ export interface NodeContext extends NodeStats {
   toggle(): void
 }
 
+/**
+ * Where a node sits — the second argument every per-node option receives.
+ *
+ * A flat `{ id, parentId }` array does not say what depth anything is at, and
+ * the option that most wants to know is the one called before you could work
+ * it out: `collapsedByDefault` runs against rows that may have arrived from
+ * `loadChildren` and are in no array you hold. So the chart, which has just
+ * built the tree, passes down what it already knows.
+ *
+ * Every field is about the node's place in the DATA, not on screen. Depth is
+ * the same whether the chart is drawn tidy, indented or as a wheel, and it
+ * does not change when a branch is collapsed — an option that returned a
+ * different answer once something was folded away would make the chart
+ * disagree with itself the moment you unfolded it.
+ */
+export interface NodePlace {
+  /** Distance from a root. A root is `0`, its children `1`. */
+  depth: number
+  /** Position among its own siblings, in the order your `data` gave them.
+   * Roots are ordered against each other. */
+  index: number
+  /** How many siblings it has, counting itself — so `index` can be read as a
+   * fraction, and the last child is `index === siblings - 1`. */
+  siblings: number
+  /** The parent's data, or `null` for a root.
+   *
+   * The node a cap invented is the one case where this is worth a second
+   * thought: it has a real parent like any other child, and asking its parent
+   * a question is usually how you decide what it should look like. */
+  parent: NodeData | null
+}
+
 export interface Options {
   data: NodeData[]
   /**
@@ -169,7 +201,7 @@ export interface Options {
    * Defaults to `DEFAULT_NODE_SIZE` (180x64), which is a readable name-and-role
    * card at 1:1 and lets a first chart be `{ data }` and nothing else.
    */
-  nodeSize?: Size | ((item: NodeData) => Size)
+  nodeSize?: Size | ((item: NodeData, at: NodePlace) => Size)
   /**
    * The text the CANVAS draws inside a node — the label at every zoom where
    * text is legible but overlay cards are not (see `lodThresholds`), and the
@@ -180,7 +212,7 @@ export interface Options {
    * from ordinary data reads as a chart rather than a grid of empty boxes;
    * return `''` from your own function for a node that should stay blank.
    */
-  label?: (item: NodeData) => string
+  label?: (item: NodeData, at: NodePlace) => string
   orientation?: Orientation
   /**
    * Which shape the tree is drawn in. Defaults to `'tidy'`, the tiered org
@@ -262,7 +294,7 @@ export interface Options {
    * Does nothing without `maxChildren` — with no cap there is nothing to be
    * exempt from.
    */
-  pinChildren?: (item: NodeData) => boolean
+  pinChildren?: (item: NodeData, at: NodePlace) => boolean
   /**
    * Whether a node has children, whether or not they are in `data` yet.
    *
@@ -289,7 +321,7 @@ export interface Options {
    * twenty thousand nodes a trivial predicate costs well under a millisecond
    * and does not show; one that does real work per node would.
    */
-  mayHaveChildren?: (item: NodeData) => boolean
+  mayHaveChildren?: (item: NodeData, at: NodePlace) => boolean
   /**
    * Fetches one node's children, the first time it is opened.
    *
@@ -347,7 +379,7 @@ export interface Options {
   rtl?: boolean
   spacing?: { x?: number; y?: number }
   lodThresholds?: LodThresholds
-  collapsedByDefault?: boolean | ((item: NodeData) => boolean)
+  collapsedByDefault?: boolean | ((item: NodeData, at: NodePlace) => boolean)
   theme?: Partial<Theme>
   /**
    * A filled silhouette of the occupied area plus a draggable viewport
@@ -1133,6 +1165,43 @@ export function createKlad(host: HTMLElement, options: Options): KladInstance {
     }
 
     const pin = currentOptions.pinChildren
+
+    /**
+     * How deep a row sits, walked up the `parentId` chain.
+     *
+     * The one place a `NodePlace` cannot be read off the tree, because this
+     * function runs before there is one. Memoised, so the whole chain is
+     * climbed once however many of its descendants ask; and only ever called
+     * for the children of a capped parent, which is a small slice of `rows`.
+     * A cycle in the data — which `normalize` has not had its chance to
+     * report yet — stops at the row already on the stack rather than hanging.
+     */
+    const depths = new Map<string, number>()
+    const depthOf = (row: NodeData): number => {
+      const chain: string[] = []
+      let at: NodeData | undefined = row
+      // The depth of whatever the chain hangs from — a root's is -1, so the
+      // root itself unwinds to 0.
+      let above = -1
+      while (at !== undefined) {
+        const id = String(at.id)
+        const known = depths.get(id)
+        if (known !== undefined) {
+          above = known
+          break
+        }
+        if (chain.includes(id)) break
+        chain.push(id)
+        const up = at.parentId
+        if (up === undefined || up === null) break
+        // A `parentId` naming nothing leaves this undefined, which ends the
+        // walk — the same reading `normalize` gives it: a root.
+        at = byId.get(String(up))
+      }
+      for (let k = chain.length - 1; k >= 0; k--) depths.set(chain[k]!, ++above)
+      return depths.get(String(row.id)) ?? 0
+    }
+
     for (const [parentId, children] of byParent) {
       const parent = byId.get(parentId)
       if (parent === undefined) continue
@@ -1144,9 +1213,21 @@ export function createKlad(host: HTMLElement, options: Options): KladInstance {
       // own order. Two passes rather than a sort, so nothing reorders: a
       // pinned child stays where it was among its siblings.
       const shown = new Set<string>()
-      for (const child of children) {
+      for (let c = 0; c < children.length; c++) {
+        const child = children[c]!
         const id = String(child.id)
-        if (revealed.has(id) || (pin !== undefined && pin(child))) shown.add(id)
+        if (revealed.has(id)) {
+          shown.add(id)
+          continue
+        }
+        if (pin === undefined) continue
+        const at: NodePlace = {
+          depth: depthOf(child),
+          index: c,
+          siblings: children.length,
+          parent,
+        }
+        if (pin(child, at)) shown.add(id)
       }
       let budget = cap - shown.size
       for (const child of children) {
@@ -1310,18 +1391,60 @@ export function createKlad(host: HTMLElement, options: Options): KladInstance {
 
   const chartHost: ChartHost = createChartHost(canvas, theme, options.worker !== false)
 
-  const sizeOf = (item: NodeData): Size => {
+  /**
+   * `siblingOf[i]` — node i's position among its own siblings.
+   *
+   * Derived rather than stored on the tree, and cached against the tree
+   * OBJECT rather than invalidated by hand: `tree` is reassigned from five
+   * places (a load, a cap change, a drop, `setData`, the first pass), and a
+   * cache one of them forgot to clear would hand out last tree's positions —
+   * a wrong answer, which is worse than a slow one. An identity compare
+   * cannot be forgotten.
+   */
+  let siblingCache: { of: Tree; at: Int32Array } | null = null
+  const siblingIndexes = (): Int32Array => {
+    if (siblingCache !== null && siblingCache.of === tree) return siblingCache.at
+    const at = new Int32Array(tree.count)
+    // The CSR already lists each parent's children in order, so a node's
+    // position is just its offset from where its parent's run begins.
+    for (let p = 0; p < tree.count; p++) {
+      const start = tree.childStart[p]!
+      for (let k = start; k < tree.childStart[p + 1]!; k++) at[tree.childIndex[k]!] = k - start
+    }
+    for (let r = 0; r < tree.roots.length; r++) at[tree.roots[r]!] = r
+    siblingCache = { of: tree, at }
+    return at
+  }
+
+  /** Where node `index` sits — the `NodePlace` handed to the per-node options. */
+  const placeOf = (index: number): NodePlace => {
+    const parent = tree.parent[index]!
+    return {
+      depth: tree.depth[index]!,
+      index: siblingIndexes()[index]!,
+      siblings:
+        parent === -1
+          ? tree.roots.length
+          : tree.childStart[parent + 1]! - tree.childStart[parent]!,
+      parent: parent === -1 ? null : itemFor(parent),
+    }
+  }
+
+  const sizeOf = (item: NodeData, index: number): Size => {
     const declared = currentOptions.nodeSize
     if (declared === undefined) return DEFAULT_NODE_SIZE
-    return typeof declared === 'function' ? declared(item) : declared
+    return typeof declared === 'function' ? declared(item, placeOf(index)) : declared
   }
 
   /** What an aggregate node stands for, or `null` for an ordinary one. */
   const overflowInfo = (item: NodeData): { parentId: string; count: number; ids: string[] } | null =>
     (item.kladOverflow as { parentId: string; count: number; ids: string[] } | undefined) ?? null
 
-  const labelOf = (item: NodeData): string => {
-    const own = currentOptions.label === undefined ? defaultLabel(item) : currentOptions.label(item)
+  const labelOf = (item: NodeData, index: number): string => {
+    const own =
+      currentOptions.label === undefined
+        ? defaultLabel(item)
+        : currentOptions.label(item, placeOf(index))
     if (own !== '') return own
     // An aggregate node the host's `label` had no answer for. Falling back to
     // "+392" rather than drawing a blank card: the node is the chart's own
@@ -1344,10 +1467,10 @@ export function createKlad(host: HTMLElement, options: Options): KladInstance {
     const labels: string[] = Array.from({ length: tree.count })
     for (let i = 0; i < tree.count; i++) {
       const item = itemFor(i)
-      const size = sizeOf(item)
+      const size = sizeOf(item, i)
       sizes[i * 2] = size.w
       sizes[i * 2 + 1] = size.h
-      labels[i] = labelOf(item)
+      labels[i] = labelOf(item, i)
     }
     // Options FIRST, then the data. The order matters on the very first pass:
     // each of these relayouts, and whichever runs last is the geometry the
@@ -1400,7 +1523,7 @@ export function createKlad(host: HTMLElement, options: Options): KladInstance {
         for (const warning of warnings) emit('warning', warning)
       })
     }
-    a11y?.update(tree, open, (index) => labelOf(itemFor(index)), isolatedIndex, unloaded, filterKeep, overflowHide)
+    a11y?.update(tree, open, (index) => labelOf(itemFor(index), index), isolatedIndex, unloaded, filterKeep, overflowHide)
   }
 
   /** `options.centre` as a source index, or -1 for "the default centre" —
@@ -1414,10 +1537,10 @@ export function createKlad(host: HTMLElement, options: Options): KladInstance {
   /** `collapsedByDefault`, resolved for one item. Shared by `initOpen` and by
    * the nodes a load brings in, which have to start the same way they would
    * have if they had been in `data` from the beginning. */
-  const collapsedFor = (item: NodeData): boolean => {
+  const collapsedFor = (index: number): boolean => {
     const collapsed = currentOptions.collapsedByDefault
     if (collapsed === true) return true
-    if (typeof collapsed === 'function') return collapsed(item)
+    if (typeof collapsed === 'function') return collapsed(itemFor(index), placeOf(index))
     return false
   }
 
@@ -1434,7 +1557,7 @@ export function createKlad(host: HTMLElement, options: Options): KladInstance {
    * mark and one click both loads and opens it.
    */
   const opensByDefault = (index: number): boolean =>
-    !collapsedFor(itemFor(index)) && !isUnloaded(index)
+    !collapsedFor(index) && !isUnloaded(index)
 
   const initOpen = (): void => {
     open = new Uint8Array(tree.count)
@@ -1915,7 +2038,7 @@ export function createKlad(host: HTMLElement, options: Options): KladInstance {
     const mayHave = currentOptions.mayHaveChildren
     if (mayHave === undefined) return false
     if (loadedChildren.has(tree.indexToId[index]!)) return false
-    return mayHave(itemFor(index))
+    return mayHave(itemFor(index), placeOf(index))
   }
 
   /**
@@ -2075,10 +2198,10 @@ export function createKlad(host: HTMLElement, options: Options): KladInstance {
       return []
     }
     const query = filterQuery
-    const predicate =
+    const predicate: (item: NodeData, index: number) => boolean =
       typeof query === 'function'
         ? query
-        : (item: NodeData) => labelOf(item).toLowerCase().includes(query.toLowerCase())
+        : (item, index) => labelOf(item, index).toLowerCase().includes(query.toLowerCase())
 
     const keep = new Uint8Array(tree.count)
     const matched: string[] = []
@@ -2089,7 +2212,7 @@ export function createKlad(host: HTMLElement, options: Options): KladInstance {
       // the host's data, not about the chart's own bookkeeping. Same rule as
       // `search`, for the same reason.
       if (overflowInfo(item) !== null) continue
-      if (!predicate(item)) continue
+      if (!predicate(item, i)) continue
       matched.push(tree.indexToId[i]!)
       // The match, and every ancestor that leads to it. Walking up and
       // stopping at the first node already marked keeps this O(nodes) overall
@@ -2458,13 +2581,17 @@ export function createKlad(host: HTMLElement, options: Options): KladInstance {
     for (let i = 0; i < n; i++) {
       const src = visible.toSource[i]!
       const item = itemFor(src)
-      const size = sizeOf(item)
+      const size = sizeOf(item, src)
       // Transposed for a horizontal tidy tree, exactly as the engine does —
       // the layout always works in a top-down space and `applyOrientation`
       // swaps back. Without this an `lr` export drew every card rotated.
       sizes[i * 2] = horizontal ? size.h : size.w
       sizes[i * 2 + 1] = horizontal ? size.w : size.h
-      labels[i] = labelOf(item)
+      // `src`, not `i`: the place a per-node option is told about is the
+      // node's place in the DATA, and `i` here counts only what survived
+      // pruning — so an export of a filtered chart would otherwise hand every
+      // option a sibling index taken from the nodes that happened to remain.
+      labels[i] = labelOf(item, src)
     }
     const spacingX = currentOptions.spacing?.x ?? 16
     const spacingY = currentOptions.spacing?.y ?? 48
@@ -2759,7 +2886,7 @@ export function createKlad(host: HTMLElement, options: Options): KladInstance {
   const refreshA11y = (): void => {
     if (!a11yDirty) return
     a11yDirty = false
-    a11y?.update(tree, open, (i) => labelOf(itemFor(i)), isolatedIndex, unloadedMask(), filterKeep, overflowHide)
+    a11y?.update(tree, open, (i) => labelOf(itemFor(i), i), isolatedIndex, unloadedMask(), filterKeep, overflowHide)
   }
 
   const scheduleFrame = (): void => {
@@ -3576,7 +3703,7 @@ export function createKlad(host: HTMLElement, options: Options): KladInstance {
       chartHost.setDrag(index)
       // The card the pointer picked up, if the chart is drawing cards at this
       // zoom — see `createDragGhost` for the fallback when it is not.
-      dragGhost.show(overlayElementOf(index), labelOf(itemFor(index)), dragIds.length)
+      dragGhost.show(overlayElementOf(index), labelOf(itemFor(index), index), dragIds.length)
       dragGhost.move(screenX, screenY)
       host.classList.add('klad-dragging')
       setDragCursor('grabbing')
@@ -3891,10 +4018,10 @@ export function createKlad(host: HTMLElement, options: Options): KladInstance {
       scheduleFrame()
     },
     search(query) {
-      const predicate =
+      const predicate: (item: NodeData, index: number) => boolean =
         typeof query === 'function'
           ? query
-          : (item: NodeData) => labelOf(item).toLowerCase().includes(query.toLowerCase())
+          : (item, index) => labelOf(item, index).toLowerCase().includes(query.toLowerCase())
       const results: SearchResult[] = []
       for (let i = 0; i < tree.count; i++) {
         const item = itemFor(i)
@@ -3902,7 +4029,7 @@ export function createKlad(host: HTMLElement, options: Options): KladInstance {
         // `item` is a stub with nothing on it but an id, and a caller looping
         // results to read a field would find nothing there.
         if (overflowInfo(item) !== null) continue
-        if (!predicate(item)) continue
+        if (!predicate(item, i)) continue
         const path: string[] = []
         let node = tree.parent[i]!
         while (node !== -1) {

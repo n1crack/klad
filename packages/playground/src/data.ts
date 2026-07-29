@@ -353,17 +353,6 @@ export interface Example {
   /** Which node-content treatment to render; see {@link NodeContentKind}. */
   content: NodeContentKind
   /**
-   * How deep a node sits, when the dataset cannot answer it.
-   *
-   * The file layout shrinks each row by its own indent so they all END at a
-   * common right edge, which means it needs a depth per node — and the
-   * default reads that from `data`. A node fetched by `loadChildren` is not in
-   * `data`, so it came out as depth 0, kept its full width, and pushed its
-   * trailing column right: a staircase instead of a column you can scan.
-   * An example that grows its own tree answers this itself.
-   */
-  depth?: (item: NodeItem) => number
-  /**
    * Shows the sidebar's "Go to node" combo box for this example. Deliberately
    * a per-example opt-in rather than a control that is always there: it is the
    * point of exactly one example, and a chart-wide control that only means
@@ -799,11 +788,8 @@ export interface LayoutPreset {
   /**
    * Merged over the example's own options — so a preset wins where the two
    * disagree, which is the whole point of it.
-   *
-   * A function when the preset needs to know the DATA: the file layout sizes
-   * each row against its own depth, which it can only do per-dataset.
    */
-  options: Partial<Options> | ((example: Example) => Partial<Options>)
+  options: Partial<Options>
   /**
    * The node-content treatment this layout needs, or `null` to keep whatever
    * the example asked for.
@@ -827,14 +813,15 @@ export const LAYOUT_PRESETS: Record<LayoutName, LayoutPreset> = {
     blurb: 'Tiered, the classic org chart. The only layout `orientation` applies to.',
   },
   file: {
-    options: (example) => ({
+    options: {
       // Rows END at a common right edge rather than all being the same width:
       // an indented row that keeps its full width pushes its trailing column
       // right along with it, so the sizes come out as a staircase instead of a
-      // column you can scan down. Shrinking each row by its own indent is what
-      // every file explorer does, and it is only expressible as a function of
-      // the node — which is why `LayoutPreset.options` can be one.
-      // ...but never below `FILE_ROW_MIN`. A deep tree eventually indents
+      // column you can scan down. Shrinking each row by its own indent is
+      // what every file explorer does, and the depth comes from the second
+      // argument — the preset does not have to know the dataset to size a row.
+      //
+      // Never below `FILE_ROW_MIN`, though. A deep tree eventually indents
       // past the point where there is any name left to show — the Large
       // example is a chain 127 levels deep, which at a bare
       // `width - depth * indent` reaches zero around level nineteen and goes
@@ -842,15 +829,8 @@ export const LAYOUT_PRESETS: Record<LayoutName, LayoutPreset> = {
       // off to the right. Past the floor a row simply keeps its minimum and
       // the list grows sideways, which is what a real explorer does too (and
       // is why it has a horizontal scrollbar).
-      nodeSize: (item) => ({
-        w: Math.max(
-          FILE_ROW_MIN,
-          FILE_ROW.w -
-            (example.depth === undefined
-              ? depthOf(example.data, String(item.id))
-              : example.depth(item)) *
-              FILE_INDENT,
-        ),
+      nodeSize: (_item, at) => ({
+        w: Math.max(FILE_ROW_MIN, FILE_ROW.w - at.depth * FILE_INDENT),
         h: FILE_ROW.h,
       }),
       rowGap: 2,
@@ -859,7 +839,7 @@ export const LAYOUT_PRESETS: Record<LayoutName, LayoutPreset> = {
       // contributes only the folder guide lines.
       label: () => '',
       toggleOnNodeClick: true,
-    }),
+    },
     content: 'row',
     theme: { nodeFill: 'transparent', nodeStroke: 'transparent' },
     blurb: 'One indented row per node. The only layout whose width does not grow with the tree.',
@@ -989,37 +969,7 @@ export function defaultLayoutOf(example: Example): LayoutName {
  */
 export function optionsForLayout(example: Example, layout: LayoutName): Partial<Options> {
   const preset = LAYOUT_PRESETS[layout]!
-  const options = typeof preset.options === 'function' ? preset.options(example) : preset.options
-  return { ...example.options, ...options, layout }
-}
-
-/**
- * Depth of every node in a dataset, computed once per dataset and cached
- * against the array itself.
- *
- * `nodeSize` is called for every node on every relayout, so it cannot walk
- * parent links each time — on the 20k example that is 20,000 walks per layout
- * pass. The cache is a `WeakMap` keyed by the data array so it costs nothing
- * once the example is switched away from.
- */
-const DEPTH_CACHE = new WeakMap<NodeItem[], Map<string, number>>()
-
-function depthOf(data: NodeItem[], id: string): number {
-  let depths = DEPTH_CACHE.get(data)
-  if (depths === undefined) {
-    depths = new Map<string, number>()
-    // One pass in source order. The datasets here are all written parent-first
-    // (a tree is built top-down), so a parent's depth is already known; a row
-    // whose parent hasn't been seen falls back to 0, which is what an orphan
-    // is anyway.
-    for (const item of data) {
-      const parentId = item.parentId
-      const parent = parentId === undefined || parentId === null ? null : String(parentId)
-      depths.set(String(item.id), parent === null ? 0 : (depths.get(parent) ?? -1) + 1)
-    }
-    DEPTH_CACHE.set(data, depths)
-  }
-  return depths.get(id) ?? 0
+  return { ...example.options, ...preset.options, layout }
 }
 
 /** The node-content treatment for an example under a given layout. */
@@ -1225,7 +1175,7 @@ export const EXAMPLES: Example[] = [
       'Type a name. The chart becomes the nodes that match plus the ancestors that lead to them \u2014 a tree rather than a list, so you can see where each hit lives. A match\u2019s own children are hidden unless they match too, and a collapsed branch opens if the answer is inside it. Clear the box and the expand state you had comes back untouched.',
     data: FILTER_DATA,
     options: {
-      collapsedByDefault: (item) => depthOf(FILTER_DATA, String(item.id)) > 1,
+      collapsedByDefault: (_item, at) => at.depth > 1,
       nodeSize: { w: 190, h: 56 },
       minimap: true,
     },
@@ -1239,7 +1189,7 @@ export const EXAMPLES: Example[] = [
       'Every node carries a pair of numbers that bracket everything below it: `lft` on its left edge, `rgt` on its right. A parent\u2019s pair always encloses its children\u2019s, so the nesting is visible \u2014 and \u201cis this node inside that branch\u201d becomes two comparisons instead of a walk up the tree.',
     data: SHARED_DATA,
     options: {
-      collapsedByDefault: (item) => depthOf(SHARED_DATA, String(item.id)) > 2,
+      collapsedByDefault: (_item, at) => at.depth > 2,
       nodeSize: { w: 210, h: 62 },
     },
     content: 'bounds',
@@ -1271,10 +1221,6 @@ export const EXAMPLES: Example[] = [
       loadChildren: (item) => fetchRemoteChildren(item),
       nodeSize: { w: 190, h: 56 },
     },
-    // The ids ARE paths, which is what a real filesystem gives you too — so
-    // this example can answer for nodes that only exist because they were
-    // fetched, which `data` cannot.
-    depth: (item) => String(item.id).split('/').length - 1,
     // `card`, not `row`, even though this opens as a file list: the `file`
     // preset forces rows anyway, and declaring rows here is what a viewer
     // switching to `tidy` would get instead — file rows, indent lines and all,

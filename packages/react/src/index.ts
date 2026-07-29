@@ -8,6 +8,7 @@ export type {
   LayoutName,
   LayoutSettings,
   NodeContext,
+  NodePlace,
   Options,
   KladApi,
   NodeDropEvent,

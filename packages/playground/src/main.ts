@@ -1444,12 +1444,18 @@ for (const type of ['pointerdown', 'wheel'] as const) {
 filterInput.oninput = () => {
   const query = filterInput.value.trim()
   const matched = currentApi?.filter(query === '' ? null : query) ?? []
+  // Light up the matches themselves. What a filter leaves on screen is the
+  // matches PLUS the ancestors that lead to them, and from the outside those
+  // look alike — so a chart of forty cards for four matches leaves you hunting
+  // for the four. `filter` hands back exactly the ones that matched, which is
+  // the difference `highlight` can then draw.
+  currentApi?.highlight(matched.length === 0 ? null : matched)
   filterCount.textContent =
     query === ''
       ? 'The whole tree.'
       : matched.length === 0
         ? 'Nothing matched.'
-        : `${matched.length} ${matched.length === 1 ? 'match' : 'matches'}, and the way to each.`
+        : `${matched.length} ${matched.length === 1 ? 'match' : 'matches'} lit, and the way to each.`
 }
 
 /** Shows the filter box for the example that asked for it. */

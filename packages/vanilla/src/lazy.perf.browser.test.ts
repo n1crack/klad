@@ -202,3 +202,48 @@ describe('children on demand: cost', () => {
     expect(lazyMs).toBeLessThan(Math.max(plainMs * 2, 40))
   })
 })
+
+describe('where a node sits: cost', () => {
+  const N = 20_000
+
+  it('builds a place per node without it showing on a 20k refresh', async () => {
+    // `nodeSize` and `label` are both handed a `NodePlace`, so a data change
+    // on a 20k tree allocates forty thousand short-lived objects and does two
+    // parent lookups per node. This is here to say with a number that the
+    // per-node position costs about what reading the node itself does — the
+    // options that use it are the documented hot path.
+    const data = bigTree(N)
+
+    const flat = createKlad(host(), { data, nodeSize: { w: 120, h: 40 }, worker: false })
+    await nextFrame()
+    await settle()
+    const t0 = performance.now()
+    flat.api.refresh()
+    await nextFrame()
+    await settle()
+    const flatMs = performance.now() - t0
+    flat.destroy()
+
+    const placed = createKlad(host(), {
+      data,
+      worker: false,
+      nodeSize: (_item, at) => ({ w: 120 - at.depth, h: 40 }),
+      label: (item, at) => `${item.name}/${at.index}of${at.siblings}`,
+    })
+    await nextFrame()
+    await settle()
+    const t1 = performance.now()
+    placed.api.refresh()
+    await nextFrame()
+    await settle()
+    const placedMs = performance.now() - t1
+
+    console.log(`[perf] 20k refresh — flat ${flatMs.toFixed(1)}ms, placed ${placedMs.toFixed(1)}ms`)
+    // Loose, because a shared runner is noisy and the relayout dominates
+    // either way. What this rules out is the sibling index turning into a scan
+    // — which it would if it were read off the CSR per node rather than swept
+    // once per tree.
+    expect(placedMs).toBeLessThan(Math.max(flatMs * 2, 60))
+    placed.destroy()
+  })
+})
