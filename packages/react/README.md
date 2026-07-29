@@ -5,7 +5,7 @@
 [![licence](https://img.shields.io/npm/l/@klad/react?label=licence)](https://github.com/n1crack/klad/blob/main/LICENSE)
 
 The React adapter for [Klad](https://github.com/n1crack/klad) — a tree
-engine that renders 5,000–50,000 nodes at 60fps by laying out and
+engine that stays smooth where a chart made of elements cannot, by laying out and
 drawing the tree on a `<canvas>` inside a Web Worker, mounting real React
 components only for the nodes currently on screen and zoomed in far enough to
 read.

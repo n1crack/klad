@@ -5,12 +5,12 @@
 [![licence](https://img.shields.io/npm/l/@klad/core?label=licence)](https://github.com/n1crack/klad/blob/main/LICENSE)
 
 The frameworkless API for [Klad](https://github.com/n1crack/klad) — a tree
-engine that renders 5,000–50,000 nodes at 60fps by laying out and drawing the
-tree on a `<canvas>` inside a Web Worker, overlaying real DOM only for the
+engine that stays smooth where a chart made of elements cannot, by laying
+out and drawing the tree on a `<canvas>` inside a Web Worker, overlaying real DOM only for the
 nodes currently on screen and zoomed in far enough to read.
 
-Four layouts off one flat array: tiered, indented file rows, radial rings, or
-a sunburst you can drill into.
+One flat array of `{ id, parentId }` in; whichever shape reads best out —
+tiered, indented rows, radial rings, or a wheel you can drill into.
 
 This package is one function.
 

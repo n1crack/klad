@@ -264,6 +264,12 @@
 
 ### Patch Changes
 
+- The "there is more inside this" mark is no longer drawn on a `file` layout.
+  A file list is a column of rows with a disclosure control on each one, so a
+  stub hanging off the bottom of a row says the same thing the chevron beside
+  its name already does — in a second place, and reading as a stray guide line
+  rather than as a mark. The tiered layouts and the wheels keep theirs.
+
 - cfddd4a: A drop now animates, and holds the place you dropped it.
 
   Two things a reparent got wrong. The chart rebuilt from a new dataset, which

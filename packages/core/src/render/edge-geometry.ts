@@ -113,7 +113,8 @@ export function edgeAnchors(
  *
  * `null` for the polar styles, which have their own mark drawn in their own
  * geometry (an arc inside the segment, a halo around the dot) — a stub poking
- * out of a sector would point at the ring that is already there.
+ * out of a sector would point at the ring that is already there. `null` for
+ * `folder` too: see the `default` case.
  *
  * World units and a unit direction; the caller scales the length, so the mark
  * keeps the same size on screen at any zoom.
@@ -128,12 +129,6 @@ export function hiddenStub(
   h: number,
 ): { x: number; y: number; dx: number; dy: number } | null {
   switch (style) {
-    case 'folder':
-      // Straight down, out of the bottom of the row, where the gutter spine
-      // starts. Not offset into the gutter by `FOLDER_SPINE_FRAC`: that
-      // fraction is derived from the CHILD's leading edge, and there is no
-      // child here to derive it from — which is the whole point of the mark.
-      return { x: rtl ? x + w : x, y: y + h, dx: 0, dy: 1 }
     case 'tiered':
       return horizontal
         ? { x: x + w, y: y + h / 2, dx: 1, dy: 0 }
@@ -142,6 +137,12 @@ export function hiddenStub(
       // `spoke` and `none`: a radial chart marks its own nodes with a halo and
       // a sunburst with an inner arc, and a chart with no connectors at all
       // has nothing for a stub to be the beginning of.
+      //
+      // `folder` too, and that one is a judgement rather than a geometry
+      // problem. A file list is a column of rows with a disclosure control on
+      // each one; a stub hanging off the bottom of a row says the same thing
+      // the chevron beside its name already does, in a second place, and reads
+      // as a stray guide line rather than as a mark.
       return null
   }
 }

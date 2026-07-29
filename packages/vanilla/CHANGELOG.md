@@ -174,6 +174,12 @@
 
 ### Patch Changes
 
+- The "there is more inside this" mark is no longer drawn on a `file` layout.
+  A file list is a column of rows with a disclosure control on each one, so a
+  stub hanging off the bottom of a row says the same thing the chevron beside
+  its name already does — in a second place, and reading as a stray guide line
+  rather than as a mark. The tiered layouts and the wheels keep theirs.
+
 - 41ddf0d: Four gaps found reviewing 1.5, all of them the node a capped level invents
   leaking somewhere it does not belong.
 

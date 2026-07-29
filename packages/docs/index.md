@@ -9,7 +9,7 @@ titleTemplate: false
 hero:
   name: Klad
   text: Canvas Tree Engine
-  tagline: One engine, four shapes — tiered, file, radial and sunburst — for trees of any size
+  tagline: Draw a tree the way it wants to be read — tiered, indented, radial or as a wheel
   image:
     src: /hero.png
     alt: A tree of six cards in perspective, floating above their connectors
@@ -25,16 +25,12 @@ hero:
       link: https://github.com/n1crack/klad
 
 features:
-  - title: ⚡ Built for Large Trees
-    details: Renders very large trees smoothly. Layout and drawing run on a canvas inside a Web Worker, so the main thread stays free. No DOM per node, ever.
-  - title: 🌳 Four Layouts, One Tree
-    details: Tiered for an org chart, indented rows for a file explorer, concentric rings for something wide and shallow, or a sunburst you can drill into. Change the shape without changing the data.
-  - title: 🧩 Your Components on Top
-    details: A Vue slot, a React render prop, or plain DOM. Real components mount only for the nodes on screen and zoomed in far enough to read — about fifty at a time, pooled and reused.
-  - title: ✋ Rearrange by Dragging
-    details: One option turns a chart into an editor. Drag a node — or a whole selection — onto a new parent or between two siblings. Closed branches spring open as you pass, cycles are refused, and every move is yours to veto before it happens.
-  - title: 🛠️ Developer-Friendly
-    details: TypeScript throughout, four orientations, RTL, minimap, SVG and PNG export, full keyboard navigation and a screen-reader tree. ESM only, with Vue 3 and React adapters.
+  - title: ⚡ Built for very large trees
+    details: The tree is laid out and drawn on a canvas inside a Web Worker, so the main thread stays free. No DOM per node, ever — which is the one thing a chart made of elements cannot avoid.
+  - title: 🌳 The shape is a setting
+    details: An org chart, a file explorer, a radial dendrogram, a wheel you can drill into. Change one option; the data stays exactly as it was.
+  - title: 🧩 Your components on top
+    details: A Vue slot, a React render prop, or plain DOM. Real components mount only for the nodes on screen and zoomed in far enough to read, pooled and reused as you move.
 ---
 
 ## Quick Start

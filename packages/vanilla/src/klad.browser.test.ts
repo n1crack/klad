@@ -2799,6 +2799,17 @@ describe('children on demand', () => {
     chart.destroy()
   })
 
+  it('leaves the mark off a file list, which has its own disclosure', async () => {
+    // The row already carries a chevron beside its name. A stub hanging off
+    // the bottom of it says the same thing in a second place and reads as a
+    // stray guide line.
+    const chart = lazy({ layout: 'file', nodeSize: { w: 260, h: 26 } })
+    await nextFrame()
+    await settle()
+    expect(chart.api.toSVG()).not.toContain('class="hs"')
+    chart.destroy()
+  })
+
   it('marks an unfetched branch in the export too', async () => {
     // The rule lives in two places by necessity — in worker mode the live
     // engine is unreachable from the main thread, so the export recomputes it.

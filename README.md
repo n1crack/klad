@@ -9,9 +9,10 @@ A framework-agnostic tree engine. The tree is laid out and drawn on a
 `<canvas>` inside a Web Worker; real framework components are mounted only for
 the handful of nodes actually on screen and zoomed in far enough to read.
 
-**Four layouts, one flat array.** `{ id, parentId }` in; a tiered org chart,
-an indented file explorer, a radial dendrogram, or a sunburst you can drill
-into — whichever suits what you are showing. Change `layout` and nothing else.
+**The shape is a setting.** `{ id, parentId }` in; a tiered org chart, an
+indented file explorer, a radial dendrogram, or a wheel you can drill into —
+whichever reads best for what you are showing. Change `layout` and nothing
+else.
 
 **Editable, if you want it.** `dragAndDrop: true` and a drag moves a node to a
 new parent or between two siblings — with the whole selection if it is in one.
@@ -19,10 +20,11 @@ Closed branches spring open as the pointer rests on them, cycles are refused,
 Escape puts the node back, and the same move is on the keyboard. Every move is
 reported before it happens, so refusing one is a `preventDefault()`.
 
-**The number that matters:** 5,000–50,000 nodes at 60fps. A DOM-per-node chart
-cannot get there — 50,000 component instances plus as many connector elements
-exhaust memory and layout time long before. Nothing here creates DOM for a node
-unless that node is both visible and legible.
+**Why it holds up on a big tree.** Nothing here creates DOM for a node unless
+that node is both visible and legible — which is the one thing a chart made of
+elements cannot do, since every node is an element and so is every connector,
+whether or not you can see them. Here the whole tree is laid out and drawn on a
+canvas, and only the handful you are actually looking at get real components.
 
 📖 **[Documentation](https://klad.ozdemir.be)** — guide, API
 reference, and a playground you can dial a chart in with. Run it locally with
@@ -87,9 +89,9 @@ Every DOM-based org chart can mount a node, read its
 be. This one cannot, and that is not an oversight: layout runs inside a Web
 Worker, which has no DOM. There is no element to mount, nothing to measure.
 
-That single constraint is what the 50,000-node number is bought with. If your
-chart is a hundred nodes and every card is a different height decided by its
-own content, a DOM-based chart will serve you better.
+That single constraint is what the scale is bought with. If your chart is a
+hundred nodes and every card is a different height decided by its own content,
+a DOM-based chart will serve you better.
 
 When a card genuinely does change height, `api.refresh()` re-reads every node's
 size and lays out again while keeping expand/collapse state, camera and
@@ -101,8 +103,8 @@ Canvas is invisible to screen readers and keyboard focus, so the chart keeps a
 real, hidden DOM tree alongside it: `role="tree"` / `role="treeitem"` rows, one
 per node, with `aria-expanded` and `aria-level` in sync. Rows are hidden by
 clipping rather than `display: none`, which would also remove them from the
-accessibility tree, and use `content-visibility: auto` so a 50,000-node mirror
-stays cheap.
+accessibility tree, and use `content-visibility: auto` so the mirror of a very
+large tree stays cheap.
 
 | Key | Effect |
 |---|---|
