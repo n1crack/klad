@@ -251,7 +251,10 @@ export interface Options {
    * already says it. Choose `'folder'` on a tiered chart and you give that
    * mark up without gaining the chevron.
    */
-  edgeStyle?: EdgeStyle
+  // `| undefined` explicitly, under `exactOptionalPropertyTypes`: passing it
+  // through `setLayoutOptions` is how a caller goes back to whatever the
+  // layout picks, and that has to be sayable.
+  edgeStyle?: EdgeStyle | undefined
   /**
    * Per-level step in world units, whose meaning depends on the layout: the
    * `file` indent, or the `radial`/`sunburst` ring thickness. Omitted, each

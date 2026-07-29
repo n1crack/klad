@@ -383,6 +383,12 @@ export interface Example {
    * the others: a search field on a chart of eight nodes teaches nothing.
    */
   filterControl?: boolean
+  /**
+   * Shows the editing panel — add, remove, and a button that pretends a poll
+   * came back. The three things `move`/`add`/`remove` and `reconcile` do that
+   * a screenshot cannot show.
+   */
+  editControl?: boolean
 }
 
 // Shared by every example except "Large", which needs its own scale and its
@@ -392,6 +398,28 @@ export interface Example {
 // is realistic but spreads subtrees thousands of pixels apart, so you only ever see
 // a vertical slice of it — which is what the Large example is for.
 const SHARED_DATA = buildOrg(28)
+
+/**
+ * Which department everybody is in, for the Editing example's `canMove`.
+ *
+ * A map rather than a look through `data`, because `canMove` is asked while
+ * the pointer is moving and a scan per ask is the thing its docblock warns
+ * about. Mutable so a person the demo ADDS is answerable too — the rule has
+ * to hold for rows that were not in the array this was built from.
+ */
+const ORG_DEPARTMENT = new Map(
+  SHARED_DATA.map((item) => [String(item.id), item.department as Department]),
+)
+
+/** Files a newly added person under a department, so `canMove` can answer for them. */
+export function rememberDepartment(id: string, department: Department): void {
+  ORG_DEPARTMENT.set(id, department)
+}
+
+/** What department a node is in, or `null` for one nobody has filed. */
+export function departmentOf(id: string): Department | null {
+  return ORG_DEPARTMENT.get(id) ?? null
+}
 
 /** Big enough that finding somebody by eye is not an option, which is the
  * situation a filter is for. */
@@ -1167,6 +1195,28 @@ export const EXAMPLES: Example[] = [
     options: { dragAndDrop: true, selection: true, minimap: true, nodeSize: { w: 200, h: 72 } },
     content: 'card',
     dropControl: true,
+  },
+  {
+    id: 'editing',
+    name: 'Editing',
+    description:
+      'Drag somebody onto a manager in the SAME department and it lands. Onto a different one and it goes red under the pointer, before you let go \u2014 that is a rule of your own, not one of the chart\u2019s. Add and remove people with the buttons. Then press \u201cA poll arrives\u201d: the tree changes underneath you and nothing you had opened folds back up.',
+    data: SHARED_DATA,
+    options: {
+      dragAndDrop: true,
+      selection: true,
+      nodeSize: { w: 210, h: 78 },
+      // The rule the example exists to show. Departments are written on the
+      // cards, so a refusal is something you can see the reason for rather
+      // than a red box you have to take on faith.
+      canMove: ({ items, parentId }) => {
+        if (parentId === null) return false
+        const into = departmentOf(parentId)
+        return into !== null && items.every((item) => departmentOf(String(item.id)) === into)
+      },
+    },
+    content: 'status',
+    editControl: true,
   },
   {
     id: 'filter',

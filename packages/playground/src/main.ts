@@ -1,7 +1,7 @@
 import { createApp } from 'vue'
 import { createElement } from 'react'
 import { createRoot, type Root } from 'react-dom/client'
-import type { ChartView, EdgeStyle, KladApi, LayoutSettings, Theme } from '@klad/core'
+import type { ChartView, EdgeStyle, KladApi, LayoutSettings, NodeData, Theme } from '@klad/core'
 import {
   BLOCK_FILL_SEED,
   EDGE_RADIUS_MAX,
@@ -11,6 +11,8 @@ import {
   EDGE_WIDTH_STEP,
   effectiveTheme,
   EXAMPLES,
+  departmentOf,
+  rememberDepartment,
   highlightWidthFor,
   MINIMAP_POSITIONS,
   minimapDefaultOn,
@@ -1430,6 +1432,118 @@ function reportDrop(detail: { ids: string[]; parentId: string | null; mode: stri
 }
 
 /**
+ * The editing panel.
+ *
+ * Buttons rather than prose, because `move`/`add`/`remove` and `reconcile`
+ * are all things you have to WATCH: the rule refusing under the pointer, and
+ * a poll arriving without folding up what you had opened.
+ */
+const editLog = document.createElement('div')
+editLog.className = 'panel-note'
+
+/** Rows added by this panel, so "A poll arrives" can send them back and they
+ * do not vanish the moment the server speaks. */
+let editAdded: NodeData[] = []
+let editRemoved = new Set<string>()
+let editHires = 0
+
+const editAdd = sidebarButton('Add a report', () => {
+  const api = currentApi
+  if (api === null) return
+  // No quiet default. "Add a report" is a report to SOMEBODY, and picking the
+  // root on their behalf makes the button do something they did not ask for
+  // in the one case where it is least obvious what it did.
+  const under = api.getState().selected[0]
+  if (under === undefined) {
+    editLog.textContent = 'Click somebody first — the new person reports to them.'
+    return
+  }
+  const department = departmentOf(under)
+  if (department === null) {
+    editLog.textContent = `No department on ${under}, so the rule could not answer for a new report.`
+    return
+  }
+  editHires++
+  const row = {
+    id: `hire-${editHires}`,
+    parentId: under,
+    name: `New Hire ${editHires}`,
+    title: 'Associate',
+    department,
+  }
+  // Filed under the same department as the person they report to, or the rule
+  // above would refuse to let anyone move them anywhere.
+  rememberDepartment(row.id, department)
+  editAdded.push(row)
+  editLog.textContent = api.add(row, under)
+    ? `Added ${row.name} under ${under}.`
+    : `Refused — ${under} already has a ${row.id}?`
+})
+
+const editRemove = sidebarButton('Remove', () => {
+  const api = currentApi
+  if (api === null) return
+  const selected = api.getState().selected
+  if (selected.length === 0) {
+    editLog.textContent = 'Click somebody first.'
+    return
+  }
+  const gone = api.remove(selected)
+  if (gone) for (const id of selected) editRemoved.add(id)
+  editLog.textContent = gone
+    ? `Removed ${selected.length === 1 ? selected[0]! : `${selected.length} people`}, and everyone under them.`
+    : 'Refused.'
+})
+
+const editPoll = sidebarButton('A poll arrives', () => {
+  const api = currentApi
+  if (api === null) return
+  // What a server would send: the tree as IT sees it. Deliberately built from
+  // the example's own array rather than from `getData()`, so it genuinely is
+  // an outside statement — including one row this page never saw.
+  const rows = (EXAMPLES.find((e) => e.id === 'editing')?.data ?? [])
+    .filter((item) => !editRemoved.has(String(item.id)))
+    .map((item) => ({ ...item }))
+  const anchor = rows[3]
+  if (anchor !== undefined) {
+    const department = departmentOf(String(anchor.id))
+    if (department !== null) {
+      const id = 'from-the-server'
+      rememberDepartment(id, department)
+      if (!rows.some((item) => item.id === id)) {
+        rows.push({ id, parentId: String(anchor.id), name: 'Arrived', title: 'Transfer', department })
+      }
+    }
+  }
+  api.reconcile([...rows, ...editAdded.filter((item) => !editRemoved.has(String(item.id)))])
+  editLog.textContent = 'The tree changed. Your open branches and camera did not.'
+})
+
+const editField = document.createElement('div')
+editField.className = 'surface-panel'
+editField.append(
+  Object.assign(document.createElement('label'), { textContent: 'Edit' }),
+  editAdd,
+  editRemove,
+  editPoll,
+  editLog,
+)
+
+for (const type of ['pointerdown', 'wheel'] as const) {
+  editField.addEventListener(type, (event) => event.stopPropagation())
+}
+
+function syncEditControl(example: Example): void {
+  editField.remove()
+  if (example.editControl !== true) return
+  editAdded = []
+  editRemoved = new Set()
+  editHires = 0
+  editLog.textContent = 'Drag between departments to see the rule refuse.'
+  surface.append(editField)
+}
+
+/**
  * The filter box.
  *
  * A text input and a count, because that is the whole of the feature from the
@@ -2160,6 +2274,7 @@ function show(stack: Stack, exampleId: string, layout: LayoutName): void {
   syncCentreControl(example, layout)
   syncDropControl(example)
   syncFilterControl(example)
+  syncEditControl(example)
 }
 
 /**
