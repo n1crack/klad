@@ -1221,9 +1221,9 @@ export const EXAMPLES: Example[] = [
   },
   {
     id: 'filter',
-    name: 'Filter',
+    name: 'Filter and find',
     description:
-      'Type a name. The chart becomes the nodes that match plus the ancestors that lead to them \u2014 a tree rather than a list, so you can see where each hit lives. A match\u2019s own children are hidden unless they match too, and a collapsed branch opens if the answer is inside it. Clear the box and the expand state you had comes back untouched.',
+      'Two answers to \u201cwhere is Rossi\u201d, side by side. FILTER reduces the chart to the matches plus the ancestors that lead to each, so you see where they live \u2014 clear the box and your expand state comes back untouched. FIND changes nothing at all: every node stays where it is and Next walks you to the hits one at a time, opening whatever they were folded behind. Try the same name in both.',
     data: FILTER_DATA,
     options: {
       collapsedByDefault: (_item, at) => at.depth > 1,

@@ -1611,12 +1611,87 @@ filterInput.setAttribute('aria-label', 'Filter the chart')
 const filterCount = document.createElement('span')
 filterCount.className = 'panel-note'
 
+/**
+ * The find bar, beside the filter box on purpose.
+ *
+ * They are the two answers to "where is Rossi" and the difference between them
+ * is easiest to see side by side: the filter REDUCES the chart to the matches
+ * and the way to each, while find leaves every node where it is and walks you
+ * to them one at a time. Reading that in prose is not the same as pressing
+ * both.
+ */
+const findInput = document.createElement('input')
+findInput.type = 'search'
+findInput.className = 'select'
+findInput.placeholder = 'Find by name…'
+findInput.setAttribute('aria-label', 'Find nodes without changing the chart')
+
+const findCount = document.createElement('span')
+findCount.className = 'panel-note'
+
+const findPrev = sidebarButton('‹ Prev', () => stepFind(-1))
+const findNext = sidebarButton('Next ›', () => stepFind(1))
+
+/** Which hit we are on, purely so the panel can say "3 of 12". */
+let findAt = 0
+let findTotal = 0
+
+/**
+ * Steps the cursor and reports where it is.
+ *
+ * Just "3 of 12", deliberately. It used to add "the chart still has every
+ * node" — which is find's whole point, and a claim the FILTER box beside it
+ * can make false the moment somebody types in both. A panel should not assert
+ * something the panel next to it can falsify.
+ */
+function stepFind(delta: 1 | -1): void {
+  const api = currentApi
+  if (api === null || findTotal === 0) return
+  const result = delta === 1 ? api.findNext() : api.findPrevious()
+  if (result === null) {
+    findCount.textContent = 'Gone — search again.'
+    findTotal = 0
+    return
+  }
+  findAt = ((findAt + delta - 1 + findTotal) % findTotal) + 1
+  findCount.textContent = `${findAt} of ${findTotal}`
+}
+
+findInput.oninput = () => {
+  const api = currentApi
+  if (api === null) return
+  const query = findInput.value.trim()
+  if (query === '') {
+    findTotal = 0
+    api.highlight(null)
+    findCount.textContent = 'Type a name — find changes nothing.'
+    return
+  }
+  const all = api.search(query)
+  findTotal = all.length
+  findAt = 0
+  // Every hit lit, and `findNext` takes the camera to them in turn.
+  api.highlight(all.length === 0 ? null : all.map((result) => result.id))
+  if (all.length === 0) {
+    findCount.textContent = 'Nothing matched.'
+    return
+  }
+  api.findNext(query)
+  findAt = 1
+  findCount.textContent = `1 of ${findTotal}`
+}
+
 const filterField = document.createElement('div')
 filterField.className = 'surface-panel'
 filterField.append(
   Object.assign(document.createElement('label'), { textContent: 'Filter' }),
   filterInput,
   filterCount,
+  Object.assign(document.createElement('label'), { textContent: 'Find' }),
+  findInput,
+  findPrev,
+  findNext,
+  findCount,
 )
 
 // The panel sits over the canvas, which claims pointer and wheel gestures for
@@ -1649,6 +1724,10 @@ function syncFilterControl(example: Example): void {
   if (example.filterControl !== true) return
   filterInput.value = ''
   filterCount.textContent = 'The whole tree.'
+  findInput.value = ''
+  findTotal = 0
+  findAt = 0
+  findCount.textContent = 'Type a name — find changes nothing.'
   surface.append(filterField)
 }
 
