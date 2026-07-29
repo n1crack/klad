@@ -101,7 +101,7 @@ chart written before this existed already has its own meaning for a click.
 | `collapse(id, deep?)` | Close it. |
 | `expandAll()` / `collapseAll()` | Everything. |
 | `expandTo(id)` | Open the ancestors of a node without moving the camera. |
-| `stats(id)` | `{ directChildren, descendants, depth, height, lft, rgt }`, or `null`. Describes the whole tree, not the expanded part. |
+| `stats(id)` | `{ directChildren, descendants, depth, height, leafCount, lft, rgt }`, or `null`. Describes the whole tree, not the expanded part. |
 | `pathTo(id)` | The root-to-node id chain, inclusive. `null` for an unknown id. |
 | `showMore(id)` | Lift the cap on the parent an aggregate node belongs to. `id` is the aggregate node's own. See [Very wide levels](/guide/wide-levels). |
 | `reveal(ids)` | Bring specific children back past a cap without lifting it. |
@@ -383,6 +383,25 @@ Like `isolate`, this prunes and lays out again rather than hiding things at
 draw time, so the minimap, the keyboard tree and the exports all agree with
 what is drawn. Unlike `isolate`, it is refitted afterwards for the same reason
 it prunes: whatever the camera was framing has moved or gone.
+
+### Walking the results
+
+`search` answers a question and changes nothing. `filter` changes what the
+chart is. This is the third thing, and neither of those does it: keep the whole
+tree in front of me and take me to the next hit.
+
+```ts
+chart.api.findNext('rossi')   // start, and go to the first
+chart.api.findNext()          // the next
+chart.api.findPrevious()      // back one
+```
+
+Each call brings the node onto screen, opening whatever it was folded behind.
+It wraps at the end rather than stopping, so holding the key cycles. `null` when
+nothing matched.
+
+Any change to the tree forgets where it was — a place in a list of nodes that
+have since moved is not a place. Give the query again to restart.
 
 ## Export
 

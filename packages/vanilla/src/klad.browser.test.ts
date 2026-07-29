@@ -3,6 +3,7 @@ import {
   createKlad,
   type NodeContext,
   type NodeData,
+  type LayoutSettings,
   type NodePlace,
   type Options,
 } from './index.js'
@@ -1403,6 +1404,7 @@ describe('createKlad', () => {
       descendants: 3,
       depth: 0,
       height: 2,
+      leafCount: 2,
       lft: 1,
       rgt: 8,
     })
@@ -1411,6 +1413,7 @@ describe('createKlad', () => {
       descendants: 1,
       depth: 1,
       height: 1,
+      leafCount: 1,
       lft: 2,
       rgt: 5,
     })
@@ -1419,6 +1422,7 @@ describe('createKlad', () => {
       descendants: 0,
       depth: 2,
       height: 0,
+      leafCount: 1,
       lft: 3,
       rgt: 4,
     })
@@ -1489,6 +1493,7 @@ describe('createKlad', () => {
       descendants: 1,
       depth: 0,
       height: 1,
+      leafCount: 1,
       lft: 1,
       rgt: 4,
     })
@@ -5412,6 +5417,166 @@ describe('editing from the keyboard', () => {
     // Reordering within `a` is still fine.
     await press('c', 'ArrowDown', { altKey: true })
     expect(childIds(chart, 'a')).toEqual(['b', 'd', 'c'])
+    chart.destroy()
+  })
+})
+
+describe('walking the results, and hearing about changes', () => {
+  const PEOPLE = [
+    { id: 'a', name: 'Root' },
+    { id: 'b', parentId: 'a', name: 'Rossi one' },
+    { id: 'c', parentId: 'a', name: 'Bianchi' },
+    { id: 'd', parentId: 'c', name: 'Rossi two' },
+    { id: 'e', parentId: 'c', name: 'Rossi three' },
+  ]
+  const find = (overrides: Partial<Options> = {}) =>
+    createKlad(host(), {
+      data: PEOPLE,
+      nodeSize: { w: 120, h: 48 },
+      label: (item) => String(item.name ?? ''),
+      worker: false,
+      ...overrides,
+    })
+
+  it('steps through the hits and wraps', async () => {
+    const chart = find()
+    await nextFrame()
+    await settle()
+
+    expect(chart.api.findNext('rossi')?.id).toBe('b')
+    expect(chart.api.findNext()?.id).toBe('d')
+    expect(chart.api.findNext()?.id).toBe('e')
+    // Round again rather than stopping.
+    expect(chart.api.findNext()?.id).toBe('b')
+    expect(chart.api.findPrevious()?.id).toBe('e')
+    chart.destroy()
+  })
+
+  it('leaves the tree alone, unlike a filter', async () => {
+    const chart = find()
+    await nextFrame()
+    await settle()
+    const before = chart.api.getState().visibleCount
+
+    chart.api.findNext('rossi')
+    await settleTransition()
+    // Every node is still there. That is the whole difference from `filter`.
+    expect(chart.api.getState().visibleCount).toBe(before)
+    chart.destroy()
+  })
+
+  it('opens whatever the hit was behind', async () => {
+    const chart = find({ collapsedByDefault: true })
+    await nextFrame()
+    await settle()
+    expect(chart.api.getState().visibleCount).toBe(1)
+
+    chart.api.findNext('rossi two')
+    await settleTransition()
+    await settle()
+    // `d` sits under a folded `c`; getting to it has to unfold it.
+    expect(chart.api.getView().open).toContain('c')
+    chart.destroy()
+  })
+
+  it('says nothing when nothing matches', async () => {
+    const chart = find()
+    await nextFrame()
+    await settle()
+    expect(chart.api.findNext('nobody')).toBeNull()
+    expect(chart.api.findNext()).toBeNull()
+    chart.destroy()
+  })
+
+  it('forgets where it was once the tree changes', async () => {
+    const chart = find()
+    await nextFrame()
+    await settle()
+    expect(chart.api.findNext('rossi')?.id).toBe('b')
+
+    chart.api.remove('d')
+    await settleTransition()
+    // A place in a list of nodes that have since moved is not a place.
+    expect(chart.api.findNext()).toBeNull()
+    // And the query can simply be given again.
+    expect(chart.api.findNext('rossi')?.id).toBe('b')
+    chart.destroy()
+  })
+
+  it('counts the leaves under a node, and leaves the invented one out', async () => {
+    const chart = find()
+    await nextFrame()
+    await settle()
+
+    // `c` holds two leaves; `a` holds those two plus `b`.
+    expect(chart.api.stats('c')!.leafCount).toBe(2)
+    expect(chart.api.stats('a')!.leafCount).toBe(3)
+    expect(chart.api.stats('b')!.leafCount).toBe(1)
+    chart.destroy()
+
+    const kids = Array.from({ length: 8 }, (_, i) => ({ id: `k${i}`, parentId: 'a', name: `K${i}` }))
+    const capped = createKlad(host(), {
+      data: [{ id: 'a', name: 'Root' }, ...kids],
+      nodeSize: { w: 120, h: 48 },
+      label: (item) => String(item.name ?? ''),
+      worker: false,
+      maxChildren: 3,
+    })
+    await nextFrame()
+    await settle()
+    // Eight, not nine: the node a cap invents is childless, so it counted
+    // itself until it was taken back out.
+    expect(capped.api.stats('a')!.leafCount).toBe(8)
+    capped.destroy()
+  })
+
+  it('tells you when the filter changed, and what matched', async () => {
+    const seen: { query: string | null; matched: string[] }[] = []
+    const chart = find()
+    chart.on('filterChange', (event) => seen.push(event))
+    await nextFrame()
+    await settle()
+
+    chart.api.filter('rossi')
+    await settleTransition()
+    expect(seen).toHaveLength(1)
+    expect(seen[0]!.query).toBe('rossi')
+    expect(seen[0]!.matched).toEqual(['b', 'd', 'e'])
+
+    chart.api.filter(null)
+    await settleTransition()
+    expect(seen[1]).toEqual({ query: null, matched: [] })
+
+    // A predicate cannot be written down — the same limit `getView` states.
+    chart.api.filter((item) => item.id === 'b')
+    await settleTransition()
+    expect(seen[2]!.query).toBeNull()
+    expect(seen[2]!.matched).toEqual(['b'])
+    chart.destroy()
+  })
+
+  it('tells you when the layout changed, resolved', async () => {
+    const seen: LayoutSettings[] = []
+    const chart = find()
+    chart.on('layoutChange', (event) => seen.push(event.settings))
+    await nextFrame()
+    await settle()
+
+    chart.api.setLayoutOptions({ layout: 'file', rowGap: 4 })
+    await settleTransition()
+    expect(seen).toHaveLength(1)
+    expect(seen[0]!.layout).toBe('file')
+    expect(seen[0]!.rowGap).toBe(4)
+
+    // The second change carries BOTH, not just the delta — a sidebar mirroring
+    // the chart reads what is, not what it last sent.
+    chart.api.setLayoutOptions({ edgeStyle: 'none' })
+    await settleTransition()
+    expect(seen[1]!.layout).toBe('file')
+    expect(seen[1]!.rowGap).toBe(4)
+    expect(seen[1]!.edgeStyle).toBe('none')
+    // And a key nobody set is absent rather than undefined.
+    expect('maxRings' in seen[1]!).toBe(false)
     chart.destroy()
   })
 })

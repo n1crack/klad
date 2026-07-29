@@ -108,6 +108,15 @@ export interface NodeStats {
    */
   lft: number
   rgt: number
+  /**
+   * Childless nodes at or below this one — a leaf's own count is `1`.
+   *
+   * A different question from `descendants`, and usually the one being asked:
+   * "how many files are in this folder" rather than "how many rows does this
+   * branch occupy". Leaves out the nodes a capped level invents, exactly as
+   * the other counts do.
+   */
+  leafCount: number
 }
 
 export interface NodeContext extends NodeStats {
@@ -741,6 +750,22 @@ export interface KladEvents {
    */
   addRequested: (event: { afterId: string; parentId: string | null; index: number }) => void
   /**
+   * The filter changed — through `filter()`, or by being cleared.
+   *
+   * `matched` is the ids that matched, the same thing `filter` returns, so a
+   * count beside a search box does not have to be wired to the one call site
+   * that set it. `query` is `null` for no filter and for a predicate, which
+   * cannot be written down — the same limit `getView` states.
+   */
+  filterChange: (event: { query: string | null; matched: string[] }) => void
+  /**
+   * The layout or one of its knobs changed, through `setLayoutOptions`.
+   *
+   * Carries the settings as they now stand, resolved — so a sidebar mirroring
+   * the chart reads what IS rather than what it last sent.
+   */
+  layoutChange: (event: { settings: LayoutSettings }) => void
+  /**
    * `loadChildren` returned, and the chart has taken the children in.
    *
    * Purely informational — the chart holds them either way, so a host that
@@ -850,6 +875,25 @@ export interface KladApi {
    * what is not.
    */
   search(query: string | ((item: NodeData) => boolean)): SearchResult[]
+  /**
+   * Walks the search results one at a time, bringing each onto screen — what a
+   * find bar does, as opposed to what `filter` does.
+   *
+   * `search` answers a question and changes nothing; `filter` changes what the
+   * chart IS. This is the third thing people want and neither of those is: keep
+   * the whole tree in front of me and take me to the next one. Each call
+   * focuses the node, opening whatever it is behind.
+   *
+   * Pass a query to start or restart; call it again with nothing to advance.
+   * Wraps at the end, so a run of them cycles rather than stopping. `null` when
+   * nothing matches.
+   *
+   * The results are the ones `search` would give, taken fresh each time the
+   * query is set — and any edit or new data resets the cursor, because a
+   * position in a list of nodes that have since moved is not a position.
+   */
+  findNext(query?: string | ((item: NodeData) => boolean)): SearchResult | null
+  findPrevious(): SearchResult | null
   /**
    * Reduces the chart to the nodes that match, plus the ancestors that lead to
    * them. `null` clears it. Returns the ids that MATCHED — not everything left
@@ -1582,6 +1626,11 @@ export function createKlad(host: HTMLElement, options: Options): KladInstance {
       const parent = tree.parent[index]!
       if (parent !== -1) raw.directChildren[parent]! -= 1
       for (let a = parent; a !== -1; a = tree.parent[a]!) raw.descendants[a]! -= 1
+      // And out of the leaf count, for the same reason: the node a cap
+      // invented is childless, so it counted itself as one and every ancestor
+      // took it in. A folder saying it holds one more file than it does is a
+      // wrong answer about the host's data.
+      for (let a = parent; a !== -1; a = tree.parent[a]!) raw.leaves[a]! -= 1
     }
     return raw
   }
@@ -2324,6 +2373,7 @@ export function createKlad(host: HTMLElement, options: Options): KladInstance {
     // cap invents, and writing those into the host's array makes the next
     // rebuild plan a second aggregate for the same parent.
     const rest = rewrite(baseRows())
+    resetFind()
 
     currentOptions = { ...currentOptions, data: rest }
     // The two stores collapse into one here. `rest` already contains what had
@@ -2819,6 +2869,48 @@ export function createKlad(host: HTMLElement, options: Options): KladInstance {
     return matched
   }
 
+  /** Forgets where the find bar was. Any change to the tree does this: a
+   * position in a list of nodes that have since moved is not a position. */
+  const resetFind = (): void => {
+    findState = null
+  }
+
+  /**
+   * One step of `findNext`/`findPrevious`.
+   *
+   * Re-runs the search when a query is given and otherwise moves the cursor,
+   * so a page holding the arrow key does not re-scan the tree per press.
+   */
+  const stepFind = (
+    delta: 1 | -1,
+    query?: string | ((item: NodeData) => boolean),
+  ): SearchResult | null => {
+    if (query !== undefined) {
+      const found = api.search(query)
+      // Starting BEFORE the first hit, so the first `findNext` lands on it
+      // rather than on the second.
+      findState = { ids: found.map((result) => result.id), at: -1 }
+    }
+    const state = findState
+    if (state === null || state.ids.length === 0) return null
+    // Nodes can have gone since the query ran — an edit, a reconcile — so the
+    // cursor steps until it finds one the chart still has, and gives up after
+    // a full lap rather than looping.
+    for (let tried = 0; tried < state.ids.length; tried++) {
+      state.at =
+        delta === 1
+          ? (state.at + 1) % state.ids.length
+          : (state.at - 1 + state.ids.length) % state.ids.length
+      const id = state.ids[state.at]!
+      const index = tree.idToIndex.get(id)
+      if (index === undefined) continue
+      api.focus(id)
+      const path = api.pathTo(id) ?? [id]
+      return { id, item: itemFor(index), path: path.slice(0, -1) }
+    }
+    return null
+  }
+
   /** `buildFilterMask`, and then tell the engine about it — for `api.filter`,
    * which changes the filter without changing the data. `applyData` hands the
    * mask to `setData` instead; see there for why. */
@@ -2936,6 +3028,7 @@ export function createKlad(host: HTMLElement, options: Options): KladInstance {
     height: stats.height[index]!,
     lft: stats.lft[index]!,
     rgt: stats.rgt[index]!,
+    leafCount: stats.leaves[index]!,
   })
 
   const boxOfSource = (source: number) => {
@@ -3471,6 +3564,9 @@ export function createKlad(host: HTMLElement, options: Options): KladInstance {
   let filterKeep: Uint8Array | null = null
   /** What the filter was asked, kept so a rebuild can ask it again. */
   let filterQuery: string | ((item: NodeData) => boolean) | null = null
+  /** The find bar's place in the results, and the query they came from.
+   * Dropped whenever the tree changes — see `resetFind`. */
+  let findState: { ids: string[]; at: number } | null = null
   /** Ids of the selected nodes, in the order they were given. */
   let selectedIds: string[] = []
   /** Set when the next relayout is a different TREE — see the minimap call. */
@@ -4475,6 +4571,8 @@ export function createKlad(host: HTMLElement, options: Options): KladInstance {
     filter(query) {
       filterQuery = query
       const matches = applyFilter()
+      resetFind()
+      emit('filterChange', { query: typeof query === 'string' ? query : null, matched: matches })
       // The cap is suppressed while a filter runs, and turning one on has to
       // take away the mask that was already sent — otherwise the two
       // intersect and the filter's own results get capped as well.
@@ -4618,6 +4716,12 @@ export function createKlad(host: HTMLElement, options: Options): KladInstance {
       }
       a11yDirty = true
       scheduleFrame()
+    },
+    findNext(query) {
+      return stepFind(1, query)
+    },
+    findPrevious() {
+      return stepFind(-1)
     },
     search(query) {
       const predicate: (item: NodeData, index: number) => boolean =
@@ -4825,6 +4929,7 @@ export function createKlad(host: HTMLElement, options: Options): KladInstance {
       for (const id of uncapped) if (!incoming.has(id)) uncapped.delete(id)
       for (const id of revealed) if (!incoming.has(id)) revealed.delete(id)
       clearHistory()
+      resetFind()
       applyEdit(() => data, { preserveLoaded: true })
     },
     undo() {
@@ -5065,6 +5170,22 @@ export function createKlad(host: HTMLElement, options: Options): KladInstance {
     },
     setLayoutOptions(settings, opts) {
       currentOptions = { ...currentOptions, ...settings }
+      // Keys that were never set are left OUT rather than sent as `undefined`.
+      // A listener spreading this over its own state would otherwise write
+      // holes into it, and under `exactOptionalPropertyTypes` an absent
+      // optional and an explicit `undefined` are not the same thing.
+      const resolved: LayoutSettings = { layout: currentOptions.layout ?? 'tidy' }
+      if (currentOptions.edgeStyle !== undefined) resolved.edgeStyle = currentOptions.edgeStyle
+      if (currentOptions.layoutStep !== undefined) resolved.layoutStep = currentOptions.layoutStep
+      if (currentOptions.rowGap !== undefined) resolved.rowGap = currentOptions.rowGap
+      if (currentOptions.maxRings !== undefined) resolved.maxRings = currentOptions.maxRings
+      if (currentOptions.colourBranches !== undefined) {
+        resolved.colourBranches = currentOptions.colourBranches
+      }
+      if (currentOptions.spacing !== undefined) resolved.spacing = currentOptions.spacing
+      if (currentOptions.orientation !== undefined) resolved.orientation = currentOptions.orientation
+      if (currentOptions.rtl !== undefined) resolved.rtl = currentOptions.rtl
+      emit('layoutChange', { settings: resolved })
       chartHost.setOptions({
         spacingX: currentOptions.spacing?.x ?? 16,
         spacingY: currentOptions.spacing?.y ?? 48,
@@ -5344,6 +5465,7 @@ export function createKlad(host: HTMLElement, options: Options): KladInstance {
       uncapped.clear()
       revealed.clear()
       clearHistory()
+      resetFind()
       tree = normalize(treeSource())
       stats = discountAggregates(computeSubtreeStats(tree))
       rebuildItemIndex()

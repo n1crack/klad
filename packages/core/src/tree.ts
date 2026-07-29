@@ -238,6 +238,15 @@ export interface SubtreeStats {
    */
   lft: Int32Array
   rgt: Int32Array
+  /**
+   * Childless nodes at or below this one. A leaf's own count is 1.
+   *
+   * A different question from `descendants`, which counts everything below —
+   * "how many files are in this folder, at any depth" against "how many rows
+   * does this branch occupy". Filled by the same reverse sweep that totals the
+   * descendants, so it costs nothing extra.
+   */
+  leaves: Int32Array
 }
 
 export function computeSubtreeStats(tree: Tree): SubtreeStats {
@@ -247,9 +256,13 @@ export function computeSubtreeStats(tree: Tree): SubtreeStats {
   const height = new Int32Array(n)
   const lft = new Int32Array(n)
   const rgt = new Int32Array(n)
+  const leaves = new Int32Array(n)
 
   for (let i = 0; i < n; i++) {
     directChildren[i] = tree.childStart[i + 1]! - tree.childStart[i]!
+    // A leaf counts itself. Anything with children starts at zero and is
+    // totalled from below by the sweep after this.
+    if (directChildren[i] === 0) leaves[i] = 1
   }
 
   // Reverse preorder: every node is visited after all of its descendants, so
@@ -260,6 +273,7 @@ export function computeSubtreeStats(tree: Tree): SubtreeStats {
     const p = tree.parent[i]!
     if (p === -1) continue
     descendants[p]! += descendants[i]! + 1
+    leaves[p]! += leaves[i]!
     const viaChild = height[i]! + 1
     if (viaChild > height[p]!) height[p] = viaChild
   }
@@ -286,5 +300,5 @@ export function computeSubtreeStats(tree: Tree): SubtreeStats {
     next[i] = start + 1
   }
 
-  return { directChildren, descendants, height, lft, rgt }
+  return { directChildren, descendants, height, lft, rgt, leaves }
 }
