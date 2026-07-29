@@ -105,7 +105,7 @@ chart written before this existed already has its own meaning for a click.
 | `pathTo(id)` | The root-to-node id chain, inclusive. `null` for an unknown id. |
 | `showMore(id)` | Lift the cap on the parent an aggregate node belongs to. `id` is the aggregate node's own. See [Very wide levels](/guide/wide-levels). |
 | `reveal(ids)` | Bring specific children back past a cap without lifting it. |
-| `refresh()` | Re-read every node's `nodeSize`/`label` and lay out again, keeping expand/collapse, camera and highlight. See [Sizing](/guide/sizing). |
+| `refresh(opts?)` | Re-read every node's `nodeSize`, `label`, `maxChildren` and `pinChildren`, and lay out again — keeping expand/collapse, camera and highlight. `{ keep: id }` holds one node's screen position across the relayout. See [Sizing](/guide/sizing). |
 
 ### Is this node inside that branch?
 

@@ -98,6 +98,31 @@ Every card receives the same context:
 | `descendants` | `number` | Everyone below it, at any depth. |
 | `depth` | `number` | Distance from the root; a root is `0`. |
 | `height` | `number` | How far its own subtree runs below it; a leaf is `0`. |
+| `lft` / `rgt` | `number` | [Nested-set bounds](/api/chart#is-this-node-inside-that-branch) — this node's pair brackets every pair below it. |
+| `loading` | `boolean` | A [`loadChildren`](/guide/children-on-demand) for this node is in flight. Always `false` without one. |
+| `overflow` | object or `null` | Set only on the node a [capped level](/guide/wide-levels) rolled its remainder into — what it stands for, and the commands to bring some of it back. |
+
+## Cards fade in and out
+
+A node arriving — a branch you opened, a fetched child, somebody pinned onto a
+level — grows into place over the transition rather than appearing. A node
+leaving fades out where it was instead of vanishing between frames.
+
+The chart does that by writing `opacity` straight onto your card's element
+while it moves, and clearing it again once nothing is animating. Two things
+follow:
+
+- **Do not set `opacity` on `.klad-overlay-node` yourself**, or you will be
+  fighting it. Style the element *inside* the slot — the card you rendered —
+  and leave the slot to the chart.
+- **A CSS `transition` on opacity is not needed and will lag.** The value is
+  already being interpolated every frame against the same curve the canvas
+  underneath is using, and a transition on top of that puts your card behind
+  the box it is sitting on.
+
+A card that is fading out belongs to a node that has left the tree, so
+`context.item` is the last data it had. It is on screen for a few hundred
+milliseconds and then gone.
 
 The four counts are computed once per tree, in a single pass, so reading them
 while a card draws is an array lookup. Counting a subtree at draw time would

@@ -179,10 +179,17 @@ machinery is there — it is what a drop and a fetched branch already do.
 
 Family trees, dependency graphs and git histories all give a node several ways
 in, and every one of them also wants edges that are not tree edges: a
-dotted-line report, a matrix relationship, a link between any two nodes. Both
-are the same problem — multi-parent layout with edge routing built for
-crossings — and it is a second engine rather than an option on this one. A
-plugin API arrives with it.
+dotted-line report, a matrix relationship, a link between any two nodes.
+
+Both are the same problem — a node can be reached more than one way, so
+position stops being decided by a single parent and lines start crossing on
+purpose rather than by accident. That is a second engine, not an option on this
+one, which is why it is a major version and not a minor: everything a tree
+takes for granted, from "one parent" to "no cycles" to "a subtree is
+contiguous", stops being true.
+
+What carries over is everything above it — the canvas, the worker, your own
+components on the nodes, and the API for moving around.
 
 ---
 
