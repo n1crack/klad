@@ -193,6 +193,22 @@ function renderRow(context: NodeContext): ReactNode {
  * `NodeStats` in the vanilla package — not a walk, which at one walk per node
  * per frame is exactly the shape of work a large chart cannot afford.
  */
+/** See `renderBounds` in vanilla-demo.ts — the placement is the explanation. */
+function renderBounds(context: NodeContext): ReactNode {
+  const item = context.item
+  return (
+    <div className="bounds-card">
+      <span className="bounds-lft">{context.lft}</span>
+      <div className="bounds-body">
+        <strong>{String(item.name ?? '')}</strong>
+        <small>{context.descendants === 0 ? 'leaf' : `${context.descendants} below`}</small>
+      </div>
+      <span className="bounds-rgt">{context.rgt}</span>
+      <ToggleButton {...context} />
+    </div>
+  )
+}
+
 function renderCounts(context: NodeContext): ReactNode {
   const item = context.item
   const style = { '--accent': departmentColor(item) } as CSSProperties
@@ -366,6 +382,7 @@ const RENDERERS: Record<Exclude<Example['content'], 'none'>, (context: NodeConte
   status: renderStatus,
   photo: renderPhoto,
   counts: renderCounts,
+  bounds: renderBounds,
   dropdown: renderDropdown,
   // These two need to reach back into the demo — see `RENDERERS_WITH` below.
   accordion: renderCard,

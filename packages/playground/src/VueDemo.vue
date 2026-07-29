@@ -271,7 +271,7 @@ function handleNodeClick({ id }: { id: string }): void {
     -->
     <template
       v-if="content !== 'none'"
-      #node="{ id, item, hasChildren, open, toggle, overflow, loading, directChildren, descendants, depth, height }"
+      #node="{ id, item, hasChildren, open, toggle, overflow, loading, directChildren, descendants, depth, height, lft, rgt }"
     >
       <div v-if="content === 'avatar'" class="avatar-card">
         <div class="avatar-circle" :style="{ background: departmentColor(item) }">
@@ -357,6 +357,20 @@ function handleNodeClick({ id }: { id: string }): void {
 
       <!-- Subtree counts. Every number is an array lookup the chart
            precomputed — see `NodeStats` — not a walk. -->
+      <!-- Nested-set bounds on the borders they describe — see `renderBounds`
+           in vanilla-demo.ts. The placement is the explanation. -->
+      <div v-else-if="content === 'bounds'" class="bounds-card">
+        <span class="bounds-lft">{{ lft }}</span>
+        <div class="bounds-body">
+          <strong>{{ String(item.name ?? '') }}</strong>
+          <small>{{ descendants === 0 ? 'leaf' : `${descendants} below` }}</small>
+        </div>
+        <span class="bounds-rgt">{{ rgt }}</span>
+        <button v-if="hasChildren" type="button" class="toggle-btn" @click="toggle">
+          {{ open ? '−' : '+' }}
+        </button>
+      </div>
+
       <div
         v-else-if="content === 'counts'"
         class="counts-card"

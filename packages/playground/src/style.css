@@ -1694,6 +1694,58 @@ body {
  * Subtree counts card. Four numbers about the node's own subtree, read
  * straight off the node context (see `renderCounts` in vanilla-demo.ts).
  * ------------------------------------------------------------------------ */
+/* Nested-set bounds, sat on the borders they describe. Reading down a branch
+   the left numbers step inward and the right ones step outward, which is the
+   whole idea made visible. */
+.bounds-card {
+  box-sizing: border-box;
+  display: flex;
+  align-items: center;
+  gap: 0.5rem;
+  width: 100%;
+  height: 100%;
+  padding: 0.4rem 0.5rem;
+  border: 1px solid var(--node-border);
+  border-radius: var(--node-radius);
+  background: var(--node-bg);
+  box-shadow: var(--node-shadow);
+  position: relative;
+  overflow: hidden;
+}
+
+.bounds-lft,
+.bounds-rgt {
+  flex: none;
+  font-variant-numeric: tabular-nums;
+  font-size: 0.78rem;
+  font-weight: 700;
+  color: var(--accent);
+  padding: 0.1rem 0.3rem;
+  border-radius: 4px;
+  background: color-mix(in srgb, var(--accent) 12%, transparent);
+}
+
+.bounds-body {
+  display: flex;
+  flex-direction: column;
+  flex: auto;
+  min-width: 0;
+  text-align: center;
+}
+
+.bounds-body strong {
+  font-size: 0.88rem;
+  font-weight: 700;
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+}
+
+.bounds-body small {
+  font-size: 0.72rem;
+  color: var(--text-muted);
+}
+
 .counts-card {
   --accent: #64748b;
   box-sizing: border-box;

@@ -336,6 +336,7 @@ export type NodeContentKind =
   | 'status'
   | 'photo'
   | 'counts'
+  | 'bounds'
   | 'dropdown'
   | 'accordion'
   | 'actions'
@@ -1207,6 +1208,18 @@ export const EXAMPLES: Example[] = [
     options: { dragAndDrop: true, selection: true, minimap: true, nodeSize: { w: 200, h: 72 } },
     content: 'card',
     dropControl: true,
+  },
+  {
+    id: 'bounds',
+    name: 'Nested set bounds',
+    description:
+      'Every node carries a pair of numbers that bracket everything below it: `lft` on its left edge, `rgt` on its right. A parent\u2019s pair always encloses its children\u2019s, so the nesting is visible \u2014 and \u201cis this node inside that branch\u201d becomes two comparisons instead of a walk up the tree.',
+    data: SHARED_DATA,
+    options: {
+      collapsedByDefault: (item) => depthOf(SHARED_DATA, String(item.id)) > 2,
+      nodeSize: { w: 210, h: 62 },
+    },
+    content: 'bounds',
   },
   {
     id: 'wide',

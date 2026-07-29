@@ -276,6 +276,42 @@ function renderPhoto(element: HTMLElement, context: NodeContext): void {
  * The counts describe the WHOLE tree, not the expanded part: collapse a branch
  * and its node still reports how many people are under it, which is the point.
  */
+/**
+ * A card with its nested-set bounds on the edges they describe: `lft` against
+ * the left border, `rgt` against the right.
+ *
+ * The placement IS the explanation. A parent's pair encloses every pair below
+ * it, so reading down a branch the numbers step inward on the left and outward
+ * on the right — which is what makes "inside" a comparison rather than a walk.
+ */
+function renderBounds(element: HTMLElement, context: NodeContext): void {
+  let card = element.firstElementChild as HTMLDivElement | null
+  if (card === null) {
+    card = document.createElement('div')
+    card.className = 'bounds-card'
+    card.append(
+      Object.assign(document.createElement('span'), { className: 'bounds-lft' }),
+      Object.assign(document.createElement('div'), { className: 'bounds-body' }),
+      Object.assign(document.createElement('span'), { className: 'bounds-rgt' }),
+    )
+    card.querySelector('.bounds-body')!.append(
+      document.createElement('strong'),
+      document.createElement('small'),
+    )
+    element.append(card)
+  }
+  const item = context.item
+  card.querySelector('.bounds-lft')!.textContent = String(context.lft)
+  card.querySelector('.bounds-rgt')!.textContent = String(context.rgt)
+  card.querySelector('strong')!.textContent = String(item.name ?? '')
+  // `rgt - lft` is `2 * descendants + 1`, so the pair carries the subtree size
+  // as well as the position. Worth saying on the card, since it is the part
+  // people do not expect.
+  card.querySelector('small')!.textContent =
+    context.descendants === 0 ? 'leaf' : `${context.descendants} below`
+  syncToggleButton(card, context)
+}
+
 function renderCounts(element: HTMLElement, context: NodeContext): void {
   let card = element.firstElementChild as HTMLDivElement | null
   if (card === null) {
@@ -509,6 +545,7 @@ const RENDERERS: Record<NodeContentKind, RenderNode | null> = {
   row: renderRow,
   card: renderCard,
   counts: renderCounts,
+  bounds: renderBounds,
   dropdown: renderDropdown,
   accordion: renderAccordion,
   actions: renderActions,
