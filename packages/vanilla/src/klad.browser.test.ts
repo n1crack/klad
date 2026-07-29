@@ -4623,3 +4623,173 @@ describe('editing the shape', () => {
     chart.destroy()
   })
 })
+
+describe('reconcile', () => {
+  const rows = () => [
+    { id: 'a', name: 'Root' },
+    { id: 'b', parentId: 'a', name: 'Left' },
+    { id: 'c', parentId: 'a', name: 'Right' },
+    { id: 'd', parentId: 'b', name: 'Leaf' },
+  ]
+
+  it('keeps where the viewer is, which is the whole point of it', async () => {
+    const chart = make({})
+    await nextFrame()
+    await settle()
+
+    chart.api.collapse('b')
+    await settleTransition()
+    chart.api.select(['c'])
+    chart.api.highlight(['a'])
+    const before = chart.api.getState().camera
+
+    // The poll came back with one new person under `c`.
+    chart.api.reconcile([...rows(), { id: 'e', parentId: 'c', name: 'New' }])
+    await settleTransition()
+    await settle()
+
+    expect(chart.api.stats('e')).not.toBeNull()
+    // `b` is still folded. `update` would have opened it.
+    expect(chart.api.getView().open).not.toContain('b')
+    expect(chart.api.getState().selected).toEqual(['c'])
+    expect(chart.api.getState().highlighted).toEqual(['a'])
+    expect(chart.api.getState().camera).toEqual(before)
+    chart.destroy()
+  })
+
+  it('is the thing update is not', async () => {
+    const chart = make({})
+    await nextFrame()
+    await settle()
+    chart.api.collapse('b')
+    await settleTransition()
+
+    // Same data, the other door. `update` means "a different tree", so it
+    // starts the expand state over — which is correct for it and is exactly
+    // why `reconcile` had to be a separate call rather than a change to it.
+    chart.update(rows())
+    await settleTransition()
+    expect(chart.api.getView().open).toContain('b')
+    chart.destroy()
+  })
+
+  it('starts a new row the way data would have', async () => {
+    const chart = make({ collapsedByDefault: (_item: NodeData, at: NodePlace) => at.depth >= 2 })
+    await nextFrame()
+    await settle()
+
+    chart.api.reconcile([
+      ...rows(),
+      { id: 'e', parentId: 'c', name: 'New' },
+      { id: 'f', parentId: 'e', name: 'Deep' },
+    ])
+    await settleTransition()
+
+    // `e` sits at depth 2, so the option closes it — a reconcile that
+    // defaulted arrivals to open would override the option on every poll.
+    expect(chart.api.getView().open).not.toContain('e')
+    expect(chart.api.getView().open).toContain('c')
+    chart.destroy()
+  })
+
+  it('keeps a lazily-fetched branch, which data never described', async () => {
+    const chart = createKlad(host(), {
+      data: [
+        { id: 'a', name: 'Root' },
+        { id: 'b', parentId: 'a', name: 'Branch', childCount: 1 },
+      ],
+      nodeSize: { w: 120, h: 48 },
+      label: (item) => String(item.name ?? ''),
+      worker: false,
+      mayHaveChildren: (item) => Number(item.childCount ?? 0) > 0,
+      loadChildren: () => [{ id: 'b1', name: 'Fetched' }],
+    })
+    await nextFrame()
+    await settle()
+    chart.api.expand('b')
+    await settleTransition()
+    await settle()
+    expect(chart.api.stats('b1')).not.toBeNull()
+
+    chart.api.reconcile([
+      { id: 'a', name: 'Root' },
+      { id: 'b', parentId: 'a', name: 'Branch renamed', childCount: 1 },
+      { id: 'c', parentId: 'a', name: 'Arrived' },
+    ])
+    await settleTransition()
+    await settle()
+
+    // Still there. Dropping it would collapse every lazily-opened branch on
+    // every poll — on exactly the trees that need reconciling most.
+    expect(chart.api.stats('b1')).not.toBeNull()
+    expect(chart.api.stats('c')).not.toBeNull()
+    chart.destroy()
+  })
+
+  it('gives the fetched copy up when the data claims the same row', async () => {
+    const chart = createKlad(host(), {
+      data: [
+        { id: 'a', name: 'Root' },
+        { id: 'b', parentId: 'a', name: 'Branch', childCount: 1 },
+      ],
+      nodeSize: { w: 120, h: 48 },
+      label: (item) => String(item.name ?? ''),
+      worker: false,
+      mayHaveChildren: (item) => Number(item.childCount ?? 0) > 0,
+      loadChildren: () => [{ id: 'b1', name: 'Fetched' }],
+    })
+    const warnings: string[] = []
+    chart.on('warning', (w) => warnings.push(w.code))
+    await nextFrame()
+    await settle()
+    chart.api.expand('b')
+    await settleTransition()
+    await settle()
+
+    // The server now sends `b1` itself. Keeping both copies would be a
+    // duplicate id, which is the one thing normalize cannot make sense of.
+    chart.api.reconcile([
+      { id: 'a', name: 'Root' },
+      { id: 'b', parentId: 'a', name: 'Branch', childCount: 1 },
+      { id: 'b1', parentId: 'b', name: 'Authoritative' },
+    ])
+    await settleTransition()
+    await settle()
+
+    expect(warnings).not.toContain('duplicate-id')
+    expect(chart.api.getData().filter((item) => item.id === 'b1')).toHaveLength(1)
+    expect(chart.api.getData().find((item) => item.id === 'b1')!.name).toBe('Authoritative')
+    chart.destroy()
+  })
+
+  it('drops fetched children whose parent left', async () => {
+    const chart = createKlad(host(), {
+      data: [
+        { id: 'a', name: 'Root' },
+        { id: 'b', parentId: 'a', name: 'Branch', childCount: 1 },
+      ],
+      nodeSize: { w: 120, h: 48 },
+      label: (item) => String(item.name ?? ''),
+      worker: false,
+      mayHaveChildren: (item) => Number(item.childCount ?? 0) > 0,
+      loadChildren: () => [{ id: 'b1', name: 'Fetched' }],
+    })
+    const warnings: string[] = []
+    chart.on('warning', (w) => warnings.push(w.code))
+    await nextFrame()
+    await settle()
+    chart.api.expand('b')
+    await settleTransition()
+    await settle()
+
+    // `b` is gone. Its fetched children would be left claiming a parent that
+    // is not there — a warning and a fistful of surprise roots.
+    chart.api.reconcile([{ id: 'a', name: 'Root' }])
+    await settleTransition()
+    await settle()
+
+    expect(chart.api.stats('b1')).toBeNull()
+    expect(warnings).toHaveLength(0)
+    chart.destroy()
+  })
+})

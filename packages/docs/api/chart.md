@@ -144,6 +144,7 @@ you discover by looking.
 | `add(items, parentId?, index?)` | Add rows. Omitted parent makes them roots. |
 | `remove(ids)` | Remove them **and everything below them**. |
 | `getData()` | The rows the chart holds right now — your data with the edits applied. A copy. |
+| `reconcile(data)` | Take a fresh copy of the tree without losing where the viewer is. See [Data that keeps arriving](#data-that-keeps-arriving). |
 
 ```ts
 if (!chart.api.move('lead-42', 'engineering', 0)) {
@@ -193,6 +194,35 @@ pointer move.
   invents.** It is a real node in the tree, but it is the chart's own
   bookkeeping rather than a row of yours, so moving or deleting it would mean
   nothing. It is also left out of `getData()`, for the same reason.
+
+### Data that keeps arriving
+
+A poll came back, a socket pushed, another user moved something. That is not a
+new tree — it is the same one, later.
+
+```ts
+socket.on('tree', (rows) => chart.api.reconcile(rows))
+```
+
+| | |
+| --- | --- |
+| `update(data)` | **A different tree.** Resets your expand state, forgets what `loadChildren` fetched, drops the caps you had lifted. Right when the chart is genuinely being pointed at something else. |
+| `reconcile(data)` | **The same tree, later.** Keeps all of it, plus the camera, the selection and the filter. |
+
+The difference animates: rows that arrived fade in, rows that left fade out,
+everything else tweens to where it now sits. A viewer watching sees what
+changed instead of the chart blinking.
+
+A row new to the chart starts the way it would have started had it been in
+`data` all along — `collapsedByDefault` decides, and it starts closed if
+`mayHaveChildren` says it is waiting on a fetch.
+
+**Lazily-fetched branches are kept**, because `data` never described them:
+dropping them would collapse every branch the viewer had opened, on every
+poll, on exactly the trees that need reconciling most. Two exceptions, both
+forced — children whose parent is no longer in `data` go with it, and a row
+`data` now carries itself replaces the fetched copy, since the newer statement
+wins and a duplicate id is the one thing the chart cannot make sense of.
 
 ### One call, not a loop
 

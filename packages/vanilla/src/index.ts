@@ -923,6 +923,32 @@ export interface KladApi {
    * chart it is not different from a row you supplied.
    */
   getData(): NodeData[]
+  /**
+   * The same tree, in a new state — a poll came back, a socket pushed, another
+   * user moved something.
+   *
+   * The difference from `update()` is what survives. `update` means "this is a
+   * different tree": it resets your expand state, forgets what `loadChildren`
+   * fetched, and drops the caps you had lifted, all of which is right when the
+   * chart is genuinely being pointed at something else. `reconcile` means
+   * "this is the same tree, later" and keeps every one of them, along with the
+   * camera, the selection and the filter.
+   *
+   * The difference animates, too: rows that arrived fade in, rows that left
+   * fade out, and everything else tweens to where it now sits — so a viewer
+   * watching sees what changed rather than the chart blinking.
+   *
+   * A row that is new to the chart starts the way it would have started had it
+   * been in `data` from the beginning — `collapsedByDefault` decides, and it
+   * starts closed if `mayHaveChildren` says it is waiting on a fetch.
+   *
+   * Lazily-fetched branches are kept, since `data` never described them.
+   * Two exceptions, both forced: children whose parent is no longer in `data`
+   * go with it, and any row `data` now carries itself is taken from the
+   * fetched copy, because the newer statement wins and a duplicate id is the
+   * one thing the chart cannot make sense of.
+   */
+  reconcile(data: NodeData[]): void
 
   stats(id: string): NodeStats | null
   /**
@@ -2076,7 +2102,6 @@ export function createKlad(host: HTMLElement, options: Options): KladInstance {
   const emitDrop = (ids: string[], target: number, mode: DropMode): void => {
     const landing = dropLanding(target, mode)
     if (landing === null) return
-    const parentSource = landing.parentSource
     const dropIndex = landing.index
     const ordered = inTreeOrder(ids)
     // Asked again here, not only during the drag. The drag caches its answer
@@ -2136,7 +2161,7 @@ export function createKlad(host: HTMLElement, options: Options): KladInstance {
    */
   const applyEdit = (
     rewrite: (rows: NodeData[]) => NodeData[],
-    opts: { pinSource?: number; openParent?: string | null } = {},
+    opts: { pinSource?: number; openParent?: string | null; preserveLoaded?: boolean } = {},
   ): void => {
     const pinSource = opts.pinSource ?? -1
     const parentId = opts.openParent ?? null
@@ -2167,7 +2192,12 @@ export function createKlad(host: HTMLElement, options: Options): KladInstance {
     // fetched node on the next rebuild. From this point they are ordinary
     // data, which they are: the host's array was replaced a line ago either
     // way, and the nodes stay loaded — they just have one home instead of two.
-    loadedChildren.clear()
+    //
+    // `reconcile` is the exception: it replaces the host's array with one the
+    // host wrote, which never contained the fetched branches, so folding them
+    // in would be this layer inventing rows nobody sent. It reconciles the
+    // two stores itself and keeps them apart.
+    if (opts.preserveLoaded !== true) loadedChildren.clear()
     const previous = tree
     // Through `treeSource()` rather than `rest` directly: the caps have to be
     // planned again against the array this drop just produced, and a
@@ -2187,7 +2217,13 @@ export function createKlad(host: HTMLElement, options: Options): KladInstance {
     rebuildItemIndex()
     const next = new Uint8Array(tree.count)
     for (let i = 0; i < tree.count; i++) {
-      next[i] = (openById.get(tree.indexToId[i]!) ?? true) ? 1 : 0
+      const was = openById.get(tree.indexToId[i]!)
+      // A node nobody has an opinion about is one that was not here a moment
+      // ago, so it starts the way it would have started had it been in `data`
+      // all along — `collapsedByDefault`, and closed if it is waiting on a
+      // fetch. Defaulting these to open would quietly override the option on
+      // every row a reconcile brings in.
+      next[i] = (was ?? opensByDefault(i)) ? 1 : 0
     }
     open = next
     // The node just landed somewhere; showing it closed would hide the result
@@ -4399,6 +4435,39 @@ export function createKlad(host: HTMLElement, options: Options): KladInstance {
       }
       applyEdit((source) => source.filter((item) => !doomed.has(String(item.id))))
       return true
+    },
+    reconcile(data) {
+      // The same tree in a new state, as opposed to `update`'s "this is a
+      // different tree". Everything about where the viewer IS survives — the
+      // camera, which branches they opened, what they selected, what they
+      // filtered to, the caps they lifted — and the difference animates:
+      // arrivals fade in, departures fade out, the rest tween to where they
+      // now sit. A poll or a socket that called `update` instead would fold
+      // the tree back up under them several times a minute.
+      const incoming = new Set(data.map((item) => String(item.id)))
+
+      // What `loadChildren` fetched is not in `data` by definition — the host
+      // chose not to put it there — so a reconcile of `data` says nothing
+      // about it and dropping it would collapse every lazily-opened branch on
+      // every poll, which is exactly the tree that needs reconciling most.
+      // Two things do have to go, though.
+      for (const [parentId, items] of loadedChildren) {
+        // The parent went. Its fetched children would be left claiming a
+        // parent that is not there, which `normalize` reads as a warning and
+        // a fistful of new roots.
+        if (!incoming.has(parentId)) {
+          loadedChildren.delete(parentId)
+          continue
+        }
+        // And any row the new data now carries itself. `data` is the newer
+        // statement and wins; keeping both would be a duplicate id, the one
+        // thing `normalize` cannot make sense of.
+        const kept = items.filter((item) => !incoming.has(String(item.id)))
+        if (kept.length === 0) loadedChildren.delete(parentId)
+        else if (kept.length !== items.length) loadedChildren.set(parentId, kept)
+      }
+
+      applyEdit(() => data, { preserveLoaded: true })
     },
     getData() {
       return baseRows().map((item) => ({ ...item }))
