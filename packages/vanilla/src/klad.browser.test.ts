@@ -4405,3 +4405,129 @@ describe('the connector style, chosen on its own', () => {
     chart.destroy()
   })
 })
+
+describe('editing the shape', () => {
+  const parentOf = (chart: ReturnType<typeof createKlad>, id: string) => {
+    const path = chart.api.pathTo(id)
+    return path === null || path.length < 2 ? null : path.at(-2)!
+  }
+  const childIds = (chart: ReturnType<typeof createKlad>, parent: string | null) =>
+    chart.api
+      .getData()
+      .filter((item) => (item.parentId ?? null) === parent)
+      .map((item) => String(item.id))
+
+  it('moves a node under a new parent, at the slot asked for', async () => {
+    const chart = make({})
+    await nextFrame()
+    await settle()
+
+    expect(chart.api.move('d', 'c')).toBe(true)
+    await settleTransition()
+    expect(parentOf(chart, 'd')).toBe('c')
+
+    // Ahead of `b` this time, rather than appended.
+    expect(chart.api.move('d', 'a', 0)).toBe(true)
+    await settleTransition()
+    expect(childIds(chart, 'a')).toEqual(['d', 'b', 'c'])
+    chart.destroy()
+  })
+
+  it('refuses a move that would not leave a tree', async () => {
+    const chart = make({})
+    await nextFrame()
+    await settle()
+
+    // `d` is under `b`. Moving `b` into it would make a cycle.
+    expect(chart.api.move('b', 'd')).toBe(false)
+    // And into itself, which is the same test's degenerate case.
+    expect(chart.api.move('b', 'b')).toBe(false)
+    expect(chart.api.move('nobody', 'a')).toBe(false)
+    expect(chart.api.move('b', 'nobody')).toBe(false)
+    // Nothing moved.
+    expect(parentOf(chart, 'b')).toBe('a')
+    expect(parentOf(chart, 'd')).toBe('b')
+    chart.destroy()
+  })
+
+  it('adds a row, and refuses one whose id is already taken', async () => {
+    const chart = make({})
+    await nextFrame()
+    await settle()
+
+    expect(chart.api.add({ id: 'e', name: 'New' }, 'c')).toBe(true)
+    await settleTransition()
+    expect(parentOf(chart, 'e')).toBe('c')
+    // A first child goes in after its own parent, not at the head of the
+    // array — `getData()` is something a host reads.
+    const rows = chart.api.getData().map((item) => String(item.id))
+    expect(rows.indexOf('e')).toBeGreaterThan(rows.indexOf('c'))
+
+    expect(chart.api.add({ id: 'e' }, 'a')).toBe(false)
+    expect(chart.api.add([{ id: 'f' }, { id: 'f' }], 'a')).toBe(false)
+    expect(chart.api.add({ id: 'g' }, 'nobody')).toBe(false)
+    expect(chart.api.getData().filter((item) => item.id === 'f')).toHaveLength(0)
+    chart.destroy()
+  })
+
+  it('removes a node and everything below it', async () => {
+    const chart = make({})
+    await nextFrame()
+    await settle()
+    expect(chart.api.stats('d')).not.toBeNull()
+
+    expect(chart.api.remove('b')).toBe(true)
+    await settleTransition()
+
+    // `d` went with `b`. Left behind it would have become a root, which is a
+    // bigger change to the shape than the one asked for.
+    expect(chart.api.stats('b')).toBeNull()
+    expect(chart.api.stats('d')).toBeNull()
+    expect(chart.api.stats('c')).not.toBeNull()
+    expect(chart.api.remove('gone')).toBe(false)
+    chart.destroy()
+  })
+
+  it('keeps the branches you had open', async () => {
+    const chart = make({})
+    await nextFrame()
+    await settle()
+    chart.api.collapse('b')
+    await settleTransition()
+
+    chart.api.move('c', 'a', 0)
+    await settleTransition()
+
+    // `b` is still folded; the move is not a reason to unfold it. The node's
+    // NEW parent is opened, which is the one change an edit is entitled to.
+    expect(chart.api.getView().open).not.toContain('b')
+    expect(chart.api.getView().open).toContain('a')
+    chart.destroy()
+  })
+
+  it('will not touch the node a capped level invented', async () => {
+    const kids = Array.from({ length: 8 }, (_, i) => ({ id: `k${i}`, parentId: 'a', name: `K${i}` }))
+    const chart = createKlad(host(), {
+      data: [{ id: 'a', name: 'Root' }, ...kids],
+      nodeSize: { w: 120, h: 48 },
+      label: (item) => String(item.name ?? ''),
+      worker: false,
+      maxChildren: 3,
+    })
+    await nextFrame()
+    await settle()
+
+    // The chart's own bookkeeping — see `maxChildren`. It is a real node in
+    // the tree, which is why every one of these has to say no on purpose.
+    const aggregate = 'klad:more:a'
+    expect(chart.api.stats(aggregate)).not.toBeNull()
+
+    expect(chart.api.move(aggregate, null)).toBe(false)
+    expect(chart.api.move('k0', aggregate)).toBe(false)
+    expect(chart.api.remove(aggregate)).toBe(false)
+    expect(chart.api.add({ id: 'new' }, aggregate)).toBe(false)
+    // And it is not handed back as data, because it is in nobody's store.
+    expect(chart.api.getData().some((item) => String(item.id) === aggregate)).toBe(false)
+    chart.destroy()
+  })
+})

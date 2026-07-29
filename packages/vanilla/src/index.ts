@@ -829,6 +829,66 @@ export interface KladApi {
    * panel they are still reading.
    */
   refresh(opts?: { keep?: string }): void
+
+  // --- editing ------------------------------------------------------------
+  //
+  // The three ways the tree's SHAPE can change. Renaming is deliberately not
+  // among them: a node's text comes from your `label` reading your own row,
+  // so the chart does not know which field is the name and has no business
+  // writing one. Change the row and call `refresh()`.
+  //
+  // Each returns whether it happened, so a refused edit is something you can
+  // branch on rather than something you find out about by looking. The chart
+  // changes its own copy of the rows; reconcile your store from the return
+  // value and `getData()`.
+
+  /**
+   * Moves `ids` under `toParentId`, at `index` among that parent's children —
+   * appended when `index` is omitted. `null` makes them roots.
+   *
+   * The same edit a drop makes, and refused on the same grounds: a node
+   * cannot be moved inside its own subtree, because the result would not be a
+   * tree. Also refused for an id this chart doesn't have, and for the node a
+   * capped level invented — that one is the chart's own bookkeeping rather
+   * than anything of yours, so moving it would mean nothing.
+   *
+   * Moving several at once keeps their relative order.
+   */
+  move(ids: string | string[], toParentId: string | null, index?: number): boolean
+  /**
+   * Adds rows under `parentId`, at `index` among its children — appended when
+   * `index` is omitted. `null` (or omitted) adds them as roots.
+   *
+   * Refused for an id the chart already has, since a duplicate id is the one
+   * thing `normalize` cannot make sense of, and for an unknown parent.
+   *
+   * The rows are yours: pass whatever shape your `nodeSize`, `label` and
+   * `renderNode` read, exactly as you would in `data`.
+   */
+  add(items: NodeData | NodeData[], parentId?: string | null, index?: number): boolean
+  /**
+   * Removes `ids` AND everything below them.
+   *
+   * The subtree goes because the alternative is worse: leaving the children
+   * behind turns each of them into a root, which is a bigger change to the
+   * shape than the one asked for and not one anybody means by "delete this
+   * branch". Move them out first if you want to keep them.
+   */
+  remove(ids: string | string[]): boolean
+  /**
+   * The rows the chart is holding right now — your own data with whatever
+   * edits have been applied on top, in the order the tree reads.
+   *
+   * A copy, so writing to it changes nothing. What it does NOT contain is the
+   * node a capped level invents: that one is the chart's own bookkeeping, and
+   * handing it back would put a row in your store that you never wrote and
+   * that would be invented again on the next rebuild anyway.
+   *
+   * Includes anything `loadChildren` fetched, since by the time it is in the
+   * chart it is not different from a row you supplied.
+   */
+  getData(): NodeData[]
+
   stats(id: string): NodeStats | null
   /**
    * The chain of ids from the root down to `id`, inclusive of both — what to
@@ -1945,13 +2005,37 @@ export function createKlad(host: HTMLElement, options: Options): KladInstance {
    * Dropping a node is not a reason to fold up the branch you dropped it into,
    * and doing so would hide the result of the very action just taken.
    */
-  const applyReparent = (ids: string[], parentId: string | null, index: number, pinSource = -1): void => {
-    const moving = new Set(ids)
-    // Where the DROP TARGET is on screen right now. Pinned across the
-    // relayout below, so the place the viewer just dropped onto stays under
-    // their cursor while everything reflows around it. Anchoring the dropped
-    // node instead would drag the camera along with it — which is the one
-    // thing that IS supposed to move.
+  /**
+   * Everything a change to the tree's SHAPE needs, around a function that
+   * says what the rows become.
+   *
+   * A move, an add and a remove differ only in how they rewrite the array;
+   * the rest of the work — holding the camera still, carrying the open state
+   * across, remapping source indices so the transition tweens rather than
+   * shuffles — is identical, and was written once for the drop path before
+   * there was anything else to share it with.
+   *
+   * `rewrite` is handed the chart's CURRENT rows and returns the ones it
+   * should hold next. It must return a new array rather than mutate the one
+   * it is given: those row objects are the caller's, and a chart quietly
+   * rewriting fields on data it was handed is the kind of side effect that
+   * surfaces as a bug somewhere else entirely.
+   *
+   * `openParent` is opened afterwards when given — a node that just landed
+   * somewhere should not be hidden behind a fold, which would conceal the
+   * result of the very action taken.
+   */
+  const applyEdit = (
+    rewrite: (rows: NodeData[]) => NodeData[],
+    opts: { pinSource?: number; openParent?: string | null } = {},
+  ): void => {
+    const pinSource = opts.pinSource ?? -1
+    const parentId = opts.openParent ?? null
+    // Where the node being held still is on screen right now — for a drop,
+    // the node dropped ONTO. Pinned across the relayout below so it stays
+    // under the cursor while everything reflows around it. Anchoring the
+    // moved node instead would drag the camera along with it, which is the
+    // one thing that IS supposed to move.
     const pinBox = pinSource === -1 ? null : boxOfSource(pinSource)
     const pinId: string | undefined = pinSource === -1 ? undefined : tree.indexToId[pinSource]
     const pinScreen =
@@ -1966,25 +2050,7 @@ export function createKlad(host: HTMLElement, options: Options): KladInstance {
     // branch that had been fetched. NOT `treeSource()`: that adds the nodes a
     // cap invents, and writing those into the host's array makes the next
     // rebuild plan a second aggregate for the same parent.
-    const source = baseRows()
-    const moved: NodeData[] = []
-    const rest: NodeData[] = []
-    for (const item of source) {
-      if (moving.has(String(item.id))) moved.push({ ...item, parentId })
-      else rest.push(item)
-    }
-    // `index` counts among the target parent's children BEFORE the moving
-    // nodes were taken out, so splicing into the remaining siblings needs it
-    // adjusted by however many of them sat ahead of the insertion point —
-    // otherwise moving a node down within its own parent lands it one slot
-    // short every time.
-    const siblingsBefore = source.filter(
-      (item) => (item.parentId ?? null) === parentId && !moving.has(String(item.id)),
-    )
-    const anchor = siblingsBefore[Math.min(index, siblingsBefore.length) - 1]
-    const insertAt =
-      anchor === undefined ? 0 : rest.findIndex((item) => item.id === anchor.id) + 1
-    rest.splice(insertAt, 0, ...moved)
+    const rest = rewrite(baseRows())
 
     currentOptions = { ...currentOptions, data: rest }
     // The two stores collapse into one here. `rest` already contains what had
@@ -2032,6 +2098,42 @@ export function createKlad(host: HTMLElement, options: Options): KladInstance {
     if (pinScreen !== null && pinId !== undefined) pendingPin = { id: pinId, screen: pinScreen }
     a11yDirty = true
     scheduleFrame()
+  }
+
+  /**
+   * Moves `ids` under `parentId` at `index` — the shape change a drop makes,
+   * and what `api.move` calls.
+   *
+   * Open state survives, keyed by id — unlike `update()`, which resets it.
+   * Dropping a node is not a reason to fold up the branch you dropped it
+   * into, and doing so would hide the result of the action just taken.
+   */
+  const applyReparent = (ids: string[], parentId: string | null, index: number, pinSource = -1): void => {
+    const moving = new Set(ids)
+    applyEdit(
+      (source) => {
+        const moved: NodeData[] = []
+        const rest: NodeData[] = []
+        for (const item of source) {
+          if (moving.has(String(item.id))) moved.push({ ...item, parentId })
+          else rest.push(item)
+        }
+        // `index` counts among the target parent's children BEFORE the moving
+        // nodes were taken out, so splicing into the remaining siblings needs
+        // it adjusted by however many of them sat ahead of the insertion point
+        // — otherwise moving a node down within its own parent lands it one
+        // slot short every time.
+        const siblingsBefore = source.filter(
+          (item) => (item.parentId ?? null) === parentId && !moving.has(String(item.id)),
+        )
+        const anchorRow = siblingsBefore[Math.min(index, siblingsBefore.length) - 1]
+        const insertAt =
+          anchorRow === undefined ? 0 : rest.findIndex((item) => item.id === anchorRow.id) + 1
+        rest.splice(insertAt, 0, ...moved)
+        return rest
+      },
+      { pinSource, openParent: parentId },
+    )
   }
 
   // --- children on demand -------------------------------------------------
@@ -4073,6 +4175,110 @@ export function createKlad(host: HTMLElement, options: Options): KladInstance {
         results.push({ id: tree.indexToId[i]!, item, path })
       }
       return results
+    },
+    move(ids, toParentId, index) {
+      const list = typeof ids === 'string' ? [ids] : ids
+      if (list.length === 0) return false
+      const sources: number[] = []
+      for (const id of list) {
+        const at = tree.idToIndex.get(id)
+        // Unknown, or the node a cap invented — see `overflowInfo`. That one
+        // is in nobody's data, so moving it would move nothing.
+        if (at === undefined || overflowInfo(itemFor(at)) !== null) return false
+        sources.push(at)
+      }
+      let parentAt = -1
+      if (toParentId !== null) {
+        const at = tree.idToIndex.get(toParentId)
+        if (at === undefined || overflowInfo(itemFor(at)) !== null) return false
+        parentAt = at
+      }
+      // Into its own subtree is not a move, it is a cycle. Two comparisons
+      // rather than a walk up the parent chain, which is what the nested-set
+      // bounds are for — and the target being one of the moved nodes itself
+      // is the degenerate case of the same test, so it is spelled separately.
+      for (const at of sources) {
+        if (parentAt === at) return false
+        if (parentAt !== -1) {
+          const branch = statsOf(at)
+          const into = statsOf(parentAt)
+          if (into.lft > branch.lft && into.rgt < branch.rgt) return false
+        }
+      }
+      // Source order, not the caller's, so moving several keeps how they sit
+      // relative to each other rather than however they were listed.
+      sources.sort((a, b) => a - b)
+      const ordered = sources.map((at) => tree.indexToId[at]!)
+      const childCount = parentAt === -1 ? tree.roots.length : childCountOf(parentAt)
+      applyReparent(ordered, toParentId, index === undefined ? childCount : Math.max(0, index))
+      return true
+    },
+    add(items, parentId = null, index) {
+      const list = Array.isArray(items) ? items : [items]
+      if (list.length === 0) return false
+      const fresh = new Set<string>()
+      for (const item of list) {
+        const id = String(item.id)
+        // A duplicate id is the one thing `normalize` cannot make sense of,
+        // and it would surface as a warning about data the host did not write.
+        if (id === '' || tree.idToIndex.has(id) || fresh.has(id)) return false
+        fresh.add(id)
+      }
+      if (parentId !== null) {
+        const at = tree.idToIndex.get(parentId)
+        if (at === undefined || overflowInfo(itemFor(at)) !== null) return false
+      }
+      const rows = list.map((item) => ({ ...item, parentId }))
+      applyEdit(
+        (source) => {
+          const next = [...source]
+          const siblings = source.filter((item) => (item.parentId ?? null) === parentId)
+          // The sibling these should sit AFTER; `undefined` means first.
+          const anchorRow =
+            index === undefined ? siblings.at(-1) : siblings[Math.min(index, siblings.length) - 1]
+          const rowAt = (row: NodeData) => next.findIndex((item) => item.id === row.id)
+          const insertAt =
+            anchorRow !== undefined
+              ? rowAt(anchorRow) + 1
+              : siblings.length > 0
+                ? // First among siblings that already exist: just ahead of them.
+                  rowAt(siblings[0]!)
+                : parentId === null
+                  ? next.length
+                  : // The parent's first child. Right after the parent rather
+                    // than at the head of the array — `normalize` reads either
+                    // one the same way, but an array where a child precedes
+                    // its own parent is a strange thing to hand back to
+                    // somebody through `getData()`.
+                    next.findIndex((item) => String(item.id) === parentId) + 1
+          next.splice(insertAt, 0, ...rows)
+          return next
+        },
+        { openParent: parentId },
+      )
+      return true
+    },
+    remove(ids) {
+      const list = typeof ids === 'string' ? [ids] : ids
+      if (list.length === 0) return false
+      const doomed = new Set<string>()
+      for (const id of list) {
+        const at = tree.idToIndex.get(id)
+        if (at === undefined || overflowInfo(itemFor(at)) !== null) return false
+        // The node and everything below it, read straight off the bounds
+        // rather than walked — a subtree is exactly the nodes whose pair sits
+        // inside this one's.
+        const lft = stats.lft[at]!
+        const rgt = stats.rgt[at]!
+        for (let i = 0; i < tree.count; i++) {
+          if (stats.lft[i]! >= lft && stats.rgt[i]! <= rgt) doomed.add(tree.indexToId[i]!)
+        }
+      }
+      applyEdit((source) => source.filter((item) => !doomed.has(String(item.id))))
+      return true
+    },
+    getData() {
+      return baseRows().map((item) => ({ ...item }))
     },
     stats(id) {
       const index = tree.idToIndex.get(id)

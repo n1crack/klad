@@ -132,6 +132,61 @@ also on the context every card is rendered with — see [Node content](/guide/no
 The counts leave out the nodes a [capped level](/guide/wide-levels) invents;
 `lft`/`rgt`, being positions rather than counts, include them.
 
+## Editing
+
+The three ways the tree's **shape** can change. Each returns whether it
+happened, so a refused edit is something you branch on rather than something
+you discover by looking.
+
+| Method | |
+|---|---|
+| `move(ids, toParentId, index?)` | Move one or several under a new parent, at `index` among its children — appended when omitted, `null` makes them roots. |
+| `add(items, parentId?, index?)` | Add rows. Omitted parent makes them roots. |
+| `remove(ids)` | Remove them **and everything below them**. |
+| `getData()` | The rows the chart holds right now — your data with the edits applied. A copy. |
+
+```ts
+if (!chart.api.move('lead-42', 'engineering', 0)) {
+  // refused — see below
+}
+```
+
+### There is no rename
+
+A node's text comes from your [`label`](/api/options) reading your own row, so
+the chart does not know which field is the name and has no business writing
+one. Change the row and call `refresh()`. The same goes for any other field:
+the chart owns the shape, you own the content.
+
+### What gets refused
+
+- **A move into its own subtree**, because the result would not be a tree.
+  Moving a node onto itself is the same test's degenerate case.
+- **An id this chart does not have**, on either end.
+- **An `add` whose id is already taken** — a duplicate id is the one thing
+  the chart cannot make sense of.
+- **Anything involving the node a [capped level](/guide/wide-levels)
+  invents.** It is a real node in the tree, but it is the chart's own
+  bookkeeping rather than a row of yours, so moving or deleting it would mean
+  nothing. It is also left out of `getData()`, for the same reason.
+
+### Removing takes the subtree
+
+Leaving the children behind would turn each of them into a root, which is a
+bigger change to the shape than the one asked for and not what anybody means
+by "delete this branch". Move them out first if you want to keep them.
+
+### What an edit leaves alone
+
+Your expand state survives, keyed by id — unlike `update()`, which resets it.
+Moving a node is not a reason to fold up the branch you moved it into, and
+doing so would hide the result of the action. The one change an edit makes on
+its own is opening the node's **new** parent.
+
+The camera holds still, and the nodes tween to their new positions rather than
+jumping, exactly as they do for a drag-and-drop — which is the same edit, taken
+through the same door.
+
 ## Finding and marking
 
 | Method | |
