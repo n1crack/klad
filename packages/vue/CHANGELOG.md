@@ -1,5 +1,14 @@
 # @klad/vue
 
+## 1.5.1
+
+### Patch Changes
+
+- Updated dependencies [65dabeb]
+- Updated dependencies [82e5875]
+  - @klad/core@1.5.1
+  - @klad/engine@1.5.1
+
 ## 1.5.0
 
 ### Minor Changes

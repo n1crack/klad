@@ -1,5 +1,12 @@
 # @klad/react
 
+## 1.5.1
+
+### Patch Changes
+
+- Updated dependencies [65dabeb]
+  - @klad/core@1.5.1
+
 ## 1.5.0
 
 ### Minor Changes
