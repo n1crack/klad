@@ -1746,3 +1746,47 @@ describe('block-tier decimation in render()', () => {
     expect(fullSteady).toBeGreaterThan(0)
   })
 })
+
+describe('the connector style as an option', () => {
+  /** A parent and two children, framed so every connector is on screen. */
+  function threeNodes() {
+    const renderer = fakeRenderer()
+    const engine = createChartEngine(renderer)
+    const tree = normalize([{ id: 'a' }, { id: 'b', parentId: 'a' }, { id: 'c', parentId: 'a' }])
+    engine.setViewport(1000, 1000, 1)
+    engine.setData(toWireTree(tree), sizesFor(tree.count), ['a', 'b', 'c'], new Uint8Array(tree.count).fill(1))
+    engine.setCamera({ x: 400, y: 400, k: 1 })
+    return { renderer, engine }
+  }
+
+  it('overrides the one the layout asks for', () => {
+    const { renderer, engine } = threeNodes()
+    engine.setOptions({ layout: 'tidy', edgeStyle: 'spoke' })
+    engine.render()
+    expect(renderer.frames.at(-1)!.edgeStyle).toBe('spoke')
+  })
+
+  it('leaves the layout in charge when it is not given', () => {
+    const { renderer, engine } = threeNodes()
+    engine.setOptions({ layout: 'file' })
+    engine.render()
+    expect(renderer.frames.at(-1)!.edgeStyle).toBe('folder')
+  })
+
+  it('rebuilds the edge index when the style changes, not just the paint', () => {
+    // `'none'` skips building the index and its whole quadtree — see
+    // `edgeStyleDrawsConnectors`. So coming back from it has to relayout, not
+    // repaint: a frame drawn from the old index would have no connectors and
+    // no way to get them back until something unrelated dirtied the layout.
+    const { renderer, engine } = threeNodes()
+    engine.setOptions({ layout: 'tidy', edgeStyle: 'none' })
+    engine.render()
+    expect(renderer.frames.at(-1)!.edgeCount).toBe(0)
+
+    engine.setOptions({ edgeStyle: 'tiered' })
+    engine.render()
+    const back = renderer.frames.at(-1)!
+    expect(back.edgeStyle).toBe('tiered')
+    expect(back.edgeCount).toBeGreaterThan(0)
+  })
+})

@@ -111,10 +111,18 @@ export function edgeAnchors(
  * decides. A badge somewhere else would be a second, competing answer to a
  * question the layout has settled.
  *
- * `null` for the polar styles, which have their own mark drawn in their own
- * geometry (an arc inside the segment, a halo around the dot) — a stub poking
- * out of a sector would point at the ring that is already there. `null` for
- * `folder` too: see the `default` case.
+ * Only ever asked about a RECTANGULAR chart: both callers reach this after
+ * ruling out sectors and angles, because a wheel marks its own nodes in its
+ * own geometry (an arc inside the segment, a halo around the dot) and a stub
+ * poking out of a sector would point at the ring that is already there.
+ *
+ * That is why `spoke` and `none` answer the same as `tiered` here rather than
+ * `null`. Both used to mean "this is a wheel" — `spoke` came only from
+ * `radial` and `none` only from `sunburst` — so the question never reached
+ * them. Now that `edgeStyle` can be chosen on its own, a tidy chart can ask
+ * for either, and it still has a branch continuing downward whether or not a
+ * line is drawn to it. Returning `null` there would delete the only thing
+ * saying so at a zoom where the cards and their toggles are gone.
  *
  * World units and a unit direction; the caller scales the length, so the mark
  * keeps the same size on screen at any zoom.
@@ -129,21 +137,20 @@ export function hiddenStub(
   h: number,
 ): { x: number; y: number; dx: number; dy: number } | null {
   switch (style) {
+    case 'folder':
+      // A judgement rather than a geometry problem, and the one style that
+      // really does want nothing. A file list is a column of rows with a
+      // disclosure control on each one; a stub hanging off the bottom of a row
+      // says the same thing the chevron beside its name already does, in a
+      // second place, and reads as a stray guide line rather than as a mark.
+      return null
     case 'tiered':
+    case 'spoke':
+    case 'none':
+    default:
       return horizontal
         ? { x: x + w, y: y + h / 2, dx: 1, dy: 0 }
         : { x: x + w / 2, y: y + h, dx: 0, dy: 1 }
-    default:
-      // `spoke` and `none`: a radial chart marks its own nodes with a halo and
-      // a sunburst with an inner arc, and a chart with no connectors at all
-      // has nothing for a stub to be the beginning of.
-      //
-      // `folder` too, and that one is a judgement rather than a geometry
-      // problem. A file list is a column of rows with a disclosure control on
-      // each one; a stub hanging off the bottom of a row says the same thing
-      // the chevron beside its name already does, in a second place, and reads
-      // as a stray guide line rather than as a mark.
-      return null
   }
 }
 

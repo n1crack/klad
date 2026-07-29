@@ -4344,3 +4344,64 @@ describe('where a node sits', () => {
     chart.destroy()
   })
 })
+
+describe('the connector style, chosen on its own', () => {
+  it('overrides what the layout would have picked, in the canvas and the export', async () => {
+    const plain = make({})
+    await nextFrame()
+    await settle()
+    // `tidy` asks for elbows, and an elbow is a path with bends in it.
+    expect(plain.api.toSVG()).toContain('<path')
+    plain.destroy()
+
+    const bare = make({ edgeStyle: 'none' })
+    await nextFrame()
+    await settle()
+    const svg = bare.api.toSVG()
+    // Nothing joins the nodes any more. The cards are still there.
+    expect(svg).not.toContain('<path')
+    expect(svg).toContain('<rect')
+    bare.destroy()
+  })
+
+  it('keeps the “more inside” mark on a tiered chart with no connectors', async () => {
+    // The gap this option opens up. `hiddenStub` used to answer `null` for
+    // `'none'`, which was right while `'none'` could only mean a sunburst —
+    // that draws its own inner arc. On a tidy chart it would delete the only
+    // thing saying a collapsed branch has anything in it.
+    const chart = make({ edgeStyle: 'none', collapsedByDefault: true })
+    await nextFrame()
+    await settle()
+    // `hs` is the stub and `hd` its dot — the rectangular mark. (`h` is the
+    // wheel's arc, which is a different thing entirely.)
+    const svg = chart.api.toSVG()
+    expect(svg).toContain('class="hs"')
+    expect(svg).toContain('class="hd"')
+    chart.destroy()
+  })
+
+  it('still lets the file layout drop that mark, which is a judgement not a bug', async () => {
+    const chart = make({ layout: 'file', collapsedByDefault: true })
+    await nextFrame()
+    await settle()
+    // A file row has a chevron beside its name; a stub would say it twice.
+    expect(chart.api.toSVG()).not.toContain('class="hs"')
+    chart.destroy()
+  })
+
+  it('rebuilds the edge index when the style changes, not just the paint', async () => {
+    // `'none'` skips building the index and its whole quadtree, so coming back
+    // from it has to build one — a repaint alone would leave the chart with no
+    // connectors and no way to get them back.
+    const chart = make({ edgeStyle: 'none' })
+    await nextFrame()
+    await settle()
+    expect(chart.api.toSVG()).not.toContain('<path')
+
+    chart.api.setLayoutOptions({ edgeStyle: 'tiered' })
+    await settleTransition()
+    await settle()
+    expect(chart.api.toSVG()).toContain('<path')
+    chart.destroy()
+  })
+})

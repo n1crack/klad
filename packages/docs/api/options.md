@@ -27,6 +27,7 @@ what each shape is for.
 | Option | Type | Default | |
 |---|---|---|---|
 | `layout` | `'tidy' \| 'file' \| 'radial' \| 'sunburst'` | `'tidy'` | Which shape. `tidy` is the tiered chart; `file` indented rows; `radial` concentric rings; `sunburst` nested arcs. |
+| `edgeStyle` | `'tiered' \| 'folder' \| 'spoke' \| 'none'` | per-layout | The line drawn between a parent and a child, overriding the one the layout would pick — see [Choosing the connector](#choosing-the-connector). |
 | `layoutStep` | `number` | derived | The per-level step, whose meaning is per-layout: the `file` indent, the `radial`/`sunburst` ring size. Omitted, each layout derives one from your `nodeSize`. |
 | `rowGap` | `number` | `spacing.y` | `file` only: the gap between consecutive rows. |
 | `maxRings` | `number` | `3` | `sunburst` only: how many rings are drawn around the centre. Deeper nodes are still there — drilling in reveals them. |
@@ -68,6 +69,40 @@ what each shape is for.
 | `ring` | `boolean` | `true` | The one-shot confirmation flash after a single-node toggle. |
 | `toggleOnNodeClick` | `boolean` | `false` | Tapping a node's body expands or collapses it. For cards with no room for a toggle button. |
 | `worker` | `boolean` | `true` | Renders in a Web Worker. Falls back to the main thread on its own — a CSP that blocks workers, a canvas whose context was already taken — with a warning, never a failure. |
+
+## Choosing the connector
+
+Each layout comes with the line that reads correctly on it: an org chart's
+elbow, a file list's guide line down the gutter, a wheel's spoke. `edgeStyle`
+overrides that when your chart wants a different answer.
+
+```ts
+createKlad(el, { data, edgeStyle: 'spoke' })   // tidy, but straight lines
+createKlad(el, { data, edgeStyle: 'none' })    // no connectors at all
+```
+
+| | |
+| --- | --- |
+| `'tiered'` | Down, across, down — the org chart elbow. The default everywhere except the three below. |
+| `'folder'` | A guide line down the indent gutter. What `file` uses. |
+| `'spoke'` | Straight, centre to centre. What `radial` uses. |
+| `'none'` | Nothing is drawn between nodes. What `sunburst` uses, since its arcs already touch. |
+
+Leaving it out is right almost every time — a folder guide line on a tiered
+chart is not a style choice, it is a mistake. Reach for it when your own cards
+already carry the structure and the lines are noise, or when a wide tidy tree
+reads better with straight lines than with elbows.
+
+`'none'` is also the cheapest: the engine skips building the edge index and its
+quadtree entirely rather than building one for the renderer to ignore.
+
+**One thing it does not take away.** On a tiered chart the "there is more
+inside" mark — the short stub and dot below a collapsed node — stays whatever
+style you choose, because a branch still continues there whether or not a line
+is drawn to it, and at the zoom where the cards and their toggles are gone it
+is the only thing that says so. The exception is `'folder'`, which drops it on
+purpose: a file row has a chevron beside its name, and a stub underneath would
+say the same thing twice.
 
 ## Where a node sits
 

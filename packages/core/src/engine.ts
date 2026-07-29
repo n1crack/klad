@@ -1699,7 +1699,7 @@ export function createChartEngine(renderer: Renderer): ChartEngine {
       hasHidden = any ? marks : null
     }
 
-    edgeStyle = edgeStyleForLayout(options.layout)
+    edgeStyle = options.edgeStyle ?? edgeStyleForLayout(options.layout)
     const edgeIndex = buildEdgeIndex(boxes, prunedParent, bounds, horizontal, edgeStyle, options.rtl)
     edgeQuad = edgeIndex.quad
     edgeChild = edgeIndex.child
@@ -2340,6 +2340,9 @@ export function createChartEngine(renderer: Renderer): ChartEngine {
         next.orientation !== options.orientation ||
         next.rtl !== options.rtl ||
         next.layout !== options.layout ||
+        // Not just a repaint: `'none'` skips building the edge index and its
+        // whole quadtree, so changing to or from it has to rebuild one.
+        next.edgeStyle !== options.edgeStyle ||
         next.layoutStep !== options.layoutStep ||
         next.rowGap !== options.rowGap ||
         next.maxRings !== options.maxRings ||

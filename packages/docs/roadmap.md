@@ -123,24 +123,28 @@ Two ways a big tree stops being readable, and the numbers that make both cheap.
 Along the way a node leaving the chart stopped disappearing between one frame
 and the next: it fades out now, the way an arriving one fades in.
 
-## 1.6 — the shape is yours to write
+## 1.6 — two things the chart knew and would not say
 
-Today you pick a layout by name from the ones built in. Next you hand in your
-own: a function that is given the tree and every node's size, and answers where
-each one goes. The built-in layouts are already written that way — what is
-missing is a way to pass yours through to where the work happens.
+**Where a node sits.** `nodeSize`, `label`, `collapsedByDefault`,
+`mayHaveChildren` and `pinChildren` were each handed the node's data and
+nothing else, so none of them could answer a question about depth or about a
+node's place among its siblings. A file list, which narrows every row by its
+own indent, needs exactly that — and a row that arrived through
+`loadChildren` is in no array you could have worked it out from. They all get
+a second argument now.
 
-The connector style comes with it. Which line a layout draws between a parent
-and a child is part of that layout, not a setting beside it, so writing one
-means saying both.
+**Which line joins a parent to a child.** Each layout still picks the one that
+reads correctly on it, and that stays the default, because a folder guide line
+on a tiered chart is a mistake rather than a taste. But it is a setting now, so
+a tidy tree can have straight lines, and a chart whose own cards carry the
+structure can have none at all.
 
-**And one thing every per-node option is currently missing: where the node
-sits.** `nodeSize`, `label`, `collapsedByDefault`, `mayHaveChildren` and
-`pinChildren` are each handed the node's data and nothing else — so none of
-them can answer a question about its depth or its place among its siblings. A
-file list, which narrows every row by its own indent, needs exactly that; and
-a row that arrived through `loadChildren` is not in the array you could have
-worked it out from. The chart knows. It should say.
+A third thing was planned here and dropped: handing in your own layout
+function. A layout cannot cross into a worker — a function does not survive
+`postMessage` — so it would have meant either giving up the worker or turning
+the relayout path inside out, and nobody had asked for it. The connector style
+was the half of that idea worth keeping, and it is a string, so it crosses
+without any of that.
 
 ## 1.7 — editing, with a way back and a way out
 

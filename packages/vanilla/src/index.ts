@@ -8,6 +8,7 @@ import {
   resolveDropMode,
   subtreeMask,
   edgeStyleForLayout,
+  type EdgeStyle,
   isPolarLayout,
   resolveLayout,
   createTextMeasurer,
@@ -229,6 +230,28 @@ export interface Options {
    *                   branch. Click a segment to drill into it; see `centre`.
    */
   layout?: LayoutName
+  /**
+   * The line drawn between a parent and a child, overriding the one the
+   * layout would pick.
+   *
+   *  - `'tiered'` — the elbow of an org chart: down, across, down.
+   *  - `'folder'` — a guide line down the indent gutter, as a file explorer
+   *                 draws it.
+   *  - `'spoke'`  — straight, centre to centre.
+   *  - `'none'`   — no connectors at all.
+   *
+   * Omitted, the layout decides, and that is right almost every time: the
+   * elbow that reads correctly on a tiered chart reads as a mistake on a file
+   * list and as noise on a wheel. This is for the chart that wants one of the
+   * other answers anyway — a tidy tree with straight lines, or one with no
+   * connectors because your own cards already carry the structure.
+   *
+   * One consequence worth knowing: on a `file` chart the "there is more
+   * inside" mark is deliberately absent, because the chevron beside each name
+   * already says it. Choose `'folder'` on a tiered chart and you give that
+   * mark up without gaining the chevron.
+   */
+  edgeStyle?: EdgeStyle
   /**
    * Per-level step in world units, whose meaning depends on the layout: the
    * `file` indent, or the `radial`/`sunburst` ring thickness. Omitted, each
@@ -926,7 +949,15 @@ export interface KladApi {
  */
 export type LayoutSettings = Pick<
   Options,
-  'layout' | 'layoutStep' | 'rowGap' | 'maxRings' | 'colourBranches' | 'spacing' | 'orientation' | 'rtl'
+  | 'layout'
+  | 'edgeStyle'
+  | 'layoutStep'
+  | 'rowGap'
+  | 'maxRings'
+  | 'colourBranches'
+  | 'spacing'
+  | 'orientation'
+  | 'rtl'
 >
 
 export interface KladInstance {
@@ -1486,6 +1517,7 @@ export function createKlad(host: HTMLElement, options: Options): KladInstance {
       orientation: currentOptions.orientation ?? 'tb',
       rtl: currentOptions.rtl ?? false,
       layout: currentOptions.layout ?? 'tidy',
+      edgeStyle: currentOptions.edgeStyle,
       layoutStep: currentOptions.layoutStep,
       rowGap: currentOptions.rowGap,
       maxRings: currentOptions.maxRings,
@@ -2638,7 +2670,9 @@ export function createKlad(host: HTMLElement, options: Options): KladInstance {
       bounds: exportBounds,
       horizontal,
       rtl,
-      edgeStyle: edgeStyleForLayout(layoutName),
+      // The same override the engine applies, or an SVG of a chart drawn
+      // with straight lines would come back with elbows.
+      edgeStyle: currentOptions.edgeStyle ?? edgeStyleForLayout(layoutName),
       sectors: result.sectors ?? null,
       angles: result.angles ?? null,
       labelSpace: result.labelSpace ?? 0,
@@ -4239,6 +4273,7 @@ export function createKlad(host: HTMLElement, options: Options): KladInstance {
         orientation: currentOptions.orientation ?? 'tb',
         rtl: currentOptions.rtl ?? false,
         layout: currentOptions.layout ?? 'tidy',
+        edgeStyle: currentOptions.edgeStyle,
         layoutStep: currentOptions.layoutStep,
         rowGap: currentOptions.rowGap,
         maxRings: currentOptions.maxRings,
@@ -4487,6 +4522,7 @@ export type { MinimapOptions, MinimapPosition } from './minimap.js'
 export type {
   Bounds,
   Camera,
+  EdgeStyle,
   LayoutName,
   LodThresholds,
   NodeData,

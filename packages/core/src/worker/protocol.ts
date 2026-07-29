@@ -4,6 +4,7 @@ import type { Orientation } from '../layout/orientation.js'
 import type { LayoutName } from '../layout/index.js'
 import type { DropMode } from '../drag/drop-target.js'
 import type { LodThresholds } from '../render/lod.js'
+import type { EdgeStyle } from '../render/renderer.js'
 import type { Bounds } from '../types.js'
 
 /**
@@ -72,6 +73,21 @@ export interface EngineOptions {
    * instead. Defaults to `'tidy'`, the 1.0 behaviour.
    */
   layout: LayoutName
+  /**
+   * The connector style, overriding the one the layout would pick — see
+   * `EdgeStyle` and `layout/index.ts`'s `edgeStyleForLayout`.
+   *
+   * `undefined`, the default, lets the layout decide, which is right almost
+   * always: the elbow that reads correctly on a tiered chart reads as a
+   * mistake on a file list. This is for the chart that wants one of the other
+   * answers anyway — a tidy tree with straight centre-to-centre lines, or one
+   * with no connectors at all because its own cards carry the structure.
+   *
+   * Unlike a layout, a style is a string and crosses `postMessage` intact, so
+   * it can be an option rather than something a caller has to reach past this
+   * interface for.
+   */
+  edgeStyle?: EdgeStyle | undefined
   /**
    * Per-level step in world units, whose meaning is per-layout — the `file`
    * indent, the `radial`/`sunburst` ring thickness. `undefined` lets each

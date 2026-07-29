@@ -7,6 +7,7 @@ export type { KladContext } from './useKlad.js'
 export type {
   ChartState,
   ChartView,
+  EdgeStyle,
   LayoutName,
   LayoutSettings,
   NodeContext,

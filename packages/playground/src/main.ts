@@ -1,7 +1,7 @@
 import { createApp } from 'vue'
 import { createElement } from 'react'
 import { createRoot, type Root } from 'react-dom/client'
-import type { ChartView, KladApi, LayoutSettings, Theme } from '@klad/core'
+import type { ChartView, EdgeStyle, KladApi, LayoutSettings, Theme } from '@klad/core'
 import {
   BLOCK_FILL_SEED,
   EDGE_RADIUS_MAX,
@@ -499,6 +499,26 @@ function syncLayoutKnobs(example: Example, layout: LayoutName): void {
       })),
     )
   }
+
+  // The connector, on every layout, because `edgeStyle` is no longer part of
+  // the layout — that is the whole point of it being an option. `Auto` is
+  // absent from the picker's own values on purpose: it means "no override",
+  // which is `undefined` rather than a style.
+  //
+  // `folder` is deliberately NOT offered. It is reachable by choosing the
+  // file layout, and a guide line down a gutter that a tiered chart does not
+  // have is the one combination the docs call a mistake rather than a taste.
+  const styles = [
+    { value: 'auto', label: 'Auto' },
+    { value: 'tiered', label: 'Elbow' },
+    { value: 'spoke', label: 'Straight' },
+    { value: 'none', label: 'None' },
+  ]
+  const stylePicker = radioPicker(`edge-style-${layout}`, 'segmented', styles, (value) => {
+    applyLayoutSettings({ edgeStyle: value === 'auto' ? undefined : (value as EdgeStyle) })
+  })
+  stylePicker.value = layoutState.edgeStyle ?? 'auto'
+  knobs.push(labelled('Connector', stylePicker.element))
 
   // Branch colour is the one knob every layout has, because every tree has
   // branches. It defaults differently per layout (on for the sunburst, whose
