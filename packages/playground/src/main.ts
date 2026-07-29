@@ -1951,6 +1951,12 @@ function snapshot(): ConfigSnapshot {
     // snippet restating every default is a worse answer than a short one, and
     // the defaults are what the reader gets for free by omitting them.
     theme: { ...themeState },
+    // What the VIEW panel's knobs have been set to, over what the example
+    // declares. Without this the snippet is a description of the example
+    // rather than of the chart in front of you: turn the connector to
+    // Straight, drag the indent, tick Colour by branch, and the code said
+    // nothing about any of it.
+    layoutSettings: { ...layoutState },
     ringEnabled,
     hasNodeContent: contentForLayout(example, layoutSelect.value as LayoutName) !== 'none',
   }

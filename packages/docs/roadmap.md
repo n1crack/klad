@@ -123,70 +123,62 @@ Two ways a big tree stops being readable, and the numbers that make both cheap.
 Along the way a node leaving the chart stopped disappearing between one frame
 and the next: it fades out now, the way an arriving one fades in.
 
-## 1.6 — two things the chart knew and would not say
+## 1.6 — released: editing, and two things the chart knew but would not say
 
 **Where a node sits.** `nodeSize`, `label`, `collapsedByDefault`,
 `mayHaveChildren` and `pinChildren` were each handed the node's data and
 nothing else, so none of them could answer a question about depth or about a
 node's place among its siblings. A file list, which narrows every row by its
-own indent, needs exactly that — and a row that arrived through
-`loadChildren` is in no array you could have worked it out from. They all get
-a second argument now.
+own indent, needs exactly that — and a row that arrived through `loadChildren`
+is in no array you could have worked it out from. They all get a second
+argument now.
 
 **Which line joins a parent to a child.** Each layout still picks the one that
 reads correctly on it, and that stays the default, because a folder guide line
-on a tiered chart is a mistake rather than a taste. But it is a setting now, so
-a tidy tree can have straight lines, and a chart whose own cards carry the
-structure can have none at all.
+on a tiered chart is a mistake rather than a taste. But `edgeStyle` is a
+setting now, so a tidy tree can have straight lines and a chart whose own cards
+carry the structure can have none at all.
 
-A third thing was planned here and dropped: handing in your own layout
-function. A layout cannot cross into a worker — a function does not survive
-`postMessage` — so it would have meant either giving up the worker or turning
-the relayout path inside out, and nobody had asked for it. The connector style
-was the half of that idea worth keeping, and it is a string, so it crosses
-without any of that.
+**Editing.** `move`, `add` and `remove`, through the same door a drop already
+used: the open branches survive by id, the camera holds still, and the
+difference animates. There is no rename, and there cannot be — a node's text
+comes from your `label` reading your own row, so the chart does not know which
+field is the name. It owns the shape; you own the content.
 
-## 1.7 — editing, with a way back and a way out
-
-Dragging a node was the only edit there was, and everything else meant
-rebuilding your own array and handing it back — losing the viewer's place each
-time unless you were careful. `move`, `add` and `remove` are calls now, through
-the same door a drop already used: the open branches survive by id, the camera
-holds still, and the difference animates.
-
-There is no rename, and there cannot be. A node's text comes from your `label`
-reading your own row, so the chart does not know which field is the name. It
-owns the shape; you own the content.
-
-Three things arrived with it.
-
-- **A rule of your own, asked while the pointer is still down.** Refusing in
-  `nodeDrop` answers after the viewer has committed — the indicator said yes
-  and the node snaps back. `canMove` turns it red under the pointer instead,
-  and binds the API too, because a rule only the pointer path honours is a
-  hint.
+- **`canMove`, asked while the pointer is still down.** Refusing in `nodeDrop`
+  answers after the viewer has committed: the indicator said yes, then the node
+  snaps back. This turns it red under the pointer instead — and binds the API
+  too, because a rule only the pointer path honours is a hint.
 - **Undo and redo.** A drag that restructures somebody's organisation with no
-  way back is a frightening thing to hand a user. Off with `history: false`,
-  for an app that has its own stack — two make Ctrl+Z a coin toss.
+  way back is a frightening thing to hand a user. `history: false` turns it off
+  for an app with its own stack; two stacks make Ctrl+Z a coin toss.
 - **The changes, as data.** `changes()` says what has been done since the last
-  save; `markSaved()` says it has gone. When you save is your business, and so
-  is the button: the chart holds the edits, it does not decide what to do with
-  them.
+  save and `markSaved()` says it has gone. The log is the product and undo is
+  the convenience, which is why the log still works with the history off.
 
-The log is the product and undo is the convenience, which is why the log works
-with the history turned off.
+**`reconcile(data)`.** A poll came back, a socket pushed, somebody else moved
+something. `update` means "a different tree" and resets the expand state;
+`reconcile` means "the same tree, later" and keeps it, along with the camera,
+the selection, the filter and the caps you lifted. The difference animates
+rather than blinking.
 
-## 1.8 — data that keeps arriving
+A layout function of your own was planned for this release and dropped. A
+function cannot cross into a worker, so it would have meant giving up the
+worker or turning the relayout path inside out, and nobody had asked for it.
+The connector style was the half worth keeping.
 
-`update(data)` is a reload. It resets the open branches, the children that were
-fetched, the levels that were opened up — right for a different dataset, wrong
-for the same one again, which is what a poll, a socket or a save comes back
-with. `refresh()` covers it only if you changed your array in place, and a host
-reading from a server generally has not.
+## 1.7 — editing without a pointer
 
-What is missing is a reconcile: match what arrives against what is on screen by
-id, keep everything the viewer did, and animate only what actually changed. The
-machinery is there — it is what a drop and a fetched branch already do.
+Every edit still needs a mouse. Moving a node from the keyboard, adding a
+sibling, deleting a branch — the chart already has a focus ring and a
+screen-reader tree, and none of it can change anything. For a lot of the places
+a chart like this ends up, that is not a nicety.
+
+The other loose end is smaller and stated in the docs already: undo back past
+the point you last saved and the chart is dirty with nothing to send, because
+the difference is an edit being **absent** and no forward operation describes
+that. Today the answer is "send `getData()`". A diff against the saved state
+would be a better one.
 
 ## 2.0 — beyond trees
 

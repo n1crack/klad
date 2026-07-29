@@ -1,5 +1,232 @@
 # @klad/vue
 
+## 1.6.0
+
+### Minor Changes
+
+- 77628a9: Three ways the tree's shape can change, and a place to put your own rule about
+  them.
+
+  ```ts
+  chart.api.move("lead-42", "engineering", 0);
+  chart.api.add({ id: "new-hire", name: "Sam" }, "engineering");
+  chart.api.remove("closed-team");
+  chart.api.getData(); // your rows, with the edits applied
+  ```
+
+  Each returns whether it happened. Dragging was the only edit there was, and it
+  now goes through the same door, so what is true of one is true of both.
+
+  **There is no rename, and there cannot be.** A node's text comes from your
+  `label` reading your own row, so the chart does not know which field is the
+  name. It owns the shape; you own the content. Change the row and `refresh()`.
+
+  ### Your rule, asked while the pointer is still down
+
+  ```ts
+  canMove: ({ items, parentId }) =>
+    parentId === null || items.every((item) => item.kind !== "contractor");
+  ```
+
+  Refusing in `nodeDrop` answered too late: the drop indicator had already said
+  "yes, here", and the node snapped back after the viewer let go. `canMove` is
+  asked during the drag, so the indicator turns red under the pointer instead —
+  and again at the drop, and by `move()`, because a rule the pointer path honours
+  and the API does not is a hint rather than a rule.
+
+  Consulted once per target node crossed rather than once per pointer move.
+
+  ### The rest of what gets refused
+
+  A move into a node's own subtree, since the result would not be a tree — two
+  comparisons on the nested-set bounds rather than an ancestor walk. An id the
+  chart does not have. An `add` whose id is already taken. And anything touching
+  the node a capped level invents: it is a real node in the tree, so each of
+  these says no on purpose.
+
+  `remove` takes the subtree with it. Leaving the children behind promotes each
+  of them to a root, which is a bigger change than the one asked for.
+
+  ### One call, not a loop
+
+  An edit lays the whole tree out again. On 20,000 nodes that is about 350ms —
+  invisible behind the transition when a person drags one node, very visible in a
+  loop. Every method takes an array for this reason: 100 separate `move` calls
+  measure ~1300ms, the same 100 ids in one call ~355ms.
+
+- a4de406: Undo, redo, and the changes as something you can send.
+
+  ```ts
+  chart.api.undo();
+  chart.api.changes(); // what to PATCH
+  chart.api.markSaved(); // sent
+  ```
+
+  A drag that restructures somebody's organisation with no way back is a
+  frightening thing to hand a user. Every edit is recorded — drags included,
+  since a drag goes through the same door the API does.
+
+  **The log is the product; undo is the convenience.** An app with its own undo
+  stack does not want a second one underneath it, because two stacks make Ctrl+Z
+  a coin toss. Set `history: false` and read `changes()` instead — it still
+  works with the history off.
+
+  `changes()` describes what to **do**, with ids rather than indices, so a change
+  still means the same thing after your own store has moved on. What it takes to
+  reverse an edit the chart keeps to itself.
+
+  Reversing a move puts each node back with **its own** former parent and slot,
+  which is not always the set's — a batch move can have come from several
+  parents. Reversing a remove puts the whole subtree back. Positions are
+  remembered as the sibling a node sat _after_, never as an index: an index is
+  only right until the next edit moves something in front of it.
+
+  `history` defaults to 100 edits. It costs memory rather than speed — nothing on
+  the drawing path reads it, and a move on a 20,000-node chart measures 328ms
+  without history and 337ms with. A record names ids, so it follows how much you
+  edit rather than how big the chart is; `remove` is the exception, holding the
+  subtree it took out until that record falls off the end.
+
+  Fresh data clears it: `update` and `reconcile` are both somebody else
+  describing the tree, and an edit made before that description refers to a shape
+  nobody is claiming any more.
+
+  Also: `add(rows)` with the parent left off now keeps each row's own `parentId`
+  instead of making them all roots. `null` still means roots. That is what
+  putting a removed subtree back needs, and it is the rule `loadChildren` already
+  follows for the rows it returns.
+
+- dee28ea: `reconcile(data)` — take a fresh copy of the tree without losing where the
+  viewer is.
+
+  ```ts
+  socket.on("tree", (rows) => chart.api.reconcile(rows));
+  ```
+
+  `update(data)` means "this is a different tree": it resets your expand state,
+  forgets what `loadChildren` fetched, and drops the caps you had lifted. That is
+  right when the chart is genuinely being pointed at something else, and wrong
+  several times a minute when a poll or a socket is feeding it the same tree.
+  Until now it was the only door, so a chart driven from a live source folded
+  itself back up under the viewer on every message.
+
+  `reconcile` keeps all of that, plus the camera, the selection and the filter —
+  and the difference animates: rows that arrived fade in, rows that left fade
+  out, everything else tweens to where it now sits.
+
+  A row that is new to the chart starts the way it would have started had it been
+  in `data` from the beginning: `collapsedByDefault` decides, and it starts closed
+  if `mayHaveChildren` says it is waiting on a fetch.
+
+  **Lazily-fetched branches survive**, because `data` never described them —
+  dropping them would collapse every branch the viewer had opened, on every poll,
+  on exactly the trees that need reconciling most. Two exceptions, both forced:
+  children whose parent is no longer in `data` go with it, and a row `data` now
+  carries itself replaces the fetched copy, since the newer statement wins and a
+  duplicate id is the one thing the chart cannot make sense of.
+
+- 956b7fd: The line between a parent and a child is a setting now.
+
+  ```ts
+  createKlad(el, { data, edgeStyle: "spoke" }); // tidy, but straight lines
+  createKlad(el, { data, edgeStyle: "none" }); // no connectors at all
+  ```
+
+  `'tiered' | 'folder' | 'spoke' | 'none'`. Each layout still picks the one that
+  reads correctly on it and that stays the default, because a folder guide line
+  down a tiered chart is a mistake rather than a taste. This is for the chart
+  that wants a different answer anyway: a wide tidy tree that reads better with
+  straight lines, or one whose own cards already carry the structure and where
+  the lines are noise.
+
+  Changeable live through `setLayoutOptions`, and the SVG export follows it, so
+  an export of a chart drawn with straight lines does not come back with elbows.
+
+  **It does not cost you the "there is more inside" mark.** The short stub and
+  dot below a collapsed node used to disappear for `'spoke'` and `'none'`, which
+  was correct while those could only mean a wheel — a wheel draws its own arc or
+  halo instead. Chosen freely they can now land on a tiered chart, where the
+  branch still continues downward whether or not a line is drawn to it, and at
+  the zoom where the cards and their toggles are gone that mark is the only thing
+  saying so. It stays. `'folder'` still drops it on purpose: a file row has a
+  chevron beside its name and a stub underneath would say it twice.
+
+  Changing the style relayouts rather than repainting, because `'none'` skips
+  building the edge index and its whole quadtree — coming back from it has to
+  build one.
+
+  The playground's View panel has a **Connector** control on every layout.
+
+- 441e2d9: Every per-node option now gets a second argument saying where the node sits.
+
+  `nodeSize`, `label`, `collapsedByDefault`, `mayHaveChildren` and `pinChildren`
+  were each handed the node's data and nothing else, so none of them could answer
+  a question about depth or about a node's place among its siblings. They now
+  receive a `NodePlace`:
+
+  ```ts
+  createKlad(el, {
+    data,
+    collapsedByDefault: (item, at) => at.depth > 2,
+  });
+  ```
+
+  `{ depth, index, siblings, parent }` — distance from a root, the slot among its
+  own siblings in data order, how many siblings there are counting itself, and
+  the parent's data.
+
+  A flat `{ id, parentId }` array does not say what depth anything is at, so the
+  alternative was walking parent links yourself, once per node per data change.
+  The playground had to do exactly that, and the workaround it needed is deleted
+  by this: a cached depth map keyed by the dataset, plus a per-example override
+  for the one example the map could not answer — the file explorer that fetches
+  its own rows, because a row `loadChildren` returned is in no array you hold.
+
+  Every field is about the node's place in the DATA, not on screen. Depth does
+  not change when a branch is collapsed or a filter hides its siblings, and the
+  export path reports a node's real sibling slot rather than its slot among
+  whatever survived pruning.
+
+  Additive — an option written against the old single-argument signature keeps
+  working unchanged.
+
+  Measured rather than assumed: a 20,000-node refresh with both `nodeSize` and
+  `label` as functions goes from 318.9ms to 328.6ms, so building forty thousand
+  of these costs about 3% of a relayout. The sibling index is swept once per tree
+  and cached against the tree object, not read off the CSR per node.
+
+### Patch Changes
+
+- 57142dd: Two bugs where a source index outlived the tree it meant something in.
+
+  **Isolating a branch, then changing the data, isolated the wrong branch.**
+  `isolate` held a source index, and a source index means nothing once the tree
+  is rebuilt — so a drag-and-drop, a lazily-loaded branch, a cap change or an
+  edit left the chart framing whichever node inherited the old slot, and
+  reporting that node's id back through `getState().isolated`. It is held by id
+  now and resolved on every rebuild, alongside the filter and cap masks that were
+  already re-derived for exactly this reason. If the isolated node leaves the
+  tree, the chart shows the whole tree rather than an arbitrary branch.
+
+  **A rebuild that both reordered the data and took nodes out of view could crash
+  the relayout.** The engine's transition builder reads the previous tree in the
+  old index space and the maps it looks things up in are keyed by the new one.
+  Mixing them is invisible until both happen at once — a drop reorders but
+  nothing leaves the view, a collapse has things leave but does not reorder —
+  and then a fading node is looked up under another node's key: usually it fades
+  from the wrong place, and when the key is missing entirely the box comes back
+  `undefined` and reading it took the whole frame down. Isolating and then
+  reconciling does both.
+
+- Updated dependencies [77628a9]
+- Updated dependencies [a4de406]
+- Updated dependencies [dee28ea]
+- Updated dependencies [956b7fd]
+- Updated dependencies [57142dd]
+- Updated dependencies [441e2d9]
+  - @klad/core@1.6.0
+  - @klad/engine@1.6.0
+
 ## 1.5.1
 
 ### Patch Changes

@@ -1,4 +1,4 @@
-import type { Theme } from '@klad/core'
+import type { LayoutSettings, Theme } from '@klad/core'
 import { minimapOptionFor, optionsForLayout, type Example, type LayoutName, type MinimapPosition } from './data.js'
 import type { ThemeMode } from './theme.js'
 
@@ -34,6 +34,8 @@ export interface ConfigSnapshot {
    * default is exactly what the reader gets by omitting the token.
    */
   theme: Partial<Theme>
+  /** The layout knobs the SIDEBAR has applied, over what the example declares. */
+  layoutSettings: Partial<LayoutSettings>
   ringEnabled: boolean
   /** Whether the example renders node content at all (`content: 'none'` does not). */
   hasNodeContent: boolean
@@ -76,7 +78,10 @@ function optionsOf(snapshot: ConfigSnapshot): [key: string, value: unknown][] {
   // the layout's presentation preset over the top (see `LAYOUT_PRESETS`).
   // Printing only what the example declared would omit the node size and
   // content settings that make the shape on screen look the way it does.
-  const declared = optionsForLayout(example, snapshot.layout) as Record<string, unknown>
+  const declared = {
+    ...optionsForLayout(example, snapshot.layout),
+    ...snapshot.layoutSettings,
+  } as Record<string, unknown>
   const entries: [string, unknown][] = [['data', RAW('data')]]
 
   // `layout` and its tuning knobs sit with `orientation`: they are all "how
@@ -87,6 +92,7 @@ function optionsOf(snapshot: ConfigSnapshot): [key: string, value: unknown][] {
     'nodeSize',
     'label',
     'layout',
+    'edgeStyle',
     'layoutStep',
     'rowGap',
     'maxRings',
