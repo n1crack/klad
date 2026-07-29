@@ -2136,9 +2136,30 @@ function show(stack: Stack, exampleId: string, layout: LayoutName): void {
   syncFilterControl(example)
 }
 
+/**
+ * What the address bar says, so a reload lands where you were and a link says
+ * what it shows.
+ *
+ * `replaceState` rather than `pushState`: switching example is browsing a
+ * gallery, not navigating, and a Back button that walks you through every
+ * demo you glanced at is a worse Back button. Only what a viewer chose goes
+ * in — the layout only when it is not the example's own default, so the
+ * common URL stays short.
+ */
+function syncUrl(): void {
+  const example = exampleSelect.value
+  const params = new URLSearchParams()
+  params.set('example', example)
+  if (stackSelect.value !== 'vanilla') params.set('stack', stackSelect.value)
+  const layout = layoutSelect.value
+  if (layout !== defaultLayoutOf(findExample(example))) params.set('layout', layout)
+  history.replaceState(null, '', `${window.location.pathname}?${params.toString()}`)
+}
+
 function refresh(): void {
   show(stackSelect.value as Stack, exampleSelect.value, layoutSelect.value as LayoutName)
   refreshCode()
+  syncUrl()
 }
 
 // Both pickers close the drawer on the way through (see `radioPicker` above):
@@ -2170,9 +2191,25 @@ window.addEventListener('keydown', (event) => {
   if (event.key === 'Escape') setControlsOpen(false)
 })
 
-stackSelect.value = 'vanilla'
-exampleSelect.value = EXAMPLES[0]!.id
-layoutSelect.value = defaultLayoutOf(EXAMPLES[0]!)
+/**
+ * Where to start: whatever the URL says, falling back to the first example.
+ *
+ * An unknown id is ignored rather than treated as an error — a link to an
+ * example that has since been renamed should still open the playground, not a
+ * blank page with a complaint on it.
+ */
+const startParams = new URLSearchParams(window.location.search)
+const startExample = findExample(startParams.get('example') ?? '')
+const startStack = startParams.get('stack')
+const startLayout = startParams.get('layout')
+
+stackSelect.value =
+  startStack === 'vue' || startStack === 'react' || startStack === 'vanilla' ? startStack : 'vanilla'
+exampleSelect.value = startExample.id
+layoutSelect.value =
+  startLayout !== null && (LAYOUT_ORDER as readonly string[]).includes(startLayout)
+    ? startLayout
+    : defaultLayoutOf(startExample)
 refresh()
 
 /**
