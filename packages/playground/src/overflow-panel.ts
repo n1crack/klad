@@ -35,6 +35,20 @@ export interface OverflowPanelItem {
 }
 
 export interface OverflowPanelOptions {
+  /**
+   * What a row does.
+   *
+   * `check` — a checkbox per row; ticking one calls `onToggle` and the panel
+   * stays open, because curating a set is several decisions in a row.
+   * `pick` — a button per row; choosing one calls `onPick` and the panel
+   * closes, because going somewhere is one decision and then you want to look
+   * at where you went.
+   */
+  mode?: 'check' | 'pick'
+  /** `pick` only. */
+  onPick?(id: string): void
+  /** Placement hint for the search box and the count. */
+  label?: string
   /** The card the panel hangs off. Used for placement only. */
   anchor: HTMLElement
   items: OverflowPanelItem[]
@@ -45,10 +59,10 @@ export interface OverflowPanelOptions {
    * is rebuilt from it, so a snapshot would leave the panel disagreeing with
    * the chart the moment anything changed.
    */
-  checked: Set<string>
+  checked?: Set<string>
   /** A row was checked or unchecked. The panel does not update itself from
    * this — the chart rebuilds, and whoever owns the working set decides. */
-  onToggle(id: string, next: boolean): void
+  onToggle?(id: string, next: boolean): void
 }
 
 let open: (() => void) | null = null
@@ -71,7 +85,7 @@ export function openOverflowPanel(options: OverflowPanelOptions): void {
   const search = document.createElement('input')
   search.type = 'search'
   search.className = 'overflow-panel-search'
-  search.placeholder = `Search ${options.items.length}…`
+  search.placeholder = `${options.label ?? 'Search'} ${options.items.length}…`
   search.setAttribute('aria-label', 'Search the hidden nodes')
   const count = document.createElement('span')
   count.className = 'overflow-panel-count'
@@ -90,7 +104,7 @@ export function openOverflowPanel(options: OverflowPanelOptions): void {
 
   const hint = document.createElement('p')
   hint.className = 'overflow-panel-hint'
-  hint.textContent = 'Checked is what the chart shows.'
+  hint.textContent = options.mode === 'pick' ? 'Choose one to go there.' : 'Checked is what the chart shows.'
 
   root.append(head, scroller, hint)
   document.body.append(root)
@@ -105,7 +119,8 @@ export function openOverflowPanel(options: OverflowPanelOptions): void {
         : options.items.filter((item) => item.label.toLowerCase().includes(needle))
     const on: OverflowPanelItem[] = []
     const off: OverflowPanelItem[] = []
-    for (const item of match) (options.checked.has(item.id) ? on : off).push(item)
+    const checked = options.checked
+    for (const item of match) (checked?.has(item.id) === true ? on : off).push(item)
     return [...on, ...off]
   }
 
@@ -120,14 +135,27 @@ export function openOverflowPanel(options: OverflowPanelOptions): void {
     rows.replaceChildren()
     for (let i = first; i < last; i++) {
       const item = visible[i]!
+      if (options.mode === 'pick') {
+        const button = document.createElement('button')
+        button.type = 'button'
+        button.className = 'overflow-panel-row is-pick'
+        button.style.height = `${ROW_H}px`
+        button.textContent = item.label
+        button.onclick = () => {
+          options.onPick?.(item.id)
+          closeOverflowPanel()
+        }
+        rows.append(button)
+        continue
+      }
       const row = document.createElement('label')
       row.className = 'overflow-panel-row'
       row.style.height = `${ROW_H}px`
       const box = document.createElement('input')
       box.type = 'checkbox'
-      box.checked = options.checked.has(item.id)
+      box.checked = options.checked?.has(item.id) === true
       box.onchange = () => {
-        options.onToggle(item.id, box.checked)
+        options.onToggle?.(item.id, box.checked)
         // Re-sorted, so a node just checked joins the group at the top rather
         // than staying wherever the search left it.
         visible = ordered(search.value)

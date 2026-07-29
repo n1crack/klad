@@ -27,7 +27,7 @@ import {
   type MinimapPosition,
   setWorkingSetHook,
 } from './data.js'
-import { closeOverflowPanel } from './overflow-panel.js'
+import { closeOverflowPanel, openOverflowPanel } from './overflow-panel.js'
 import {
   applyTheme,
   chartTokens,
@@ -1007,12 +1007,22 @@ canvasBgField.append(canvasBgLabel, canvasBgRow)
 //
 // Shown only for examples that ask for it (`Example.gotoControl`), and
 // repopulated on every mount, since the list is the example's own data.
-const gotoSelect = document.createElement('select')
-gotoSelect.id = 'goto-select'
-gotoSelect.className = 'select'
+/**
+ * "Go to node", as a button that opens the searchable list rather than a
+ * `<select>` with one option per node.
+ *
+ * The select was fine on the twenty-eight-node example it was written for and
+ * hopeless past that: nine thousand `<option>` elements built on every mount,
+ * and on a phone a native picker nobody can scroll to the end of. The panel
+ * builds only the rows in view and can be searched, which is what you wanted
+ * from it anyway.
+ */
+const gotoSelect = document.createElement('button')
+gotoSelect.type = 'button'
+gotoSelect.className = 'btn'
+gotoSelect.textContent = 'Pick a node…'
 const gotoLabel = document.createElement('label')
 gotoLabel.textContent = 'Go to node'
-gotoLabel.htmlFor = 'goto-select'
 const gotoField = document.createElement('div')
 gotoField.className = 'surface-panel'
 gotoField.append(gotoLabel, gotoSelect)
@@ -1024,16 +1034,25 @@ for (const type of ['pointerdown', 'wheel'] as const) {
   gotoField.addEventListener(type, (event) => event.stopPropagation())
 }
 
-gotoSelect.onchange = () => {
-  const id = gotoSelect.value
-  if (id === '') return
-  // `pathTo` is the root-to-node chain, which is exactly what `highlight`
-  // wants; an edge is painted when both its endpoints are lit, so this lights
-  // the way and not merely its ends. `focus` opens every collapsed ancestor
-  // before centring, so this works from the fully closed chart the example
-  // starts as.
-  currentApi?.highlight(currentApi.pathTo(id))
-  currentApi?.focus(id, { ring: true })
+/** Every node of the current example — a list of `{ id, label }`, never DOM.
+ * Built once per mount. */
+let gotoItems: { id: string; label: string }[] = []
+
+gotoSelect.onclick = () => {
+  openOverflowPanel({
+    anchor: gotoSelect,
+    items: gotoItems,
+    mode: 'pick',
+    onPick: (id) => {
+      // `pathTo` is the root-to-node chain, which is exactly what `highlight`
+      // wants; an edge is painted when both its endpoints are lit, so this
+      // lights the way and not merely its ends. `focus` opens every collapsed
+      // ancestor before centring, so this works from the fully closed chart
+      // the example starts as.
+      currentApi?.highlight(currentApi.pathTo(id))
+      currentApi?.focus(id, { ring: true })
+    },
+  })
 }
 
 /**
@@ -1510,25 +1529,16 @@ function syncGotoControl(example: Example): void {
     // so DOM order relative to the canvas doesn't decide what is on top.
     surface.append(gotoField)
     const depthOf = new Map<string, number>()
-    gotoSelect.innerHTML = ''
-    const placeholder = document.createElement('option')
-    placeholder.value = ''
-    placeholder.textContent = 'Pick a node…'
-    gotoSelect.append(placeholder)
-    for (const item of example.data) {
+    gotoItems = example.data.map((item) => {
       const parentId = item.parentId
       const depth =
         parentId === undefined || parentId === null ? 0 : (depthOf.get(String(parentId)) ?? 0) + 1
       depthOf.set(item.id, depth)
-      const option = document.createElement('option')
-      option.value = item.id
-      // Non-breaking spaces: a native <option> collapses ordinary leading
-      // whitespace, so plain spaces would indent nothing at all.
-      option.textContent = '  '.repeat(depth) + String(item.name ?? item.id)
-      gotoSelect.append(option)
-    }
+      // Non-breaking spaces: the list renders its label as text, and ordinary
+      // leading whitespace would collapse to nothing.
+      return { id: item.id, label: '  '.repeat(depth) + String(item.name ?? item.id) }
+    })
   }
-  gotoSelect.value = ''
 }
 
 /**

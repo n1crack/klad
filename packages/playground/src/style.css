@@ -1306,6 +1306,18 @@ body {
   overflow: hidden;
 }
 
+/* A row you choose rather than tick — see the panel's `pick` mode. */
+button.overflow-panel-row {
+  font: inherit;
+  font-size: 0.78rem;
+  width: 100%;
+  text-align: left;
+  border: none;
+  background: none;
+  color: canvastext;
+  white-space: pre;
+}
+
 .overflow-panel-row:hover {
   background: color-mix(in srgb, var(--accent) 9%, transparent);
 }
