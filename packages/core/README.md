@@ -1,53 +1,46 @@
-# @klad/engine
+# klad
 
-[![npm](https://img.shields.io/npm/v/@klad/engine?color=cb3837&logo=npm&logoColor=white&label=npm)](https://www.npmjs.com/package/@klad/engine)
-[![gzip size](https://img.shields.io/bundlejs/size/@klad/engine?label=gzip)](https://bundlejs.com/?q=%40klad%2Fengine)
-[![licence](https://img.shields.io/npm/l/@klad/engine?label=licence)](https://github.com/n1crack/klad/blob/main/LICENSE)
+[![npm](https://img.shields.io/npm/v/@klad/core?color=cb3837&logo=npm&logoColor=white&label=npm)](https://www.npmjs.com/package/@klad/core)
+[![gzip size](https://img.shields.io/bundlejs/size/@klad/core?label=gzip)](https://bundlejs.com/?q=%40klad%2Fcore)
+[![licence](https://img.shields.io/npm/l/@klad/core?label=licence)](https://github.com/n1crack/klad/blob/main/LICENSE)
 
-The pure-logic layer of [Klad](https://github.com/n1crack/klad): tree
-normalization, the layout registry (tidy, file, radial and sunburst),
-orientation/RTL mirroring, the
-viewport (pan/zoom/inertia) math, a quadtree for hit-testing, the Canvas2D
-renderer, and the typed worker protocol. No DOM dependency in the main entry,
-so it can run inside a Web Worker.
+The frameworkless API for [Klad](https://github.com/n1crack/klad) — a tree
+engine that stays smooth where a chart made of elements cannot, by laying
+out and drawing the tree on a `<canvas>` inside a Web Worker, overlaying real DOM only for the
+nodes currently on screen and zoomed in far enough to read.
 
-Most consumers don't need this package directly — use
-[`@klad/core`](https://www.npmjs.com/package/klad)
-(frameworkless) or
-[`@klad/vue`](https://www.npmjs.com/package/@klad/vue)
-instead. Depend on this package directly only if you're building a new
-framework adapter; `@klad/core`'s source is the reference
-implementation to read.
+One flat array of `{ id, parentId }` in; whichever shape reads best out —
+tiered, indented rows, radial rings, or a wheel you can drill into.
+
+This package is one function.
 
 ```bash
-npm install @klad/engine
+npm install @klad/core
 ```
 
 ```ts
-import { normalize, layout } from '@klad/engine'
+import { createKlad, type Options } from '@klad/core'
 
-const tree = normalize([
-  { id: 'ceo' },
-  { id: 'cto', parentId: 'ceo' },
-])
-
-const sizes = new Float64Array(tree.count * 2).fill(0)
-for (let i = 0; i < tree.count; i++) {
-  sizes[i * 2] = 180
-  sizes[i * 2 + 1] = 64
+const options: Options = {
+  data: [
+    { id: 'ceo', name: 'Jamie Fox', title: 'CEO' },
+    { id: 'cto', parentId: 'ceo', name: 'Amy Chen', title: 'CTO' },
+  ],
+  renderNode(element, context) {
+    element.innerHTML = `<strong>${String(context.item.name ?? '')}</strong>`
+  },
 }
 
-const { boxes, bounds } = layout(tree, sizes, { spacingX: 16, spacingY: 48 })
+const chart = createKlad(document.getElementById('chart')!, options)
+chart.on('nodeClick', ({ id, item }) => console.log(id, item))
+// chart.destroy() when done
 ```
 
-The one DOM-touching module, `ChartHost`, is exported from a separate
-subpath — `@klad/engine/host` — rather than the main entry, so the
-main entry stays importable inside the Web Worker it also ships
-(`worker/chart.worker.ts`).
+Using Vue? Use [`@klad/vue`](https://www.npmjs.com/package/@klad/vue)
+instead — it's built on this package and adds a `#node` scoped slot.
 
-Full architecture notes live in the
-[repository README](https://github.com/n1crack/klad#readme) and in the
-[documentation](https://klad.ozdemir.be).
+Guide, API reference and roadmap:
+[the documentation](https://github.com/n1crack/klad).
 
 ## Licence
 

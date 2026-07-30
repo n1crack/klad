@@ -1,310 +1,437 @@
-import type { Bounds } from './types.js'
-import type { Camera, ViewportSize } from './viewport.js'
-import { visibleRect } from './viewport.js'
+import {
+  computeSilhouette,
+  minimapToWorld,
+  viewportRectInMinimap,
+  worldToMinimap,
+  type Bounds,
+  type Camera,
+  type MinimapTransform,
+  type Silhouette,
+  type SilhouetteOptions,
+  type ViewportSize,
+} from '@klad/engine'
 
-/** Pixel dimensions of the minimap surface a host wants a silhouette for. */
-export interface MinimapSize {
-  width: number
-  height: number
-}
+export type MinimapPosition = 'top-left' | 'top-right' | 'bottom-left' | 'bottom-right'
 
-/**
- * Uniform world -> minimap affine map: `minimapCoord = worldCoord * scale + offset`,
- * one `offset` per axis. Aspect-preserving (a single `scale` for both axes) and
- * centred, the same way `fit()` in viewport.ts centres a camera on `bounds` —
- * this is the minimap's read-only equivalent, it never mutates a camera.
- */
-export interface MinimapTransform {
-  scale: number
-  offsetX: number
-  offsetY: number
-}
-
-/**
- * Derives the world->minimap transform that fits `bounds` inside `size` minus
- * `padding` on every edge, preserving aspect ratio and centring the result —
- * mirrors `fit()`'s box-fitting maths exactly, but returns a reusable
- * transform instead of a `Camera`.
- *
- * A degenerate `bounds` (zero or negative area — an empty tree, or a single
- * zero-size box) falls back to `scale: 1` centred on the minimap, the same
- * failsafe `fit()` uses for the same condition, rather than dividing by zero.
- */
-export function computeMinimapTransform(
-  bounds: Bounds,
-  size: MinimapSize,
-  padding = 0,
-): MinimapTransform {
-  const w = bounds.maxX - bounds.minX
-  const h = bounds.maxY - bounds.minY
-  if (w <= 0 || h <= 0) {
-    return { scale: 1, offsetX: size.width / 2, offsetY: size.height / 2 }
-  }
-  const availW = Math.max(1, size.width - padding * 2)
-  const availH = Math.max(1, size.height - padding * 2)
-  const scale = Math.min(availW / w, availH / h)
-  const drawW = w * scale
-  const drawH = h * scale
-  return {
-    scale,
-    offsetX: (size.width - drawW) / 2 - bounds.minX * scale,
-    offsetY: (size.height - drawH) / 2 - bounds.minY * scale,
-  }
-}
-
-/** World point -> minimap-space point (e.g. for placing a marker). */
-export function worldToMinimap(t: MinimapTransform, wx: number, wy: number): { x: number; y: number } {
-  return { x: wx * t.scale + t.offsetX, y: wy * t.scale + t.offsetY }
-}
-
-/**
- * Minimap-space point -> world point. Exact inverse of `worldToMinimap` for
- * any transform this module produces (`scale` is always > 0, see
- * `computeMinimapTransform`) — this is what a click-to-pan handler needs: the
- * world point under the pointer, to hand to `centreOn` (viewport.ts) alongside
- * the current camera.
- */
-export function minimapToWorld(t: MinimapTransform, mx: number, my: number): { x: number; y: number } {
-  return { x: (mx - t.offsetX) / t.scale, y: (my - t.offsetY) / t.scale }
-}
-
-/**
- * The viewport rectangle — what the main chart currently shows — expressed in
- * minimap space, so a host can draw it as an overlay rect on top of a
- * silhouette. This is the only part of the minimap that changes per frame,
- * and it is cheap: a `visibleRect` call plus two point transforms, no
- * silhouette work.
- *
- * Corner order is preserved (`minX < maxX`, `minY < maxY`) as long as
- * `camera.k > 0`, which is `visibleRect`'s own contract (see viewport.ts) —
- * this function does not re-validate it.
- */
-export function viewportRectInMinimap(
-  t: MinimapTransform,
-  camera: Camera,
-  viewport: ViewportSize,
-): Bounds {
-  const world = visibleRect(camera, viewport)
-  const topLeft = worldToMinimap(t, world.minX, world.minY)
-  const bottomRight = worldToMinimap(t, world.maxX, world.maxY)
-  return { minX: topLeft.x, minY: topLeft.y, maxX: bottomRight.x, maxY: bottomRight.y }
-}
-
-export interface SilhouetteOptions {
+export interface MinimapOptions {
+  width?: number
+  height?: number
+  position?: MinimapPosition
   /**
-   * Margin, in minimap pixels, left empty around the fitted silhouette.
-   * Default 0.
-   */
-  padding: number
-  /**
-   * Box-blur radius, in grid cells, applied to soften the coverage ramp into
-   * something that reads as a soft mass rather than a hard-edged bitmap.
-   * 0 disables blurring. Default 1.
-   */
-  blur: number
-  /**
-   * Number of overlapping boxes landing on one cell at which that cell's
-   * alpha saturates to fully opaque. Past this many stacked boxes a cell
-   * reads as "solid" rather than getting proportionally darker forever.
-   * Default 3.
-   */
-  saturateAt: number
-  /**
-   * Rasterise against THIS world->minimap map instead of fitting `bounds` to
-   * the widget. Optional, and absent by default — omit it and the silhouette
-   * fits itself, which is right the first time a tree is drawn.
+   * Fill for the tree's silhouette — any CSS colour string. Defaults to a
+   * neutral slate (see `SILHOUETTE_RGB`).
    *
-   * It exists because refitting on every relayout makes the minimap's scale a
-   * function of what is currently expanded: collapsing a root shrinks
-   * `bounds` to one node, which then fills the entire widget. The minimap
-   * stops being a map you can read positions off and becomes a zoom that
-   * lurches on every toggle. A host that wants a stable frame keeps the
-   * transform it already has and passes it back here, refitting only when the
-   * content genuinely no longer fits — see `packages/vanilla`'s minimap.
+   * The one part of this widget a host CANNOT restyle from its own CSS: the
+   * plate, its border and the viewport rectangle are all DOM, so a stylesheet
+   * can override them, but the silhouette is pixels written straight into an
+   * `ImageData` buffer. That makes it the one thing that cannot follow a dark
+   * theme without the library's help — and slate on a near-black plate is
+   * barely visible, which is exactly the case this exists for.
    *
-   * Not part of `DEFAULT_SILHOUETTE_OPTIONS`: "no override" is the absence of
-   * this field, not a value it could hold.
+   * Only the RGB channels are used: the alpha of every pixel is the
+   * silhouette's own coverage value (how much of the tree occupies that cell),
+   * which is the entire information content of the picture. A colour carrying
+   * its own alpha has it ignored rather than multiplied in.
    */
-  transform?: MinimapTransform
+  silhouetteColour?: string
 }
 
-export const DEFAULT_SILHOUETTE_OPTIONS: SilhouetteOptions = { padding: 0, blur: 1, saturateAt: 3 }
+export interface MinimapCallbacks {
+  /** A world-space point to centre the camera on — see `minimapToWorld`. */
+  onPan(worldX: number, worldY: number): void
+}
 
-export interface Silhouette {
-  width: number
-  height: number
+export interface Minimap {
   /**
-   * Row-major coverage alpha, one byte per cell (`alpha[y * width + x]`),
-   * 0 = empty, 255 = fully covered. A host paints this directly as an
-   * ImageData alpha channel over a solid fill colour, or reads individual
-   * cells to draw filled rects — no further processing required.
+   * Call once per RELAYOUT only (i.e. when `boxes`/`bounds` identity actually
+   * changed) — recomputes the silhouette and repaints the small canvas.
+   * Never call this per frame: `computeSilhouette` walks every node, which is
+   * exactly the cost a minimap exists to avoid paying on every camera move.
+   *
+   * `anchorWorld` is a world point whose position in the WIDGET should not
+   * move across this relayout — the chart's root, in practice. It is needed
+   * because holding the transform steady is not, on its own, enough to hold
+   * the picture steady: a relayout can move the tree within world space
+   * itself. Collapsing the root is exactly that case — tidy no longer centres
+   * it over children it no longer has, so its world x changes — and under a
+   * fixed transform the whole silhouette then jumps sideways. The chart's
+   * canvas has the toggle camera anchor to absorb this; this is the minimap's
+   * equivalent. Omit it and the transform is used as-is.
    */
-  alpha: Uint8ClampedArray
-  /** The transform used to build this silhouette; reuse it for hit-testing
-   * and for `viewportRectInMinimap` so both stay in the same space. */
-  transform: MinimapTransform
+  onLayout(
+    boxes: Float64Array,
+    bounds: Bounds,
+    anchorWorld?: { x: number; y: number },
+    /**
+     * Forces a fresh fit instead of reusing the frame. For a relayout that
+     * replaced the TREE rather than reshaped it — isolating a branch, or new
+     * data — where holding the old frame steady is not stability but a map of
+     * something that is no longer there: the branch ends up drawn in the
+     * corner the whole org used to occupy.
+     */
+    refit?: boolean,
+  ): void
+  /**
+   * Call on every camera change. Cheap: two point transforms and a CSS
+   * `transform` write on an already-painted overlay, no silhouette work.
+   *
+   * `anchorWorld` is the anchor's CURRENT world position — the same point
+   * `onLayout` pins, read live rather than as of the last relayout. It
+   * matters during a toggle: the silhouette deliberately holds the pre-toggle
+   * layout until the transition finishes, but the camera starts moving
+   * immediately (it is pinning the toggled node's screen position while the
+   * layout slides underneath), so a rectangle mapped through the stale
+   * transform slides across the widget for the whole transition and snaps
+   * back when the new silhouette lands. Re-offsetting the map by the anchor's
+   * live position is the same correction `onLayout` applies, done per frame:
+   * the root is pinned on screen and pinned in the widget, so the rectangle
+   * simply does not move. Omit it and the stored transform is used as-is.
+   */
+  onCamera(camera: Camera, viewport: ViewportSize, anchorWorld?: { x: number; y: number }): void
+  destroy(): void
 }
+
+const DEFAULT_WIDTH = 200
+const DEFAULT_HEIGHT = 140
 
 /**
- * Rasterizes the occupied area of a laid-out tree into a small coverage grid
- * at minimap resolution — the "filled silhouette" the design calls for,
- * not a shrunken redraw of every box. Call this once per relayout; the
- * result is meant to be blitted every frame, never recomputed per frame.
- *
- * `boxes` is the same flat `[x, y, w, h]` per-node layout produced by
- * `layout()` (see layout/tidy.ts) or the engine's `.boxes` getter; `bounds`
- * is the matching layout bounds. Iteration is a single flat pass over
- * `boxes`, driven by array index, not tree structure — no recursion, so tree
- * depth (up to 50,000) has no effect on this function's stack usage.
- *
- * Complexity is O(nodes + minimapPixels), not O(nodes * minimapPixels):
- * each box is "painted" onto the grid in O(1) via a 2D difference array
- * (the four-corner trick below), regardless of how many grid cells it
- * covers. A single O(pixels) prefix-sum pass afterwards reconstructs the
- * actual per-cell coverage count. This matters because most boxes shrink to
- * a fraction of a minimap pixel (that's the whole reason a silhouette is
- * needed instead of a miniature), but nothing here assumes that: a handful
- * of very large boxes (e.g. wide top-level nodes) covering most of the grid
- * would blow up a naive "loop over every cell a box touches" approach to
- * O(nodes * pixels); the difference-array approach costs the same O(1) per
- * box regardless of the box's footprint.
+ * Softening tuned by eye against the playground's Large (20k-node) example —
+ * the design's own defaults (`blur: 1, saturateAt: 3`, meant for a synthetic
+ * tree) read as too faint and speckled at real chart density, where deep
+ * subtrees stack many overlapping boxes into a handful of minimap cells.
+ * `saturateAt: 6` lets a cell read as "solid" only once several boxes really
+ * do stack there, so sparse areas (a shallow branch) stay visibly lighter
+ * than dense ones (a deep, bushy subtree) instead of both slamming to full
+ * opacity; `blur: 2` fuses that into one continuous mass instead of a grid of
+ * flickering single-cell dots. `padding: 6` keeps the silhouette off the
+ * minimap's own border.
  */
-export function computeSilhouette(
-  boxes: Float64Array,
-  bounds: Bounds,
-  size: MinimapSize,
-  options: Partial<SilhouetteOptions> = {},
-): Silhouette {
-  const padding = options.padding ?? DEFAULT_SILHOUETTE_OPTIONS.padding
-  const blur = Math.max(0, Math.floor(options.blur ?? DEFAULT_SILHOUETTE_OPTIONS.blur))
-  const saturateAt = Math.max(1, options.saturateAt ?? DEFAULT_SILHOUETTE_OPTIONS.saturateAt)
+// saturateAt is how many boxes must cover a grid cell for it to read as fully
+// opaque. In a tidy tree siblings do NOT overlap, so most cells are covered by a
+// single box — a high value (6 was the first guess) then leaves the whole
+// silhouette near-transparent, which is why it was hard to see at all. Low, so a
+// single covered cell already reads as solid, is right for tree shapes.
+const SILHOUETTE_OPTIONS: Partial<SilhouetteOptions> = { padding: 6, blur: 2, saturateAt: 1.5 }
 
-  const gw = Math.max(1, Math.round(size.width))
-  const gh = Math.max(1, Math.round(size.height))
-  const transform = options.transform ?? computeMinimapTransform(bounds, { width: gw, height: gh }, padding)
+/** RGB for the silhouette fill by default — a neutral slate, legible on a light host. */
+const SILHOUETTE_RGB: readonly [number, number, number] = [71, 85, 105]
 
-  // 2D difference array over grid CORNERS (one wider/taller than the grid
-  // itself), so a rectangular box update never has to touch more than 4
-  // cells: += at (x0,y0) and (x1,y1), -= at (x0,y1) and (y0,x1). A full 2D
-  // prefix sum afterwards (row-wise, then column-wise) turns those corner
-  // deltas back into a per-cell coverage count — the standard summed-area
-  // trick for O(1) rectangle-add / O(pixels) reconstruction.
-  const diffW = gw + 1
-  const diffH = gh + 1
-  const diff = new Int32Array(diffW * diffH)
+/**
+ * Resolves any CSS colour string to RGB channels, falling back to
+ * `SILHOUETTE_RGB` when it is absent or the browser rejects it.
+ *
+ * Done through a 1x1 canvas rather than by parsing the string here: that is
+ * the browser's own colour parser, so named colours, `hsl()`, `#rgba` and
+ * whatever CSS Color level the host supports all work without this module
+ * growing a parser of its own. An invalid value leaves `fillStyle` untouched
+ * — which is how the two-sentinel check below detects it, since a silently
+ * ignored assignment is otherwise indistinguishable from a successful one.
+ */
+function resolveSilhouetteRgb(colour: string | undefined): readonly [number, number, number] {
+  if (colour === undefined) return SILHOUETTE_RGB
+  const probe = document.createElement('canvas')
+  probe.width = 1
+  probe.height = 1
+  const ctx = probe.getContext('2d')
+  if (ctx === null) return SILHOUETTE_RGB
+  ctx.fillStyle = '#000000'
+  ctx.fillStyle = colour
+  const fromBlack = ctx.fillStyle
+  ctx.fillStyle = '#ffffff'
+  ctx.fillStyle = colour
+  if (fromBlack !== ctx.fillStyle) return SILHOUETTE_RGB
+  ctx.fillRect(0, 0, 1, 1)
+  const [r, g, b] = ctx.getImageData(0, 0, 1, 1).data
+  return [r!, g!, b!]
+}
 
-  const count = Math.floor(boxes.length / 4)
-  for (let i = 0; i < count; i++) {
+function paintSilhouette(
+  ctx: CanvasRenderingContext2D,
+  silhouette: Silhouette,
+  rgb: readonly [number, number, number],
+): void {
+  ctx.clearRect(0, 0, silhouette.width, silhouette.height)
+  const imageData = ctx.createImageData(silhouette.width, silhouette.height)
+  const data = imageData.data
+  const [r, g, b] = rgb
+  for (let i = 0; i < silhouette.alpha.length; i++) {
     const o = i * 4
-    const bx = boxes[o]!
-    const by = boxes[o + 1]!
-    const bw = boxes[o + 2]!
-    const bh = boxes[o + 3]!
-    if (!(bw > 0) || !(bh > 0)) continue // skips zero/negative-size and NaN boxes alike
-
-    const p0 = worldToMinimap(transform, bx, by)
-    const p1 = worldToMinimap(transform, bx + bw, by + bh)
-
-    let gx0 = Math.floor(Math.min(p0.x, p1.x))
-    let gy0 = Math.floor(Math.min(p0.y, p1.y))
-    let gx1 = Math.ceil(Math.max(p0.x, p1.x))
-    let gy1 = Math.ceil(Math.max(p0.y, p1.y))
-    // A box narrower than one minimap pixel must still register as at least
-    // one cell — that is the entire point of a coverage-grid silhouette
-    // over a naive miniature: mass at this scale is about presence, not
-    // exact sub-pixel geometry.
-    if (gx1 <= gx0) gx1 = gx0 + 1
-    if (gy1 <= gy0) gy1 = gy0 + 1
-    gx0 = Math.max(0, Math.min(gw, gx0))
-    gx1 = Math.max(0, Math.min(gw, gx1))
-    gy0 = Math.max(0, Math.min(gh, gy0))
-    gy1 = Math.max(0, Math.min(gh, gy1))
-    if (gx0 >= gx1 || gy0 >= gy1) continue // fully clipped outside the grid
-
-    diff[gy0 * diffW + gx0]! += 1
-    diff[gy0 * diffW + gx1]! -= 1
-    diff[gy1 * diffW + gx0]! -= 1
-    diff[gy1 * diffW + gx1]! += 1
+    data[o] = r
+    data[o + 1] = g
+    data[o + 2] = b
+    data[o + 3] = silhouette.alpha[i]!
   }
-
-  // Row-wise prefix sum, full diffW width (including the extra corner
-  // column) so the `-1`s placed at gx1 == gw still cancel correctly.
-  for (let y = 0; y < diffH; y++) {
-    const rowBase = y * diffW
-    let running = 0
-    for (let x = 0; x < diffW; x++) {
-      running += diff[rowBase + x]!
-      diff[rowBase + x] = running
-    }
-  }
-  // Column-wise prefix sum, same reasoning for the extra corner row.
-  for (let x = 0; x < diffW; x++) {
-    let running = 0
-    for (let y = 0; y < diffH; y++) {
-      const idx = y * diffW + x
-      running += diff[idx]!
-      diff[idx] = running
-    }
-  }
-
-  // Crop the (gw+1) x (gh+1) reconstruction down to the gw x gh grid a host
-  // actually asked for, converting counts to a 0..1 coverage ratio as we go.
-  // Annotated as the bare (ArrayBufferLike-backed) `Float64Array` rather
-  // than left to infer the concrete ArrayBuffer-backed type: `boxBlur` below
-  // is typed with the same bare form, and TS 5.9 treats those as distinct
-  // generic instantiations that don't assign into each other without this.
-  let ratio: Float64Array = new Float64Array(gw * gh)
-  for (let y = 0; y < gh; y++) {
-    for (let x = 0; x < gw; x++) {
-      const raw = diff[y * diffW + x]!
-      ratio[y * gw + x] = Math.min(1, Math.max(0, raw) / saturateAt)
-    }
-  }
-
-  if (blur > 0) ratio = boxBlur(ratio, gw, gh, blur)
-
-  const alpha = new Uint8ClampedArray(gw * gh)
-  for (let idx = 0; idx < alpha.length; idx++) {
-    alpha[idx] = Math.round(ratio[idx]! * 255)
-  }
-
-  return { width: gw, height: gh, alpha, transform }
+  ctx.putImageData(imageData, 0, 0)
 }
 
 /**
- * Separable box blur (horizontal pass, then vertical), each pass a 1D
- * sliding-window average built from a prefix sum. Cost is O(pixels)
- * regardless of `radius` — a naive sliding window recomputed from scratch
- * at every cell would cost O(pixels * radius), which stops being cheap once
- * a host asks for a soft, wide blur on a bigger minimap.
+ * Clamps the viewport rectangle's DRAWN edges to the minimap's own
+ * `[0, width] x [0, height]` box. Purely a display concern: the rectangle
+ * coming out of `viewportRectInMinimap` can legitimately extend beyond the
+ * minimap entirely — zoomed out past the whole tree, or panned off its edge
+ * — this only stops what gets painted from spilling past the widget's own
+ * border. `transform` (and therefore `minimapToWorld`) is never touched, so
+ * click-to-navigate keeps mapping a click to the true world point under the
+ * pointer regardless of where the rectangle itself got clamped to.
+ *
+ * Each edge is clamped independently before the width/height are derived
+ * from the clamped edges (not the other way around), which is what makes a
+ * viewport far larger than the whole minimap collapse to exactly
+ * `{ x: 0, y: 0, w: width, h: height }` — "you can see everything" — rather
+ * than an inverted or negative-size box: `clamp` is monotonic, so a clamped
+ * max edge can never land before a clamped min edge.
  */
-function boxBlur(grid: Float64Array, w: number, h: number, radius: number): Float64Array {
-  return blur1D(blur1D(grid, w, h, radius, true), w, h, radius, false)
+function clampViewportRect(
+  rect: Bounds,
+  width: number,
+  height: number,
+): { x: number; y: number; w: number; h: number } {
+  const clamp = (value: number, max: number): number => Math.min(Math.max(value, 0), max)
+
+  const minX = clamp(Math.min(rect.minX, rect.maxX), width)
+  const minY = clamp(Math.min(rect.minY, rect.maxY), height)
+  const maxX = clamp(Math.max(rect.minX, rect.maxX), width)
+  const maxY = clamp(Math.max(rect.minY, rect.maxY), height)
+
+  return { x: minX, y: minY, w: maxX - minX, h: maxY - minY }
 }
 
-function blur1D(
-  grid: Float64Array,
-  w: number,
-  h: number,
-  radius: number,
-  horizontal: boolean,
-): Float64Array {
-  const out = new Float64Array(w * h)
-  const outerLen = horizontal ? h : w
-  const innerLen = horizontal ? w : h
-  const at = (outer: number, inner: number): number => (horizontal ? outer * w + inner : inner * w + outer)
-  const prefix = new Float64Array(innerLen + 1)
+function positionRoot(el: HTMLElement, position: MinimapPosition): void {
+  el.style.top = position.startsWith('top') ? '8px' : 'auto'
+  el.style.bottom = position.startsWith('bottom') ? '8px' : 'auto'
+  el.style.left = position.endsWith('left') ? '8px' : 'auto'
+  el.style.right = position.endsWith('right') ? '8px' : 'auto'
+}
 
-  for (let outer = 0; outer < outerLen; outer++) {
-    for (let inner = 0; inner < innerLen; inner++) {
-      prefix[inner + 1] = prefix[inner]! + grid[at(outer, inner)]!
-    }
-    for (let inner = 0; inner < innerLen; inner++) {
-      const lo = Math.max(0, inner - radius)
-      const hi = Math.min(innerLen - 1, inner + radius)
-      const sum = prefix[hi + 1]! - prefix[lo]!
-      out[at(outer, inner)] = sum / (hi - lo + 1)
+/**
+ * A filled silhouette of the occupied area (see `computeSilhouette`'s
+ * docblock in core), not a shrunken chart — at minimap scale individual
+ * boxes fall below a pixel and connectors vanish, so what's useful is the
+ * shape of the tree, not a miniature redraw of it. Painted once per relayout
+ * into an `ImageData` alpha channel on a small canvas and cached; only the
+ * viewport rectangle — a CSS-transformed overlay — moves per camera change.
+ *
+ * Clicking or dragging inside the minimap pans the main camera: this module
+ * only reports the world point under the pointer (via `onPan`); centring the
+ * camera on it is the host's job (`centreOn` + its own camera state), the
+ * same division of labour `core/minimap.ts` documents for `minimapToWorld`.
+ */
+export function createMinimap(
+  container: HTMLElement,
+  options: MinimapOptions,
+  callbacks: MinimapCallbacks,
+): Minimap {
+  const width = options.width ?? DEFAULT_WIDTH
+  const height = options.height ?? DEFAULT_HEIGHT
+  const position = options.position ?? 'bottom-right'
+  // Resolved once per widget rather than per repaint: the string never
+  // changes for a given minimap (a host changing it goes through
+  // `api.setMinimap`, which rebuilds the widget), and the resolution costs a
+  // throwaway canvas.
+  const silhouetteRgb = resolveSilhouetteRgb(options.silhouetteColour)
+
+  const root = document.createElement('div')
+  root.className = 'klad-minimap'
+  root.style.position = 'absolute'
+  root.style.width = `${width}px`
+  root.style.height = `${height}px`
+  root.style.background = 'rgba(255, 255, 255, 0.85)'
+  root.style.border = '1px solid rgba(0, 0, 0, 0.15)'
+  root.style.borderRadius = '4px'
+  root.style.overflow = 'hidden'
+  root.style.cursor = 'pointer'
+  // Softened by eye against the playground: the previous `0 1px 4px / 0.2`
+  // read as a hard-edged hole punched in the chart underneath it. A smaller
+  // blur radius and much lower alpha let the widget read as a quiet raised
+  // plate instead of a shadow the eye trips over.
+  root.style.boxShadow = '0 1px 2px rgba(0, 0, 0, 0.08)'
+  root.style.touchAction = 'none'
+  positionRoot(root, position)
+
+  const canvas = document.createElement('canvas')
+  canvas.width = width
+  canvas.height = height
+  canvas.style.position = 'absolute'
+  canvas.style.inset = '0'
+  canvas.style.width = '100%'
+  canvas.style.height = '100%'
+  canvas.style.display = 'block'
+  root.appendChild(canvas)
+
+  const ctx = canvas.getContext('2d')
+  if (ctx === null) throw new Error('Klad: 2D canvas context unavailable for minimap')
+
+  const viewportEl = document.createElement('div')
+  viewportEl.style.position = 'absolute'
+  viewportEl.style.top = '0'
+  viewportEl.style.left = '0'
+  viewportEl.style.transformOrigin = '0 0'
+  viewportEl.style.pointerEvents = 'none'
+  viewportEl.style.boxSizing = 'border-box'
+  viewportEl.style.border = '1.5px solid rgba(37, 99, 235, 0.9)'
+  viewportEl.style.background = 'rgba(37, 99, 235, 0.12)'
+  root.appendChild(viewportEl)
+
+  container.appendChild(root)
+
+  let transform: MinimapTransform | null = null
+  /**
+   * Where the previous relayout's `anchorWorld` landed in WIDGET space, or
+   * `null` if there was none. Held in widget space rather than world space on
+   * purpose: the world position of the anchor is exactly what a relayout is
+   * free to change, and this is the thing that must not change.
+   */
+  let anchorAt: { x: number; y: number } | null = null
+
+  /**
+   * `t` shifted so `anchorWorld` lands on the widget pixel the anchor
+   * occupied as of the last relayout (`anchorAt`) — the correction that keeps
+   * a world-space move of the tree from moving the picture. Returns `t`
+   * untouched when there is nothing to anchor against, which is the first
+   * relayout and the case where a caller passes no anchor at all. Never
+   * changes the scale.
+   */
+  const anchoredTo = (
+    t: MinimapTransform | null,
+    anchorWorld: { x: number; y: number } | undefined,
+  ): MinimapTransform | null => {
+    if (t === null || anchorAt === null || anchorWorld === undefined) return t
+    return {
+      scale: t.scale,
+      offsetX: anchorAt.x - anchorWorld.x * t.scale,
+      offsetY: anchorAt.y - anchorWorld.y * t.scale,
     }
   }
-  return out
+
+  /**
+   * True when `bounds` lies entirely inside the widget under `t` — i.e. the
+   * existing frame can still show the whole tree, so there is no reason to
+   * refit it.
+   *
+   * A small tolerance absorbs the rounding that a round trip through the
+   * transform's own arithmetic introduces; without it a layout that fits
+   * exactly (the very layout the transform was fitted to) can read as
+   * overflowing by a fraction of a pixel and trigger a pointless refit.
+   */
+  const fitsUnder = (t: MinimapTransform, bounds: Bounds): boolean => {
+    const padding = SILHOUETTE_OPTIONS.padding ?? 0
+    const topLeft = worldToMinimap(t, bounds.minX, bounds.minY)
+    const bottomRight = worldToMinimap(t, bounds.maxX, bounds.maxY)
+    const slack = 0.5
+    return (
+      topLeft.x >= padding - slack &&
+      topLeft.y >= padding - slack &&
+      bottomRight.x <= width - padding + slack &&
+      bottomRight.y <= height - padding + slack
+    )
+  }
+
+  const pointToWorld = (event: PointerEvent): { x: number; y: number } | null => {
+    if (transform === null) return null
+    const rect = root.getBoundingClientRect()
+    if (rect.width <= 0 || rect.height <= 0) return null
+    const mx = ((event.clientX - rect.left) / rect.width) * width
+    const my = ((event.clientY - rect.top) / rect.height) * height
+    return minimapToWorld(transform, mx, my)
+  }
+
+  let dragging = false
+  const onPointerDown = (event: PointerEvent): void => {
+    dragging = true
+    // Best-effort: capture keeps a real drag tracking even once the pointer
+    // strays outside the (small) minimap rect. Guarded because capturing a
+    // pointer id with no corresponding live OS pointer session — which is
+    // exactly what a synthetically dispatched PointerEvent in a test is —
+    // throws `NotFoundError` in some engines; that must not abort the pan.
+    try {
+      root.setPointerCapture(event.pointerId)
+    } catch {
+      // Ignored — see above.
+    }
+    const world = pointToWorld(event)
+    if (world !== null) callbacks.onPan(world.x, world.y)
+  }
+  const onPointerMove = (event: PointerEvent): void => {
+    if (!dragging) return
+    const world = pointToWorld(event)
+    if (world !== null) callbacks.onPan(world.x, world.y)
+  }
+  const onPointerUp = (event: PointerEvent): void => {
+    dragging = false
+    try {
+      if (root.hasPointerCapture(event.pointerId)) root.releasePointerCapture(event.pointerId)
+    } catch {
+      // Ignored — see onPointerDown's comment.
+    }
+  }
+
+  root.addEventListener('pointerdown', onPointerDown)
+  root.addEventListener('pointermove', onPointerMove)
+  root.addEventListener('pointerup', onPointerUp)
+  root.addEventListener('pointercancel', onPointerUp)
+
+  return {
+    onLayout(boxes, bounds, anchorWorld, refit) {
+      // Keep the frame we already have whenever the new layout still fits in
+      // it, and refit only when it genuinely doesn't. Refitting on every
+      // relayout — which is what fitting `bounds` unconditionally amounts to
+      // — makes the minimap's scale a function of what happens to be expanded
+      // right now: collapsing the root shrinks `bounds` to a single node and
+      // that one node then fills the whole widget. The scale lurches on every
+      // toggle and nothing on the minimap stays where it was, so it reads as
+      // a zoom rather than a map.
+      //
+      // Holding the transform steady instead means collapsing simply removes
+      // mass from a frame that doesn't move, and the viewport rectangle keeps
+      // the same size for the same camera. Expanding past the frame's edge
+      // still refits, because at that point the alternative is drawing the
+      // tree outside the widget.
+      //
+      // Reusing the SCALE is only half of it, though: a relayout can also
+      // move the tree within world space, and collapsing the root is exactly
+      // that — tidy stops centring it over children it no longer has, so its
+      // world x changes. Under a transform reused verbatim the whole
+      // silhouette jumps sideways by that much. So the reused transform is
+      // re-offset to put `anchorWorld` back on the widget pixel the previous
+      // layout's anchor occupied, which is the minimap's counterpart to the
+      // chart's toggle camera anchor.
+      const candidate = anchoredTo(transform, anchorWorld)
+      // Checked against the RE-OFFSET transform, not the old one: holding the
+      // anchor still can itself push the tree past an edge (expanding a root
+      // pinned near the left grows to the right), and that is a genuine
+      // refit, same as outgrowing the scale.
+      const reuse = refit !== true && candidate !== null && fitsUnder(candidate, bounds)
+      const silhouette = computeSilhouette(boxes, bounds, { width, height }, {
+        ...SILHOUETTE_OPTIONS,
+        ...(reuse ? { transform: candidate! } : {}),
+      })
+      transform = silhouette.transform
+      // Re-read after the fact so this is right on both paths: reused, where
+      // it reproduces `anchorAt` unchanged by construction, and refitted,
+      // where the anchor lands wherever the fresh fit put it.
+      anchorAt =
+        anchorWorld === undefined ? null : worldToMinimap(transform, anchorWorld.x, anchorWorld.y)
+      paintSilhouette(ctx, silhouette, silhouetteRgb)
+    },
+    onCamera(camera, viewport, anchorWorld) {
+      if (transform === null) return
+      // Re-offset per frame, never stored: `transform` stays the map the
+      // painted silhouette was rasterised with (and the one click-to-navigate
+      // inverts), while the rectangle is measured against the map the anchor
+      // is on RIGHT NOW. Outside a transition the two are the same, since the
+      // anchor is exactly where the last relayout left it.
+      const rect = viewportRectInMinimap(anchoredTo(transform, anchorWorld)!, camera, viewport)
+      const { x, y, w, h } = clampViewportRect(rect, width, height)
+      viewportEl.style.transform = `translate(${x}px, ${y}px)`
+      viewportEl.style.width = `${w}px`
+      viewportEl.style.height = `${h}px`
+    },
+    destroy() {
+      root.removeEventListener('pointerdown', onPointerDown)
+      root.removeEventListener('pointermove', onPointerMove)
+      root.removeEventListener('pointerup', onPointerUp)
+      root.removeEventListener('pointercancel', onPointerUp)
+      root.remove()
+    },
+  }
 }

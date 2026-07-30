@@ -1,0 +1,15 @@
+{
+  "//": "DOM-free program: lib ES2023 with types [], so window, document, and HTMLCanvasElement do not resolve. That guard is what keeps this package importable inside a Web Worker. host.ts is the one genuinely DOM-bound module and is checked by tsconfig.browser-test.json instead; chart.worker.ts needs the webworker lib, which cannot coexist with dom in a single program, so it has tsconfig.worker.json. Everything else, index.ts included, is checked here without DOM — which is only possible because index.ts does not re-export host.ts. Reach ChartHost at the package's ./host subpath instead.",
+  "extends": "../../tsconfig.base.json",
+  "compilerOptions": {
+    "rootDir": "src",
+    "outDir": "dist",
+    "types": []
+  },
+  "include": ["src"],
+  "exclude": [
+    "src/**/*.browser.test.ts",
+    "src/worker/host.ts",
+    "src/worker/chart.worker.ts"
+  ]
+}

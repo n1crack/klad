@@ -5,7 +5,7 @@ import type { Theme } from './theme.js'
 
 /**
  * The slice of the canvas 2D API this renderer uses, declared structurally.
- * `packages/core` compiles with `types: []` and `lib: ["ES2023"]`, so it has no
+ * `packages/engine` compiles with `types: []` and `lib: ["ES2023"]`, so it has no
  * `lib.dom` — and it must not gain one, because that would also make `window`
  * and `document` resolvable inside worker-bound code. A real `HTMLCanvasElement`
  * and an `OffscreenCanvas` both satisfy these shapes.

@@ -13,7 +13,7 @@ import { normalize } from './tree.js'
  * a DOM shim) — not a mock, not a headless approximation of the drawing
  * logic. It cannot exercise the playground itself: that requires the vanilla
  * layer to call `setAnimate`/thread a `requestAnimationFrame` timestamp into
- * `render(now)`, which is out of this change's scope (packages/vanilla is
+ * `render(now)`, which is out of this change's scope (packages/core is
  * fenced off — see the engine.ts changes for the API this is meant to
  * plug into). This is the closest available substitute: sampling actual
  * rendered pixels at several points through a real transition, on a real

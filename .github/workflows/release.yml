@@ -62,7 +62,7 @@ jobs:
       - name: Check the tag against the manifests
         run: |
           TAG="${{ github.event.release.tag_name }}"
-          VERSION="$(node -p "require('./packages/vanilla/package.json').version")"
+          VERSION="$(node -p "require('./packages/core/package.json').version")"
           if [ "$TAG" != "v$VERSION" ]; then
             echo "Tag $TAG does not match the packaged version $VERSION."
             echo "Run 'pnpm version-packages', commit that, and tag the commit."

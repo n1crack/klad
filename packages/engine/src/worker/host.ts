@@ -57,7 +57,7 @@ export interface ChartHost {
    * Paint-only theme swap, effective from the next `render()` on either path
    * — see `Renderer.setTheme`'s docblock for why this never touches layout
    * or hit-testing. Takes an already-resolved `Theme`, not a partial: the
-   * caller (`KladApi.setTheme` in packages/vanilla) owns merging a
+   * caller (`KladApi.setTheme` in packages/core) owns merging a
    * caller-supplied partial over the current theme and re-resolving it, so
    * this layer only ever forwards a complete, ready-to-paint theme.
    */

@@ -734,7 +734,7 @@ interface Transition extends TimedAnimation {
    * is running, to fix a real bug: `render()`'s node cull used to query the
    * FINAL layout directly, but a node's DRAWN (interpolated) position can be
    * arbitrarily far from where it settles, especially the toggled node
-   * itself under a host's camera anchor (see `packages/vanilla`'s
+   * itself under a host's camera anchor (see `packages/core`'s
    * `applyCameraAnchor`) — the anchor holds that node's OWN on-screen spot
    * fixed by solving the camera around wherever it currently interpolates
    * TO, which means its FINAL box, read through that same live camera, sits
@@ -829,7 +829,7 @@ function easingFor(transition: Transition, now: number): TransitionEasing {
  * ever affects its DESCENDANTS' visibility), so it is always a "reposition"
  * entry, never a "reveal"/"ghost" one. A host that wants to hold that node's
  * SCREEN position fixed while the layout moves around it (see
- * packages/vanilla's camera anchor) needs to know exactly how far that one
+ * packages/core's camera anchor) needs to know exactly how far that one
  * node has travelled between its pre-toggle and post-toggle box at any
  * instant — which is exactly this curve, the same one `easingFor` computes
  * internally for `repositionPos`. Exposing the curve itself (pure function of

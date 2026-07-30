@@ -53,7 +53,7 @@ function syncToggleButton(container: HTMLElement, context: NodeContext): void {
 /**
  * Renders the `<strong>name</strong><small>title</small>` card — the default
  * look used by every example that doesn't ask for something else. The pooled
- * overlay element is reused across frames (see packages/vanilla/src/overlay.ts),
+ * overlay element is reused across frames (see packages/core/src/overlay.ts),
  * so this only builds the inner nodes once per slot and just updates their
  * text on later frames — rebuilding the subtree every frame would add exactly
  * the DOM churn the pooling exists to avoid.
@@ -588,7 +588,7 @@ export interface VanillaDemoHandle {
  * values is current.
  *
  * `setEdgeRadius`/`setNodeFill` go straight through `chart.api.setTheme`
- * instead — `KladApi.setTheme` (packages/vanilla/src/index.ts) merges a
+ * instead — `KladApi.setTheme` (packages/core/src/index.ts) merges a
  * partial theme over whatever the chart is already showing, re-resolves it,
  * and repaints, all without touching tree/layout state. Before that method
  * existed, the only way to change a theme token post-construction was to

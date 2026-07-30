@@ -132,7 +132,7 @@ function setMinimapPosition(position: MinimapPosition): void {
 
 /**
  * One door for every theme token the sidebar owns. `KladApi.setTheme`
- * (packages/vanilla/src/index.ts) merges a partial over whatever the chart is
+ * (packages/core/src/index.ts) merges a partial over whatever the chart is
  * already showing and repaints — paint-only, so unlike the `<Klad :key>`
  * remount this used to need, it keeps camera position and expand/collapse
  * state exactly where they were.
@@ -150,7 +150,7 @@ function setMinimapSilhouette(colour: string): void {
 
 /** `KladApi.setRing` — NOT a theme token, so it goes through its own
  * method rather than `setTheme`; see `Options.ring`'s docblock in
- * packages/vanilla/src/index.ts. */
+ * packages/core/src/index.ts. */
 function setRingEnabled(enabled: boolean): void {
   chartRef.value?.api?.setRing(enabled)
 }

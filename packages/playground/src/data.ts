@@ -114,7 +114,7 @@ export function nodeFillDefault(mode: ThemeMode): string {
  * The swatch value the "Shape fill" colour picker SEEDS with once a viewer
  * turns it on — not the library's own `block`-tier default, which is
  * `'transparent'` (`DEFAULT_THEME.blockFill` in
- * packages/core/src/render/theme.ts), not a colour at all. The picker
+ * packages/engine/src/render/theme.ts), not a colour at all. The picker
  * control (an `<input type="color">`) can't represent "no colour" itself, so
  * it needs SOME starting hex value ready for the moment a viewer flips the
  * "shape fill" checkbox on; this is that seed, distinct from the mode's own
@@ -124,7 +124,7 @@ export const BLOCK_FILL_SEED = '#e2e8f0'
 
 /**
  * The initial swatch value for the "Ring colour" control — the library's own
- * default (`DEFAULT_THEME.ringStroke` in packages/core/src/render/theme.ts),
+ * default (`DEFAULT_THEME.ringStroke` in packages/engine/src/render/theme.ts),
  * same convention as `nodeFillDefault` above.
  */
 export const RING_STROKE_DEFAULT = '#f59e0b'

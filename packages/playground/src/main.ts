@@ -1001,7 +1001,7 @@ function syncThemeControls(example: Example): void {
 
 /**
  * The "Ring" on/off is NOT a theme token (see `Options.ring`'s docblock in
- * packages/vanilla/src/index.ts), so it goes through its own API method rather
+ * packages/core/src/index.ts), so it goes through its own API method rather
  * than `setTheme` — same as the minimap toggle below it.
  */
 let ringEnabled = true
@@ -1021,7 +1021,7 @@ ringEnabledButton.onclick = () => {
 }
 updateRingEnabledButton()
 
-// The canvas itself only ever `clearRect`s (see packages/core/src/render/canvas2d.ts)
+// The canvas itself only ever `clearRect`s (see packages/engine/src/render/canvas2d.ts)
 // — it never paints a background of its own, so whatever colour shows behind the
 // nodes and connectors is just the host element's CSS background showing through
 // a transparent canvas. `surface` (below) is that host for the vanilla stack

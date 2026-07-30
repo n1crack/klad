@@ -38,7 +38,7 @@ let chart: ReturnType<typeof createKlad> | null = null
 /**
  * Slot content is rendered into each pooled overlay element with Vue's
  * `render()`. The vanilla layer reuses the same `HTMLElement` per visible
- * slot across frames (see packages/vanilla/src/overlay.ts) rather than
+ * slot across frames (see packages/core/src/overlay.ts) rather than
  * recreating DOM, so calling `render()` again on that same element lets Vue
  * patch the previous tree instead of remounting it — that reuse is what
  * keeps panning smooth at high node counts. This set only tracks which

@@ -1,5 +1,5 @@
 {
-  "name": "@klad/engine",
+  "name": "@klad/core",
   "version": "1.8.0",
   "description": "Klad — a canvas tree engine for tens of thousands of nodes. Tiered, file, radial and sunburst layouts, with a DOM overlay for your own node content. Frameworkless.",
   "keywords": [
@@ -36,10 +36,6 @@
     ".": {
       "types": "./src/index.ts",
       "import": "./src/index.ts"
-    },
-    "./host": {
-      "types": "./src/worker/host.ts",
-      "import": "./src/worker/host.ts"
     }
   },
   "publishConfig": {
@@ -47,10 +43,6 @@
       ".": {
         "types": "./dist/index.d.ts",
         "import": "./dist/index.js"
-      },
-      "./host": {
-        "types": "./dist/worker/host.d.ts",
-        "import": "./dist/worker/host.js"
       }
     }
   },
@@ -59,10 +51,12 @@
     "LICENSE",
     "LICENSE-COMMERCIAL.md"
   ],
+  "dependencies": {
+    "@klad/engine": "workspace:*"
+  },
   "scripts": {
     "build": "node ../../scripts/copy-license.mjs && tsdown",
     "test": "vitest run",
-    "test:watch": "vitest",
-    "typecheck": "tsc --noEmit -p tsconfig.json && tsc --noEmit -p tsconfig.browser-test.json && tsc --noEmit -p tsconfig.worker.json"
+    "typecheck": "tsc --noEmit -p tsconfig.json"
   }
 }

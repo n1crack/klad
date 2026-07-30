@@ -40,7 +40,7 @@ const repoRoot = resolve(dirname(fileURLToPath(import.meta.url)), '..')
 const readManifest = (path) => JSON.parse(readFileSync(path, 'utf8'))
 
 /** The publishable packages, in dependency order — the order a reader would check them in. */
-const PACKAGES = ['packages/core', 'packages/vanilla', 'packages/vue', 'packages/react']
+const PACKAGES = ['packages/engine', 'packages/core', 'packages/vue', 'packages/react']
 
 /**
  * Resolves a CLI's own entry and runs it with `node` directly, rather than
@@ -84,8 +84,8 @@ let failed = false
  * consumer logging `VERSION` should get the number they installed.
  */
 {
-  const manifest = readManifest(join(repoRoot, 'packages/core/package.json'))
-  const source = readFileSync(join(repoRoot, 'packages/core/src/index.ts'), 'utf8')
+  const manifest = readManifest(join(repoRoot, 'packages/engine/package.json'))
+  const source = readFileSync(join(repoRoot, 'packages/engine/src/index.ts'), 'utf8')
   const declared = /export const VERSION = '([^']+)'/.exec(source)?.[1]
   process.stdout.write(`\n── ${manifest.name} · VERSION ──\n`)
   if (declared === manifest.version) {

@@ -15,8 +15,8 @@ pnpm build
 
 | | |
 |---|---|
-| `@klad/engine` (`packages/core`) | Layout, viewport maths, the quadtree, the renderer, the worker protocol. No DOM. |
-| `@klad/core` (`packages/vanilla`) | The frameworkless chart. The reference every adapter is written against. |
+| `@klad/engine` (`packages/engine`) | Layout, viewport maths, the quadtree, the renderer, the worker protocol. No DOM. |
+| `@klad/core` (`packages/core`) | The frameworkless chart. The reference every adapter is written against. |
 | `@klad/vue`, `@klad/react` | Thin adapters over `@klad/core`. |
 
 Each depends on the layer beneath it. An adapter takes a **direct** dependency

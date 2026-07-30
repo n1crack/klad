@@ -78,7 +78,7 @@ describe('Klad (React)', () => {
 
   it('reuses the same overlay element across a camera change instead of remounting', async () => {
     // The vanilla overlay pools DOM nodes by slot, not by chart node (see
-    // packages/vanilla/src/overlay.ts): panning reassigns which node a slot
+    // packages/core/src/overlay.ts): panning reassigns which node a slot
     // shows rather than destroying and recreating the element. If the React
     // layer undid that — e.g. by keying portals to the node's id instead of
     // to the pooled element — a camera change would swap the element

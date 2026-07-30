@@ -879,7 +879,7 @@ describe('ChartEngine expand/collapse transition', () => {
 
   it('grows a revealed node from its anchor\'s LIVE position, not the anchor\'s fixed pre-toggle box', () => {
     // 'p' needs TWO children, not one — see the analogous sibling-reflow test
-    // in packages/vanilla's orgchart.browser.test.ts for why: a single-child
+    // in packages/core's orgchart.browser.test.ts for why: a single-child
     // chain never widens its own subtree, so 'p' itself never needs to
     // recentre. Two children side by side make 'p' noticeably wider once
     // revealed, which is exactly what pushes 'p's OWN box, not just its

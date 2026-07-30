@@ -54,7 +54,7 @@ export interface KladProps {
 }
 
 /**
- * One pooled overlay `<div>` from packages/vanilla/src/overlay.ts, and the
+ * One pooled overlay `<div>` from packages/core/src/overlay.ts, and the
  * latest node context the vanilla layer handed it. `key` is assigned once,
  * the first time this particular element is seen, and never changes for the
  * element's lifetime. That is what keeps the portal below stable across

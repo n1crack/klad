@@ -34,10 +34,10 @@ reference, and a playground you can dial a chart in with. Run it locally with
 
 | Package | For |
 |---|---|
-| [`@klad/core`](packages/vanilla) | The frameworkless API. One function, `createKlad`. Use it directly, or read it as the reference for a new binding. |
+| [`@klad/core`](packages/core) | The frameworkless API. One function, `createKlad`. Use it directly, or read it as the reference for a new binding. |
 | [`@klad/vue`](packages/vue) | Vue 3: a `<Klad>` component with a `#node` scoped slot, plus `useKlad()`. |
 | [`@klad/react`](packages/react) | React: `<Klad>` with a render prop and a ref handle. |
-| [`@klad/engine`](packages/core) | Layout, viewport maths, spatial index, renderer, worker protocol. No DOM. Only needed to build a new binding. |
+| [`@klad/engine`](packages/engine) | Layout, viewport maths, spatial index, renderer, worker protocol. No DOM. Only needed to build a new binding. |
 
 Each depends on the layers beneath it, so installing one is enough — you never
 also install `@klad/core` to use the Vue adapter.
@@ -137,7 +137,7 @@ A pnpm workspace (`pnpm@10.13.1`, Node `>=22.12.0`).
 pnpm install
 pnpm dev        # the playground: every example, live controls
 pnpm docs       # the documentation site
-pnpm test       # 442 tests across core/vanilla/vue/react, incl. real-browser mode
+pnpm test       # 442 tests across engine/core/vue/react, incl. real-browser mode
 pnpm typecheck
 pnpm lint
 pnpm build

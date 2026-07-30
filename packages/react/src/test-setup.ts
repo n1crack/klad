@@ -10,7 +10,7 @@ declare global {
 }
 globalThis.IS_REACT_ACT_ENVIRONMENT = true
 
-// Mirrors packages/vue/src/test-setup.ts and packages/vanilla/src/test-setup.ts:
+// Mirrors packages/vue/src/test-setup.ts and packages/core/src/test-setup.ts:
 // each test mounts its own host <div> (and canvas), but document.querySelector
 // is unscoped, so an earlier test's un-destroyed chart — first in document
 // order — shadows the element belonging to the test that is actually running.

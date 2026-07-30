@@ -604,7 +604,7 @@ export function ReactDemo({ example, layout, mode, onReady, onDrop, onCentreChan
       },
       // `KladApi.setRing` — NOT a theme token, so it goes through its own
       // method rather than `setTheme`; see `Options.ring`'s docblock in
-      // packages/vanilla/src/index.ts.
+      // packages/core/src/index.ts.
       setRingEnabled: (enabled: boolean) => {
         chartRef.current?.api?.setRing(enabled)
       },
