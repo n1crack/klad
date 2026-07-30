@@ -105,6 +105,11 @@ function makeRecorder(): {
       // sides of the cross-check.
       currentPath?.push({ x: cpx, y: cpy }, { x, y })
     },
+    bezierCurveTo(c1x, c1y, c2x, c2y, x, y) {
+      // Three points, matching an SVG `C` command's three coordinate pairs
+      // for the same reason the quadratic records two.
+      currentPath?.push({ x: c1x, y: c1y }, { x: c2x, y: c2y }, { x, y })
+    },
     roundRect(x, y, w, h, radii) {
       rects.push({ x, y, w, h, radius: radii })
     },

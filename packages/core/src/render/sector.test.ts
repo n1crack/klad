@@ -30,6 +30,7 @@ function recorder(): RenderContext2D & { calls: string[] } {
     arc: (x, y, r, a0, a1, ccw) => calls.push(`A${x},${y},${r},${a0.toFixed(3)},${a1.toFixed(3)},${ccw === true}`),
     closePath: () => calls.push('Z'),
     quadraticCurveTo: noop,
+    bezierCurveTo: noop,
     roundRect: noop,
     rect: noop,
     fill: noop,

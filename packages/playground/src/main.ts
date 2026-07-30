@@ -514,6 +514,7 @@ function syncLayoutKnobs(example: Example, layout: LayoutName): void {
     { value: 'auto', label: 'Auto' },
     { value: 'tiered', label: 'Elbow' },
     { value: 'spoke', label: 'Straight' },
+    { value: 'bezier', label: 'Curved' },
     { value: 'none', label: 'None' },
   ]
   const stylePicker = radioPicker(`edge-style-${layout}`, 'segmented', styles, (value) => {

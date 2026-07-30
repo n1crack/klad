@@ -247,6 +247,7 @@ export interface Options {
    *  - `'folder'` — a guide line down the indent gutter, as a file explorer
    *                 draws it.
    *  - `'spoke'`  — straight, centre to centre.
+   *  - `'bezier'` — the same two ends as `'tiered'`, curved instead of bent.
    *  - `'none'`   — no connectors at all.
    *
    * Omitted, the layout decides, and that is right almost every time: the

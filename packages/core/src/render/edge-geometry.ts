@@ -92,11 +92,35 @@ export function edgeAnchors(
       // caller that asks anyway gets an empty box rather than NaN.
       return { px: px0 + pw / 2, py: py0 + ph / 2, cx: px0 + pw / 2, cy: py0 + ph / 2 }
     case 'tiered':
+    // A curve between the same two points an elbow would join, so the ends
+    // agree and only the middle differs.
+    case 'bezier':
     default:
       return horizontal
         ? { px: px0 + pw, py: py0 + ph / 2, cx: cx0, cy: cy0 + ch / 2 }
         : { px: px0 + pw / 2, py: py0 + ph, cx: cx0 + cw / 2, cy: cy0 }
   }
+}
+
+/**
+ * The two control points for a `bezier` connector, given its anchors.
+ *
+ * Pulled along the GROWTH axis and halfway across the gap, which is what makes
+ * the curve leave the parent and enter the child square-on — a curve that left
+ * at an angle would read as pointing at a sibling. Both control points stay
+ * inside the rectangle the anchors span, so `edgeBBox` bounds this exactly as
+ * it bounds an elbow and the culler needs no special case.
+ */
+export function bezierControls(
+  a: EdgeAnchors,
+  horizontal: boolean,
+): { c1x: number; c1y: number; c2x: number; c2y: number } {
+  if (horizontal) {
+    const mid = (a.px + a.cx) / 2
+    return { c1x: mid, c1y: a.py, c2x: mid, c2y: a.cy }
+  }
+  const mid = (a.py + a.cy) / 2
+  return { c1x: a.px, c1y: mid, c2x: a.cx, c2y: mid }
 }
 
 /**

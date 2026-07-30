@@ -5760,3 +5760,44 @@ describe('the edit event', () => {
     chart.destroy()
   })
 })
+
+describe('the curved connector', () => {
+  it('draws a curve where the elbow would have bent, between the same two ends', async () => {
+    const straight = make({ edgeStyle: 'tiered' })
+    await nextFrame()
+    await settle()
+    const elbow = straight.api.toSVG()
+    straight.destroy()
+
+    const curved = make({ edgeStyle: 'bezier' })
+    await nextFrame()
+    await settle()
+    const svg = curved.api.toSVG()
+
+    // A cubic, which nothing else in this chart draws.
+    expect(svg).toContain(' C')
+    expect(elbow).not.toContain(' C')
+    // Same ends: both paths start where the elbow's did.
+    const startOf = (text: string) => /M([\d.-]+),([\d.-]+)/.exec(text)?.[0]
+    expect(startOf(svg)).toBe(startOf(elbow))
+    curved.destroy()
+  })
+
+  it('keeps the "more inside" mark, since it is a rectangular chart', async () => {
+    const chart = make({ edgeStyle: 'bezier', collapsedByDefault: true })
+    await nextFrame()
+    await settle()
+    expect(chart.api.toSVG()).toContain('class="hs"')
+    chart.destroy()
+  })
+
+  it('is chosen freely, not by the layout', async () => {
+    // No layout asks for it, which is the point — every other style is some
+    // layout's own.
+    const chart = make({ layout: 'file', edgeStyle: 'bezier' })
+    await nextFrame()
+    await settle()
+    expect(chart.api.toSVG()).toContain(' C')
+    chart.destroy()
+  })
+})

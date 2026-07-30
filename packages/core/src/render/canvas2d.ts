@@ -2,7 +2,7 @@ import type { TextMeasurer } from '../text/measure.js'
 import type { DrawCallStats, Frame, Renderer, RenderSurface } from './renderer.js'
 import type { Theme } from './theme.js'
 import { easeInQuad, easeOutCubic } from '../viewport.js'
-import { edgeAnchors, hiddenStub } from './edge-geometry.js'
+import { bezierControls, edgeAnchors, hiddenStub } from './edge-geometry.js'
 import { computeNodeFills, inkOn } from './palette.js'
 import {
   isSectorVisible,
@@ -167,7 +167,20 @@ export function createCanvas2DRenderer(
         const cx = a.cx * k + camera.x
         const cy = a.cy * k + camera.y
         ctx.moveTo(px, py)
-        if (frame.edgeStyle === 'spoke') {
+        if (frame.edgeStyle === 'bezier') {
+          // Control points from the shared source, for the same reason the
+          // anchors are: the SVG export draws this curve too, and the two
+          // have to be the same curve.
+          const c = bezierControls(a, frame.horizontal)
+          ctx.bezierCurveTo(
+            c.c1x * k + camera.x,
+            c.c1y * k + camera.y,
+            c.c2x * k + camera.x,
+            c.c2y * k + camera.y,
+            cx,
+            cy,
+          )
+        } else if (frame.edgeStyle === 'spoke') {
           // Centre to centre, straight. On concentric rings that line is
           // already radial, so nothing is gained by bending it.
           ctx.lineTo(cx, cy)

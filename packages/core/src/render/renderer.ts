@@ -49,6 +49,14 @@ export interface RenderContext2D {
   /** Used to round the two bends of a connector elbow when `theme.edgeCornerRadius` is
    * greater than 0 — see canvas2d.ts's edge-drawing loop. */
   quadraticCurveTo(cpx: number, cpy: number, x: number, y: number): void
+  bezierCurveTo(
+    cp1x: number,
+    cp1y: number,
+    cp2x: number,
+    cp2y: number,
+    x: number,
+    y: number,
+  ): void
   roundRect(x: number, y: number, w: number, h: number, radii: number): void
   rect(x: number, y: number, w: number, h: number): void
   fill(): void
@@ -77,11 +85,15 @@ export interface RenderSurface {
  *  - `spoke`    — a straight line from the parent's centre to the child's, for
  *                 a radial chart, where the shortest path between two rings IS
  *                 the relationship.
+ *  - `bezier`   — the same two ends as `tiered`, joined by a curve instead of
+ *                 an elbow. No layout asks for it; it is there for a chart
+ *                 that wants a softer line than a right angle, and it honours
+ *                 `Frame.horizontal` the way `tiered` does.
  *  - `none`     — no connectors at all. A sunburst's sectors are already
  *                 adjacent to their parent's; a line between them would draw a
  *                 relationship the geometry has already stated.
  */
-export type EdgeStyle = 'tiered' | 'folder' | 'spoke' | 'none'
+export type EdgeStyle = 'tiered' | 'folder' | 'spoke' | 'bezier' | 'none'
 
 /** Everything the renderer needs for one frame. Nothing is derived internally. */
 export interface Frame {

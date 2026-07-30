@@ -2,7 +2,7 @@ import type { Bounds } from '../types.js'
 import type { EdgeStyle, RenderContext2D } from './renderer.js'
 import type { Theme } from './theme.js'
 import { resolveTheme } from './theme.js'
-import { edgeAnchors, edgeStyleDrawsConnectors, hiddenStub } from './edge-geometry.js'
+import { bezierControls, edgeAnchors, edgeStyleDrawsConnectors, hiddenStub } from './edge-geometry.js'
 import { computeNodeFills, inkOn } from './palette.js'
 import { HIDDEN_DOT_PX, HIDDEN_STUB_PX } from './canvas2d.js'
 import {
@@ -246,6 +246,18 @@ function buildEdgePath(
       parts.push(`M${fmt(px)},${fmt(py)} L${fmt(cx)},${fmt(cy)}`)
       continue
     }
+    if (style === 'bezier') {
+      // The same control points canvas2d uses, from the same function — an
+      // export whose curve bulged differently would be a different picture.
+      const c = bezierControls(anchors, horizontal)
+      parts.push(
+        `M${fmt(px)},${fmt(py)}` +
+          ` C${fmt(c.c1x + offsetX)},${fmt(c.c1y + offsetY)}` +
+          ` ${fmt(c.c2x + offsetX)},${fmt(c.c2y + offsetY)}` +
+          ` ${fmt(cx)},${fmt(cy)}`,
+      )
+      continue
+    }
     if (style === 'folder') {
       // Mirrors canvas2d's `folder` branch exactly: down the gutter, one bend,
       // then a stub into the child's leading edge.
@@ -398,6 +410,7 @@ function createPathRecorder(): RenderContext2D & { data(): string } {
       cursorY = ey
     },
     quadraticCurveTo: noop,
+    bezierCurveTo: noop,
     roundRect: noop,
     rect: noop,
     closePath: () => {
