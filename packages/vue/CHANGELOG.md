@@ -1,5 +1,173 @@
 # @klad/vue
 
+## 1.7.0
+
+### Minor Changes
+
+- ccb0c29: `edit` — every change to the shape, however it was made.
+
+  ```ts
+  chart.on("edit", (change) => queue.push(change));
+  ```
+
+  A drag reports itself through `nodeDrop` and an API call is something you made
+  yourself. A viewer pressing `Alt+Up` or `Delete` restructures the tree with
+  nobody else in the room — so with `keyboardEditing` on, a host could not know
+  an edit had happened, and therefore could not save it.
+
+  Carries the same `Change` that `changes()` collects, so persisting each edit as
+  it happens and batching them until a save button take the same shape. Fires
+  whether or not `history` is on: "keep no way back" and "tell me nothing" are
+  different requests. `undo` and `redo` do not fire it — they are calls you make,
+  and treating a withdrawal as a new edit would have anyone mirroring this apply
+  it twice.
+
+- 89a07b5: Walking the search results, counting leaves, and two events that were missing.
+
+  ### findNext / findPrevious
+
+  ```ts
+  chart.api.findNext("rossi"); // start, and go to the first
+  chart.api.findNext(); // the next
+  chart.api.findPrevious(); // back one
+  ```
+
+  `search` answers a question and changes nothing; `filter` changes what the chart
+  is. This is the third thing and neither of those does it: keep the whole tree in
+  front of me and take me to the next hit. Each call brings the node on screen,
+  opening whatever it was folded behind, and wraps at the end rather than stopping.
+
+  Any change to the tree forgets where it was — a place in a list of nodes that
+  have since moved is not a place.
+
+  ### leafCount on stats(id)
+
+  ```ts
+  chart.api.stats("src")!.leafCount; // how many files, at any depth
+  ```
+
+  A different question from `descendants`, and usually the one being asked: "how
+  many files are in this folder" rather than "how many rows does this branch
+  occupy". Filled by the same sweep that already totals the descendants, so it
+  costs nothing, and it leaves out the nodes a capped level invents exactly as the
+  other counts do.
+
+  ### filterChange and layoutChange
+
+  ```ts
+  chart.on(
+    "filterChange",
+    ({ query, matched }) => (count.textContent = `${matched.length}`),
+  );
+  chart.on("layoutChange", ({ settings }) => mirror(settings));
+  ```
+
+  `layoutChange` carries the settings as they now stand rather than the delta, so
+  a sidebar mirroring the chart reads what IS instead of what it last sent. A knob
+  nobody has set is absent rather than `undefined`, so spreading the payload over
+  your own state does not punch holes in it.
+
+  `filterChange`'s `query` is `null` both for no filter and for a predicate, which
+  cannot be written down — the same limit `getView` states.
+
+  ***
+
+  A general camera-animation API was considered and is not here, because it
+  already exists: `setView(view, { animate: true })` flies to any camera, and
+  `focus(id)` is the "go to this node" case with the ancestors opened on the way.
+
+- f8ac009: `viewChange` — one event for the whole view.
+
+  ```ts
+  chart.on("viewChange", (view) => store.save(view)); // straight back into setView
+  ```
+
+  Camera, open branches, selection, highlight, isolation, filter and lifted caps,
+  in one payload, exactly what `getView()` returns. Mirroring the chart into a
+  store used to mean subscribing to several events and merging them back into the
+  picture they came from.
+
+  It fires when any of it changes and never for a redraw that changed nothing, so
+  panning does not flood it.
+
+  This is deliberately not a step toward controlled state. Whether a branch is
+  open is a fact about the screen rather than about your data, and routing every
+  toggle through your store would put a framework render inside a 16ms
+  interaction — worse, `loadChildren` makes opening a node asynchronous and
+  data-changing, so that round trip would grow a second leg. The chart keeps
+  holding it and now says what it holds.
+
+  **Two notes on size, one of which corrects the docs.**
+
+  The `open` array names every open node, so a whole view fits in a URL on a small
+  chart and does not on a large one. The documentation said "put one in a URL and
+  you have a link to a place in a chart" without that caveat; it now says to take
+  the small parts (`camera`, `isolated`, `filter`) for a link and use storage for
+  a full restore. `setView` fills in whatever is left out.
+
+  And that array is **frozen and shared between emissions**. It is rebuilt only
+  when the open state actually changes, which is what keeps an event that fires
+  per frame affordable at fifty thousand nodes — sorting it in place would corrupt
+  that, so it cannot be. Copy it if you need to reorder.
+
+- f31e5cd: Restructuring the tree from the keyboard.
+
+  ```ts
+  createKlad(el, { data, keyboardEditing: true });
+  ```
+
+  On the focused node:
+
+  |                        |                                              |
+  | ---------------------- | -------------------------------------------- |
+  | `Alt` + `↑` / `↓`      | One slot among its siblings.                 |
+  | `Alt` + `←`            | Out one level, to just after its old parent. |
+  | `Alt` + `→`            | In one level, under the sibling above it.    |
+  | `Delete` / `Backspace` | The node and everything under it.            |
+  | `Shift` + `Enter`      | Asks for a new sibling.                      |
+
+  Less was missing here than it looked: a node could already be moved from the
+  keyboard with `dragAndDrop` on — `m` picks it up, arrows carry the focus, `m`
+  drops it there. But that can only drop **into** a node, because dropping
+  between two means pointing at a gap and a list of rows has no gap to point at.
+  So the one thing an outline or a taxonomy is mostly made of — "this goes above
+  that" — had no keyboard equivalent at all. These keys say "one up" instead,
+  which needs no gap.
+
+  Kept as a separate permission from `dragAndDrop` because they are not the same
+  one: carrying a node somewhere is a rearrangement, and `Delete` is not.
+
+  `canMove` applies to every move here, exactly as it does to a drag, and each is
+  one edit, so one `undo` takes it back — including the whole subtree a `Delete`
+  took.
+
+  **Adding is a request, not an action.** A new node needs a row and the chart
+  does not know what your rows look like, the same reason there is no rename. So
+  `Shift+Enter` emits `addRequested` with the parent and index to use, and waits:
+
+  ```ts
+  chart.on("addRequested", ({ parentId, index }) => {
+    const name = prompt("Name?");
+    if (name !== null)
+      chart.api.add({ id: crypto.randomUUID(), name }, parentId, index);
+  });
+  ```
+
+  Ignore it and nothing happens.
+
+  A key at the end of a level declines rather than doing a no-op move — the order
+  would look the same either way, but a move that changes nothing is still a full
+  relayout and an undo entry for nothing.
+
+### Patch Changes
+
+- Updated dependencies [ccb0c29]
+- Updated dependencies [89a07b5]
+- Updated dependencies [f8ac009]
+- Updated dependencies [f31e5cd]
+  - @klad/core@1.7.0
+  - @klad/engine@1.7.0
+
 ## 1.6.0
 
 ### Minor Changes

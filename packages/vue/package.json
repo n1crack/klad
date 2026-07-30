@@ -1,6 +1,6 @@
 {
   "name": "@klad/vue",
-  "version": "1.6.0",
+  "version": "1.7.0",
   "description": "Klad for Vue 3 — a canvas tree engine for tens of thousands of nodes. Tiered, file, radial and sunburst layouts, with your own components on the nodes.",
   "keywords": [
     "tree",
