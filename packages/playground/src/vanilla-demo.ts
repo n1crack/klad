@@ -661,8 +661,15 @@ export function mountVanilla(
    * into a drawer, and a fit measured against a box that is about to change
    * is stale a moment later.
    *
-   * So it fits whenever the box changes, until the viewer touches the chart.
-   * After that the camera is theirs and nothing here moves it.
+   * And what it does is put the root near the top, not fit the tree. Fitting was the
+   * obvious answer and the wrong one: twenty-eight nodes across 414 pixels is
+   * everything visible and nothing readable — a wireframe, not a chart. The
+   * root at a legible size, with its children under it and the rest a swipe
+   * away, is what a phone can actually show. Whether that is right for a given example is a judgement,
+   * and this is the one place it is made.
+   *
+   * It re-centres whenever the box changes, until the viewer touches the
+   * chart. After that the camera is theirs and nothing here moves it.
    */
   let ownsCamera = true
   const releaseCamera = (): void => {
@@ -676,7 +683,38 @@ export function mountVanilla(
       if (!ownsCamera) return
       const box = host.getBoundingClientRect()
       if (box.width < 1 || box.height < 1) return
-      chart.api.fit()
+      const state = chart.api.getState()
+      if (state.bounds.maxX <= state.bounds.minX) return
+      // Where the root goes depends on which way the tree GROWS. Centring it
+      // spends half a screen on the empty side; putting it a fifth of the way
+      // in from the edge it grows away from leaves that space for the tree.
+      //
+      // A left-to-right chart caught this: the rule started as "near the top",
+      // which on `lr` put the root in the middle of the width with the entire
+      // tree off the right-hand edge — one card and a blank screen.
+      const mounted = optionsForLayout(example, layout)
+      const polar = layout === 'radial' || layout === 'sunburst'
+      const orientation = layout === 'tidy' ? (mounted.orientation ?? 'tb') : 'tb'
+      const near = 0.2
+      const far = 1 - near
+      const at = polar
+        ? { x: 0.5, y: 0.5 }
+        : orientation === 'lr'
+          ? { x: near, y: 0.5 }
+          : orientation === 'rl'
+            ? { x: far, y: 0.5 }
+            : orientation === 'bt'
+              ? { x: 0.5, y: far }
+              : { x: 0.5, y: near }
+      const view = chart.api.getView()
+      chart.api.setView({
+        ...view,
+        camera: {
+          ...view.camera,
+          x: view.camera.x + (box.width * at.x - state.rootScreenCentre.x),
+          y: view.camera.y + (box.height * at.y - state.rootScreenCentre.y),
+        },
+      })
     }
     const stopFit = chart.subscribe((state) => {
       if (state.bounds.maxX <= state.bounds.minX) return
