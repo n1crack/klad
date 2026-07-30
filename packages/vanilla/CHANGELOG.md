@@ -1,5 +1,76 @@
 # @klad/core
 
+## 1.8.0
+
+### Minor Changes
+
+- b217f4b: `edgeStyle: 'bezier'` — a curved connector.
+
+  ```ts
+  createKlad(el, { data, edgeStyle: "bezier" });
+  ```
+
+  The same two ends a `'tiered'` elbow joins, with a curve in between instead of
+  a right angle. It leaves the parent and enters the child square-on, so a run of
+  siblings still reads as one fan rather than as lines pointing at each other,
+  and it honours `orientation` the way the elbow does.
+
+  The one style no layout asks for, which is the point: every other value is some
+  layout's own idea of a connector. This is there for a chart that wants a softer
+  line.
+
+  The SVG export draws the same curve from the same control points, and the
+  culler needs no special case — the control points sit inside the rectangle the
+  two ends span, so the box that bounded an elbow bounds this too.
+
+- 8f102d8: `edgeFlow` — a travelling dash on the branches that are live.
+
+  ```ts
+  createKlad(el, {
+    data,
+    edgeFlow: (parent, child) => child.status === "active",
+  });
+  ```
+
+  For a flow, a dependency, a route that is carrying something. Asked once per
+  node when the data changes, never per frame. Colour, weight, dash pattern and
+  speed are theme tokens (`edgeFlowStroke` and friends).
+
+  **It keeps the chart drawing, and that is why it is a predicate rather than a
+  switch.** Everything else here renders only when something changes — an idle
+  chart costs nothing at all. A travelling dash has to advance every frame, so
+  for as long as one marked edge is in the visible tree the loop keeps going.
+  Marking one branch is cheap; marking everything is a decision about somebody's
+  battery. Collapse a branch and its edges stop counting.
+
+  Exports draw them as ordinary connectors: a dash frozen mid-travel in a still
+  is just an odd-looking gap. Reduced motion is left to you to honour, because
+  whether a flow still means anything standing still depends on what you are
+  using it for — the docs show the media query.
+
+  The playground has a **Flowing edges** example.
+
+### Patch Changes
+
+- 28b7239: Flowing edges stop animating when you zoom out past the point where a dash is
+  visible.
+
+  At the `block` tier a connector is a couple of pixels and a dash is smaller
+  than one, while dashed stroking costs the rasteriser real work per segment —
+  so on a large chart that was thousands of edges paying, sixty times a second,
+  for something nobody could see. They are drawn as ordinary lines there, and
+  the chart stops asking for frames at all.
+
+  The same rule the elbow radius already follows, for the same reason.
+
+  Measured on 20,000 nodes with every edge flowing, which is not a sensible
+  setting: 19 frames in 400ms close up, and 0 zoomed out.
+
+- Updated dependencies [b217f4b]
+- Updated dependencies [8f102d8]
+- Updated dependencies [28b7239]
+  - @klad/engine@1.8.0
+
 ## 1.7.0
 
 ### Minor Changes
