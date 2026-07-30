@@ -319,12 +319,23 @@ export function createCanvas2DRenderer(
       }
 
       // Pass 3: the flowing ones, last so they lie over everything they
-      // cross. The dash offset is already worked out — see
-      // `Frame.edgeFlowOffset` — because this function reads no clock.
+      // cross. The dash offset is worked out from the seconds the engine put
+      // on the frame, because this function reads no clock.
+      //
+      // Dropped entirely at the `block` tier, the same rule and the same
+      // reason as the elbow radius above: zoomed out that far a connector is
+      // a couple of pixels and the dash is not visible, while dashed
+      // stroking costs the rasteriser real work per segment — on a 50k chart
+      // that is thousands of edges paying for something nobody can see.
+      // They fall into pass 1 and are drawn as ordinary lines, and the
+      // caller stops asking for frames (see `Options.edgeFlow`), so a chart
+      // zoomed out goes still instead of burning a battery on invisible
+      // dashes.
+      //
       // `!= null` rather than `!== null`: a frame assembled by hand that
       // leaves the field off should draw an ordinary chart, not take the
       // whole render down on the first edge.
-      const flow = frame.edgeFlow
+      const flow = frame.tier === 'block' ? null : frame.edgeFlow
       if (flow != null) {
         let anyFlow = false
         ctx.beginPath()

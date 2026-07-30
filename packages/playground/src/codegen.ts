@@ -117,8 +117,18 @@ function optionsOf(snapshot: ConfigSnapshot): [key: string, value: unknown][] {
     // and change, which is the thing the example exists to not be.
     'maxChildren',
     'pinChildren',
+    // Same rule again: each is the entire point of the example that sets it,
+    // and a snippet that left it out would paste into a chart that quietly
+    // does not do the thing the reader just watched it do.
+    'canMove',
+    'keyboardEditing',
+    'edgeFlow',
   ]) {
-    if (declared[key] !== undefined) entries.push([key, declared[key]])
+    if (declared[key] === undefined) continue
+    // An example's own words for a function option, if it wrote any — see
+    // `Example.source`. A minified arrow is not a snippet anybody can use.
+    const written = example.source?.[key]
+    entries.push([key, written === undefined ? declared[key] : RAW(written)])
   }
   if (declared.nodeSize === undefined) entries.push(['nodeSize', { w: 180, h: 64 }])
   if (declared.label === undefined) entries.push(['label', RAW("(item) => String(item.name ?? '')")])

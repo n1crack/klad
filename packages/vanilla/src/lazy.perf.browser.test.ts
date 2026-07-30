@@ -298,3 +298,64 @@ describe('history: what it costs', () => {
     on.destroy()
   }, 120_000)
 })
+
+describe('flowing edges: what they cost', () => {
+  const N = 20_000
+
+  it('animates when it can be seen and goes still when it cannot', async () => {
+    // The honest question about this feature: what does it do to a big chart?
+    // Two answers, and they are different — drawing cost, and whether the
+    // chart draws at all.
+    const data = bigTree(N)
+    const el = host()
+    const chart = createKlad(el, {
+      data,
+      nodeSize: { w: 120, h: 40 },
+      worker: false,
+      // Every edge, which is the worst case and not a sensible setting.
+      edgeFlow: () => true,
+    })
+    await nextFrame()
+    await settle()
+
+    const framesOver = async (ms: number): Promise<number> => {
+      let count = 0
+      const stop = chart.subscribe(() => {
+        count++
+      })
+      await new Promise((r) => setTimeout(r, ms))
+      stop()
+      return count
+    }
+
+    chart.api.zoomTo(1)
+    await settle()
+    const closeUp = await framesOver(400)
+
+    // Zoomed out past the `block` threshold the dashes are not drawn at all,
+    // so there is nothing to advance and the chart stops asking for frames.
+    chart.api.zoomTo(0.1)
+    await settle()
+    const farOut = await framesOver(400)
+
+    console.log(`[flow] 20k — frames in 400ms: close up ${closeUp}, zoomed out ${farOut}`)
+    expect(closeUp).toBeGreaterThan(5)
+    expect(farOut).toBe(0)
+    chart.destroy()
+  }, 120_000)
+
+  it('costs a chart with no flowing edge nothing at all', async () => {
+    const data = bigTree(N)
+    const chart = createKlad(host(), { data, nodeSize: { w: 120, h: 40 }, worker: false })
+    await nextFrame()
+    await settle()
+    let count = 0
+    const stop = chart.subscribe(() => {
+      count++
+    })
+    await new Promise((r) => setTimeout(r, 400))
+    stop()
+    expect(count).toBe(0)
+    chart.destroy()
+  }, 60_000)
+})

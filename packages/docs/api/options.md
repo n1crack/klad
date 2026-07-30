@@ -131,7 +131,13 @@ is cheap. Marking everything is a decision about somebody's battery — so the
 option asks you which, rather than offering a switch.
 
 Collapse a branch and its edges stop counting: out of the visible tree is out of
-the animation.
+the animation. So does zooming out — past the `block` threshold (see
+`lodThresholds`) a connector is a couple of pixels wide, the dash is smaller
+than one, and dashed stroking is not free. There they are drawn as ordinary
+lines and the chart goes still.
+
+Measured on 20,000 nodes with **every** edge flowing, which is not a sensible
+setting: 19 frames in 400ms close up, and 0 zoomed out.
 
 Colour, weight, dash pattern and speed are [theme](/api/theme) tokens —
 `edgeFlowStroke`, `edgeFlowWidth`, `edgeFlowDash`, `edgeFlowSpeed`. The dash is

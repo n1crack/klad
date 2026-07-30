@@ -389,6 +389,20 @@ export interface Example {
    * a screenshot cannot show.
    */
   editControl?: boolean
+  /**
+   * Readable source for this example's function options, by option name.
+   *
+   * The code panel prints a function with `toString()`, which in a production
+   * build hands back the MINIFIED body — `(o,t)=>{let n=Ou(String(t.id))...}`
+   * where the reader wanted a predicate they could copy. That affects exactly
+   * the options worth reading: `canMove`, `edgeFlow`, `mayHaveChildren`,
+   * `pinChildren`, `collapsedByDefault`.
+   *
+   * So an example says what its own snippet should read, and the panel prefers
+   * that. What it must not do is drift from the real option beside it — the
+   * two are written together here for that reason.
+   */
+  source?: Record<string, string>
 }
 
 // Shared by every example except "Large", which needs its own scale and its
@@ -1222,6 +1236,9 @@ export const EXAMPLES: Example[] = [
         return department === 'Design' || department === 'Product'
       },
     },
+    source: {
+      edgeFlow: "(parent, child) => child.department === 'Design' || child.department === 'Product'",
+    },
     content: 'status',
   },
   {
@@ -1265,6 +1282,10 @@ export const EXAMPLES: Example[] = [
       },
     },
     content: 'status',
+    source: {
+      canMove:
+        "({ items, parentId }) =>\n    // A reorder keeps the same parent, and is not a reassignment.\n    items.every((item) => item.parentId === parentId) ||\n    items.every((item) => item.department === departmentOf(parentId))",
+    },
     editControl: true,
   },
   {

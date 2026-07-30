@@ -909,6 +909,25 @@ const THEME_CONTROLS: { caption: string; controls: ThemeControl[] }[] = [
         (theme) => theme.edgeCornerRadius,
         (edgeCornerRadius) => ({ edgeCornerRadius }),
       ),
+      // The flow tokens sit with the other connector tokens rather than in a
+      // group of their own: they do nothing at all unless an example marks
+      // some edges, and a section that is inert on every screen but one reads
+      // as broken rather than as conditional.
+      colourControl(
+        'Flow colour',
+        'edge-flow-colour',
+        (theme) => theme.edgeFlowStroke,
+        (edgeFlowStroke) => ({ edgeFlowStroke }),
+      ),
+      rangeControl(
+        'Flow speed',
+        'edge-flow-speed',
+        { min: 0, max: 120, step: 4 },
+        (theme) => theme.edgeFlowSpeed,
+        // Zero is a legitimate setting and not a broken one: a dashed line
+        // standing still is what a reduced-motion reader should get.
+        (edgeFlowSpeed) => ({ edgeFlowSpeed }),
+      ),
     ],
   },
   {

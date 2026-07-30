@@ -18,6 +18,7 @@ import {
   interpolate,
   computeSubtreeStats,
   normalize,
+  lodFor,
   overlayEnabled,
   pan,
   pruneToVisible,
@@ -1493,6 +1494,12 @@ export function createKlad(host: HTMLElement, options: Options): KladInstance {
   const anyFlowVisible = (): boolean => {
     const mask = edgeFlow
     if (mask === null) return false
+    // Nothing is animating at the block tier — the renderer draws these as
+    // ordinary lines there, because at that zoom a dash is smaller than a
+    // pixel and dashed stroking is not free. So the loop stops too: zoom out
+    // on a 20k chart and it goes still rather than redrawing thousands of
+    // invisible dashes sixty times a second.
+    if (lodFor(camera.k, lod) === 'block') return false
     for (let i = 0; i < visibleToSource.length; i++) {
       const source = visibleToSource[i]!
       if (source < mask.length && mask[source] === 1) return true
