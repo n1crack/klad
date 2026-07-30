@@ -536,11 +536,13 @@ function syncLayoutKnobs(example: Example, layout: LayoutName): void {
   layoutKnobFields.append(...knobs)
 }
 
-const demoGroup = sidebarGroup(
-  'Demo',
-  labelled('Stack', stackSelect.element),
-  labelled('Example', exampleSelect.element),
-)
+// Stack is NOT in here. It is a once-per-visit choice — which adapter you are
+// reading — and it used to sit above a list of two dozen examples that people
+// use constantly, pushing the thing they came for down the panel. Worse, it
+// only existed inside this panel, so changing adapter from View or Appearance
+// meant navigating back. It lives in the header now, where it is reachable
+// from anywhere and out of the way of the list.
+const demoGroup = sidebarGroup('Demo', labelled('Example', exampleSelect.element))
 
 // --- "View" group: camera + tree-shape controls, shared by every mounted chart ---
 
@@ -2030,7 +2032,46 @@ for (const [value, label] of [
   codeStackRow.append(button)
 }
 
-const codeGroup = sidebarGroup('Code', codeStackRow, codeFrame)
+/**
+ * The code drawer: a strip under the chart rather than one more panel in the
+ * rail.
+ *
+ * It was a panel, which made it a place you GO — and the snippet is not a
+ * settings page, it is feedback. Every control that changes it lives in some
+ * other panel, so watching a slider change the code meant moving the slider,
+ * navigating to Code, reading, and navigating back. Under the chart it is
+ * open beside whatever you are adjusting.
+ */
+const codeDrawer = document.createElement('div')
+codeDrawer.className = 'code-drawer'
+codeDrawer.hidden = true
+codeDrawer.append(codeStackRow, codeFrame)
+
+const codeToggle = document.createElement('button')
+codeToggle.type = 'button'
+codeToggle.className = 'btn code-toggle'
+
+let codeOpen = false
+const CODE_KEY = '@klad/playground-code'
+
+function setCodeOpen(open: boolean, remember = true): void {
+  codeOpen = open
+  codeDrawer.hidden = !open
+  codeToggle.textContent = open ? 'Hide code' : 'Show code'
+  codeToggle.setAttribute('aria-expanded', String(open))
+  if (remember) {
+    try {
+      localStorage.setItem(CODE_KEY, open ? '1' : '0')
+    } catch {
+      // A browser refusing storage is not a reason to refuse the click.
+    }
+  }
+  // Rendered only while it is open, and rendered NOW so it is never a frame
+  // behind the control that was just moved.
+  if (open) syncCode()
+}
+
+codeToggle.onclick = () => setCodeOpen(!codeOpen)
 
 /**
  * The live values of every control that ends up in the emitted options —
@@ -2090,7 +2131,6 @@ const PANELS: { id: string; label: string; body: HTMLElement }[] = [
   { id: 'minimap', label: 'Minimap', body: minimapGroup },
   { id: 'appearance', label: 'Appearance', body: appearanceGroup },
   { id: 'export', label: 'Export', body: exportGroup },
-  { id: 'code', label: 'Code', body: codeGroup },
 ]
 
 const PANEL_KEY = '@klad/playground-panel'
@@ -2202,7 +2242,17 @@ surface.className = 'surface'
 
 const content = document.createElement('main')
 content.className = 'content'
-content.append(description, surface)
+content.append(description, surface, codeDrawer)
+
+// Appended here rather than where the rest of the header is built, because
+// both of these are declared further down — the stack picker with the other
+// pickers, the code toggle with the drawer it opens. Putting the header
+// together in two places is the smaller wrong than hoisting either of them
+// away from what they belong with.
+//
+// Stack first, then the code toggle, then the theme: the two that change what
+// you are looking at, then the one that changes how it looks.
+headerActions.prepend(labelled('Stack', stackSelect.element), codeToggle)
 
 const layout = document.createElement('div')
 layout.className = 'layout'
@@ -2473,7 +2523,7 @@ function refresh(): void {
  * while the Code panel is closed, which is most of the time.
  */
 function refreshCode(): void {
-  if (activePanel === 'code') syncCode()
+  if (codeOpen) syncCode()
 }
 
 for (const type of ['input', 'change', 'click'] as const) {
@@ -2527,3 +2577,21 @@ function initialPanel(): string | null {
 }
 
 openPanel(initialPanel())
+
+/**
+ * The drawer starts closed for a first visit and remembers after that.
+ *
+ * Closed by default because the chart is the thing somebody came to see, and a
+ * snippet taking the bottom third before they have touched anything is an
+ * answer to a question they have not asked yet.
+ */
+setCodeOpen(
+  (() => {
+    try {
+      return localStorage.getItem(CODE_KEY) === '1'
+    } catch {
+      return false
+    }
+  })(),
+  false,
+)

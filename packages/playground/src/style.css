@@ -993,6 +993,54 @@ body {
 }
 
 /*
+ * The code drawer sits under the chart, inside `.content`, so it is open
+ * beside whichever sidebar panel is — the snippet is feedback on the controls,
+ * not a place you navigate to instead of them.
+ *
+ * A capped share of the height rather than a fixed one: on a short window the
+ * chart still gets most of the room, and on a tall one the snippet does not
+ * stretch into empty space.
+ */
+/* `display: flex` below beats the UA stylesheet's `[hidden] { display: none }`,
+   so the attribute has to be said again here or the drawer never actually
+   hides — it just sits there empty, since nothing renders into it while it is
+   closed. */
+.code-drawer[hidden] {
+  display: none;
+}
+
+.code-drawer {
+  display: flex;
+  flex-direction: column;
+  gap: 0.5rem;
+  flex: 0 0 auto;
+  max-height: 38vh;
+  min-height: 0;
+  padding: 0.75rem 0 0;
+  border-top: 1px solid var(--border);
+  overflow: hidden;
+}
+
+.code-drawer .code-frame {
+  min-height: 0;
+  overflow: auto;
+}
+
+/* In the header, beside the theme toggle: a once-per-visit choice that should
+   be reachable from every panel rather than living inside one of them. */
+.app-actions .field {
+  flex-direction: row;
+  align-items: center;
+  gap: 0.4rem;
+  margin: 0;
+}
+
+.app-actions .field > label {
+  margin: 0;
+  white-space: nowrap;
+}
+
+/*
  * Quiet until wanted: a small button in the block's corner, at low contrast
  * until the block is hovered or the button itself is focused. It used to be a
  * full-width accent bar under the snippet, which read as the panel's primary
