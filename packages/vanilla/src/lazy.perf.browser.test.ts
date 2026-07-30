@@ -44,6 +44,40 @@ function bigTree(n: number): NodeData[] {
 const nextFrame = () => new Promise((r) => requestAnimationFrame(() => r(null)))
 const settle = () => new Promise<void>((resolve) => setTimeout(() => resolve(), 300))
 
+/**
+ * Waits until the chart has actually stopped drawing, rather than for a fixed
+ * guess at how long that should take.
+ *
+ * `settle`'s 300ms is right for the toggle benchmarks above, where the
+ * question is how long a relayout took and one late frame changes no number.
+ * It is wrong for "does this chart stop asking for frames AT ALL": on a
+ * 20,000-node tree the zoom that precedes such a measurement can still be
+ * finishing 300ms later on a slower machine, and the single trailing frame it
+ * then delivers lands inside the measuring window and reads as an animation
+ * that never stopped. That is exactly how this failed on CI — `farOut` came
+ * back 1 — while passing on the developer machine it was written on.
+ *
+ * Waiting for real quiet keeps the assertion at a strict zero and makes it a
+ * statement about the feature instead of about the runner's speed. `capMs`
+ * only bounds the wait for a chart that never goes quiet; the assertion that
+ * follows is what fails in that case, and it should.
+ */
+async function quiet(
+  chart: ReturnType<typeof createKlad>,
+  quietMs = 300,
+  capMs = 10_000,
+): Promise<void> {
+  let last = performance.now()
+  const stop = chart.subscribe(() => {
+    last = performance.now()
+  })
+  const started = performance.now()
+  while (performance.now() - last < quietMs && performance.now() - started < capMs) {
+    await new Promise((resolve) => setTimeout(resolve, 50))
+  }
+  stop()
+}
+
 /** Median of `runs` collapse-and-expand pairs, in ms. Median rather than mean:
  * one GC pause in the middle of a run should not decide the number. */
 async function medianToggle(chart: ReturnType<typeof createKlad>, runs: number): Promise<number> {
@@ -334,8 +368,11 @@ describe('flowing edges: what they cost', () => {
 
     // Zoomed out past the `block` threshold the dashes are not drawn at all,
     // so there is nothing to advance and the chart stops asking for frames.
+    // `quiet` rather than `settle`: the claim is that the frames STOP, so the
+    // measurement has to start after the zoom's own last frame rather than a
+    // fixed 300ms later — see `quiet`.
     chart.api.zoomTo(0.1)
-    await settle()
+    await quiet(chart)
     const farOut = await framesOver(400)
 
     console.log(`[flow] 20k — frames in 400ms: close up ${closeUp}, zoomed out ${farOut}`)
@@ -348,7 +385,10 @@ describe('flowing edges: what they cost', () => {
     const data = bigTree(N)
     const chart = createKlad(host(), { data, nodeSize: { w: 120, h: 40 }, worker: false })
     await nextFrame()
-    await settle()
+    // Same reasoning as the test above: this one also asserts a strict zero,
+    // so it has to start counting after the mount's own last frame rather
+    // than a fixed interval after it began.
+    await quiet(chart)
     let count = 0
     const stop = chart.subscribe(() => {
       count++
