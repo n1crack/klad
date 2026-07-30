@@ -46,6 +46,7 @@ off()
 | `selectionChange` | `{ ids, items }` | The selection changed. Carries the whole selection, not a delta. |
 | `nodeDrop` | `NodeDropEvent` | A node was dropped somewhere new. Fires BEFORE anything moves. |
 | `addRequested` | `{ afterId, parentId, index }` | The viewer pressed `Shift+Enter` on a node and wants a sibling after it. A request, not an action — see [Without a pointer](/api/chart#without-a-pointer). |
+| `viewChange` | `ChartView` | Camera, open branches, selection, highlight, isolation, filter or lifted caps changed. The whole view, exactly what `getView()` returns. |
 | `filterChange` | `{ query, matched }` | The filter changed. `matched` is what `filter()` returns; `query` is `null` for none and for a predicate, which cannot be written down. |
 | `layoutChange` | `{ settings }` | The layout or one of its knobs changed. Carries the settings as they now stand, not the delta — so a sidebar mirroring the chart reads what IS. |
 | `childrenLoaded` | `{ id, item, items }` | `loadChildren` returned and the chart took the children in. Informational — it holds them either way. |

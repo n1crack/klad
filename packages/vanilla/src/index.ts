@@ -757,6 +757,21 @@ export interface KladEvents {
    * that set it. `query` is `null` for no filter and for a predicate, which
    * cannot be written down — the same limit `getView` states.
    */
+  /**
+   * The chart's view changed — camera, open branches, selection, highlight,
+   * isolation, filter or lifted caps. Carries the whole of it, exactly what
+   * `getView()` returns, so it goes straight back into `setView`.
+   *
+   * One event rather than subscribing to five and merging them, which is what
+   * mirroring this into a store used to mean. Fires at most once per change and
+   * never for a view identical to the last one, so panning does not flood it.
+   *
+   * A word about size: `open` names every open node, which on a large tree is
+   * a lot of ids. That is fine for `localStorage` or a saved report and too
+   * much for a URL — for a link, take the small parts (`camera`, `isolated`,
+   * `filter`) and let the rest default.
+   */
+  viewChange: (view: ChartView) => void
   filterChange: (event: { query: string | null; matched: string[] }) => void
   /**
    * The layout or one of its knobs changed, through `setLayoutOptions`.
@@ -1691,6 +1706,11 @@ export function createKlad(host: HTMLElement, options: Options): KladInstance {
 
   const stateListeners = new Set<(state: ChartState) => void>()
   const eventListeners = new Map<string, Set<(payload: never) => void>>()
+
+  /** Whether anyone is listening — so building a payload nobody wants can be
+   * skipped. Only worth asking for `viewChange`, whose payload walks the tree. */
+  const hasListener = (event: keyof KladEvents): boolean =>
+    (eventListeners.get(event)?.size ?? 0) > 0
 
   const emit = <E extends keyof KladEvents>(
     event: E,
@@ -3427,6 +3447,95 @@ export function createKlad(host: HTMLElement, options: Options): KladInstance {
   const publish = (): void => {
     const state = getState()
     for (const listener of stateListeners) listener(state)
+    publishView()
+  }
+
+  /**
+   * The open ids, rebuilt only when the open flags actually differ.
+   *
+   * `publish` runs once per drawn frame, so every frame of a pan comes through
+   * here — and listing the open nodes walks the whole tree. Cached against a
+   * COPY of the flags rather than a version counter bumped by hand: twelve
+   * places change `open`, and a counter one of them forgot is the same class
+   * of bug as a stale index. A byte compare of a typed array cannot be
+   * forgotten, and at fifty thousand nodes it is microseconds against building
+   * fifty thousand strings.
+   */
+  let openCache: { of: Tree; flags: Uint8Array; ids: string[] } | null = null
+  const openIdsNow = (): string[] => {
+    if (openCache !== null && openCache.of === tree && openCache.flags.length === open.length) {
+      let same = true
+      for (let i = 0; i < open.length; i++) {
+        if (openCache.flags[i] !== open[i]) {
+          same = false
+          break
+        }
+      }
+      // The SAME array back, which is what lets the comparison below settle it
+      // with a reference check instead of another walk.
+      if (same) return openCache.ids
+    }
+    const ids: string[] = []
+    for (let i = 0; i < tree.count; i++) if (open[i] === 1) ids.push(tree.indexToId[i]!)
+    // Frozen because it is handed out by reference and reused across
+    // emissions. `getView` copies its arrays for the reason its docblock
+    // gives — a snapshot that changes under whoever stored it is a bug that
+    // only shows up in them — and copying tens of thousands of ids once a
+    // frame is exactly what this cache exists to avoid. So it is shared and
+    // made impossible to write to instead.
+    openCache = { of: tree, flags: open.slice(), ids: Object.freeze(ids) as string[] }
+    return openCache.ids
+  }
+
+  /** The last view announced, kept to tell a real change from a redraw. */
+  let lastView: ChartView | null = null
+
+  /**
+   * Tells anyone listening what the chart's view now is, whole.
+   *
+   * One event rather than five, because a host mirroring this into a store or a
+   * URL wants the picture, not a stream of deltas to merge back into one. It is
+   * the same object `getView()` returns, so it goes straight to `setView`.
+   *
+   * Compared field by field rather than by stringifying: `open` can hold tens
+   * of thousands of ids, and serialising that once a frame to find out nothing
+   * moved would cost more than everything else the frame did. The open list
+   * compares by REFERENCE, which is exactly why `openIdsNow` hands the same
+   * array back when nothing changed.
+   */
+  const publishView = (): void => {
+    if (!hasListener('viewChange')) return
+    const openIds = openIdsNow()
+    const previous = lastView
+    const sameList = (a: string[] | null, b: string[] | null): boolean =>
+      a === b || (a !== null && b !== null && a.length === b.length && a.every((id, i) => id === b[i]))
+    if (
+      previous !== null &&
+      previous.open === openIds &&
+      previous.camera.x === camera.x &&
+      previous.camera.y === camera.y &&
+      previous.camera.k === camera.k &&
+      sameList(previous.selected ?? null, selectedIds) &&
+      sameList(previous.highlighted ?? null, highlightedIds) &&
+      (previous.isolated ?? null) === (isolatedIndex === -1 ? null : (tree.indexToId[isolatedIndex] ?? null)) &&
+      (previous.filter ?? null) === (typeof filterQuery === 'string' ? filterQuery : null) &&
+      (previous.uncapped ?? []).length === uncapped.size &&
+      (previous.revealed ?? []).length === revealed.size
+    ) {
+      return
+    }
+    const view: ChartView = {
+      camera: { ...camera },
+      open: openIds,
+      highlighted: highlightedIds === null ? null : [...highlightedIds],
+      isolated: isolatedIndex === -1 ? null : (tree.indexToId[isolatedIndex] ?? null),
+      selected: [...selectedIds],
+      filter: typeof filterQuery === 'string' ? filterQuery : null,
+      uncapped: [...uncapped],
+      revealed: [...revealed],
+    }
+    lastView = view
+    emit('viewChange', view)
   }
 
   /**

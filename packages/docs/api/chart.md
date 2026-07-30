@@ -63,12 +63,32 @@ chart.api.setView(view, { animate: true })   // fly there instead of arriving
 ```
 
 A view is a plain serialisable object naming nodes by id, so it survives the
-data being refetched, reordered or grown — put one in a URL and you have a
-link to a place in a chart. One exception, and it is stated rather than
+data being refetched, reordered or grown.
+
+**How big it is depends on your tree.** `open` names every open node, so on a
+small chart a whole view fits in a URL and on a large one it does not. For a
+link, take the parts that stay small — `camera`, `isolated`, `filter` — and let
+the rest default; for a full restore, `localStorage` or your own store.
+`setView` fills in whatever you leave out. One exception, and it is stated rather than
 rounded: a [`filter`](#searching-and-filtering-are-different-things) set with a
 predicate cannot be written into a URL, so `getView` reports `filter: null` for
 one and a restored view shows the whole tree. Ids it names that are no longer in the tree are
 ignored rather than throwing, which is what keeps an old bookmark usable.
+
+### Hearing about it
+
+```ts
+chart.on('viewChange', (view) => store.save(view))   // straight back into setView
+```
+
+One event for the whole view rather than subscribing to five and merging them
+back into one. It fires when any of it changes and never for a redraw that
+changed nothing, so panning does not flood it.
+
+The `open` array it carries is **frozen and shared between emissions** — it is
+rebuilt only when the open state actually changes, which is what keeps this
+affordable on a large tree, and sorting it in place would corrupt that. Copy it
+if you need to reorder.
 
 ## Selection
 

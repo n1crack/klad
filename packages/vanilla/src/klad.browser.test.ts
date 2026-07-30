@@ -3,6 +3,7 @@ import {
   createKlad,
   type NodeContext,
   type NodeData,
+  type ChartView,
   type LayoutSettings,
   type NodePlace,
   type Options,
@@ -5577,6 +5578,98 @@ describe('walking the results, and hearing about changes', () => {
     expect(seen[1]!.edgeStyle).toBe('none')
     // And a key nobody set is absent rather than undefined.
     expect('maxRings' in seen[1]!).toBe(false)
+    chart.destroy()
+  })
+})
+
+describe('one event for the whole view', () => {
+  it('reports every part of it, and only when it changed', async () => {
+    const seen: ChartView[] = []
+    const chart = make({})
+    chart.on('viewChange', (view) => seen.push(view))
+    await nextFrame()
+    await settle()
+    const afterMount = seen.length
+
+    chart.api.collapse('b')
+    await settleTransition()
+    await settle()
+    expect(seen.at(-1)!.open).not.toContain('b')
+
+    chart.api.select(['c'])
+    await settle()
+    expect(seen.at(-1)!.selected).toEqual(['c'])
+
+    chart.api.filter('Leaf')
+    await settleTransition()
+    await settle()
+    expect(seen.at(-1)!.filter).toBe('Leaf')
+
+    // Redrawing on its own says nothing — a frame is not a change.
+    const before = seen.length
+    chart.api.refresh()
+    await settleTransition()
+    await settle()
+    expect(seen.length).toBe(before)
+    expect(seen.length).toBeGreaterThan(afterMount)
+    chart.destroy()
+  })
+
+  it('goes straight back into setView', async () => {
+    let latest: ChartView | null = null
+    const chart = make({})
+    chart.on('viewChange', (view) => (latest = view))
+    await nextFrame()
+    await settle()
+    chart.api.collapse('b')
+    chart.api.select(['c'])
+    await settleTransition()
+    await settle()
+    const saved = latest!
+
+    chart.api.expand('b')
+    chart.api.select(null)
+    await settleTransition()
+    await settle()
+    expect(chart.api.getView().open).toContain('b')
+
+    chart.api.setView(saved)
+    await settleTransition()
+    await settle()
+    expect(chart.api.getView().open).not.toContain('b')
+    expect(chart.api.getState().selected).toEqual(['c'])
+    chart.destroy()
+  })
+
+  it('does not relist the open nodes for a camera move', async () => {
+    // The payload names every open node, and this fires once per drawn frame —
+    // so a pan would walk the whole tree per frame if the list were rebuilt
+    // each time. It is cached, and the proof is that two views published
+    // across a camera change share the very same array.
+    const seen: ChartView[] = []
+    const chart = make({})
+    chart.on('viewChange', (view) => seen.push(view))
+    await nextFrame()
+    await settle()
+
+    chart.api.zoomTo(1.5)
+    await settle()
+    chart.api.zoomTo(2)
+    await settle()
+    const last = seen.at(-1)!
+    const previous = seen.at(-2)!
+    expect(last.camera.k).not.toBe(previous.camera.k)
+    expect(last.open).toBe(previous.open)
+
+    // And it is frozen, because it is shared: a holder sorting it in place
+    // would corrupt the cache every later comparison reads.
+    expect(Object.isFrozen(last.open)).toBe(true)
+
+    // Opening something does rebuild it.
+    chart.api.collapse('b')
+    await settleTransition()
+    await settle()
+    expect(seen.at(-1)!.open).not.toBe(last.open)
     chart.destroy()
   })
 })
