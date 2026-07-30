@@ -197,19 +197,32 @@ inside a 16ms interaction — worse, `loadChildren` makes opening a node
 asynchronous and data-changing, so that round trip grows a second leg. The
 chart keeps holding it and now says what it holds.
 
-## 1.8 — edges worth looking at
+## 1.8 — released: edges worth looking at
 
-A connector is a line and nothing else. There is a case for more: a dashed
-line for a relationship that is provisional, a dash that travels to show which
-way something flows, a colour that means something.
+A connector was a line and nothing else. The line held while adding to it is
+the one already drawn around `edgeStyle`: **choosing among answers the chart
+knows how to draw is a setting; handing over the drawing is a plugin.** So a
+style and a predicate — not a renderer, and not an animation language.
 
-The line to hold is the one already drawn around `edgeStyle`: **choosing among
-answers the chart knows how to draw is a setting; handing over the drawing is
-a plugin.** So a small set of styles and a way to say which nodes get them —
-not a renderer, and not an animation language.
+- **`edgeStyle: 'bezier'`** — the same two ends the tiered elbow joins, with a
+  curve in between instead of a right angle. It leaves the parent and enters
+  the child square-on, so a run of siblings still reads as one fan rather than
+  as lines pointing at each other. The one style no layout asks for, which is
+  the point: every other value is some layout's own idea of a connector.
+- **`edgeFlow`** — a travelling dash on the branches that are live, for a flow,
+  a dependency, a route that is carrying something. A predicate rather than a
+  switch, and deliberately so: everything else here draws only when something
+  changes, while a travelling dash has to advance every frame. Marking one
+  branch is cheap; marking everything is a decision about somebody's battery.
 
-It ships with a playground example, because an animated edge is the sort of
-thing a screenshot cannot argue for.
+Zoomed out past the tier where a dash is smaller than the line carrying it,
+flowing edges are drawn as ordinary connectors and the chart stops asking for
+frames at all — the same rule the elbow radius already follows, for the same
+reason. Exports draw them still, since a dash frozen mid-travel in a picture is
+just an odd-looking gap.
+
+The playground has a **Flowing edges** example, because an animated edge is the
+sort of thing a screenshot cannot argue for.
 
 ## 2.0 — beyond trees
 
