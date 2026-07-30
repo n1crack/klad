@@ -27,7 +27,7 @@ what each shape is for.
 | Option | Type | Default | |
 |---|---|---|---|
 | `layout` | `'tidy' \| 'file' \| 'radial' \| 'sunburst'` | `'tidy'` | Which shape. `tidy` is the tiered chart; `file` indented rows; `radial` concentric rings; `sunburst` nested arcs. |
-| `edgeStyle` | `'tiered' \| 'folder' \| 'spoke' \| 'none'` | per-layout | The line drawn between a parent and a child, overriding the one the layout would pick — see [Choosing the connector](#choosing-the-connector). |
+| `edgeStyle` | `'tiered' \| 'folder' \| 'spoke' \| 'bezier' \| 'none'` | per-layout | The line drawn between a parent and a child, overriding the one the layout would pick — see [Choosing the connector](#choosing-the-connector). |
 | `layoutStep` | `number` | derived | The per-level step, whose meaning is per-layout: the `file` indent, the `radial`/`sunburst` ring size. Omitted, each layout derives one from your `nodeSize`. |
 | `rowGap` | `number` | `spacing.y` | `file` only: the gap between consecutive rows. |
 | `maxRings` | `number` | `3` | `sunburst` only: how many rings are drawn around the centre. Deeper nodes are still there — drilling in reveals them. |
@@ -65,6 +65,7 @@ what each shape is for.
 | `canMove` | `(event) => boolean` | — | Your rule on whether a move is allowed — asked during the drag, at the drop, and by `move()`. See [A rule of your own](/api/chart#a-rule-of-your-own). |
 | `history` | `number \| false` | `100` | How many edits `undo` can walk back. `false` turns it off, for an app with its own undo stack. See [Undo, redo](/api/chart#undo-redo-and-what-to-save). |
 | `keyboardEditing` | `boolean` | `false` | Reorder, indent, outdent and delete the focused node from the keyboard. See [Without a pointer](/api/chart#without-a-pointer). |
+| `edgeFlow` | `(parent, child) => boolean` | — | Which connectors are drawn as a travelling dash. **Keeps the chart redrawing** — see [Edges that flow](#edges-that-flow). |
 | `selection` | `boolean` | `false` | Selecting nodes with the pointer — click, ctrl/cmd-click, shift-click, shift-drag for a box, alt-drag for a lasso. `select()` and `selectionChange` work either way; this is only about the pointer. |
 | `keyboard` | `boolean` | `true` | Camera control from the keyboard, and the tab stop that makes the chart reachable at all — see [Navigating](/guide/navigating#keyboard). |
 | `animate` | `boolean` | `true` | Every animation this layer starts on its own: the expand/collapse transition, camera eases, kinetic panning. `prefers-reduced-motion: reduce` forces it off regardless. |
@@ -89,6 +90,7 @@ createKlad(el, { data, edgeStyle: 'none' })    // no connectors at all
 | `'tiered'` | Down, across, down — the org chart elbow. The default everywhere except the three below. |
 | `'folder'` | A guide line down the indent gutter. What `file` uses. |
 | `'spoke'` | Straight, centre to centre. What `radial` uses. |
+| `'bezier'` | The same two ends as `'tiered'`, curved instead of bent. The one style no layout asks for. |
 | `'none'` | Nothing is drawn between nodes. What `sunburst` uses, since its arcs already touch. |
 
 Leaving it out is right almost every time — a folder guide line on a tiered
@@ -106,6 +108,47 @@ is drawn to it, and at the zoom where the cards and their toggles are gone it
 is the only thing that says so. The exception is `'folder'`, which drops it on
 purpose: a file row has a chevron beside its name, and a stub underneath would
 say the same thing twice.
+
+## Edges that flow
+
+```ts
+createKlad(el, {
+  data,
+  edgeFlow: (parent, child) => child.status === 'active',
+})
+```
+
+A travelling dash, for a branch that is live — a flow, a dependency, a route
+that is carrying something. Asked once per node whenever the data changes,
+never per frame. An edge is named by its **child**, since every node has
+exactly one parent.
+
+**It keeps the chart drawing, and that is the point of it being a predicate.**
+Everything else here renders only when something changes; an idle chart costs
+nothing at all. A travelling dash has to advance every frame, so for as long as
+one marked edge is in the visible tree the loop keeps going. Marking one branch
+is cheap. Marking everything is a decision about somebody's battery — so the
+option asks you which, rather than offering a switch.
+
+Collapse a branch and its edges stop counting: out of the visible tree is out of
+the animation.
+
+Colour, weight, dash pattern and speed are [theme](/api/theme) tokens —
+`edgeFlowStroke`, `edgeFlowWidth`, `edgeFlowDash`, `edgeFlowSpeed`. The dash is
+in screen pixels and does not scale with zoom, so it stays legible exactly when
+the chart gets busy enough to need it.
+
+Exports draw these as ordinary connectors. A dash frozen mid-travel in a PNG is
+just an odd-looking gap.
+
+**Reduced motion is yours to honour**, not the chart's to assume: whether a
+flow still means anything standing still depends on what you are using it for.
+Read the media query and drop the predicate.
+
+```ts
+const still = matchMedia('(prefers-reduced-motion: reduce)').matches
+createKlad(el, { data, ...(still ? {} : { edgeFlow: isLive }) })
+```
 
 ## Where a node sits
 

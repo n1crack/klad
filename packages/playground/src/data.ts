@@ -1208,6 +1208,23 @@ export const EXAMPLES: Example[] = [
     content: 'none',
   },
   {
+    id: 'flow',
+    name: 'Flowing edges',
+    description:
+      'The dashes travel down the branches that are live. Which ones flow is a predicate you write, not a style you switch on \u2014 and that is deliberate: everything else here draws only when something changes, while a travelling dash has to redraw every frame. Marking one branch is cheap; marking the whole chart is a decision about somebody\u2019s battery. Collapse a live branch and the chart goes quiet again.',
+    data: SHARED_DATA,
+    options: {
+      nodeSize: { w: 200, h: 72 },
+      // Two of the eight departments are "live" — enough to see the dashes
+      // travel without every line in the chart moving at once.
+      edgeFlow: (_parent, child) => {
+        const department = departmentOf(String(child.id))
+        return department === 'Design' || department === 'Product'
+      },
+    },
+    content: 'status',
+  },
+  {
     id: 'drag-drop',
     name: 'Drag and drop',
     description:

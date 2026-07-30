@@ -35,6 +35,9 @@ export interface ChartHost {
   /** Reduces the visible tree to the nodes in `keep` — see
    * `ChartEngine.setFilter`. */
   setFilter(keep: Uint8Array | null): void
+  /** Which connectors flow, SOURCE-indexed by the child — see
+   * `ChartEngine.setEdgeFlow`. */
+  setEdgeFlow(flow: Uint8Array | null): void
   /** Removes the nodes a capped level pushed out of view — see
    * `ChartEngine.setOverflow`. */
   setOverflow(hide: Uint8Array | null): void
@@ -311,6 +314,10 @@ export function createChartHost(
     setFilter(keep) {
       engine?.setFilter(keep)
       post({ t: 'filter', keep })
+    },
+    setEdgeFlow(flow) {
+      engine?.setEdgeFlow(flow)
+      post({ t: 'edgeFlow', flow })
     },
     setOverflow(hide) {
       engine?.setOverflow(hide)

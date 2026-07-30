@@ -71,6 +71,9 @@ self.onmessage = (event: MessageEvent<MainToWorker>): void => {
       case 'filter':
         engine?.setFilter(message.keep)
         break
+      case 'edgeFlow':
+        engine?.setEdgeFlow(message.flow)
+        break
       case 'overflow':
         engine?.setOverflow(message.hide)
         break

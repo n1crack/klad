@@ -411,6 +411,8 @@ function createPathRecorder(): RenderContext2D & { data(): string } {
     },
     quadraticCurveTo: noop,
     bezierCurveTo: noop,
+    setLineDash: noop,
+    lineDashOffset: 0,
     roundRect: noop,
     rect: noop,
     closePath: () => {

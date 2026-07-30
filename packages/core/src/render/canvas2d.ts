@@ -34,6 +34,9 @@ export const HIDDEN_DOT_PX = 2.5
  * `stats.lastDrawCalls.edgeStrokes` is asserted by the tests rather than left
  * to trust.
  */
+/** Reused so resetting the dash does not allocate an array per frame. */
+const EMPTY_DASH: number[] = []
+
 export function createCanvas2DRenderer(
   surface: RenderSurface,
   initialTheme: Theme,
@@ -312,6 +315,47 @@ export function createCanvas2DRenderer(
           ctx.lineWidth = theme.edgeHighlightWidth
           ctx.stroke()
           calls.edgeStrokes = 2
+        }
+      }
+
+      // Pass 3: the flowing ones, last so they lie over everything they
+      // cross. The dash offset is already worked out — see
+      // `Frame.edgeFlowOffset` — because this function reads no clock.
+      // `!= null` rather than `!== null`: a frame assembled by hand that
+      // leaves the field off should draw an ordinary chart, not take the
+      // whole render down on the first edge.
+      const flow = frame.edgeFlow
+      if (flow != null) {
+        let anyFlow = false
+        ctx.beginPath()
+        for (let n = 0; n < edgeCount; n++) {
+          const i = edges[n]!
+          const p = parent[i]!
+          if (p === -1 || flow[i] !== 1) continue
+          traceEdge(i, p)
+          anyFlow = true
+        }
+        if (anyFlow) {
+          // The whole pattern, not just the first two: a dash array can have
+          // any number of segments and repeats over their total.
+          let total = 0
+          for (const segment of theme.edgeFlowDash) total += segment
+          const period = total > 0 ? total : 1
+          ctx.setLineDash(theme.edgeFlowDash)
+          // Wrapped to one period, so the number stays small however long the
+          // page has been open — an offset growing without bound loses
+          // precision, and a dash that drifts out of step after an hour is a
+          // bug nobody would think to look for. Negative so the dashes travel
+          // from parent to child rather than back up the tree.
+          ctx.lineDashOffset = -((frame.edgeFlowSeconds * theme.edgeFlowSpeed) % period)
+          ctx.strokeStyle = theme.edgeFlowStroke
+          ctx.lineWidth = theme.edgeFlowWidth
+          ctx.stroke()
+          // Put it back: the dash is a property of the CONTEXT, and a node
+          // outline drawn after this would come out dashed too.
+          ctx.setLineDash(EMPTY_DASH)
+          ctx.lineDashOffset = 0
+          calls.edgeStrokes += 1
         }
       }
     }

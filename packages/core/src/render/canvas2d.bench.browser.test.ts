@@ -73,6 +73,8 @@ function gridFrame(count: number, tier: Frame['tier']): Frame {
     ringActive: false,
     ringBox: new Float64Array(4),
     ringProgress: 0,
+    edgeFlow: null,
+    edgeFlowSeconds: 0,
   }
 }
 

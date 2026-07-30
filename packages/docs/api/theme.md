@@ -60,6 +60,10 @@ and `DARK_THEME` are both exported, ready to spread — see
 | `highlightStroke` | `'#f59e0b'` | |
 | `edgeHighlightStroke` | `'#f59e0b'` | A connector whose **both** endpoints are highlighted — the edges along a highlighted path. |
 | `edgeHighlightWidth` | `2.5` | Its own weight rather than `edgeWidth`: a line needs more ink than a node outline to read at the same strength. |
+| `edgeFlowStroke` | The colour of a flowing connector. |
+| `edgeFlowWidth` | Its weight. |
+| `edgeFlowDash` | The dash pattern, in screen pixels — unscaled by zoom. |
+| `edgeFlowSpeed` | Pixels per second; negative runs the other way. |
 | `selectionStroke` | `'#2563eb'` | A selected node's outline, drawn **over** its own stroke rather than replacing it — a selected node is still whatever kind of node it was. Separate from the highlight because the two say different things and co-occur. |
 | `selectionStrokeWidth` | `2.5` | |
 | `ringStroke` | `'#f59e0b'` | The one-shot confirmation flash. |

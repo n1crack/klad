@@ -57,6 +57,8 @@ export interface RenderContext2D {
     x: number,
     y: number,
   ): void
+  setLineDash(segments: number[]): void
+  lineDashOffset: number
   roundRect(x: number, y: number, w: number, h: number, radii: number): void
   rect(x: number, y: number, w: number, h: number): void
   fill(): void
@@ -279,6 +281,28 @@ export interface Frame {
    * fade-out alpha from this single number.
    */
   ringProgress: number
+  /**
+   * Which connectors flow, by CHILD index in the pruned space — an edge is
+   * named by the node it arrives at, since every node has exactly one parent.
+   * `null` when none do, which is the common case and costs nothing.
+   *
+   * A mask rather than a per-edge callback because the edges are drawn as one
+   * batched path per treatment: a stroke style belongs to a path, so each
+   * distinct look is a pass, and a small fixed number of passes is affordable
+   * where an arbitrary per-edge colour is not.
+   */
+  edgeFlow: Uint8Array | null
+  /**
+   * The clock, in seconds, for advancing the dash pattern.
+   *
+   * Handed over rather than read here, for the same reason `ringProgress` is
+   * computed upstream: a frame has to be a pure function of its inputs. The
+   * renderer turns it into an offset using its own `edgeFlowDash` and
+   * `edgeFlowSpeed`, because both are theme tokens and the theme lives on
+   * this side. An export ignores it, which is why the SVG's dashes stand
+   * still.
+   */
+  edgeFlowSeconds: number
 }
 
 export interface DrawCallStats {

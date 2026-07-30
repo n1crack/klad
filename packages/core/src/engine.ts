@@ -115,6 +115,15 @@ export interface ChartEngine {
    */
   setFilter(keep: Uint8Array | null): void
   /**
+   * Which connectors are drawn flowing — SOURCE-indexed, marking the CHILD of
+   * each edge, since every node has exactly one parent. `null` for none.
+   *
+   * Does not relayout: nothing about where a node sits depends on how its
+   * edge is drawn. The projection into pruned space is rebuilt lazily, on the
+   * next frame that needs it.
+   */
+  setEdgeFlow(flow: Uint8Array | null): void
+  /**
    * Removes the nodes in `hide` — 1 to go, SOURCE-indexed — or `null` for
    * none. See the field of the same name: the tree still contains them, only
    * the drawn tree does not.
@@ -1321,6 +1330,11 @@ export function createChartEngine(renderer: Renderer): ChartEngine {
    * same reason it is not a draw-time filter.
    */
   let filterKeep: Uint8Array | null = null
+  /** Which edges flow, SOURCE-indexed by the child — see `setEdgeFlow`. */
+  let edgeFlowSource: Uint8Array | null = null
+  /** The same thing in the PRUNED space the renderer works in, rebuilt with
+   * the layout because a pruned index means nothing across one. */
+  let edgeFlowPruned: Uint8Array | null = null
   /**
    * SOURCE-indexed: 1 for a node a capped level has pushed out of view.
    *
@@ -1581,6 +1595,26 @@ export function createChartEngine(renderer: Renderer): ChartEngine {
       )
     }
     return out
+  }
+
+  /** `edgeFlowSource` in the pruned space, built on demand and kept until the
+   * layout or the mask changes. `null` when nothing flows, which is the
+   * common case and lets the renderer skip a whole pass. */
+  const flowMask = (): Uint8Array | null => {
+    if (edgeFlowSource === null) return null
+    if (edgeFlowPruned !== null && edgeFlowPruned.length === visibleToSource.length) {
+      return edgeFlowPruned
+    }
+    const mask = new Uint8Array(visibleToSource.length)
+    let any = false
+    for (let i = 0; i < visibleToSource.length; i++) {
+      if (edgeFlowSource[visibleToSource[i]!] === 1) {
+        mask[i] = 1
+        any = true
+      }
+    }
+    edgeFlowPruned = any ? mask : new Uint8Array(0)
+    return any ? mask : null
   }
 
   const relayout = (now: number): void => {
@@ -2246,6 +2280,13 @@ export function createChartEngine(renderer: Renderer): ChartEngine {
       ringActive,
       ringBox: ringBoxBuffer,
       ringProgress,
+      edgeFlow: flowMask(),
+      // Seconds, not pixels: the dash pattern and its speed are theme tokens
+      // and the theme lives in the renderer. Same split as `ringProgress` —
+      // the engine hands over the clock reading, the renderer decides what it
+      // looks like — which is what keeps a frame a pure function of its
+      // inputs without this layer needing to know about dashes.
+      edgeFlowSeconds: now / 1000,
     })
 
     // Reports only the genuinely on-screen set (see the `ChartEngine.render`
@@ -2449,6 +2490,12 @@ export function createChartEngine(renderer: Renderer): ChartEngine {
     setOverflow(hide) {
       overflowHide = hide === null ? null : Uint8Array.from(hide)
       layoutDirty = true
+    },
+    setEdgeFlow(flow) {
+      edgeFlowSource = flow
+      // Only the projection is stale, not the layout — nothing about where a
+      // node sits depends on whether its edge is dashed.
+      edgeFlowPruned = null
     },
     setFilter(keep) {
       // Copied rather than aliased, like every other caller-owned buffer here:

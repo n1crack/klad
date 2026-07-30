@@ -31,6 +31,8 @@ function recorder(): RenderContext2D & { calls: string[] } {
     closePath: () => calls.push('Z'),
     quadraticCurveTo: noop,
     bezierCurveTo: noop,
+    setLineDash: noop,
+    lineDashOffset: 0,
     roundRect: noop,
     rect: noop,
     fill: noop,

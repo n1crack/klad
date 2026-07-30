@@ -105,6 +105,8 @@ function makeRecorder(): {
       // sides of the cross-check.
       currentPath?.push({ x: cpx, y: cpy }, { x, y })
     },
+    setLineDash() {},
+    lineDashOffset: 0,
     bezierCurveTo(c1x, c1y, c2x, c2y, x, y) {
       // Three points, matching an SVG `C` command's three coordinate pairs
       // for the same reason the quadratic records two.
@@ -228,6 +230,8 @@ function frameFrom(built: Built): Frame {
     ringActive: false,
     ringBox: new Float64Array(4),
     ringProgress: 0,
+  edgeFlow: null,
+  edgeFlowSeconds: 0,
   }
 }
 
@@ -544,6 +548,8 @@ describe('edge corner radius clamps against a short connector', () => {
       ringActive: false,
       ringBox: new Float64Array(4),
       ringProgress: 0,
+  edgeFlow: null,
+  edgeFlowSeconds: 0,
     }
     expect(() => renderer.draw(frame)).not.toThrow()
   })

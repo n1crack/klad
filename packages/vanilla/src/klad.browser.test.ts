@@ -5801,3 +5801,103 @@ describe('the curved connector', () => {
     chart.destroy()
   })
 })
+
+describe('a connector that flows', () => {
+  const FLOW = [
+    { id: 'a', name: 'Root' },
+    { id: 'b', parentId: 'a', name: 'Live', live: true },
+    { id: 'c', parentId: 'a', name: 'Quiet' },
+    { id: 'd', parentId: 'b', name: 'Leaf' },
+  ]
+  const flowing = (overrides: Partial<Options> = {}) =>
+    createKlad(host(), {
+      data: FLOW,
+      nodeSize: { w: 120, h: 48 },
+      label: (item) => String(item.name ?? ''),
+      worker: false,
+      ...overrides,
+    })
+
+  /**
+   * How many frames the CHART draws over a stretch of wall clock.
+   *
+   * Through `subscribe`, which publishes once per drawn frame. Counting
+   * `requestAnimationFrame` instead measures the browser's pulse, which ticks
+   * at 60fps whether or not this chart asked for anything — the first version
+   * of these tests did that and passed with the animation ripped out.
+   */
+  const framesOver = async (chart: ReturnType<typeof createKlad>, ms: number): Promise<number> => {
+    let count = 0
+    const stop = chart.subscribe(() => {
+      count++
+    })
+    await new Promise((r) => setTimeout(r, ms))
+    stop()
+    return count
+  }
+
+  it('keeps drawing while a flowing edge is in the tree, and stops when none is', async () => {
+    // The cost this feature has and nothing else here does: an idle chart
+    // renders nothing at all, and a travelling dash has to advance per frame.
+    const still = flowing()
+    await nextFrame()
+    await settle()
+    expect(await framesOver(still, 250)).toBe(0)
+    still.destroy()
+
+    const live = flowing({ edgeFlow: (_p: NodeData, child: NodeData) => child.live === true })
+    await nextFrame()
+    await settle()
+    // A frame every ~16ms for a quarter second is well over five.
+    expect(await framesOver(live, 250)).toBeGreaterThan(5)
+    live.destroy()
+  })
+
+  it('does not keep drawing when the marked edge is folded away', async () => {
+    const chart = flowing({ edgeFlow: (_p: NodeData, child: NodeData) => child.id === 'd' })
+    await nextFrame()
+    await settle()
+
+    chart.api.collapse('b')
+    await settleTransition()
+    await settle()
+    // A collapse leaves the chart drawing for a while after the transition
+    // itself — the minimap and the screen-reader mirror are both rebuilt on
+    // later frames — so the measurement starts once all of that has run out.
+    // Taken too early it reads as an animation that never stopped, which is
+    // what the first version of this test did.
+    await new Promise((r) => setTimeout(r, 1500))
+    // `d` is out of the visible tree, so there is nothing to animate and the
+    // chart goes back to costing nothing.
+    expect(await framesOver(chart, 250)).toBe(0)
+    chart.destroy()
+  })
+
+  it('marks the child, not the parent', async () => {
+    const asked: [string, string][] = []
+    const chart = flowing({
+      edgeFlow: (parent: NodeData, child: NodeData) => {
+        asked.push([String(parent.id), String(child.id)])
+        return false
+      },
+    })
+    await nextFrame()
+    await settle()
+    // One call per edge — three edges, and the root is not asked about.
+    expect(asked).toEqual([
+      ['a', 'b'],
+      ['a', 'c'],
+      ['b', 'd'],
+    ])
+    chart.destroy()
+  })
+
+  it('leaves an export alone, since a still cannot flow', async () => {
+    const chart = flowing({ edgeFlow: () => true })
+    await nextFrame()
+    await settle()
+    // No dash array in the SVG: a dash frozen mid-travel is just a gap.
+    expect(chart.api.toSVG()).not.toContain('stroke-dasharray')
+    chart.destroy()
+  })
+})

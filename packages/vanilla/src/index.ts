@@ -441,6 +441,33 @@ export interface Options {
    * Default `false`.
    */
   keyboardEditing?: boolean
+  /**
+   * Which connectors are drawn as a travelling dash — a flow, a dependency, a
+   * route that is live.
+   *
+   * ```ts
+   * edgeFlow: (parent, child) => child.status === 'active'
+   * ```
+   *
+   * Asked once per node whenever the data changes, never per frame. An edge is
+   * named by its CHILD, since every node has exactly one parent.
+   *
+   * **It keeps the chart drawing.** Everything else here renders only when
+   * something changes, and an idle chart costs nothing; a travelling dash has
+   * to advance every frame, so as long as one marked edge is in the visible
+   * tree the loop keeps going. That is the reason this is a predicate rather
+   * than a switch — marking one branch is cheap, marking everything is a
+   * decision about somebody's battery.
+   *
+   * Colour, weight, dash pattern and speed are theme tokens (`edgeFlowStroke`
+   * and friends). A `prefers-reduced-motion` setting is not consulted here:
+   * see the guide for how to honour it, since whether "flow" still means
+   * anything standing still is your call, not the chart's.
+   *
+   * SVG and PNG exports draw these as ordinary connectors — a dash frozen
+   * mid-travel in a still is just an odd-looking gap.
+   */
+  edgeFlow?: (parent: NodeData, child: NodeData) => boolean
   dragAndDrop?: boolean
   /**
    * Your rule on whether a move is allowed. `true` to permit it; omitted,
@@ -1450,6 +1477,47 @@ export function createKlad(host: HTMLElement, options: Options): KladInstance {
    */
   const loadedChildren = new Map<string, NodeData[]>()
 
+  /** Which edges flow, SOURCE-indexed by the child — see `Options.edgeFlow`.
+   * `null` when the option is absent, which is the common case and costs
+   * nothing anywhere. */
+  let edgeFlow: Uint8Array | null = null
+
+  /**
+   * Whether any flowing edge is in the visible tree, which is what decides
+   * whether the frame loop keeps going.
+   *
+   * One pass over the visible set, and only when there is a mask at all — so a
+   * chart without the option pays a null check per frame, and one with it pays
+   * a scan next to a render it is already doing.
+   */
+  const anyFlowVisible = (): boolean => {
+    const mask = edgeFlow
+    if (mask === null) return false
+    for (let i = 0; i < visibleToSource.length; i++) {
+      const source = visibleToSource[i]!
+      if (source < mask.length && mask[source] === 1) return true
+    }
+    return false
+  }
+
+  /** `edgeFlow` for the CURRENT tree, or `null` when nothing flows. */
+  const edgeFlowMask = (): Uint8Array | null => {
+    const decide = currentOptions.edgeFlow
+    if (decide === undefined) return null
+    let any = false
+    const mask = new Uint8Array(tree.count)
+    for (let i = 0; i < tree.count; i++) {
+      const parent = tree.parent[i]!
+      // A root has no edge to flow along.
+      if (parent === -1) continue
+      if (decide(itemFor(parent), itemFor(i))) {
+        mask[i] = 1
+        any = true
+      }
+    }
+    return any ? mask : null
+  }
+
   /** The hide mask for the CURRENT tree — see `ChartEngine.setOverflow`.
    * `null` when nothing is capped, which is the common case. */
   const overflowMask = (): Uint8Array | null => {
@@ -1860,6 +1928,11 @@ export function createKlad(host: HTMLElement, options: Options): KladInstance {
     // immediately by one that threw it away.
     if (filterQuery !== null) buildFilterMask()
     overflowHide = overflowMask()
+    // Re-derived with the rest, and sent separately rather than with the data:
+    // it changes nothing about the layout, so it cannot cost a transition the
+    // way the pruning masks would.
+    edgeFlow = edgeFlowMask()
+    chartHost.setEdgeFlow(edgeFlow)
     // The THIRD thing in this function subject to that same hazard, and the
     // one that was quietly carrying a stale index: `isolatedIndex`. Held by
     // id and resolved here, so an edit that renumbers the tree does not leave
@@ -3942,7 +4015,18 @@ export function createKlad(host: HTMLElement, options: Options): KladInstance {
       // toggle with no other camera/hover activity stopped scheduling frames
       // the instant the transition ended and froze the ring wherever its alpha
       // happened to be at that moment, rather than letting it finish fading.
-      if (chartHost.transitioning || chartHost.ringActive) scheduleFrame()
+      // A flowing edge is an animation with no end, so it keeps the loop alive
+      // for as long as one is in the visible tree. That is a real cost — an
+      // idle chart draws nothing at all otherwise — which is why flow is
+      // opt-in per edge rather than a style you can switch on for everything.
+      //
+      // "In the visible tree", not "in the viewport": the second would need
+      // the worker to report back per frame, and the first is one scan of a
+      // mask this layer already holds. A marked edge inside a collapsed branch
+      // costs nothing; one scrolled just off the edge still ticks.
+      if (chartHost.transitioning || chartHost.ringActive || anyFlowVisible()) {
+        scheduleFrame()
+      }
     })
   }
 
@@ -5262,6 +5346,11 @@ export function createKlad(host: HTMLElement, options: Options): KladInstance {
         ringActive: false,
         ringBox: INERT_RING_BOX,
         ringProgress: 0,
+        // An export is a still. Whether an edge FLOWS is an animation, and a
+        // dash frozen mid-travel in a PNG is just an odd-looking gap — so a
+        // raster export draws them like any other connector.
+        edgeFlow: null,
+        edgeFlowSeconds: 0,
       }
       renderer.draw(frame)
       return surface.convertToBlob({ type: opts.format === 'jpeg' ? 'image/jpeg' : 'image/png' })

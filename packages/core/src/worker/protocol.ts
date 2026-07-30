@@ -176,6 +176,9 @@ export type MainToWorkerMessage =
   /** Reduces the visible tree to the nodes in `keep` — see
    * `ChartEngine.setFilter`. `null` for no filter. */
   | { t: 'filter'; keep: Uint8Array | null }
+  /** Which connectors flow, SOURCE-indexed by the child — see
+   * `ChartEngine.setEdgeFlow`. `null` for none. */
+  | { t: 'edgeFlow'; flow: Uint8Array | null }
   /** Removes the nodes a capped level pushed out of view — see
    * `ChartEngine.setOverflow`. */
   | { t: 'overflow'; hide: Uint8Array | null }

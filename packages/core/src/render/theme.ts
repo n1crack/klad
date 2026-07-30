@@ -57,6 +57,20 @@ export interface Theme {
    */
   edgeHighlightStroke: string
   edgeHighlightWidth: number
+  /**
+   * A flowing connector — see `Options.edgeFlow`. Its own colour and weight
+   * because "this one is different" is the whole message, and a dash pattern
+   * in the same ink as everything else reads as a rendering artefact.
+   *
+   * `edgeFlowDash` is the dash pattern in screen pixels, unscaled by zoom: a
+   * dash that shrank as you zoomed out would stop being legible exactly when
+   * the chart got busy enough to need it. `edgeFlowSpeed` is pixels per
+   * second, negative to run the other way.
+   */
+  edgeFlowStroke: string
+  edgeFlowWidth: number
+  edgeFlowDash: number[]
+  edgeFlowSpeed: number
   /** Alpha applied to a node while it is being dragged. */
   dragGhostAlpha: number
   /**
@@ -180,6 +194,10 @@ export const DEFAULT_THEME: Readonly<Theme> = Object.freeze({
   highlightStroke: '#f59e0b',
   edgeHighlightStroke: '#f59e0b',
   edgeHighlightWidth: 2.5,
+  edgeFlowStroke: '#2563eb',
+  edgeFlowWidth: 2,
+  edgeFlowDash: [6, 6],
+  edgeFlowSpeed: 24,
   dragGhostAlpha: 0.6,
   palette: DEFAULT_PALETTE,
   paletteOther: '#9c9c96',
@@ -244,6 +262,8 @@ export const DARK_THEME: Readonly<Theme> = Object.freeze({
   // why they move step rather than hue.
   dropStroke: '#4ade80',
   dropRefusedStroke: '#f87171',
+  // Lifted like the rest: the default blue disappears into a dark connector.
+  edgeFlowStroke: '#60a5fa',
 })
 
 /** Assigns `value` into `target[key]` only when it is not `undefined`. */
