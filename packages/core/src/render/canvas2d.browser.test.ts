@@ -64,6 +64,13 @@ function frame(overrides: Partial<Frame> = {}): Frame {
     ringActive: false,
     ringBox: new Float64Array(4),
     ringProgress: 0,
+    // No edge flows unless a test asks for one — `null` is the common case and
+    // the one every test here predates. Both are spelled out rather than left
+    // to `overrides`: spreading a `Partial<Frame>` makes every key optional,
+    // so a required field that only ever arrives that way does not satisfy
+    // `Frame` even when every caller happens to pass it.
+    edgeFlow: null,
+    edgeFlowSeconds: 0,
     ...overrides,
   }
 }
