@@ -1013,11 +1013,12 @@ body {
   display: flex;
   flex-direction: column;
   gap: 0.5rem;
-  flex: 0 0 auto;
-  max-height: 38vh;
+  flex: 0 0 clamp(20rem, 32vw, 34rem);
+  min-width: 0;
   min-height: 0;
-  padding: 0.75rem 0 0;
-  border-top: 1px solid var(--border);
+  padding: 0.75rem;
+  border-left: 1px solid var(--border);
+  background: var(--panel);
   overflow: hidden;
 }
 
@@ -1026,18 +1027,75 @@ body {
   overflow: auto;
 }
 
-/* In the header, beside the theme toggle: a once-per-visit choice that should
-   be reachable from every panel rather than living inside one of them. */
-.app-actions .field {
-  flex-direction: row;
-  align-items: center;
-  gap: 0.4rem;
-  margin: 0;
+/* The adapter marks on the code tabs. `currentColor` so a selected tab takes
+   its logo with it. */
+.code-stack-mark {
+  display: inline-flex;
+  width: 0.95em;
+  height: 0.95em;
+  margin-right: 0.4em;
+  vertical-align: -0.12em;
 }
 
-.app-actions .field > label {
-  margin: 0;
-  white-space: nowrap;
+.code-stack-mark svg {
+  width: 100%;
+  height: 100%;
+}
+
+/* Its own row under the tabs. Beside them it read as a fourth thing to choose
+   between; the tabs pick what the snippet IS, this only changes how it is laid
+   out. Right-aligned, over the block it acts on. */
+.code-options {
+  display: flex;
+  justify-content: flex-end;
+}
+
+.code-wrap-toggle {
+  border: 1px solid var(--border);
+  border-radius: 6px;
+  background: transparent;
+  color: var(--text-2);
+  font: inherit;
+  font-size: 0.72rem;
+  padding: 0.15rem 0.5rem;
+  cursor: pointer;
+}
+
+.code-wrap-toggle:hover {
+  color: var(--text);
+}
+
+.code-block.is-nowrap {
+  white-space: pre;
+  overflow-wrap: normal;
+  overflow-x: auto;
+}
+
+/* Narrow windows have no room for a third column, so the drawer goes back to
+   being a strip under the chart rather than squeezing the thing it annotates.
+   The header's two buttons take a row of their own there as well: side by side
+   with the title they left the tagline no room at all. */
+@media (max-width: 60rem) {
+  .app-header {
+    flex-wrap: wrap;
+  }
+
+  .app-actions {
+    order: 3;
+    flex: 1 0 100%;
+    justify-content: space-between;
+  }
+
+  .layout {
+    flex-wrap: wrap;
+  }
+
+  .code-drawer {
+    flex: 1 1 100%;
+    max-height: 40vh;
+    border-left: 0;
+    border-top: 1px solid var(--border);
+  }
 }
 
 /*

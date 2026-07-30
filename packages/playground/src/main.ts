@@ -158,7 +158,9 @@ controlsButton.className = 'app-controls-toggle'
 controlsButton.textContent = 'Controls'
 controlsButton.setAttribute('aria-expanded', 'false')
 controlsButton.onclick = () => setControlsOpen(!layout.classList.contains('is-controls-open'))
-headerActions.append(controlsButton)
+// Appended further down, next to the code toggle: on a narrow screen the two
+// share a row of their own, and they have to be siblings in the right order
+// for that.
 
 function setControlsOpen(open: boolean): void {
   layout.classList.toggle('is-controls-open', open)
@@ -311,6 +313,14 @@ function labelled(text: string, control: HTMLElement): HTMLDivElement {
   return field
 }
 
+/**
+ * Which adapter mounts the chart.
+ *
+ * Not on screen any more — the code drawer's tabs set it, since "show me
+ * React" is one question and had grown two controls. Kept as a picker rather
+ * than a bare variable because `refresh()` and the URL both read `.value`, and
+ * because its radios are still what a keyboard reaches if it is ever put back.
+ */
 const stackSelect = radioPicker(
   'stack',
   'segmented',
@@ -1984,6 +1994,35 @@ codeBlock.className = 'code-block'
 const codeText = document.createElement('code')
 codeBlock.append(codeText)
 
+/**
+ * Wrap long lines, or let them run off and scroll.
+ *
+ * Wrapping stays the default, which is what the block already did — in a
+ * column this narrow a `renderNode` body would otherwise vanish off the right
+ * edge. The toggle is for the other reading: code that rewraps is harder to
+ * scan than code you scroll, and somebody comparing two lines wants them
+ * whole. So the button turns wrapping OFF.
+ */
+const WRAP_KEY = '@klad/playground-wrap'
+const codeWrap = document.createElement('button')
+codeWrap.type = 'button'
+codeWrap.className = 'code-wrap-toggle'
+
+function setCodeWrap(on: boolean, remember = true): void {
+  codeBlock.classList.toggle('is-nowrap', !on)
+  codeWrap.textContent = on ? 'No wrap' : 'Wrap'
+  codeWrap.setAttribute('aria-pressed', String(!on))
+  if (remember) {
+    try {
+      localStorage.setItem(WRAP_KEY, on ? '1' : '0')
+    } catch {
+      // A browser refusing storage is not a reason to refuse the click.
+    }
+  }
+}
+
+codeWrap.onclick = () => setCodeWrap(codeBlock.classList.contains('is-nowrap'))
+
 const codeCopy = document.createElement('button')
 codeCopy.type = 'button'
 codeCopy.className = 'code-copy'
@@ -2013,6 +2052,22 @@ function flashCopy(message: string): void {
   }, 1400)
 }
 
+/**
+ * A mark per adapter, inline so the playground stays one self-contained page —
+ * it is served from the docs site with no asset pipeline of its own.
+ *
+ * `currentColor` throughout: these sit in a tab that changes colour when it is
+ * selected, and a logo keeping its brand colour through that would be the only
+ * thing on the row not reacting to being chosen.
+ */
+const STACK_MARK: Record<CodeStack, string> = {
+  vanilla:
+    '<svg viewBox="0 0 24 24" aria-hidden="true"><rect x="2" y="2" width="20" height="20" rx="3" fill="none" stroke="currentColor" stroke-width="2"/><path d="M9 8v6.2a1.8 1.8 0 0 1-3.2 1.1M13.6 15.4a3 3 0 0 0 4.6-.6c.6-1.2-.3-2.1-1.9-2.6-1.6-.5-2.4-1.3-1.9-2.5a2.9 2.9 0 0 1 4.3-.8" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round"/></svg>',
+  vue: '<svg viewBox="0 0 24 24" aria-hidden="true"><path d="M2 4h4l6 10 6-10h4L12 21Z" fill="none" stroke="currentColor" stroke-width="2" stroke-linejoin="round"/><path d="M7.5 4h3L12 6.6 13.5 4h3" fill="none" stroke="currentColor" stroke-width="2" stroke-linejoin="round"/></svg>',
+  react:
+    '<svg viewBox="0 0 24 24" aria-hidden="true"><circle cx="12" cy="12" r="2" fill="currentColor"/><g fill="none" stroke="currentColor" stroke-width="1.6"><ellipse cx="12" cy="12" rx="10" ry="4"/><ellipse cx="12" cy="12" rx="10" ry="4" transform="rotate(60 12 12)"/><ellipse cx="12" cy="12" rx="10" ry="4" transform="rotate(120 12 12)"/></g></svg>',
+}
+
 const codeStackButtons = new Map<CodeStack, HTMLButtonElement>()
 for (const [value, label] of [
   ['vanilla', 'Vanilla'],
@@ -2022,10 +2077,23 @@ for (const [value, label] of [
   const button = document.createElement('button')
   button.type = 'button'
   button.className = 'code-stack'
-  button.textContent = label
+  const mark = document.createElement('span')
+  mark.className = 'code-stack-mark'
+  mark.innerHTML = STACK_MARK[value]
+  button.append(mark, document.createTextNode(label))
   button.setAttribute('role', 'tab')
   button.onclick = () => {
+    if (codeStack === value) return
     codeStack = value
+    // These tabs ARE the stack picker now. There used to be a second one in
+    // the header choosing which adapter mounts, and two controls for what
+    // reads as one question — "show me React" — is a control too many. So the
+    // chart remounts with this adapter and the snippet follows it, which also
+    // keeps the three adapters exercised rather than leaving the playground
+    // permanently on vanilla.
+    stackSelect.value = value
+    setControlsOpen(false)
+    refresh()
     syncCode()
   }
   codeStackButtons.set(value, button)
@@ -2033,7 +2101,7 @@ for (const [value, label] of [
 }
 
 /**
- * The code drawer: a strip under the chart rather than one more panel in the
+ * The code drawer: a column on the right rather than one more panel in the
  * rail.
  *
  * It was a panel, which made it a place you GO — and the snippet is not a
@@ -2045,7 +2113,13 @@ for (const [value, label] of [
 const codeDrawer = document.createElement('div')
 codeDrawer.className = 'code-drawer'
 codeDrawer.hidden = true
-codeDrawer.append(codeStackRow, codeFrame)
+// A row of its own under the tabs. On the tab row it read as a fourth thing
+// to choose between, which it is not — the tabs pick WHAT the snippet is, and
+// this only changes how it is laid out.
+const codeOptionsRow = document.createElement('div')
+codeOptionsRow.className = 'code-options'
+codeOptionsRow.append(codeWrap)
+codeDrawer.append(codeStackRow, codeOptionsRow, codeFrame)
 
 const codeToggle = document.createElement('button')
 codeToggle.type = 'button'
@@ -2242,21 +2316,25 @@ surface.className = 'surface'
 
 const content = document.createElement('main')
 content.className = 'content'
-content.append(description, surface, codeDrawer)
+content.append(description, surface)
 
-// Appended here rather than where the rest of the header is built, because
-// both of these are declared further down — the stack picker with the other
-// pickers, the code toggle with the drawer it opens. Putting the header
-// together in two places is the smaller wrong than hoisting either of them
-// away from what they belong with.
+// Appended here rather than with the rest of the header, because the toggle is
+// declared further down with the drawer it opens.
 //
-// Stack first, then the code toggle, then the theme: the two that change what
-// you are looking at, then the one that changes how it looks.
-headerActions.prepend(labelled('Stack', stackSelect.element), codeToggle)
+// No stack picker beside it: the code drawer's own tabs do that job, and they
+// do it for the chart as well as the snippet.
+// Controls first, then the code toggle: on a narrow screen these two wrap to
+// their own row and read left-to-right, which is the order asked for.
+headerActions.prepend(codeToggle)
+headerActions.prepend(controlsButton)
 
 const layout = document.createElement('div')
 layout.className = 'layout'
-layout.append(sidebar, content)
+// The drawer is a column beside the chart, not a strip under it: a snippet is
+// tall and narrow — one line per option — so vertical space is what it wants
+// and horizontal space is what the chart wants. Under the chart it took the
+// bottom third to show ten lines with the rest of the width empty.
+layout.append(sidebar, content, codeDrawer)
 
 root.append(header, layout)
 
@@ -2585,6 +2663,18 @@ openPanel(initialPanel())
  * snippet taking the bottom third before they have touched anything is an
  * answer to a question they have not asked yet.
  */
+setCodeWrap(
+  (() => {
+    try {
+      // Absent means "never chosen", which is the wrapping default.
+      return localStorage.getItem(WRAP_KEY) !== '0'
+    } catch {
+      return true
+    }
+  })(),
+  false,
+)
+
 setCodeOpen(
   (() => {
     try {
