@@ -645,6 +645,52 @@ export function mountVanilla(
   onApiChange(chart.api)
 
   /**
+   * On a phone, open on the whole tree.
+   *
+   * A chart opens centred on its root at 1:1, which is the right default —
+   * zooming out on somebody's behalf hides the thing they came to read. On a
+   * 360px column it means landing on an arbitrary slice: the root at the top,
+   * a gap, and two nodes four levels down with everything between them off to
+   * the sides. Fitting is the only view that says anything there.
+   *
+   * Two attempts before this one, both wrong for the same reason in different
+   * ways. A fixed pair of animation frames fitted against empty bounds — the
+   * tree is laid out in a worker, so they arrive when they arrive. Fitting on
+   * the first frame that HAS bounds got the bounds right and the box wrong:
+   * the mobile layout is still settling at that point, the sidebar collapsing
+   * into a drawer, and a fit measured against a box that is about to change
+   * is stale a moment later.
+   *
+   * So it fits whenever the box changes, until the viewer touches the chart.
+   * After that the camera is theirs and nothing here moves it.
+   */
+  let ownsCamera = true
+  const releaseCamera = (): void => {
+    ownsCamera = false
+  }
+  if (window.innerWidth < 640) {
+    for (const type of ['pointerdown', 'wheel', 'keydown'] as const) {
+      host.addEventListener(type, releaseCamera, { once: true, passive: true })
+    }
+    const fitIfUntouched = (): void => {
+      if (!ownsCamera) return
+      const box = host.getBoundingClientRect()
+      if (box.width < 1 || box.height < 1) return
+      chart.api.fit()
+    }
+    const stopFit = chart.subscribe((state) => {
+      if (state.bounds.maxX <= state.bounds.minX) return
+      stopFit()
+      fitIfUntouched()
+    })
+    const settling = new ResizeObserver(fitIfUntouched)
+    settling.observe(host)
+    // Long enough to outlast the layout settling, short enough that it is not
+    // still watching while somebody reads.
+    setTimeout(() => settling.disconnect(), 2000)
+  }
+
+  /**
    * A card changed something about ITSELF — a disclosure opened, a star was
    * toggled — so nothing in the chart's own state has moved and it has no
    * reason to draw a frame. The overlay is repainted on every frame the chart

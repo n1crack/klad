@@ -2323,10 +2323,20 @@ content.append(description, surface)
 //
 // No stack picker beside it: the code drawer's own tabs do that job, and they
 // do it for the chart as well as the snippet.
-// Controls first, then the code toggle: on a narrow screen these two wrap to
-// their own row and read left-to-right, which is the order asked for.
-headerActions.prepend(codeToggle)
-headerActions.prepend(controlsButton)
+/**
+ * The two buttons that change what you are LOOKING at, in a group of their
+ * own.
+ *
+ * Separate from `.app-actions` — which keeps the theme toggle and the docs
+ * link — because on a narrow screen this group drops to a row of its own,
+ * Controls at the left and the code toggle at the right. The theme toggle
+ * stays up top beside the title; sending it down with these put a third thing
+ * on a row meant for two, and took it away from where it has always been.
+ */
+const headerToolbar = document.createElement('div')
+headerToolbar.className = 'app-toolbar'
+headerToolbar.append(controlsButton, codeToggle)
+header.insertBefore(headerToolbar, headerActions)
 
 const layout = document.createElement('div')
 layout.className = 'layout'

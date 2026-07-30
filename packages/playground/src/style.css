@@ -1027,6 +1027,18 @@ body {
   overflow: auto;
 }
 
+/* The two "what am I looking at" buttons. Inline beside the actions at full
+   width; a row of their own once the header runs out of room. */
+.app-toolbar {
+  display: flex;
+  align-items: center;
+  gap: 0.5rem;
+  /* The header is `space-between` over three groups, which parks this one in
+     the middle. It belongs at the right, beside the theme toggle — so it
+     takes the free space instead of sharing it. */
+  margin-left: auto;
+}
+
 /* The adapter marks on the code tabs. `currentColor` so a selected tab takes
    its logo with it. */
 .code-stack-mark {
@@ -1080,10 +1092,15 @@ body {
     flex-wrap: wrap;
   }
 
-  .app-actions {
+  /* The pair drops to a row of its own: Controls at the left, the code toggle
+     at the right. The theme toggle is NOT in here — it stays beside the title,
+     where it has always been. */
+  .app-toolbar {
     order: 3;
     flex: 1 0 100%;
     justify-content: space-between;
+    /* Its own row now, so it no longer needs to claim the header's slack. */
+    margin-left: 0;
   }
 
   .layout {

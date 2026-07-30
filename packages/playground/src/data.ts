@@ -59,9 +59,15 @@ export function minimapOptionFor(
   if (!on) return false
   const silhouette = silhouetteColour(mode)
   const configured = minimapOnConfig(example)
+  // The default 200x140 is a corner of a desktop chart and more than half the
+  // width of a phone one, where it stops being an overview and becomes a
+  // second chart sitting on top of the first. Scaled to the viewport, with a
+  // floor so it does not shrink into something unreadable.
+  const narrow = typeof window !== 'undefined' && window.innerWidth < 640
+  const small = narrow ? { width: Math.max(112, Math.round(window.innerWidth * 0.34)), height: 84 } : {}
   return typeof configured === 'object'
-    ? { ...configured, position, silhouetteColour: silhouette }
-    : { position, silhouetteColour: silhouette }
+    ? { ...configured, ...small, position, silhouetteColour: silhouette }
+    : { ...small, position, silhouetteColour: silhouette }
 }
 
 /** Slider bounds and default for the "Line width" control. `EDGE_WIDTH_DEFAULT`
