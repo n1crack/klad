@@ -366,6 +366,19 @@ export interface Example {
    */
   gotoControl?: boolean
   /**
+   * Shows the orientation panel on the canvas: the four growth directions as a
+   * segmented control, plus an RTL switch beside them.
+   *
+   * The two used to be separate examples — one frozen at `lr`, one at
+   * `tb + rtl` — which showed two of the eight arrangements and left the
+   * relationship between the options unstated. They are one control because
+   * they are one question ("which way does this read?") answered on two
+   * independent axes: `orientation` turns the growth axis, `rtl` mirrors
+   * sibling order across it, and neither cancels the other (see
+   * `applyOrientation` in core).
+   */
+  orientationControl?: boolean
+  /**
    * Shows the "branch and view" panel on the canvas: a branch picker wired to
    * `fitSubtree`, and save/restore buttons for `getView`/`setView`. Same
    * per-example opt-in as `gotoControl`, for the same reason — these belong to
@@ -1066,19 +1079,11 @@ export const EXAMPLES: Example[] = [
     id: 'orientations',
     name: 'Orientations',
     description:
-      'The same tree growing left to right instead of top to bottom.',
+      'Which way the tree grows, and which way its siblings read. The four directions are one option; RTL is a second, and it mirrors sibling order without changing the direction of growth — so there are eight arrangements here, not four.',
     data: SHARED_DATA,
-    options: { orientation: 'lr' },
+    options: { orientation: 'tb' },
     content: 'card',
-  },
-  {
-    id: 'rtl',
-    name: 'RTL',
-    description:
-      'Mirrored sibling order, for charts read right to left. The tree still grows downward.',
-    data: SHARED_DATA,
-    options: { orientation: 'tb', rtl: true },
-    content: 'card',
+    orientationControl: true,
   },
   {
     id: 'variable-sizes',

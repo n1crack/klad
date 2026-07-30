@@ -1048,6 +1048,74 @@ const canvasBgField = document.createElement('div')
 canvasBgField.className = 'field'
 canvasBgField.append(canvasBgLabel, canvasBgRow)
 
+/**
+ * "Grows" — the four directions, with the RTL switch beside them.
+ *
+ * Two controls rather than one eight-way picker, because the engine treats
+ * them as independent axes and a viewer who cannot vary them separately
+ * cannot discover that. `applyOrientation` turns the growth axis for
+ * `orientation` and mirrors sibling order for `rtl`, and the two flips never
+ * share an axis — so `lr + rtl` is NOT the arrangement `rl` gives you. The
+ * two frozen examples this replaces (one at `lr`, one at `tb + rtl`) showed
+ * two of the eight and said nothing at all about the rule joining them.
+ *
+ * Live rather than a remount: `setLayoutOptions` keeps every node's open
+ * state and the camera, so turning the tree is turning the tree you were
+ * reading, not being handed a fresh one. It asks for a fit, since all four
+ * directions change which way the drawing is long.
+ */
+const orientationPicker = radioPicker(
+  'orientation',
+  'segmented',
+  [
+    { value: 'tb', label: 'Down' },
+    { value: 'bt', label: 'Up' },
+    { value: 'lr', label: 'Right' },
+    { value: 'rl', label: 'Left' },
+  ],
+  (value) => {
+    applyLayoutSettings({ orientation: value as NonNullable<LayoutSettings['orientation']> }, true)
+  },
+)
+
+const rtlButton = document.createElement('button')
+rtlButton.type = 'button'
+rtlButton.className = 'btn btn-toggle'
+
+let rtlOn = false
+
+/**
+ * Sets the RTL switch. `apply` is false when the panel is merely catching up
+ * with an example that was just mounted — reflecting state must not look like
+ * the viewer flipped it, or every example change would fire a relayout and a
+ * fit for a value that did not change.
+ */
+function setRtl(next: boolean, apply: boolean): void {
+  rtlOn = next
+  rtlButton.textContent = `RTL: ${rtlOn ? 'On' : 'Off'}`
+  rtlButton.setAttribute('aria-pressed', String(rtlOn))
+  if (apply) applyLayoutSettings({ rtl: rtlOn }, true)
+}
+
+rtlButton.onclick = () => setRtl(!rtlOn, true)
+
+const orientationNote = document.createElement('span')
+orientationNote.className = 'panel-note'
+
+// Retitled rather than fixed: with the directions gone the panel is no longer
+// about which way the tree GROWS, and a caption left saying "Grows" over a
+// lone RTL switch describes the one thing that switch does not do.
+const orientationLabel = document.createElement('label')
+
+const orientationField = document.createElement('div')
+orientationField.className = 'surface-panel surface-panel-stacked'
+
+// Same reason as every other panel that sits on the canvas: the surface claims
+// pointer and wheel gestures for panning and zooming.
+for (const type of ['pointerdown', 'wheel'] as const) {
+  orientationField.addEventListener(type, (event) => event.stopPropagation())
+}
+
 // "Go to node" — an EXTERNAL control, deliberately: the point of the example
 // it belongs to is that navigating the chart does not have to start from the
 // chart. Picking a name expands whatever is in the way, paints the route from
@@ -1819,6 +1887,42 @@ function syncViewControl(example: Example): void {
 }
 
 /**
+ * Shows the orientation panel for the example that asked for it, reset to
+ * whatever that example's own options declare under the current layout.
+ *
+ * The four directions belong to `tidy` alone: every other rectangular layout
+ * fixes its own growth axis, and the engine passes `'tb'` for them regardless
+ * (see the `applyOrientation` call in engine.ts). They are dropped from the
+ * panel there rather than shown inert — a dimmed row of tabs is still a row
+ * of tabs, and the first thing anyone does with one is click it.
+ *
+ * RTL survives that cut, because it does NOT belong to tidy: every
+ * rectangular layout mirrors its sibling order. A polar layout is where the
+ * whole panel goes, having neither a growth axis to turn nor a sibling order
+ * to mirror.
+ */
+function syncOrientationControl(example: Example, layout: LayoutName): void {
+  orientationField.remove()
+  if (example.orientationControl !== true) return
+  if (layout === 'radial' || layout === 'sunburst') return
+  const preset = optionsForLayout(example, layout)
+  orientationPicker.value = preset.orientation ?? 'tb'
+  setRtl(preset.rtl === true, false)
+  const tidy = layout === 'tidy'
+  orientationLabel.textContent = tidy ? 'Grows' : 'Reads'
+  orientationNote.textContent = tidy
+    ? 'Independent axes: RTL mirrors sibling order without turning the tree, so lr + RTL is not rl.'
+    : `RTL mirrors sibling order. ${LAYOUT_LABELS[layout]} grows one way, so there is no direction to pick.`
+  orientationField.replaceChildren(
+    orientationLabel,
+    ...(tidy ? [orientationPicker.element] : []),
+    rtlButton,
+    orientationNote,
+  )
+  surface.append(orientationField)
+}
+
+/**
  * Fills the combo box with `example`'s own nodes, indented by depth so the
  * list reads as the tree it navigates, and hides the whole field for examples
  * that did not ask for it.
@@ -2564,6 +2668,7 @@ function show(stack: Stack, exampleId: string, layout: LayoutName): void {
   // at all; before it, the selection, branch and breadcrumb panels appeared
   // only on the vanilla stack, because the other two deleted them on mount.
   syncGotoControl(example)
+  syncOrientationControl(example, layout)
   syncViewControl(example)
   syncSelectionControl(example)
   syncCentreControl(example, layout)
