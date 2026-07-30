@@ -695,7 +695,10 @@ export function mountVanilla(
       const mounted = optionsForLayout(example, layout)
       const polar = layout === 'radial' || layout === 'sunburst'
       const orientation = layout === 'tidy' ? (mounted.orientation ?? 'tb') : 'tb'
-      const near = 0.2
+      // A file list is read from its first row down, so it starts at the top
+      // edge — a fifth of the way in wasted a hundred pixels of a phone on
+      // nothing. Every other shape wants room on the side it grows away from.
+      const near = layout === 'file' ? 0.04 : 0.2
       const far = 1 - near
       const at = polar
         ? { x: 0.5, y: 0.5 }

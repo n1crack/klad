@@ -2185,6 +2185,53 @@ button.overflow-panel-row {
   backdrop-filter: blur(6px);
 }
 
+/*
+ * On a phone the panel is a horizontal strip that SCROLLS, not a column that
+ * grows.
+ *
+ * It is absolutely positioned over the chart, so every control it stacks is a
+ * band of the chart nobody can see — the Edit panel's six buttons took a third
+ * of the screen and sat on top of the tree they edit. Left to right with the
+ * overflow scrolled keeps it one row high whatever it holds.
+ */
+@media (max-width: 60rem) {
+  .surface-panel {
+    right: 0.6rem;
+    /* Both restated: an earlier narrow-width rule stacks this panel into a
+       column, and overriding only the wrapping left the direction alone — the
+       buttons went on stacking and the fix looked like it had done nothing. */
+    flex-direction: row;
+    align-items: center;
+    flex-wrap: nowrap;
+    overflow-x: auto;
+    /* The scrollbar is the only hint that there is more, so it must not be
+       clipped away by the rounded corner. */
+    scrollbar-width: thin;
+    padding: 0.35rem 0.45rem;
+    gap: 0.35rem;
+  }
+
+  /* Nothing shrinks below its own text — a row of buttons squeezed to
+     illegibility is worse than one you scroll. */
+  .surface-panel > * {
+    flex: 0 0 auto;
+  }
+
+  .surface-panel input {
+    width: 9rem;
+  }
+
+  /* The running commentary goes last and wraps to nothing: on a phone the
+     controls are the panel, and the sentence explaining them is in the
+     description above. */
+  .surface-panel .panel-note {
+    max-width: 12rem;
+    white-space: nowrap;
+    overflow: hidden;
+    text-overflow: ellipsis;
+  }
+}
+
 .surface-panel label {
   font-size: 0.72rem;
   font-weight: 600;
