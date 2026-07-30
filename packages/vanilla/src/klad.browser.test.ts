@@ -3,6 +3,7 @@ import {
   createKlad,
   type NodeContext,
   type NodeData,
+  type Change,
   type ChartView,
   type LayoutSettings,
   type NodePlace,
@@ -5670,6 +5671,92 @@ describe('one event for the whole view', () => {
     await settleTransition()
     await settle()
     expect(seen.at(-1)!.open).not.toBe(last.open)
+    chart.destroy()
+  })
+})
+
+describe('the edit event', () => {
+  it('fires after the edit is in the history, not before', async () => {
+    // Emitted first, every listener asking `canUndo()` got the answer from
+    // before the edit it was being told about — so a toolbar wired to this
+    // sat one edit behind, which reads as nothing happening.
+    const seen: { change: Change; canUndo: boolean; pending: number }[] = []
+    const chart = make({})
+    chart.on('edit', (change) =>
+      seen.push({ change, canUndo: chart.api.canUndo(), pending: chart.api.changes().length }),
+    )
+    await nextFrame()
+    await settle()
+
+    chart.api.move('d', 'c')
+    await settleTransition()
+    expect(seen).toHaveLength(1)
+    expect(seen[0]!.canUndo).toBe(true)
+    expect(seen[0]!.pending).toBe(1)
+    chart.destroy()
+  })
+
+  it('reports a keyboard edit, which nothing else does', async () => {
+    // A drag says so through `nodeDrop` and an API call is something the host
+    // made itself. `Alt+Up` and `Delete` are the case with nobody in the room.
+    const seen: Change[] = []
+    const chart = createKlad(host(), {
+      data: [
+        { id: 'a', name: 'Root' },
+        { id: 'b', parentId: 'a', name: 'First' },
+        { id: 'c', parentId: 'a', name: 'Second' },
+      ],
+      nodeSize: { w: 120, h: 48 },
+      label: (item) => String(item.name ?? ''),
+      worker: false,
+      keyboardEditing: true,
+    })
+    chart.on('edit', (change) => seen.push(change))
+    await nextFrame()
+    await settle()
+
+    const row = [...document.querySelectorAll<HTMLElement>('[role="treeitem"]')].find(
+      (el) => el.dataset.orgchartId === 'b',
+    )!
+    row.focus()
+    row.dispatchEvent(new KeyboardEvent('keydown', { key: 'ArrowDown', altKey: true, bubbles: true }))
+    await settleTransition()
+    await settle()
+
+    expect(seen).toHaveLength(1)
+    expect(seen[0]).toEqual({ op: 'move', ids: ['b'], parentId: 'a', index: 1 })
+    chart.destroy()
+  })
+
+  it('still speaks with the history turned off', async () => {
+    const seen: Change[] = []
+    const chart = make({ history: false })
+    chart.on('edit', (change) => seen.push(change))
+    await nextFrame()
+    await settle()
+
+    chart.api.remove('d')
+    await settleTransition()
+    // "Keep no way back" and "tell me nothing" are different requests.
+    expect(seen).toEqual([{ op: 'remove', ids: ['d'] }])
+    expect(chart.api.canUndo()).toBe(false)
+    chart.destroy()
+  })
+
+  it('says nothing for an undo, which the host asked for itself', async () => {
+    const seen: Change[] = []
+    const chart = make({})
+    chart.on('edit', (change) => seen.push(change))
+    await nextFrame()
+    await settle()
+
+    chart.api.move('d', 'c')
+    await settleTransition()
+    chart.api.undo()
+    await settleTransition()
+    // Treating a withdrawal as a new edit would have anyone mirroring this
+    // apply the move twice.
+    expect(seen).toHaveLength(1)
     chart.destroy()
   })
 })

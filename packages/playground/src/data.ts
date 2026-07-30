@@ -411,6 +411,27 @@ const ORG_DEPARTMENT = new Map(
   SHARED_DATA.map((item) => [String(item.id), item.department as Department]),
 )
 
+/**
+ * Who each person currently reports to, for the rule above — so it can tell a
+ * reorder (same parent) from a reassignment (a different one).
+ *
+ * Kept up to date by the demo rather than read from the chart, because
+ * `canMove` is asked mid-drag and reaching back into the chart from an option
+ * it is calling is a loop waiting to happen.
+ */
+const EXAMPLE_PARENT = new Map(
+  SHARED_DATA.filter((item) => item.parentId !== undefined).map((item) => [
+    String(item.id),
+    String(item.parentId),
+  ]),
+)
+
+/** Records where somebody now sits, so the reorder rule stays true after a move. */
+export function rememberParent(id: string, parentId: string | null): void {
+  if (parentId === null) EXAMPLE_PARENT.delete(id)
+  else EXAMPLE_PARENT.set(id, parentId)
+}
+
 /** Files a newly added person under a department, so `canMove` can answer for them. */
 export function rememberDepartment(id: string, department: Department): void {
   ORG_DEPARTMENT.set(id, department)
@@ -1212,6 +1233,16 @@ export const EXAMPLES: Example[] = [
       // than a red box you have to take on faith.
       canMove: ({ items, parentId }) => {
         if (parentId === null) return false
+        // A reorder is not a reassignment. Everybody's manager is in some
+        // OTHER department — that is what a manager is here — so a rule
+        // written for "who may you report to" refuses every move within a
+        // level as well, and reordering with Alt+Up quietly does nothing.
+        // Which it did, until somebody tried it.
+        const staying = items.every((item) => {
+          const at = EXAMPLE_PARENT.get(String(item.id))
+          return at !== undefined && at === parentId
+        })
+        if (staying) return true
         const into = departmentOf(parentId)
         return into !== null && items.every((item) => departmentOf(String(item.id)) === into)
       },

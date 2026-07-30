@@ -2327,6 +2327,7 @@ function show(stack: Stack, exampleId: string, layout: LayoutName): void {
       },
       reportDrop,
       reportCentre,
+      () => syncEditState(),
     )
     currentSetMinimap = (on) => chart.setMinimap(on)
     currentSetMinimapPosition = (position) => chart.setMinimapPosition(position)

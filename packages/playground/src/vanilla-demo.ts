@@ -12,6 +12,7 @@ import {
   rowFields,
   isBranchRow,
   optionsForLayout,
+  rememberParent,
   contentForLayout,
   themeFor,
   accordionProgress,
@@ -603,6 +604,7 @@ export function mountVanilla(
   onApiChange: (api: KladApi) => void,
   onDrop?: (detail: { ids: string[]; parentId: string | null; mode: string }) => void,
   onCentreChange?: (id: string | null) => void,
+  onEdit?: () => void,
 ): VanillaDemoHandle {
   // The content treatment follows the LAYOUT, not the example — see
   // `LAYOUT_PRESETS` in data.ts. A wheel draws its own text on the canvas and
@@ -716,6 +718,24 @@ export function mountVanilla(
     })
   }
 
+  /**
+   * Every edit, however it was made.
+   *
+   * A viewer using `Alt+Up` or `Delete` restructures the tree with nothing in
+   * the page told about it — no button was clicked and `nodeDrop` only covers
+   * a drag — which left the Edit panel's Undo sitting disabled with something
+   * to undo. It also keeps the example's own "who reports to whom" map true,
+   * since the reorder rule reads it.
+   */
+  const stopEdit = chart.on('edit', (change) => {
+    if (change.op === 'move') for (const id of change.ids) rememberParent(id, change.parentId)
+    else if (change.op === 'add') {
+      for (const item of change.items) rememberParent(String(item.id), change.parentId)
+    }
+    onEdit?.()
+  })
+
+
   host.addEventListener('playground:repaint', onRepaint)
   host.addEventListener('playground:relayout', onRelayout)
   host.addEventListener('playground:slide', onSlide)
@@ -733,6 +753,7 @@ export function mountVanilla(
       host.removeEventListener('playground:goto', onGoto)
       stopDrill()
       stopDrop?.()
+      stopEdit()
       chart.destroy()
     },
     setMinimap(on) {

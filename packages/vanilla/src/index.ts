@@ -771,6 +771,22 @@ export interface KladEvents {
    * much for a URL — for a link, take the small parts (`camera`, `isolated`,
    * `filter`) and let the rest default.
    */
+  /**
+   * The shape of the tree changed — a drag, a keyboard edit, or a `move`,
+   * `add` or `remove` you called yourself.
+   *
+   * Carries the same `Change` `changes()` collects, so a host that persists
+   * every edit as it happens and one that batches them until a save button use
+   * the same shape. Fires whether or not `history` is on.
+   *
+   * `undo` and `redo` do NOT fire it: they are calls a host makes, so it
+   * already knows, and treating a withdrawal as a new edit would have anyone
+   * mirroring this apply it twice.
+   *
+   * A drag also reports itself through `nodeDrop`, which fires BEFORE the move
+   * and can refuse it. This fires after, for everything.
+   */
+  edit: (change: Change) => void
   viewChange: (view: ChartView) => void
   filterChange: (event: { query: string | null; matched: string[] }) => void
   /**
@@ -2538,19 +2554,32 @@ export function createKlad(host: HTMLElement, options: Options): KladInstance {
 
   const recordEdit = (record: EditRecord): void => {
     if (replaying) return
+    // Announced before the history is even consulted, because the two are
+    // different questions: `history: false` says "do not keep a way back", not
+    // "do not tell me what happened". A viewer editing from the keyboard is
+    // the case that needs this — a drag reports itself through `nodeDrop`, and
+    // an API call is something the host already knows it made, but `Alt+Up`
+    // and `Delete` restructure the tree with nobody else in the room.
     const limit = historyLimit()
-    if (limit === 0) return
-    undoStack.push(record)
-    // A new edit makes the redo branch unreachable — it described a future
-    // that no longer follows from here.
-    redoStack = []
-    if (undoStack.length > limit) {
-      const dropped = undoStack.length - limit
-      undoStack = undoStack.slice(dropped)
-      // The save marker travels with the window, or it would point past the
-      // end of a stack that has been trimmed from the front.
-      savedDepth = Math.max(0, savedDepth - dropped)
+    if (limit > 0) {
+      undoStack.push(record)
+      // A new edit makes the redo branch unreachable — it described a future
+      // that no longer follows from here.
+      redoStack = []
+      if (undoStack.length > limit) {
+        const dropped = undoStack.length - limit
+        undoStack = undoStack.slice(dropped)
+        // The save marker travels with the window, or it would point past the
+        // end of a stack that has been trimmed from the front.
+        savedDepth = Math.max(0, savedDepth - dropped)
+      }
     }
+    // LAST, so a listener asking `canUndo()` or `changes()` sees the edit it
+    // was just told about. Emitting first left every listener one behind —
+    // which looks like nothing happening, since the answer it gets is the one
+    // from before. Still emitted with `history: false`: "keep no way back" and
+    // "tell me nothing" are different requests.
+    emit('edit', publicChange(record))
   }
 
   const clearHistory = (): void => {
@@ -2637,7 +2666,12 @@ export function createKlad(host: HTMLElement, options: Options): KladInstance {
   const applyReparent = (ids: string[], parentId: string | null, index: number, pinSource = -1): void => {
     const moving = new Set(ids)
     // Captured before anything moves — afterwards there is no way back to it.
-    if (!replaying && historyLimit() > 0) {
+    //
+    // Skipped when nobody wants it, since working out where everything sat is
+    // a pass over the rows. "Nobody" means no history AND no `edit` listener:
+    // the event carries the same record, so guarding on history alone left it
+    // silent for exactly the host that turned history off to drive its own.
+    if (!replaying && (historyLimit() > 0 || hasListener('edit'))) {
       const rows = baseRows()
       recordEdit({ op: 'move', was: positionsOf(ids, rows), to: parentId, index })
     }
@@ -4978,7 +5012,7 @@ export function createKlad(host: HTMLElement, options: Options): KladInstance {
           }
         }
       }
-      if (!replaying && historyLimit() > 0) {
+      if (!replaying && (historyLimit() > 0 || hasListener('edit'))) {
         const rows = baseRows()
         recordEdit({
           op: 'remove',

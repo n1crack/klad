@@ -167,30 +167,49 @@ function cannot cross into a worker, so it would have meant giving up the
 worker or turning the relayout path inside out, and nobody had asked for it.
 The connector style was the half worth keeping.
 
-## 1.7 — editing without a pointer
+## 1.7 — released: without a pointer, and the small things
 
-Less missing than it first looked. A node can already be moved from the
-keyboard: `M` picks it up, you navigate to a target, `M` drops it there, Escape
-puts it back. It goes through the same `nodeDrop` and the same `canMove` as the
-pointer, because a move made with the keyboard is not a different kind of move.
+Less was missing from keyboard editing than it first looked. A node could
+already be moved: `m` picks it up, you navigate, `m` drops it, Escape puts it
+back — through the same `nodeDrop` and the same `canMove` as a drag. What it
+could not do was **reorder**, because dropping between two things means
+pointing at a gap and a list of rows has no gap to point at. `Alt` with the
+arrow keys sidesteps that: you do not indicate a position, you say "one up".
+`Delete` removes a branch, and `Shift+Enter` asks for a sibling — only asks,
+because a new node needs a row and the chart does not know what your rows look
+like.
 
-Three things it cannot do.
+- **`findNext` / `findPrevious`** — walk the search results, bringing each on
+  screen. `search` asks a question and changes nothing, `filter` changes what
+  the chart is; this is the third thing and neither of those was it.
+- **`leafCount` on `stats(id)`** — how many files are in this folder, as
+  opposed to how many rows the branch occupies.
+- **`viewChange`** — one event for the whole view, instead of subscribing to
+  several and merging them back into the picture they came from.
+- **`edit`** — every change to the shape, however it was made. A drag reports
+  itself through `nodeDrop` and an API call is something you made yourself, but
+  a viewer pressing `Alt+Up` restructures the tree with nobody else in the room.
 
-- **Reorder.** The keyboard can only drop INTO a node. The pointer can drop
-  between two siblings, so the one thing an outline or a taxonomy is mostly
-  made of — "this goes above that" — has no keyboard equivalent at all.
-- **Remove.** There is no key for it. A viewer who can restructure a tree but
-  cannot delete from it is halfway to being able to work.
-- **Add.** And this one cannot be a key that acts on its own, for the same
-  reason there is no rename: a new node needs a row, and the chart does not
-  know what your rows look like. It can say "the viewer asked for a sibling
-  here" and let you supply it.
+Controlled state was considered for this release and deliberately not built.
+Whether a branch is open is a fact about the screen rather than about your
+data, and routing every toggle through your store would put a framework render
+inside a 16ms interaction — worse, `loadChildren` makes opening a node
+asynchronous and data-changing, so that round trip grows a second leg. The
+chart keeps holding it and now says what it holds.
 
-The other loose end is smaller and stated in the docs already: undo back past
-the point you last saved and the chart is dirty with nothing to send, because
-the difference is an edit being **absent** and no forward operation describes
-that. Today the answer is "send `getData()`". A diff against the saved state
-would be a better one.
+## 1.8 — edges worth looking at
+
+A connector is a line and nothing else. There is a case for more: a dashed
+line for a relationship that is provisional, a dash that travels to show which
+way something flows, a colour that means something.
+
+The line to hold is the one already drawn around `edgeStyle`: **choosing among
+answers the chart knows how to draw is a setting; handing over the drawing is
+a plugin.** So a small set of styles and a way to say which nodes get them —
+not a renderer, and not an animation language.
+
+It ships with a playground example, because an animated edge is the sort of
+thing a screenshot cannot argue for.
 
 ## 2.0 — beyond trees
 
