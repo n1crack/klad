@@ -1,0 +1,27 @@
+{
+  // Checks `type-tests/` against what `@klad/vue` PUBLISHES, not what it
+  // contains. The workspace `exports` map resolves the package to
+  // `src/index.ts`; `paths` below overrides that with the built declarations,
+  // which is the artefact a consumer's TypeScript actually reads. Needs a
+  // build first — `turbo` already orders `typecheck` after `^build`.
+  "extends": "../../tsconfig.base.json",
+  "compilerOptions": {
+    "noEmit": true,
+    "lib": ["ES2023", "DOM", "DOM.Iterable"],
+    "types": [],
+    "jsx": "react-jsx",
+    "paths": {
+      "@klad/core": ["../core/dist/index.d.ts"],
+      "@klad/react": ["../react/dist/index.d.ts"],
+      "@klad/vue": ["../vue/dist/index.d.ts"]
+    }
+  },
+  // Without this, a template is not a type check: Volar accepts unknown props
+  // and unknown events silently, so binding `@node-clik` to a handler with the
+  // wrong signature compiles clean. Everything this fixture asserts about the
+  // component's public surface depends on it being on.
+  "vueCompilerOptions": {
+    "strictTemplates": true
+  },
+  "include": ["type-tests"]
+}

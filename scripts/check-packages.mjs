@@ -30,7 +30,7 @@
  * Run through the root `check:packages` script, which builds first.
  */
 import { execFileSync } from 'node:child_process'
-import { mkdtempSync, readFileSync, rmSync } from 'node:fs'
+import { mkdtempSync, readdirSync, readFileSync, rmSync } from 'node:fs'
 import { tmpdir } from 'node:os'
 import { dirname, join, resolve } from 'node:path'
 import { fileURLToPath } from 'node:url'
@@ -154,6 +154,66 @@ for (const pkg of PACKAGES) {
   const cwd = join(repoRoot, pkg)
   const manifest = readManifest(join(cwd, 'package.json'))
   const name = manifest.name
+
+  /**
+   * Every module a published `.d.ts` names must be something the consumer is
+   * guaranteed to have: a declared dependency, or a peer dependency they were
+   * told to install. Anything else resolves only by accident of a flattened
+   * `node_modules`, and `skipLibCheck` — on by default, and set in this repo's
+   * base config — turns the failure to resolve it into SILENCE rather than an
+   * error. The types do not break loudly; they degrade to `any`.
+   *
+   * `@klad/vue` shipped exactly that. `defineComponent`'s inferred return type
+   * named `@vue/runtime-core`, which is private to `vue` and not a dependency
+   * of anything here, so consumers on pnpm's layout got `any` for the
+   * component's props, all eight of its events, its slot and its exposed
+   * `api`. Neither publint nor attw sees this: the entry point resolves fine,
+   * and what fails is a name three levels inside the type it hands back.
+   *
+   * The same shape of bug is recorded in packages/*\/tsconfig.build.json,
+   * where cross-package types once emitted as `undefined`. Twice is a class,
+   * not an incident, which is why this checks rather than trusting the build.
+   */
+  process.stdout.write(`\n── ${name} · declaration imports ──\n`)
+  {
+    const provided = new Set([
+      ...Object.keys(manifest.dependencies ?? {}),
+      ...Object.keys(manifest.peerDependencies ?? {}),
+    ])
+    const distDir = join(cwd, 'dist')
+    const strangers = new Set()
+    for (const entry of readdirSync(distDir, { recursive: true })) {
+      const file = String(entry)
+      if (!file.endsWith('.d.ts')) continue
+      const text = readFileSync(join(distDir, file), 'utf8')
+      // Anchored to where a module specifier can actually appear: an
+      // `import`/`export` statement starting a line, or an inline `import()`
+      // type. Matching a bare `from '...'` anywhere reads the prose in these
+      // packages' doc comments as imports — the engine's own comments
+      // contrast `"what I picked"` with `"where this is going"`, and the
+      // first draft of this check duly reported that as a missing dependency.
+      const specifiers = [
+        ...text.matchAll(/^(?:import|export)\b[^;]*?\bfrom\s*['"]([^'"]+)['"]/gm),
+        ...text.matchAll(/\bimport\(\s*['"]([^'"]+)['"]\s*\)/g),
+      ]
+      for (const [, specifier] of specifiers) {
+        if (specifier.startsWith('.') || specifier.startsWith('node:')) continue
+        // `@scope/name/deep/path` and `name/deep/path` both reduce to what a
+        // manifest would list.
+        const parts = specifier.split('/')
+        const owner = specifier.startsWith('@') ? parts.slice(0, 2).join('/') : parts[0]
+        if (!provided.has(owner)) strangers.add(owner)
+      }
+    }
+    if (strangers.size === 0) {
+      process.stdout.write(`every imported module is a declared dependency or peer\n`)
+    } else {
+      for (const stranger of strangers) {
+        process.stdout.write(`'${stranger}' is imported by the published types but is neither\n`)
+      }
+      failed = true
+    }
+  }
 
   process.stdout.write(`\n── ${name} · publint ──\n`)
   try {

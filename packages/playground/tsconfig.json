@@ -6,5 +6,12 @@
     "types": ["vite/client"],
     "jsx": "preserve"
   },
+  // Without this a template is not type-checked at all: Volar accepts unknown
+  // props and unknown events silently. This app is the largest consumer of
+  // `@klad/vue` in the repository, so it is also the place where a renamed
+  // event or a mistyped handler should be caught.
+  "vueCompilerOptions": {
+    "strictTemplates": true
+  },
   "include": ["src", "src/**/*.vue"]
 }
