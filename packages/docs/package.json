@@ -11,7 +11,7 @@
   },
   "devDependencies": {
     "@klad/playground": "workspace:*",
-    "vitepress": "2.0.0-alpha.18",
+    "vitepress": "2.0.0-alpha.19",
     "vitepress-plugin-tabs": "^0.9.1"
   }
 }
