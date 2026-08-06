@@ -96,9 +96,64 @@ let failed = false
   }
 }
 
+/** Reads the names in a built entry's final `export { ... }`, aliases resolved. */
+function exportedNames(distEntry) {
+  const text = readFileSync(distEntry, 'utf8')
+  const list = /export \{([^}]*)\};?\s*$/.exec(text)?.[1] ?? ''
+  return new Set(
+    list
+      .split(',')
+      .map((part) => part.trim().replace(/^type /, '').split(' as ').pop())
+      .filter(Boolean),
+  )
+}
+
+/**
+ * What `@klad/core` exports that the two adapters deliberately do not, and why.
+ * Anything core gains that is NOT listed here has to be re-exported by both, or
+ * this check fails — which is the point: the list is the decision, and adding
+ * to it is how you record having made one.
+ */
+const VANILLA_ONLY = {
+  createKlad: 'the frameworkless entry point each adapter replaces',
+  createOverlay: 'the frameworkless overlay, likewise',
+  OverlayItem: "belongs to `createOverlay`'s API, not to an adapter's",
+  KladInstance: 'the chart object an adapter owns and never hands over — `useKlad()` gives out its `api`',
+}
+
+/**
+ * A consumer of an adapter must be able to NAME every type the API makes them
+ * write, without adding `@klad/core` as a dependency to do it. Both adapters
+ * failed that: twelve of core's types were unreachable, `NodeData` among them
+ * — the type of every item in `options.data` and of the `item` on every event
+ * payload. Inline object literals infer, so nothing complained; the gap only
+ * appears the moment someone writes `const people: NodeData[]`.
+ *
+ * Checked here rather than by listing the names in a test, so that a type
+ * added to core later is caught without anyone remembering to update a list.
+ */
+{
+  const coreExports = exportedNames(join(repoRoot, 'packages/core/dist/index.d.ts'))
+  for (const adapter of ['packages/vue', 'packages/react']) {
+    const adapterName = readManifest(join(repoRoot, adapter, 'package.json')).name
+    process.stdout.write(`\n── ${adapterName} · re-exports ──\n`)
+    const reachable = exportedNames(join(repoRoot, adapter, 'dist/index.d.ts'))
+    const unreachable = [...coreExports].filter((n) => !reachable.has(n) && !(n in VANILLA_ONLY))
+    if (unreachable.length === 0) {
+      process.stdout.write(`every type a consumer has to write is nameable from here\n`)
+    } else {
+      for (const missing of unreachable) {
+        process.stdout.write(`'${missing}' is in the API surface but not re-exported\n`)
+      }
+      failed = true
+    }
+  }
+}
+
 for (const pkg of PACKAGES) {
   const cwd = join(repoRoot, pkg)
-  const name = readManifest(join(cwd, 'package.json')).name
+  const manifest = readManifest(join(cwd, 'package.json'))
+  const name = manifest.name
 
   process.stdout.write(`\n── ${name} · publint ──\n`)
   try {
