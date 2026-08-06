@@ -34,17 +34,27 @@ import { ORG_CHART_KEY } from './useKlad.js'
  * nothing that made an SFC worth that tooling lived in it. The entire typed
  * surface was in the script block, which is what this file still is.
  *
- * What it did NOT fix, so that nobody assumes it did: the declarations also
- * named `@vue/runtime-core`, a package this one does not depend on and `vue`
- * only re-exports, which consumers resolving strictly could not find — see
- * `scripts/normalize-dts.mjs` for what that cost and what corrects it. That
- * leak comes from type INFERENCE, not from Volar, so it survived the rewrite
- * and briefly got worse.
+ * It is also not what fixed the bug it was written for. These declarations
+ * named `@vue/runtime-core` — private to `vue`, unresolvable for a consumer
+ * who does not get a flattened `node_modules`, and `skipLibCheck` turned that
+ * into silence rather than an error, so the whole component became `any`. The
+ * rewrite did not stop it; the emitted references survived and briefly
+ * multiplied. What stopped it was `tsconfig.build.json` turning out not to be
+ * legal JSON: a `"//"` value ran across several lines, TypeScript's tolerant
+ * parser took the file and quietly dropped what it could not read, and without
+ * that config's `paths` the emitter named the package a symbol is DECLARED in
+ * instead of the one this package depends on. Fixing the JSON emptied the
+ * output of `@vue/runtime-core` entirely.
  *
- * See `type-tests/consumer.vue` in the playground, which pins this component's
- * public surface against the built `.d.ts` rather than against this source.
- * It is what caught the above, and it is the only check here that looks at
- * what a consumer actually receives.
+ * Worth stating because the first explanation was wrong in a believable way:
+ * it really is inference that prints those names, but inference was only
+ * reaching for them because module resolution had been silently misconfigured.
+ * A symptom two levels from its cause, and a fix that looked like it worked.
+ *
+ * See `type-tests/consumer.vue` in the playground and
+ * `scripts/check-published-types.mjs`, which install this package the way a
+ * stranger would. They are the only checks here that look at what a consumer
+ * actually receives.
  */
 
 /** The payload of one of the vanilla layer's events, as an emit declares it. */

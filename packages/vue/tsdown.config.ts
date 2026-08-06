@@ -6,11 +6,13 @@ import { defineConfig } from 'tsdown'
  * declaration emit through `vue-tsc` (`dts: { vue: true }`) — the only thing
  * that can type an SFC's public surface.
  *
- * Declaration emit is now on the same path every other package here uses.
- * That removed Volar's `__VLS_*` codegen from the output but NOT the
- * `@vue/runtime-core` references in it, which come from `defineComponent`'s
- * inferred return type and are corrected after the fact — see the `build`
- * script in this package's manifest and `scripts/normalize-dts.mjs`.
+ * Declaration emit is now on the same path every other package here uses, and
+ * `tsconfig.build.json` is what makes that path correct: its `paths` point the
+ * sibling packages at their BUILT declarations, so the emitted imports name
+ * files a consumer will actually have. That file was malformed JSON for a
+ * while and TypeScript read it anyway, minus the parts it could not parse —
+ * which is how these declarations came to name `@vue/runtime-core`, a package
+ * nothing here depends on. See `src/Klad.ts` for the whole account.
  */
 export default defineConfig({
   entry: { index: 'src/index.ts' },
