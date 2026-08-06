@@ -21,7 +21,6 @@ export function overflowLabel(over: { count: number }): string {
   return `+${over.count} more`
 }
 
-
 /** Opens the picker for one aggregate node. Shared by all three stacks: what
  * it builds is a DOM list widget, and three copies of a virtual list is three
  * places for it to drift. */

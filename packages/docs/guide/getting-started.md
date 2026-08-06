@@ -113,7 +113,7 @@ nested `children` shape to convert to, which means the array that came back
 from your API is very often already the right shape.
 
 ```ts
-[
+;[
   { id: 'ceo' }, //                      no parentId -> a root
   { id: 'cto', parentId: 'ceo' },
   { id: 'lead', parentId: 'cto' },
@@ -133,16 +133,16 @@ partial data still draws.
 Each of these is one option or one call, and none of them is a prerequisite
 for the others. Take them in whatever order your chart asks for.
 
-| You want | Add |
-|---|---|
+| You want                               | Add                                                                                      |
+| -------------------------------------- | ---------------------------------------------------------------------------------------- |
 | Your own card instead of a drawn label | `renderNode`, a `#node` slot, or a render prop — see [Node content](/guide/node-content) |
-| Bigger or per-node boxes | `nodeSize` — see [Sizing](/guide/sizing) |
-| A different growth direction | `orientation: 'lr'`, plus `rtl` if you need mirrored siblings |
-| To start collapsed | `collapsedByDefault: true` |
-| A map of where you are | `minimap: true` |
-| To react to clicks | `chart.on('nodeClick', …)` / `@node-click` / `onNodeClick` — see [Events](/api/events) |
-| To move the camera | `chart.api.focus(id)`, `fit()`, `zoomTo(k)` — see [Navigating](/guide/navigating) |
-| Different colours | `theme`, live via `setTheme` — see [Theme](/api/theme) |
+| Bigger or per-node boxes               | `nodeSize` — see [Sizing](/guide/sizing)                                                 |
+| A different growth direction           | `orientation: 'lr'`, plus `rtl` if you need mirrored siblings                            |
+| To start collapsed                     | `collapsedByDefault: true`                                                               |
+| A map of where you are                 | `minimap: true`                                                                          |
+| To react to clicks                     | `chart.on('nodeClick', …)` / `@node-click` / `onNodeClick` — see [Events](/api/events)   |
+| To move the camera                     | `chart.api.focus(id)`, `fit()`, `zoomTo(k)` — see [Navigating](/guide/navigating)        |
+| Different colours                      | `theme`, live via `setTheme` — see [Theme](/api/theme)                                   |
 
 ## A fuller example
 

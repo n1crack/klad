@@ -401,16 +401,20 @@ export function createMinimap(
       // pinned near the left grows to the right), and that is a genuine
       // refit, same as outgrowing the scale.
       const reuse = refit !== true && candidate !== null && fitsUnder(candidate, bounds)
-      const silhouette = computeSilhouette(boxes, bounds, { width, height }, {
-        ...SILHOUETTE_OPTIONS,
-        ...(reuse ? { transform: candidate! } : {}),
-      })
+      const silhouette = computeSilhouette(
+        boxes,
+        bounds,
+        { width, height },
+        {
+          ...SILHOUETTE_OPTIONS,
+          ...(reuse ? { transform: candidate! } : {}),
+        },
+      )
       transform = silhouette.transform
       // Re-read after the fact so this is right on both paths: reused, where
       // it reproduces `anchorAt` unchanged by construction, and refitted,
       // where the anchor lands wherever the fresh fit put it.
-      anchorAt =
-        anchorWorld === undefined ? null : worldToMinimap(transform, anchorWorld.x, anchorWorld.y)
+      anchorAt = anchorWorld === undefined ? null : worldToMinimap(transform, anchorWorld.x, anchorWorld.y)
       paintSilhouette(ctx, silhouette, silhouetteRgb)
     },
     onCamera(camera, viewport, anchorWorld) {

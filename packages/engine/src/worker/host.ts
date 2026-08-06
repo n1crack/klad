@@ -130,11 +130,7 @@ export interface ChartHost {
  * engine, or a canvas whose context was already taken — degrades to in-process
  * with a warning rather than failing.
  */
-export function createChartHost(
-  canvas: HTMLCanvasElement,
-  theme: Theme,
-  preferWorker: boolean,
-): ChartHost {
+export function createChartHost(canvas: HTMLCanvasElement, theme: Theme, preferWorker: boolean): ChartHost {
   let worker: Worker | null = null
   let engine: ChartEngine | null = null
   // In-process only (`worker === null`) — the only thing a theme change

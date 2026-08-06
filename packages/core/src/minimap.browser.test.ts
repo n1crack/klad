@@ -286,8 +286,7 @@ describe('minimap', () => {
     const ctx = minimapCanvas.getContext('2d')!
     let putImageDataCalls = 0
     type PutImageDataArgs =
-      | [ImageData, number, number]
-      | [ImageData, number, number, number, number, number, number]
+      [ImageData, number, number] | [ImageData, number, number, number, number, number, number]
     const original = ctx.putImageData.bind(ctx)
     ctx.putImageData = ((...args: PutImageDataArgs) => {
       putImageDataCalls++

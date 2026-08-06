@@ -21,12 +21,7 @@ function fakeRenderer(): Renderer {
   }
 }
 
-const DATA = [
-  { id: 'a' },
-  { id: 'b', parentId: 'a' },
-  { id: 'c', parentId: 'b' },
-  { id: 'd', parentId: 'a' },
-]
+const DATA = [{ id: 'a' }, { id: 'b', parentId: 'a' }, { id: 'c', parentId: 'b' }, { id: 'd', parentId: 'a' }]
 
 function sizesFor(count: number, w = 100, h = 50): Float64Array {
   const s = new Float64Array(count * 2)
@@ -45,7 +40,12 @@ describe('ChartEngine.getExportData', () => {
     // export must not depend on either: it forces a relayout on its own
     // (like hitTest) and covers the whole pruned tree regardless of what a
     // viewport-based render() would cull.
-    engine.setData(toWireTree(tree), sizesFor(tree.count), ['A', 'B', 'C', 'D'], new Uint8Array(tree.count).fill(1))
+    engine.setData(
+      toWireTree(tree),
+      sizesFor(tree.count),
+      ['A', 'B', 'C', 'D'],
+      new Uint8Array(tree.count).fill(1),
+    )
 
     const data = engine.getExportData()
     expect(data.parent.length).toBe(tree.count)
@@ -65,7 +65,12 @@ describe('ChartEngine.getExportData', () => {
     const tree = normalize(DATA)
     // Start fully open, then collapse 'b' — its child 'c' must disappear
     // from the export the same way it disappears from the on-screen tree.
-    engine.setData(toWireTree(tree), sizesFor(tree.count), ['A', 'B', 'C', 'D'], new Uint8Array(tree.count).fill(1))
+    engine.setData(
+      toWireTree(tree),
+      sizesFor(tree.count),
+      ['A', 'B', 'C', 'D'],
+      new Uint8Array(tree.count).fill(1),
+    )
     const bIndex = tree.idToIndex.get('b')!
     engine.setOpen(bIndex, false)
 
@@ -78,7 +83,12 @@ describe('ChartEngine.getExportData', () => {
     const engine = createChartEngine(fakeRenderer())
     const tree = normalize(DATA)
     engine.setOptions({ orientation: 'lr' })
-    engine.setData(toWireTree(tree), sizesFor(tree.count), ['A', 'B', 'C', 'D'], new Uint8Array(tree.count).fill(1))
+    engine.setData(
+      toWireTree(tree),
+      sizesFor(tree.count),
+      ['A', 'B', 'C', 'D'],
+      new Uint8Array(tree.count).fill(1),
+    )
 
     expect(engine.getExportData().horizontal).toBe(true)
   })

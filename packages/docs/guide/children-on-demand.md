@@ -131,9 +131,9 @@ See [Drag and drop](/guide/drag-and-drop).
 
 ## `refresh()` and `update()`
 
-| | |
-| --- | --- |
-| `refresh()` | Keeps everything loaded. It says the data did not change. |
+|                |                                                                                                           |
+| -------------- | --------------------------------------------------------------------------------------------------------- |
+| `refresh()`    | Keeps everything loaded. It says the data did not change.                                                 |
 | `update(data)` | Drops it. A new dataset — what was fetched belonged to the old one, and its parents may not even be here. |
 
 A drop folds the loaded nodes into the data array, since a reparent replaces

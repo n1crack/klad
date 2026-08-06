@@ -72,8 +72,7 @@ function renderCard(element: HTMLElement, context: NodeContext): void {
   // nodes it stands for, and a click that opens a list you can pick from.
   const over = context.overflow
   card.classList.toggle('is-overflow', over !== null)
-  card.querySelector('strong')!.textContent =
-    over === null ? String(item.name ?? '') : overflowLabel(over)
+  card.querySelector('strong')!.textContent = over === null ? String(item.name ?? '') : overflowLabel(over)
   card.querySelector('small')!.textContent =
     over === null ? String(item.title ?? '') : 'Click to search and pick'
   card.onclick = over === null ? null : () => openPickerFor(card, over, context.id)
@@ -295,10 +294,9 @@ function renderBounds(element: HTMLElement, context: NodeContext): void {
       Object.assign(document.createElement('div'), { className: 'bounds-body' }),
       Object.assign(document.createElement('span'), { className: 'bounds-rgt' }),
     )
-    card.querySelector('.bounds-body')!.append(
-      document.createElement('strong'),
-      document.createElement('small'),
-    )
+    card
+      .querySelector('.bounds-body')!
+      .append(document.createElement('strong'), document.createElement('small'))
     element.append(card)
   }
   const item = context.item
@@ -821,7 +819,6 @@ export function mountVanilla(
     }
     onEdit?.()
   })
-
 
   host.addEventListener('playground:repaint', onRepaint)
   host.addEventListener('playground:relayout', onRelayout)

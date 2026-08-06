@@ -2,12 +2,7 @@ import { describe, expect, it } from 'vitest'
 import { normalize } from './tree.js'
 import { pruneToVisible } from './visible.js'
 
-const DATA = [
-  { id: 'a' },
-  { id: 'b', parentId: 'a' },
-  { id: 'c', parentId: 'b' },
-  { id: 'd', parentId: 'a' },
-]
+const DATA = [{ id: 'a' }, { id: 'b', parentId: 'a' }, { id: 'c', parentId: 'b' }, { id: 'd', parentId: 'a' }]
 
 /** open flags with every node expanded. */
 function allOpen(count: number): Uint8Array {

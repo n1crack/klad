@@ -7,9 +7,5 @@
     "types": []
   },
   "include": ["src"],
-  "exclude": [
-    "src/**/*.browser.test.ts",
-    "src/worker/host.ts",
-    "src/worker/chart.worker.ts"
-  ]
+  "exclude": ["src/**/*.browser.test.ts", "src/worker/host.ts", "src/worker/chart.worker.ts"]
 }

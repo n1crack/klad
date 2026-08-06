@@ -23,7 +23,9 @@ export function minimapDefaultOn(example: Example): boolean {
  */
 export function minimapDefaultPosition(example: Example): MinimapPosition {
   const configured = example.options.minimap
-  return typeof configured === 'object' && configured.position !== undefined ? configured.position : 'bottom-right'
+  return typeof configured === 'object' && configured.position !== undefined
+    ? configured.position
+    : 'bottom-right'
 }
 
 /**
@@ -149,7 +151,12 @@ export function themeFor(
   edgeCornerRadius: number,
   mode: ThemeMode,
 ): NonNullable<Options['theme']> {
-  return { ...chartTokens(mode), ...LAYOUT_PRESETS[layout]!.theme, ...example.options.theme, edgeCornerRadius }
+  return {
+    ...chartTokens(mode),
+    ...LAYOUT_PRESETS[layout]!.theme,
+    ...example.options.theme,
+    edgeCornerRadius,
+  }
 }
 
 /**
@@ -207,7 +214,15 @@ export type NodeItem = Options['data'][number]
  * direct reports, who each found a new one — so colour reads as a coherent
  * grouping when you scan the tree, not noise.
  */
-export const DEPARTMENTS = ['Engineering', 'Design', 'Product', 'Sales', 'Marketing', 'Finance', 'Support'] as const
+export const DEPARTMENTS = [
+  'Engineering',
+  'Design',
+  'Product',
+  'Sales',
+  'Marketing',
+  'Finance',
+  'Support',
+] as const
 export type Department = (typeof DEPARTMENTS)[number] | 'Executive'
 
 /** Accent colour per department, shared by every custom card so the same department always reads the same colour. */
@@ -224,7 +239,10 @@ export const DEPARTMENT_COLOR: Record<Department, string> = {
 
 /** "Person 3" -> "P3", "CEO" -> "CE". No network imagery needed — initials are the avatar. */
 export function initials(name: string): string {
-  const parts = name.trim().split(/\s+/).filter((part) => part.length > 0)
+  const parts = name
+    .trim()
+    .split(/\s+/)
+    .filter((part) => part.length > 0)
   if (parts.length === 0) return '?'
   if (parts.length === 1) return parts[0]!.slice(0, 2).toUpperCase()
   return (parts[0]![0]! + parts[parts.length - 1]![0]!).toUpperCase()
@@ -271,7 +289,8 @@ const wideFanOut: FanOut = (counter, parentId) => 2 + ((counter * 7 + parentId.l
  * vertical shape rather than a hairline. See `largeData()` below.
  */
 const CROWN_DEPTH = 5
-const narrowFanOut: FanOut = (counter, parentId, depth) => (depth < CROWN_DEPTH ? wideFanOut(counter, parentId, depth) : 1)
+const narrowFanOut: FanOut = (counter, parentId, depth) =>
+  depth < CROWN_DEPTH ? wideFanOut(counter, parentId, depth) : 1
 
 /** Builds a branching org chart of roughly `target` nodes, using `fanOut` to decide reports-per-manager. */
 export function buildOrg(target: number, fanOut: FanOut = wideFanOut): NodeItem[] {
@@ -279,7 +298,13 @@ export function buildOrg(target: number, fanOut: FanOut = wideFanOut): NodeItem[
   const departmentById = new Map<string, Department>()
   const childCount = new Map<string, number>()
 
-  function push(id: string, parentId: string | undefined, name: string, title: string, department: Department): void {
+  function push(
+    id: string,
+    parentId: string | undefined,
+    name: string,
+    title: string,
+    department: Department,
+  ): void {
     departmentById.set(id, department)
     if (parentId !== undefined) childCount.set(parentId, (childCount.get(parentId) ?? 0) + 1)
     data.push({
@@ -440,9 +465,7 @@ const SHARED_DATA = buildOrg(28)
  * about. Mutable so a person the demo ADDS is answerable too — the rule has
  * to hold for rows that were not in the array this was built from.
  */
-const ORG_DEPARTMENT = new Map(
-  SHARED_DATA.map((item) => [String(item.id), item.department as Department]),
-)
+const ORG_DEPARTMENT = new Map(SHARED_DATA.map((item) => [String(item.id), item.department as Department]))
 
 /**
  * Who each person currently reports to, for the rule above — so it can tell a
@@ -642,7 +665,6 @@ function buildFileTree(): NodeItem[] {
   return rows
 }
 
-
 // --- "Children on demand": a tree that is not in the page ------------------
 //
 // Every other example ships its whole dataset. This one ships four rows and
@@ -652,8 +674,37 @@ function buildFileTree(): NodeItem[] {
 
 /** Names the fake server hands out, so a fetched folder looks like a folder
  * rather than a row of `node-3-1`. */
-const REMOTE_FOLDERS = ['assets', 'components', 'config', 'docs', 'hooks', 'lib', 'modules', 'routes', 'schemas', 'services', 'shared', 'stores', 'tests', 'types', 'utils', 'views', 'workers']
-const REMOTE_FILES = ['index.ts', 'client.ts', 'helpers.ts', 'options.ts', 'parser.ts', 'reducer.ts', 'schema.ts', 'server.ts', 'state.ts', 'worker.ts']
+const REMOTE_FOLDERS = [
+  'assets',
+  'components',
+  'config',
+  'docs',
+  'hooks',
+  'lib',
+  'modules',
+  'routes',
+  'schemas',
+  'services',
+  'shared',
+  'stores',
+  'tests',
+  'types',
+  'utils',
+  'views',
+  'workers',
+]
+const REMOTE_FILES = [
+  'index.ts',
+  'client.ts',
+  'helpers.ts',
+  'options.ts',
+  'parser.ts',
+  'reducer.ts',
+  'schema.ts',
+  'server.ts',
+  'state.ts',
+  'worker.ts',
+]
 
 /** Deterministic per id — the same folder opened twice gives the same
  * children, which is what an API would do and what makes the example
@@ -712,7 +763,6 @@ export const REMOTE_ROOTS: NodeItem[] = [
   { id: 'srv/packages', parentId: 'srv', name: 'packages', kind: 'folder', sizeKb: 0, ext: '' },
   { id: 'srv/README.md', parentId: 'srv', name: 'README.md', kind: 'file', sizeKb: 4, ext: 'md' },
 ]
-
 
 // --- "Very wide levels": a working set inside a crowd ----------------------
 //
@@ -814,7 +864,12 @@ function buildWideTree(): NodeItem[] {
       rows.push({ id: l2, parentId: l1, name: name(l2), role: 'Lead' })
       if (a >= 6 || b >= 10) continue
       for (let c = 0; c < 100; c++) {
-        rows.push({ id: `l3-${a}-${b}-${c}`, parentId: l2, name: name(`l3-${a}-${b}-${c}`), role: 'Engineer' })
+        rows.push({
+          id: `l3-${a}-${b}-${c}`,
+          parentId: l2,
+          name: name(`l3-${a}-${b}-${c}`),
+          role: 'Engineer',
+        })
       }
     }
   }
@@ -1028,8 +1083,7 @@ export function dropDetail(
   parentId: string | null,
   mode: string,
 ): { ids: string[]; parentId: string | null; mode: string } {
-  const nameOf = (id: string): string =>
-    String(data.find((each) => String(each.id) === id)?.name ?? id)
+  const nameOf = (id: string): string => String(data.find((each) => String(each.id) === id)?.name ?? id)
   return { ids: ids.map(nameOf), parentId: parentId === null ? null : nameOf(parentId), mode }
 }
 
@@ -1110,8 +1164,7 @@ export const EXAMPLES: Example[] = [
   {
     id: 'avatar-card',
     name: 'Avatar card',
-    description:
-      'The familiar org chart card: initials, a name and a role.',
+    description: 'The familiar org chart card: initials, a name and a role.',
     data: SHARED_DATA,
     options: { nodeSize: { w: 224, h: 96 }, minimap: true },
     content: 'avatar',
@@ -1142,8 +1195,7 @@ export const EXAMPLES: Example[] = [
   {
     id: 'photo-tile',
     name: 'Photo tile',
-    description:
-      'A taller, picture-led card, for charts where the face matters more than the title.',
+    description: 'A taller, picture-led card, for charts where the face matters more than the title.',
     data: SHARED_DATA,
     options: { nodeSize: { w: 132, h: 156 } },
     content: 'photo',
@@ -1170,7 +1222,7 @@ export const EXAMPLES: Example[] = [
     id: 'accordion',
     name: 'Accordion detail',
     description:
-      'A card with its own detail pane, opening independently of the chart\'s own expand and collapse — and the layout sliding out of its way as it grows.',
+      "A card with its own detail pane, opening independently of the chart's own expand and collapse — and the layout sliding out of its way as it grows.",
     data: SHARED_DATA,
     options: {
       // A function of the card's own disclosure PROGRESS, not just its open
@@ -1226,8 +1278,7 @@ export const EXAMPLES: Example[] = [
   {
     id: 'canvas-only',
     name: 'Canvas only',
-    description:
-      'No cards at all — what the canvas draws by itself. The lightest the chart gets.',
+    description: 'No cards at all — what the canvas draws by itself. The lightest the chart gets.',
     data: SHARED_DATA,
     options: {},
     content: 'none',
@@ -1295,7 +1346,7 @@ export const EXAMPLES: Example[] = [
     content: 'status',
     source: {
       canMove:
-        "({ items, parentId }) =>\n    // A reorder keeps the same parent, and is not a reassignment.\n    items.every((item) => item.parentId === parentId) ||\n    items.every((item) => item.department === departmentOf(parentId))",
+        '({ items, parentId }) =>\n    // A reorder keeps the same parent, and is not a reassignment.\n    items.every((item) => item.parentId === parentId) ||\n    items.every((item) => item.department === departmentOf(parentId))',
     },
     editControl: true,
   },

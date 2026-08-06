@@ -87,20 +87,20 @@ they are not using.
 
 Every card receives the same context:
 
-| Field | Type | What it is |
-|---|---|---|
-| `id` | `string` | The node's own id, as it appeared in `data`. |
-| `item` | `NodeData` | The whole item from `data` — your fields included. |
-| `open` | `boolean` | Whether this node's children are currently shown. |
-| `hasChildren` | `boolean` | Whether there is anything to open. |
-| `toggle` | `() => void` | Opens or closes this node. |
-| `directChildren` | `number` | How many children it has. |
-| `descendants` | `number` | Everyone below it, at any depth. |
-| `depth` | `number` | Distance from the root; a root is `0`. |
-| `height` | `number` | How far its own subtree runs below it; a leaf is `0`. |
-| `lft` / `rgt` | `number` | [Nested-set bounds](/api/chart#is-this-node-inside-that-branch) — this node's pair brackets every pair below it. |
-| `loading` | `boolean` | A [`loadChildren`](/guide/children-on-demand) for this node is in flight. Always `false` without one. |
-| `overflow` | object or `null` | Set only on the node a [capped level](/guide/wide-levels) rolled its remainder into — what it stands for, and the commands to bring some of it back. |
+| Field            | Type             | What it is                                                                                                                                           |
+| ---------------- | ---------------- | ---------------------------------------------------------------------------------------------------------------------------------------------------- |
+| `id`             | `string`         | The node's own id, as it appeared in `data`.                                                                                                         |
+| `item`           | `NodeData`       | The whole item from `data` — your fields included.                                                                                                   |
+| `open`           | `boolean`        | Whether this node's children are currently shown.                                                                                                    |
+| `hasChildren`    | `boolean`        | Whether there is anything to open.                                                                                                                   |
+| `toggle`         | `() => void`     | Opens or closes this node.                                                                                                                           |
+| `directChildren` | `number`         | How many children it has.                                                                                                                            |
+| `descendants`    | `number`         | Everyone below it, at any depth.                                                                                                                     |
+| `depth`          | `number`         | Distance from the root; a root is `0`.                                                                                                               |
+| `height`         | `number`         | How far its own subtree runs below it; a leaf is `0`.                                                                                                |
+| `lft` / `rgt`    | `number`         | [Nested-set bounds](/api/chart#is-this-node-inside-that-branch) — this node's pair brackets every pair below it.                                     |
+| `loading`        | `boolean`        | A [`loadChildren`](/guide/children-on-demand) for this node is in flight. Always `false` without one.                                                |
+| `overflow`       | object or `null` | Set only on the node a [capped level](/guide/wide-levels) rolled its remainder into — what it stands for, and the commands to bring some of it back. |
 
 ## Cards fade in and out
 
@@ -113,7 +113,7 @@ while it moves, and clearing it again once nothing is animating. Two things
 follow:
 
 - **Do not set `opacity` on `.klad-overlay-node` yourself**, or you will be
-  fighting it. Style the element *inside* the slot — the card you rendered —
+  fighting it. Style the element _inside_ the slot — the card you rendered —
   and leave the slot to the chart.
 - **A CSS `transition` on opacity is not needed and will lag.** The value is
   already being interpolated every frame against the same curve the canvas
@@ -149,7 +149,7 @@ Cards are ordinary DOM in an ordinary stacking context, so buttons, inputs and
 - A pointer press anywhere else on a card starts a pan, because that is what
   dragging a chart should do. If a control needs the press for itself — a
   `<select>` opening its menu — stop the event: `el.addEventListener(
-  'pointerdown', (e) => e.stopPropagation())`.
+'pointerdown', (e) => e.stopPropagation())`.
 
 ## Two kinds of open
 

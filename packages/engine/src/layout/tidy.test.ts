@@ -137,11 +137,7 @@ function buildSizes(rng: () => number, count: number): Float64Array {
  * Full pairwise no-overlap check (not bucketed by y). Increments `counter.n`
  * for every pair actually compared, so callers can assert the loop ran.
  */
-function assertNoOverlaps(
-  boxes: Float64Array,
-  count: number,
-  counter: { n: number },
-): void {
+function assertNoOverlaps(boxes: Float64Array, count: number, counter: { n: number }): void {
   for (let i = 0; i < count; i++) {
     const ax = boxes[i * 4]!
     const ay = boxes[i * 4 + 1]!
@@ -176,11 +172,7 @@ function assertParentsCentered(tree: ReturnType<typeof normalize>, boxes: Float6
 }
 
 /** Siblings (and forest roots) must be ordered left to right with spacingX respected. */
-function assertSiblingOrder(
-  tree: ReturnType<typeof normalize>,
-  boxes: Float64Array,
-  spacingX: number,
-): void {
+function assertSiblingOrder(tree: ReturnType<typeof normalize>, boxes: Float64Array, spacingX: number): void {
   for (let i = 0; i < tree.count; i++) {
     const from = tree.childStart[i]!
     const to = tree.childStart[i + 1]!
@@ -215,11 +207,7 @@ describe('layout', () => {
   })
 
   it('separates siblings by spacingX and centres the parent over them', () => {
-    const tree = normalize([
-      { id: 'a' },
-      { id: 'b', parentId: 'a' },
-      { id: 'c', parentId: 'a' },
-    ])
+    const tree = normalize([{ id: 'a' }, { id: 'b', parentId: 'a' }, { id: 'c', parentId: 'a' }])
     const { boxes } = layout(tree, uniformSizes(3), OPTS)
     const b = boxOf(tree, boxes, 'b')
     const c = boxOf(tree, boxes, 'c')
@@ -231,11 +219,7 @@ describe('layout', () => {
   })
 
   it('never overlaps siblings of differing widths', () => {
-    const tree = normalize([
-      { id: 'a' },
-      { id: 'wide', parentId: 'a' },
-      { id: 'narrow', parentId: 'a' },
-    ])
+    const tree = normalize([{ id: 'a' }, { id: 'wide', parentId: 'a' }, { id: 'narrow', parentId: 'a' }])
     const sizes = uniformSizes(3)
     sizes[tree.idToIndex.get('wide')! * 2] = 300
     sizes[tree.idToIndex.get('narrow')! * 2] = 40
@@ -366,18 +350,10 @@ describe('layout', () => {
   // timeout never fires. It's kept anyway because it's harmless and does
   // catch the case where a future change makes this measurably slower
   // without actually hanging.
-  it(
-    'returns instead of hanging when sizes contains NaN',
-    () => {
-      const tree = normalize([
-        { id: 'a' },
-        { id: 'b', parentId: 'a' },
-        { id: 'c', parentId: 'a' },
-      ])
-      const sizes = new Float64Array([50, 20, 50, NaN, 50, 20])
-      const { boxes } = layout(tree, sizes, { spacingX: 5, spacingY: 5 })
-      expect(boxes.length).toBe(tree.count * 4)
-    },
-    2000,
-  )
+  it('returns instead of hanging when sizes contains NaN', () => {
+    const tree = normalize([{ id: 'a' }, { id: 'b', parentId: 'a' }, { id: 'c', parentId: 'a' }])
+    const sizes = new Float64Array([50, 20, 50, NaN, 50, 20])
+    const { boxes } = layout(tree, sizes, { spacingX: 5, spacingY: 5 })
+    expect(boxes.length).toBe(tree.count * 4)
+  }, 2000)
 })

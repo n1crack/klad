@@ -32,12 +32,12 @@ reference, and a playground you can dial a chart in with. Run it locally with
 
 ## Packages
 
-| Package | For |
-|---|---|
-| [`@klad/core`](packages/core) | The frameworkless API. One function, `createKlad`. Use it directly, or read it as the reference for a new binding. |
-| [`@klad/vue`](packages/vue) | Vue 3: a `<Klad>` component with a `#node` scoped slot, plus `useKlad()`. |
-| [`@klad/react`](packages/react) | React: `<Klad>` with a render prop and a ref handle. |
-| [`@klad/engine`](packages/engine) | Layout, viewport maths, spatial index, renderer, worker protocol. No DOM. Only needed to build a new binding. |
+| Package                           | For                                                                                                                |
+| --------------------------------- | ------------------------------------------------------------------------------------------------------------------ |
+| [`@klad/core`](packages/core)     | The frameworkless API. One function, `createKlad`. Use it directly, or read it as the reference for a new binding. |
+| [`@klad/vue`](packages/vue)       | Vue 3: a `<Klad>` component with a `#node` scoped slot, plus `useKlad()`.                                          |
+| [`@klad/react`](packages/react)   | React: `<Klad>` with a render prop and a ref handle.                                                               |
+| [`@klad/engine`](packages/engine) | Layout, viewport maths, spatial index, renderer, worker protocol. No DOM. Only needed to build a new binding.      |
 
 Each depends on the layers beneath it, so installing one is enough — you never
 also install `@klad/core` to use the Vue adapter.
@@ -81,7 +81,7 @@ The Vue and React versions of this, and everything else, are in the docs.
 ## `nodeSize` is declared, not measured
 
 ```ts
-nodeSize: Size | ((item: NodeData) => Size)   // Size = { w: number; h: number }
+nodeSize: Size | ((item: NodeData) => Size) // Size = { w: number; h: number }
 ```
 
 Every DOM-based org chart can mount a node, read its
@@ -106,14 +106,14 @@ clipping rather than `display: none`, which would also remove them from the
 accessibility tree, and use `content-visibility: auto` so the mirror of a very
 large tree stays cheap.
 
-| Key | Effect |
-|---|---|
-| `↑` / `↓` | Previous / next row in document order. |
-| `→` | Expands a collapsed node; on an already-expanded one, moves in to the first child. |
-| `←` | Collapses an expanded node; on a collapsed one or a leaf, moves out to the parent. |
-| `Enter` / `Space` | Toggle the focused row. |
-| `Home` / `End` | First / last row. |
-| `m` | Pick the focused node up; `m` again drops it on wherever focus now is. `Escape` puts it back. Needs `dragAndDrop`. |
+| Key               | Effect                                                                                                             |
+| ----------------- | ------------------------------------------------------------------------------------------------------------------ |
+| `↑` / `↓`         | Previous / next row in document order.                                                                             |
+| `→`               | Expands a collapsed node; on an already-expanded one, moves in to the first child.                                 |
+| `←`               | Collapses an expanded node; on a collapsed one or a leaf, moves out to the parent.                                 |
+| `Enter` / `Space` | Toggle the focused row.                                                                                            |
+| `Home` / `End`    | First / last row.                                                                                                  |
+| `m`               | Pick the focused node up; `m` again drops it on wherever focus now is. `Escape` puts it back. Needs `dragAndDrop`. |
 
 Moving focus pans the camera to the focused node, subject to `animate`.
 
@@ -151,6 +151,7 @@ See [CONTRIBUTING.md](CONTRIBUTING.md) for how the packages fit together and
 how a release is cut.
 
 ## Roadmap
+
 See the [roadmap](https://klad.ozdemir.be/roadmap).
 
 ## License

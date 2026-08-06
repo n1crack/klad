@@ -13,12 +13,12 @@ is an option, and the same `{ id, parentId }` array feeds all four.
 createKlad(host, { data, layout: 'sunburst' })
 ```
 
-| | For | Grows |
-|---|---|---|
-| `tidy` | Org charts, decision trees, anything read top-down. The default. | Wide, fast |
-| `file` | File explorers, outlines, long lists of nested things. | Down only |
-| `radial` | Wide and shallow trees — a root with many branches, each short. | Outward |
-| `sunburst` | Proportions: what a branch holds relative to its siblings. | Outward, bounded |
+|            | For                                                              | Grows            |
+| ---------- | ---------------------------------------------------------------- | ---------------- |
+| `tidy`     | Org charts, decision trees, anything read top-down. The default. | Wide, fast       |
+| `file`     | File explorers, outlines, long lists of nested things.           | Down only        |
+| `radial`   | Wide and shallow trees — a root with many branches, each short.  | Outward          |
+| `sunburst` | Proportions: what a branch holds relative to its siblings.       | Outward, bounded |
 
 ## tidy
 
@@ -43,8 +43,8 @@ stays usable.
 createKlad(host, {
   data,
   layout: 'file',
-  layoutStep: 18,           // indent per level
-  rowGap: 2,                // between rows
+  layoutStep: 18, // indent per level
+  rowGap: 2, // between rows
   nodeSize: { w: 340, h: 30 },
   toggleOnNodeClick: true,
 })
@@ -65,6 +65,7 @@ a common right edge — with a floor, or a deep tree eventually reaches zero:
 ```ts
 nodeSize: (item) => ({ w: Math.max(190, 340 - depthOf(item) * 18), h: 30 })
 ```
+
 :::
 
 ## radial
@@ -81,7 +82,7 @@ in angle.
 createKlad(host, {
   data,
   layout: 'radial',
-  layoutStep: 190,          // ring spacing
+  layoutStep: 190, // ring spacing
   nodeSize: { w: 18, h: 18 },
   colourBranches: true,
   theme: { cornerRadius: 9, nodeStroke: 'transparent' },
@@ -108,7 +109,7 @@ Nothing is ever drawn clipped.
 ### Drilling in
 
 ```ts
-chart.api.setCentre('src/lib')   // and `null` to come back to the root
+chart.api.setCentre('src/lib') // and `null` to come back to the root
 ```
 
 The chosen branch widens to the full circle and travels inward while everything

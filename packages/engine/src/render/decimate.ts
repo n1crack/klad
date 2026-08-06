@@ -11,10 +11,7 @@ export interface DecimationViewport {
  * device-pixel size. This is the single source of truth for grid dimensions,
  * ensuring consistent calculations across gridSizeFor and decimateByCell.
  */
-function gridDims(
-  viewport: DecimationViewport,
-  cellDevicePx: number,
-): { cols: number; rows: number } {
+function gridDims(viewport: DecimationViewport, cellDevicePx: number): { cols: number; rows: number } {
   const cols = Math.max(1, Math.ceil((viewport.width * viewport.dpr) / cellDevicePx))
   const rows = Math.max(1, Math.ceil((viewport.height * viewport.dpr) / cellDevicePx))
   return { cols, rows }

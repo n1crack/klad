@@ -167,11 +167,7 @@ export function subtreeMask(tree: Tree, roots: readonly number[]): Uint8Array {
  * which is why this reports a position rather than performing the move: only
  * the caller knows the shape of its own data.
  */
-export function dropPosition(
-  tree: Tree,
-  target: number,
-  mode: DropMode,
-): { parent: number; index: number } {
+export function dropPosition(tree: Tree, target: number, mode: DropMode): { parent: number; index: number } {
   if (mode === 'into') {
     return { parent: target, index: tree.childStart[target + 1]! - tree.childStart[target]! }
   }

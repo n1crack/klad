@@ -27,7 +27,8 @@ function recorder(): RenderContext2D & { calls: string[] } {
     beginPath: noop,
     moveTo: (x, y) => calls.push(`M${x},${y}`),
     lineTo: (x, y) => calls.push(`L${x},${y}`),
-    arc: (x, y, r, a0, a1, ccw) => calls.push(`A${x},${y},${r},${a0.toFixed(3)},${a1.toFixed(3)},${ccw === true}`),
+    arc: (x, y, r, a0, a1, ccw) =>
+      calls.push(`A${x},${y},${r},${a0.toFixed(3)},${a1.toFixed(3)},${ccw === true}`),
     closePath: () => calls.push('Z'),
     quadraticCurveTo: noop,
     bezierCurveTo: noop,

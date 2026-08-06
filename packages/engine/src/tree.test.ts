@@ -21,11 +21,7 @@ describe('normalize', () => {
   })
 
   it('preserves input order among siblings', () => {
-    const t = normalize([
-      { id: 'root' },
-      { id: 'z', parentId: 'root' },
-      { id: 'a', parentId: 'root' },
-    ])
+    const t = normalize([{ id: 'root' }, { id: 'z', parentId: 'root' }, { id: 'a', parentId: 'root' }])
     const start = t.childStart[0]!
     const end = t.childStart[1]!
     const names = Array.from(t.childIndex.slice(start, end)).map((i) => t.indexToId[i])
@@ -47,14 +43,9 @@ describe('normalize', () => {
   })
 
   it('treats an unresolvable parentId as a root and warns', () => {
-    const t = normalize([
-      { id: 'a' },
-      { id: 'b', parentId: 'ghost' },
-    ])
+    const t = normalize([{ id: 'a' }, { id: 'b', parentId: 'ghost' }])
     expect(Array.from(t.roots)).toEqual([0, 1])
-    expect(t.warnings).toEqual([
-      { code: 'orphan-parent', detail: 'parent "ghost" not found', ids: ['b'] },
-    ])
+    expect(t.warnings).toEqual([{ code: 'orphan-parent', detail: 'parent "ghost" not found', ids: ['b'] }])
   })
 
   it('keeps the last node when ids are duplicated and warns', () => {
@@ -85,9 +76,7 @@ describe('normalize', () => {
 
   it('breaks a self-parent cycle and roots the node', () => {
     const t = normalize([{ id: 'a', parentId: 'a' }])
-    expect(t.warnings).toEqual([
-      { code: 'cycle', detail: 'cycle detected: a', ids: ['a'] },
-    ])
+    expect(t.warnings).toEqual([{ code: 'cycle', detail: 'cycle detected: a', ids: ['a'] }])
     expect(Array.from(t.roots)).toEqual([0])
     expect(t.parent[0]).toBe(-1)
   })
@@ -176,11 +165,7 @@ describe('subtreeOf', () => {
 
 describe('wouldCreateCycle', () => {
   it('rejects reparenting a node under its own descendant', () => {
-    const t = normalize([
-      { id: 'a' },
-      { id: 'b', parentId: 'a' },
-      { id: 'c', parentId: 'b' },
-    ])
+    const t = normalize([{ id: 'a' }, { id: 'b', parentId: 'a' }, { id: 'c', parentId: 'b' }])
     expect(wouldCreateCycle(t, t.idToIndex.get('a')!, t.idToIndex.get('c')!)).toBe(true)
   })
 
@@ -191,11 +176,7 @@ describe('wouldCreateCycle', () => {
   })
 
   it('allows a valid reparent', () => {
-    const t = normalize([
-      { id: 'a' },
-      { id: 'b', parentId: 'a' },
-      { id: 'c', parentId: 'a' },
-    ])
+    const t = normalize([{ id: 'a' }, { id: 'b', parentId: 'a' }, { id: 'c', parentId: 'a' }])
     expect(wouldCreateCycle(t, t.idToIndex.get('c')!, t.idToIndex.get('b')!)).toBe(false)
   })
 

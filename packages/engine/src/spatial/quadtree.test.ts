@@ -7,10 +7,22 @@ const BOUNDS: Bounds = { minX: 0, minY: 0, maxX: 1000, maxY: 1000 }
 /** Four boxes, one per quadrant of a 1000x1000 space. */
 function quadrants(): Float64Array {
   return Float64Array.from([
-    10, 10, 100, 100, // 0: top-left
-    890, 10, 100, 100, // 1: top-right
-    10, 890, 100, 100, // 2: bottom-left
-    890, 890, 100, 100, // 3: bottom-right
+    10,
+    10,
+    100,
+    100, // 0: top-left
+    890,
+    10,
+    100,
+    100, // 1: top-right
+    10,
+    890,
+    100,
+    100, // 2: bottom-left
+    890,
+    890,
+    100,
+    100, // 3: bottom-right
   ])
 }
 
@@ -111,10 +123,7 @@ describe('buildQuadTree', () => {
   })
 
   it('returns the highest index when boxes overlap', () => {
-    const tree = buildQuadTree(
-      Float64Array.from([100, 100, 100, 100, 120, 120, 100, 100]),
-      BOUNDS,
-    )
+    const tree = buildQuadTree(Float64Array.from([100, 100, 100, 100, 120, 120, 100, 100]), BOUNDS)
     expect(tree.hitTest(150, 150)).toBe(1)
   })
 

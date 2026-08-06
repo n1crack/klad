@@ -103,7 +103,13 @@ function exportedNames(distEntry) {
   return new Set(
     list
       .split(',')
-      .map((part) => part.trim().replace(/^type /, '').split(' as ').pop())
+      .map((part) =>
+        part
+          .trim()
+          .replace(/^type /, '')
+          .split(' as ')
+          .pop(),
+      )
       .filter(Boolean),
   )
 }

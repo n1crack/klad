@@ -116,22 +116,30 @@ function servePlaygroundInDev(base: string) {
   return {
     name: 'klad-playground-dev',
     configureServer(server: { middlewares: { use: (fn: unknown) => void } }) {
-      server.middlewares.use((req: { url?: string }, res: {
-        setHeader: (k: string, v: string) => void
-        end: (body?: string) => void
-      }, next: () => void) => {
-        const path = (req.url ?? '').split('?')[0]
-        if (path !== route && path !== route.replace(/\/$/, '')) return next()
-        try {
-          res.setHeader('Content-Type', 'text/html')
-          res.end(readFileSync(indexPath, 'utf8'))
-        } catch {
-          // Not built yet — say so plainly rather than showing a 404 that
-          // suggests the route itself is wrong.
-          res.setHeader('Content-Type', 'text/html')
-          res.end('<p>The playground has not been built yet. Run <code>pnpm --filter @klad/docs build</code>, or start the docs with <code>pnpm docs</code>, which builds it first.</p>')
-        }
-      })
+      server.middlewares.use(
+        (
+          req: { url?: string },
+          res: {
+            setHeader: (k: string, v: string) => void
+            end: (body?: string) => void
+          },
+          next: () => void,
+        ) => {
+          const path = (req.url ?? '').split('?')[0]
+          if (path !== route && path !== route.replace(/\/$/, '')) return next()
+          try {
+            res.setHeader('Content-Type', 'text/html')
+            res.end(readFileSync(indexPath, 'utf8'))
+          } catch {
+            // Not built yet — say so plainly rather than showing a 404 that
+            // suggests the route itself is wrong.
+            res.setHeader('Content-Type', 'text/html')
+            res.end(
+              '<p>The playground has not been built yet. Run <code>pnpm --filter @klad/docs build</code>, or start the docs with <code>pnpm docs</code>, which builds it first.</p>',
+            )
+          }
+        },
+      )
     },
   }
 }
@@ -256,8 +264,7 @@ export default defineConfig({
     footer: {
       message: 'AGPL-3.0-or-later, with a commercial licence available.',
       // VitePress renders the copyright as HTML, so the name links out.
-      copyright:
-        '© 2026 <a href="https://ozdemir.be" target="_blank" rel="noopener">Yusuf Özdemir</a>',
+      copyright: '© 2026 <a href="https://ozdemir.be" target="_blank" rel="noopener">Yusuf Özdemir</a>',
     },
 
     search: { provider: 'local' },

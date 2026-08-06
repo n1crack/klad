@@ -106,11 +106,11 @@ which is how a drop onto something off screen is possible at all.
 
 The same move, without a pointer:
 
-| Key | |
-| --- | --- |
-| `m` | Pick up the focused node |
-| `m` | Drop it on the node you have moved focus to |
-| `Escape` | Put it back down |
+| Key      |                                             |
+| -------- | ------------------------------------------- |
+| `m`      | Pick up the focused node                    |
+| `m`      | Drop it on the node you have moved focus to |
+| `Escape` | Put it back down                            |
 
 Each step is announced through a live region, since a keyboard user gets no
 drop preview to look at. It goes through the same `nodeDrop` event, so a
@@ -123,9 +123,9 @@ target that would refuse — and takes your cards out of the pointer's way for
 the length of the gesture. Two classes are on the host element if you want to
 go further:
 
-| Class | While |
-| --- | --- |
-| `.klad-dragging` | A drag is in progress |
+| Class                | While                                     |
+| -------------------- | ----------------------------------------- |
+| `.klad-dragging`     | A drag is in progress                     |
 | `.klad-drag-refused` | ...and the current target would refuse it |
 
 The ghost that follows the pointer is a clone of the card you picked up, under

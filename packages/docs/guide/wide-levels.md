@@ -26,7 +26,7 @@ single node saying how many it stands for.
 children happen to come first. Working through five levels of a hundred where
 seven or eight per level matter, that is nobody's eight.
 
-`pinChildren` is what makes the cap useful: it says *which*. Your working set,
+`pinChildren` is what makes the cap useful: it says _which_. Your working set,
 a search result, the current selection — anything you can express as a
 predicate.
 
@@ -54,12 +54,12 @@ three hundred roots draws three hundred roots.
 
 The children that did not fit are still in the tree.
 
-| | |
-| --- | --- |
-| `search` | Finds them. |
+|             |                                                                            |
+| ----------- | -------------------------------------------------------------------------- |
+| `search`    | Finds them.                                                                |
 | `stats(id)` | Counts them: `descendants` on the capped parent is still all four hundred. |
-| `filter` | Matches them. |
-| `focus(id)` | Brings one back, digging it out of the cap on the way. |
+| `filter`    | Matches them.                                                              |
+| `focus(id)` | Brings one back, digging it out of the cap on the way.                     |
 
 That last one matters more than it looks. A cap has no toggle the way a
 collapsed branch does, so without it a node three levels down whose ancestor
@@ -88,13 +88,13 @@ renderNode: (element, context) => {
 
 `context.overflow` is `null` on every ordinary node. On this one it carries:
 
-| | |
-| --- | --- |
-| `count` | How many it stands for. |
-| `ids` | Which. |
-| `items` | Their data objects, in the same order — so a picker can show names without going back to your own array. |
-| `reveal(ids)` | Bring specific ones back **without** lifting the cap. |
-| `showMore()` | Lift the cap on this parent entirely. |
+|               |                                                                                                          |
+| ------------- | -------------------------------------------------------------------------------------------------------- |
+| `count`       | How many it stands for.                                                                                  |
+| `ids`         | Which.                                                                                                   |
+| `items`       | Their data objects, in the same order — so a picker can show names without going back to your own array. |
+| `reveal(ids)` | Bring specific ones back **without** lifting the cap.                                                    |
+| `showMore()`  | Lift the cap on this parent entirely.                                                                    |
 
 `reveal` swaps rather than adds: the cap is a budget, and what you ask for
 takes a slot from it, so something else drops out. That is the same rule pins
@@ -141,11 +141,11 @@ It is real enough to lay out, be hit-tested, and appear in an export — an
 export is a picture of the chart, and this node is in the chart. It is
 deliberately none of the things that would leak it into your data model:
 
-| | |
-| --- | --- |
-| `search` / `filter` | Never return it. Its `item` is a stub with nothing on it but an id, and its fallback label would let a filter for "1" match `+15`. |
-| `stats(id)` | Does not count it. A card saying "21 reports" would be wrong about the only tree you have. |
-| Dragging | Refused, from either side. It stands for nodes rather than being one, and `nodeDrop` must never report an id you have not seen — including when a box selection swept it up. |
+|                     |                                                                                                                                                                              |
+| ------------------- | ---------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
+| `search` / `filter` | Never return it. Its `item` is a stub with nothing on it but an id, and its fallback label would let a filter for "1" match `+15`.                                           |
+| `stats(id)`         | Does not count it. A card saying "21 reports" would be wrong about the only tree you have.                                                                                   |
+| Dragging            | Refused, from either side. It stands for nodes rather than being one, and `nodeDrop` must never report an id you have not seen — including when a box selection swept it up. |
 
 The one place it does show is `lft`/`rgt`, which are positions in the chart's
 own numbering rather than counts. Containment is unaffected; the
@@ -163,7 +163,7 @@ watching.add('lead-42')
 chart.api.refresh()
 ```
 
-Keep the *set* mutable and the *function* stable. A new `pinChildren` on every
+Keep the _set_ mutable and the _function_ stable. A new `pinChildren` on every
 render is what makes Vue and React tear the chart down, which resets both the
 open branches and every cap the viewer had lifted.
 
@@ -181,15 +181,15 @@ Both options pass straight through. One caveat in both, and it bites harder
 here than elsewhere: define `pinChildren` and `maxChildren` **outside** the
 render, or memoise them. Vue watches the options object deeply and React
 compares it by identity, so a function rebuilt every render triggers
-`update()` every render — which resets the open branches *and* every cap the
+`update()` every render — which resets the open branches _and_ every cap the
 viewer had lifted.
 
-If your working set is reactive, keep the *set* reactive and the *function*
+If your working set is reactive, keep the _set_ reactive and the _function_
 stable:
 
 ```ts
-const watching = new Set<string>()          // mutate this
-const pinChildren = (item) => watching.has(String(item.id))   // never rebuilt
+const watching = new Set<string>() // mutate this
+const pinChildren = (item) => watching.has(String(item.id)) // never rebuilt
 ```
 
 ## With a filter

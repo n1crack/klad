@@ -1001,8 +1001,7 @@ function buildTransition(
         // a still-fading ghost tracking its anchor's OWN live reposition
         // tween — same "live anchor, not a stale snapshot" fix as
         // `render()`'s ghost-drawing loop.
-        const anchorKey =
-          sourceRemap === null ? ghost.anchorSource : (sourceRemap[ghost.anchorSource] ?? -1)
+        const anchorKey = sourceRemap === null ? ghost.anchorSource : (sourceRemap[ghost.anchorSource] ?? -1)
         const to =
           ghost.anchor === -1 || anchorKey === -1
             ? ghost.from
@@ -1282,7 +1281,16 @@ function buildTransition(
     edgeQuad = buildQuadTree(edgeUnionBoxes, { minX: eMinX, minY: eMinY, maxX: eMaxX, maxY: eMaxY })
   }
 
-  return { startedAt: now, duration: TRANSITION_DURATION_MS, fromBySource, ghosts, ghostQuad, nodeQuad, edgeQuad, opening }
+  return {
+    startedAt: now,
+    duration: TRANSITION_DURATION_MS,
+    fromBySource,
+    ghosts,
+    ghostQuad,
+    nodeQuad,
+    edgeQuad,
+    opening,
+  }
 }
 
 /**
@@ -1861,9 +1869,7 @@ export function createChartEngine(renderer: Renderer): ChartEngine {
     // camera anchor are measured against. Gated on `animate`: a
     // reduced-motion host gets no flash.
     if (pendingRingSource !== -1) {
-      ring = animate
-        ? { source: pendingRingSource, startedAt: now, duration: RING_DURATION_MS }
-        : null
+      ring = animate ? { source: pendingRingSource, startedAt: now, duration: RING_DURATION_MS } : null
       pendingRingSource = -1
     }
 
@@ -2020,8 +2026,24 @@ export function createChartEngine(renderer: Renderer): ChartEngine {
     ) {
       const need = gridSizeFor(viewport, options.blockDecimation)
       if (decimationGrid.length < need) decimationGrid = new Uint8Array(need)
-      nodeCount = decimateByCell(boxes, cullBuffer, nodeCount, camera, viewport, options.blockDecimation, decimationGrid)
-      edgeDrawCount = decimateByCell(boxes, edgeDrawBuffer, edgeDrawCount, camera, viewport, options.blockDecimation, decimationGrid)
+      nodeCount = decimateByCell(
+        boxes,
+        cullBuffer,
+        nodeCount,
+        camera,
+        viewport,
+        options.blockDecimation,
+        decimationGrid,
+      )
+      edgeDrawCount = decimateByCell(
+        boxes,
+        edgeDrawBuffer,
+        edgeDrawCount,
+        camera,
+        viewport,
+        options.blockDecimation,
+        decimationGrid,
+      )
     }
 
     // --- expand/collapse transition ---
@@ -2177,9 +2199,7 @@ export function createChartEngine(renderer: Renderer): ChartEngine {
         // the ring is still fading, and this must degrade to "no ring"
         // rather than read a stale or out-of-range box.
         const pruned =
-          ring.source >= 0 && ring.source < prunedFromSource.length
-            ? prunedFromSource[ring.source]!
-            : -1
+          ring.source >= 0 && ring.source < prunedFromSource.length ? prunedFromSource[ring.source]! : -1
         if (pruned === -1) {
           ring = null
         } else {

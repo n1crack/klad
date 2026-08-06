@@ -46,12 +46,7 @@ function fakeRenderer(): Renderer & { frames: Frame[] } {
   }
 }
 
-const DATA = [
-  { id: 'a' },
-  { id: 'b', parentId: 'a' },
-  { id: 'c', parentId: 'b' },
-  { id: 'd', parentId: 'a' },
-]
+const DATA = [{ id: 'a' }, { id: 'b', parentId: 'a' }, { id: 'c', parentId: 'b' }, { id: 'd', parentId: 'a' }]
 
 function sizesFor(count: number, w = 100, h = 50): Float64Array {
   const s = new Float64Array(count * 2)
@@ -66,7 +61,12 @@ function seed(renderer: Renderer) {
   const engine = createChartEngine(renderer)
   const tree = normalize(DATA)
   engine.setViewport(800, 600, 1)
-  engine.setData(toWireTree(tree), sizesFor(tree.count), ['a', 'b', 'c', 'd'], new Uint8Array(tree.count).fill(1))
+  engine.setData(
+    toWireTree(tree),
+    sizesFor(tree.count),
+    ['a', 'b', 'c', 'd'],
+    new Uint8Array(tree.count).fill(1),
+  )
   return { engine, tree }
 }
 
@@ -117,11 +117,7 @@ describe('ChartEngine', () => {
     engine.setCamera({ x: 0, y: 0, k: 1 })
     engine.setOpen(tree.idToIndex.get('b')!, false)
     const drawn = Array.from(engine.render()).sort((p, q) => p - q)
-    expect(drawn).toEqual([
-      tree.idToIndex.get('a')!,
-      tree.idToIndex.get('b')!,
-      tree.idToIndex.get('d')!,
-    ])
+    expect(drawn).toEqual([tree.idToIndex.get('a')!, tree.idToIndex.get('b')!, tree.idToIndex.get('d')!])
   })
 
   it('does not relayout on a camera change', () => {
@@ -274,7 +270,12 @@ describe('ChartEngine', () => {
     const renderer = fakeRenderer()
     const engine = createChartEngine(renderer)
     const tree = normalize(DATA)
-    engine.setData(toWireTree(tree), sizesFor(tree.count), ['a', 'b', 'c', 'd'], new Uint8Array(tree.count).fill(1))
+    engine.setData(
+      toWireTree(tree),
+      sizesFor(tree.count),
+      ['a', 'b', 'c', 'd'],
+      new Uint8Array(tree.count).fill(1),
+    )
     engine.setCamera({ x: 0, y: 0, k: 1 })
     expect(() => engine.render()).not.toThrow()
     expect(renderer.frames.at(-1)!.visibleCount).toBe(0)
@@ -877,7 +878,7 @@ describe('ChartEngine expand/collapse transition', () => {
     expect(early.ghostAlpha[0]).toBeLessThan(0.3)
   })
 
-  it('grows a revealed node from its anchor\'s LIVE position, not the anchor\'s fixed pre-toggle box', () => {
+  it("grows a revealed node from its anchor's LIVE position, not the anchor's fixed pre-toggle box", () => {
     // 'p' needs TWO children, not one — see the analogous sibling-reflow test
     // in packages/core's orgchart.browser.test.ts for why: a single-child
     // chain never widens its own subtree, so 'p' itself never needs to
@@ -964,7 +965,7 @@ describe('ChartEngine expand/collapse transition', () => {
     expect(distanceFromLiveAnchor).toBeLessThan(Math.abs(exitX(pAfter) - exitX(pBefore)) / 2)
   })
 
-  it('grows a revealed child from the PARENT\'s exit edge (bottom-centre for tb), not its box origin/centre', () => {
+  it("grows a revealed child from the PARENT's exit edge (bottom-centre for tb), not its box origin/centre", () => {
     // The owner's ask for task 2: children should visibly drop out of the
     // bottom of the parent node, not balloon out of its middle. Single
     // child, single parent, single root — nothing here recentres 'p' itself
@@ -1006,7 +1007,7 @@ describe('ChartEngine expand/collapse transition', () => {
     expect(frame.boxes[qIdx * 4 + 3]).toBeCloseTo(0, 6)
   })
 
-  it('shrinks a collapsing ghost back into the PARENT\'s exit edge, not its box origin/centre', () => {
+  it("shrinks a collapsing ghost back into the PARENT's exit edge, not its box origin/centre", () => {
     const SIMPLE: NodeData[] = [{ id: 'a' }, { id: 'q', parentId: 'a' }]
     const renderer = fakeRenderer()
     const engine = createChartEngine(renderer)
@@ -1038,7 +1039,7 @@ describe('ChartEngine expand/collapse transition', () => {
     expect(frame.ghostBoxes[1]).toBeCloseTo(aBoxNow.y + aBoxNow.h, 1)
   })
 
-  it('grows a revealed child from the parent\'s TRAILING edge under lr orientation, not its bottom edge', () => {
+  it("grows a revealed child from the parent's TRAILING edge under lr orientation, not its bottom edge", () => {
     // Same scenario as the tb growth-point test above, but `orientation:
     // 'lr'`: the growth axis is now x, so the equivalent of "bottom edge" is
     // the parent's RIGHT (trailing) edge, vertical centre — see
@@ -1156,7 +1157,12 @@ describe('ChartEngine expand/collapse transition', () => {
     expect(engine.transitioning).toBe(true)
 
     const newTree = normalize([{ id: 'x' }, { id: 'y', parentId: 'x' }])
-    engine.setData(toWireTree(newTree), sizesFor(newTree.count), ['x', 'y'], new Uint8Array(newTree.count).fill(1))
+    engine.setData(
+      toWireTree(newTree),
+      sizesFor(newTree.count),
+      ['x', 'y'],
+      new Uint8Array(newTree.count).fill(1),
+    )
     expect(engine.transitioning).toBe(false)
     engine.setCamera({ x: 0, y: 0, k: 1 })
     engine.render(1010)
@@ -1354,7 +1360,11 @@ describe('ChartEngine expand/collapse transition', () => {
       // Fixed camera centred on 'a's PRE-toggle box — no anchor-tracking
       // here at all (that's the vanilla layer's job); this isolates the
       // engine's OWN cull behaviour from any compensating camera move.
-      const camera = { x: 400 - (beforeBox.x + beforeBox.w / 2), y: 300 - (beforeBox.y + beforeBox.h / 2), k: 1 }
+      const camera = {
+        x: 400 - (beforeBox.x + beforeBox.w / 2),
+        y: 300 - (beforeBox.y + beforeBox.h / 2),
+        k: 1,
+      }
       engine.setCamera(camera)
       engine.render(1000)
 
@@ -1403,7 +1413,11 @@ describe('ChartEngine expand/collapse transition', () => {
         w: engine.boxes[pPrunedBefore * 4 + 2]!,
         h: engine.boxes[pPrunedBefore * 4 + 3]!,
       }
-      const camera = { x: 400 - (beforeBox.x + beforeBox.w / 2), y: 300 - (beforeBox.y + beforeBox.h / 2), k: 1 }
+      const camera = {
+        x: 400 - (beforeBox.x + beforeBox.w / 2),
+        y: 300 - (beforeBox.y + beforeBox.h / 2),
+        k: 1,
+      }
       engine.setCamera(camera)
       engine.render(1000)
 
@@ -1632,9 +1646,7 @@ describe('ChartEngine open-length reconciliation (F6)', () => {
     const tree = normalize(data)
     engine.setViewport(800, 600, 1)
     const longOpen = Uint8Array.from([1, 1, 1, 1, 1])
-    expect(() =>
-      engine.setData(toWireTree(tree), sizesFor(tree.count), ['a', 'b'], longOpen),
-    ).not.toThrow()
+    expect(() => engine.setData(toWireTree(tree), sizesFor(tree.count), ['a', 'b'], longOpen)).not.toThrow()
     engine.setCamera({ x: 0, y: 0, k: 1 })
     const drawn = engine.render()
     expect(drawn.length).toBe(2)
@@ -1754,7 +1766,12 @@ describe('the connector style as an option', () => {
     const engine = createChartEngine(renderer)
     const tree = normalize([{ id: 'a' }, { id: 'b', parentId: 'a' }, { id: 'c', parentId: 'a' }])
     engine.setViewport(1000, 1000, 1)
-    engine.setData(toWireTree(tree), sizesFor(tree.count), ['a', 'b', 'c'], new Uint8Array(tree.count).fill(1))
+    engine.setData(
+      toWireTree(tree),
+      sizesFor(tree.count),
+      ['a', 'b', 'c'],
+      new Uint8Array(tree.count).fill(1),
+    )
     engine.setCamera({ x: 400, y: 400, k: 1 })
     return { renderer, engine }
   }

@@ -118,9 +118,9 @@ An org chart is one thing a tree can look like. Add `layout` and the same array
 draws as something else entirely — no second data structure, no second library.
 
 ```ts
-createKlad(el, { data, layout: 'file' })      // indented rows, folder guide lines
-createKlad(el, { data, layout: 'radial' })    // root at the centre, generations as rings
-createKlad(el, { data, layout: 'sunburst' })  // nested arcs you can drill into
+createKlad(el, { data, layout: 'file' }) // indented rows, folder guide lines
+createKlad(el, { data, layout: 'radial' }) // root at the centre, generations as rings
+createKlad(el, { data, layout: 'sunburst' }) // nested arcs you can drill into
 ```
 
 File explorers, ASTs, taxonomies, dependency trees, family trees, disk usage —

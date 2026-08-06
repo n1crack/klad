@@ -575,7 +575,8 @@ export function toSVG(data: ExportData, opts: SvgExportOptions = {}): string {
       const cy = sectors[s + 1]! + offsetY
       recorder.moveTo(cx + r * Math.cos(a0), cy + r * Math.sin(a0))
       recorder.arc(cx, cy, r, a0, a1, false)
-      const ink = fills === null ? theme.labelColour : inkOn(fills[i]!, theme.labelColour, theme.labelColourInverse)
+      const ink =
+        fills === null ? theme.labelColour : inkOn(fills[i]!, theme.labelColour, theme.labelColourInverse)
       nodeParts.push(`<path class="h" stroke="${escapeXml(ink)}" d="${recorder.data()}"/>`)
     }
   } else if (hidden !== null && data.angles !== null) {
@@ -632,12 +633,19 @@ export function toSVG(data: ExportData, opts: SvgExportOptions = {}): string {
       const label = labels[i]
       if (label === undefined || label === '') continue
       const s = i * 6
-      const place = labelPlacement(sectors[s + 2]!, sectors[s + 3]!, sectors[s + 4]!, sectors[s + 5]!, lineHeight)
+      const place = labelPlacement(
+        sectors[s + 2]!,
+        sectors[s + 3]!,
+        sectors[s + 4]!,
+        sectors[s + 5]!,
+        lineHeight,
+      )
       if (place === null) continue
       if (estimateWidth(label, theme.labelFont) > place.maxWidth) continue
       const cx = sectors[s]! + offsetX + place.x
       const cy = sectors[s + 1]! + offsetY + place.y
-      const ink = fills === null ? theme.labelColour : inkOn(fills[i]!, theme.labelColour, theme.labelColourInverse)
+      const ink =
+        fills === null ? theme.labelColour : inkOn(fills[i]!, theme.labelColour, theme.labelColourInverse)
       const rot = place.angle === 0 ? '' : ` rotate(${fmt((place.angle * 180) / Math.PI)})`
       labelParts.push(
         `<text class="l" text-anchor="middle" fill="${escapeXml(ink)}"` +

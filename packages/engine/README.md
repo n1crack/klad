@@ -26,10 +26,7 @@ npm install @klad/engine
 ```ts
 import { normalize, layout } from '@klad/engine'
 
-const tree = normalize([
-  { id: 'ceo' },
-  { id: 'cto', parentId: 'ceo' },
-])
+const tree = normalize([{ id: 'ceo' }, { id: 'cto', parentId: 'ceo' }])
 
 const sizes = new Float64Array(tree.count * 2).fill(0)
 for (let i = 0; i < tree.count; i++) {

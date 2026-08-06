@@ -191,11 +191,7 @@ describe('createCanvas2DRenderer', () => {
 
     it('fills a node at the block tier once blockFill is set to an opaque colour', () => {
       const canvas = makeCanvas()
-      const renderer = createCanvas2DRenderer(
-        canvas,
-        { ...DEFAULT_THEME, blockFill: '#ff00ff' },
-        measurerFor,
-      )
+      const renderer = createCanvas2DRenderer(canvas, { ...DEFAULT_THEME, blockFill: '#ff00ff' }, measurerFor)
       renderer.resize(400, 300, 1)
       renderer.draw(frame({ tier: 'block' }))
       const pixel = pixelAt(canvas, 60, 35)

@@ -9,8 +9,8 @@ A chart of six hundred people has the person you want in it somewhere. A
 filter is how you get a chart of just them:
 
 ```ts
-const found = chart.api.filter('rossi')   // the ids that matched
-chart.api.filter(null)                    // back to the whole tree
+const found = chart.api.filter('rossi') // the ids that matched
+chart.api.filter(null) // back to the whole tree
 ```
 
 A substring on the label, or your own predicate:
@@ -44,10 +44,10 @@ when you clear the filter.
 
 ## Filtering is not searching
 
-| | |
-| --- | --- |
+|                                                   |                                                                                                                                    |
+| ------------------------------------------------- | ---------------------------------------------------------------------------------------------------------------------------------- |
 | [`search(query)`](/api/chart#finding-and-marking) | A **question**. Scans the whole tree — including branches that are collapsed, isolated away or filtered out — and changes nothing. |
-| `filter(query)` | A **command**. Changes what the chart is. |
+| `filter(query)`                                   | A **command**. Changes what the chart is.                                                                                          |
 
 That division is what makes `search` the thing the other commands are built
 from: feed a result's id to `focus`, its whole set to `highlight`, or the same

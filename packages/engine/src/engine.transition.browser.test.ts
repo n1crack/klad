@@ -40,12 +40,7 @@ function measurerFor(font: string) {
   return createTextMeasurer({ measureWidth: (t) => probe.measureText(t).width })
 }
 
-const DATA = [
-  { id: 'a' },
-  { id: 'b', parentId: 'a' },
-  { id: 'c', parentId: 'b' },
-  { id: 'd', parentId: 'a' },
-]
+const DATA = [{ id: 'a' }, { id: 'b', parentId: 'a' }, { id: 'c', parentId: 'b' }, { id: 'd', parentId: 'a' }]
 
 function sizesFor(count: number, w = 100, h = 50): Float64Array {
   const s = new Float64Array(count * 2)
@@ -66,7 +61,12 @@ describe('expand/collapse transition, rendered on a real canvas', () => {
 
     engine.setAnimate(true)
     engine.setViewport(600, 400, 1)
-    engine.setData(toWireTree(tree), sizesFor(tree.count), ['a', 'b', 'c', 'd'], new Uint8Array(tree.count).fill(1))
+    engine.setData(
+      toWireTree(tree),
+      sizesFor(tree.count),
+      ['a', 'b', 'c', 'd'],
+      new Uint8Array(tree.count).fill(1),
+    )
     engine.setCamera({ x: 50, y: 50, k: 1 })
     engine.render(1000) // all open — establishes the pre-collapse layout
 
@@ -111,7 +111,12 @@ describe('expand/collapse transition, rendered on a real canvas', () => {
 
     engine.setAnimate(true)
     engine.setViewport(600, 400, 1)
-    engine.setData(toWireTree(tree), sizesFor(tree.count), ['a', 'b', 'c', 'd'], new Uint8Array(tree.count).fill(1))
+    engine.setData(
+      toWireTree(tree),
+      sizesFor(tree.count),
+      ['a', 'b', 'c', 'd'],
+      new Uint8Array(tree.count).fill(1),
+    )
     engine.setOpen(tree.idToIndex.get('b')!, false) // start closed: 'c' hidden
     engine.setCamera({ x: 50, y: 50, k: 1 })
     engine.render(1000)

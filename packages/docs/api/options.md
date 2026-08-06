@@ -11,11 +11,11 @@ that produces a usable chart.
 
 ## Data
 
-| Option | Type | Default | |
-|---|---|---|---|
-| `data` | `NodeData[]` | — | Flat array. Every item is `{ id, parentId?, ...yours }`; an unresolvable `parentId` makes a root and emits a `warning`. |
-| `nodeSize` | `Size \| (item, at) => Size` | `{ w: 180, h: 64 }` | The box each node occupies. Declared, never measured — see [Sizing](/guide/sizing). Exported as `DEFAULT_NODE_SIZE`. |
-| `label` | `(item, at) => string` | `name` → `label` → `title` → `id` | The text the **canvas** draws inside a node, independent of whatever your card renders. Return `''` for a node that should stay blank. |
+| Option     | Type                         | Default                           |                                                                                                                                        |
+| ---------- | ---------------------------- | --------------------------------- | -------------------------------------------------------------------------------------------------------------------------------------- |
+| `data`     | `NodeData[]`                 | —                                 | Flat array. Every item is `{ id, parentId?, ...yours }`; an unresolvable `parentId` makes a root and emits a `warning`.                |
+| `nodeSize` | `Size \| (item, at) => Size` | `{ w: 180, h: 64 }`               | The box each node occupies. Declared, never measured — see [Sizing](/guide/sizing). Exported as `DEFAULT_NODE_SIZE`.                   |
+| `label`    | `(item, at) => string`       | `name` → `label` → `title` → `id` | The text the **canvas** draws inside a node, independent of whatever your card renders. Return `''` for a node that should stay blank. |
 
 ## Layout
 
@@ -24,55 +24,55 @@ also be changed after construction with
 [`setLayoutOptions`](/api/chart#layout) — see [Layouts](/guide/layouts) for
 what each shape is for.
 
-| Option | Type | Default | |
-|---|---|---|---|
-| `layout` | `'tidy' \| 'file' \| 'radial' \| 'sunburst'` | `'tidy'` | Which shape. `tidy` is the tiered chart; `file` indented rows; `radial` concentric rings; `sunburst` nested arcs. |
-| `edgeStyle` | `'tiered' \| 'folder' \| 'spoke' \| 'bezier' \| 'none'` | per-layout | The line drawn between a parent and a child, overriding the one the layout would pick — see [Choosing the connector](#choosing-the-connector). |
-| `layoutStep` | `number` | derived | The per-level step, whose meaning is per-layout: the `file` indent, the `radial`/`sunburst` ring size. Omitted, each layout derives one from your `nodeSize`. |
-| `rowGap` | `number` | `spacing.y` | `file` only: the gap between consecutive rows. |
-| `maxRings` | `number` | `3` | `sunburst` only: how many rings are drawn around the centre. Deeper nodes are still there — drilling in reveals them. |
-| `centre` | `string \| null` | `null` | `sunburst` only: the id at the middle of the wheel. Changing it animates; see [`setCentre`](/api/chart#layout). |
-| `colourBranches` | `boolean` | per-layout | Fill nodes by which top-level branch they belong to, from `theme.palette`. On for `sunburst`, off elsewhere. |
-| `orientation` | `'tb' \| 'bt' \| 'lr' \| 'rl'` | `'tb'` | Which way the tree grows. **`tidy` only** — a file list is a vertical list of rows whatever you set, and a wheel has no reading direction. |
-| `rtl` | `boolean` | `false` | Mirrors sibling order; the growth direction is unaffected. |
-| `spacing` | `{ x?, y?: number }` | `{ x: 16, y: 48 }` | Gaps between siblings and between levels, in world units. |
-| `collapsedByDefault` | `boolean \| (item, at) => boolean` | `false` | Which nodes start closed. Often a question about depth — see [Where a node sits](#where-a-node-sits). |
+| Option               | Type                                                    | Default            |                                                                                                                                                               |
+| -------------------- | ------------------------------------------------------- | ------------------ | ------------------------------------------------------------------------------------------------------------------------------------------------------------- |
+| `layout`             | `'tidy' \| 'file' \| 'radial' \| 'sunburst'`            | `'tidy'`           | Which shape. `tidy` is the tiered chart; `file` indented rows; `radial` concentric rings; `sunburst` nested arcs.                                             |
+| `edgeStyle`          | `'tiered' \| 'folder' \| 'spoke' \| 'bezier' \| 'none'` | per-layout         | The line drawn between a parent and a child, overriding the one the layout would pick — see [Choosing the connector](#choosing-the-connector).                |
+| `layoutStep`         | `number`                                                | derived            | The per-level step, whose meaning is per-layout: the `file` indent, the `radial`/`sunburst` ring size. Omitted, each layout derives one from your `nodeSize`. |
+| `rowGap`             | `number`                                                | `spacing.y`        | `file` only: the gap between consecutive rows.                                                                                                                |
+| `maxRings`           | `number`                                                | `3`                | `sunburst` only: how many rings are drawn around the centre. Deeper nodes are still there — drilling in reveals them.                                         |
+| `centre`             | `string \| null`                                        | `null`             | `sunburst` only: the id at the middle of the wheel. Changing it animates; see [`setCentre`](/api/chart#layout).                                               |
+| `colourBranches`     | `boolean`                                               | per-layout         | Fill nodes by which top-level branch they belong to, from `theme.palette`. On for `sunburst`, off elsewhere.                                                  |
+| `orientation`        | `'tb' \| 'bt' \| 'lr' \| 'rl'`                          | `'tb'`             | Which way the tree grows. **`tidy` only** — a file list is a vertical list of rows whatever you set, and a wheel has no reading direction.                    |
+| `rtl`                | `boolean`                                               | `false`            | Mirrors sibling order; the growth direction is unaffected.                                                                                                    |
+| `spacing`            | `{ x?, y?: number }`                                    | `{ x: 16, y: 48 }` | Gaps between siblings and between levels, in world units.                                                                                                     |
+| `collapsedByDefault` | `boolean \| (item, at) => boolean`                      | `false`            | Which nodes start closed. Often a question about depth — see [Where a node sits](#where-a-node-sits).                                                         |
 
 ## Content
 
-| Option | Type | Default | |
-|---|---|---|---|
-| `renderNode` | `(element, context) => void` | — | Draws your own card. See [Node content](/guide/node-content). Vue and React use the `#node` slot and the render prop instead. |
-| `lodThresholds` | `{ block: number; label: number }` | `{ block: 0.25, label: 0.6 }` | The zoom levels at which the canvas switches between a plain shape, a labelled box, and overlay cards. |
+| Option          | Type                               | Default                       |                                                                                                                               |
+| --------------- | ---------------------------------- | ----------------------------- | ----------------------------------------------------------------------------------------------------------------------------- |
+| `renderNode`    | `(element, context) => void`       | —                             | Draws your own card. See [Node content](/guide/node-content). Vue and React use the `#node` slot and the render prop instead. |
+| `lodThresholds` | `{ block: number; label: number }` | `{ block: 0.25, label: 0.6 }` | The zoom levels at which the canvas switches between a plain shape, a labelled box, and overlay cards.                        |
 
 ## Appearance
 
-| Option | Type | Default | |
-|---|---|---|---|
-| `theme` | `Partial<Theme>` | — | Colours and weights the canvas draws with. See [Theme](/api/theme). |
-| `minimap` | `boolean \| MinimapOptions` | `false` | `{ position, width, height, silhouetteColour }`. `silhouetteColour` is the one piece your own CSS cannot restyle — set it for a dark host. |
-| `zoomLimits` | `{ minK, maxK: number }` | `{ minK: 0.05, maxK: 4 }` | The floor is lowered automatically — never raised — when the tree is wider than the viewport, so `fit()` can always show everything. |
+| Option       | Type                        | Default                   |                                                                                                                                            |
+| ------------ | --------------------------- | ------------------------- | ------------------------------------------------------------------------------------------------------------------------------------------ |
+| `theme`      | `Partial<Theme>`            | —                         | Colours and weights the canvas draws with. See [Theme](/api/theme).                                                                        |
+| `minimap`    | `boolean \| MinimapOptions` | `false`                   | `{ position, width, height, silhouetteColour }`. `silhouetteColour` is the one piece your own CSS cannot restyle — set it for a dark host. |
+| `zoomLimits` | `{ minK, maxK: number }`    | `{ minK: 0.05, maxK: 4 }` | The floor is lowered automatically — never raised — when the tree is wider than the viewport, so `fit()` can always show everything.       |
 
 ## Behaviour
 
-| Option | Type | Default | |
-|---|---|---|---|
-| `maxChildren` | `number \| ((item) => number)` | — | How many children a node draws before the rest are rolled into one node saying how many it stands for. Per parent. See [Very wide levels](/guide/wide-levels). |
-| `pinChildren` | `(item, at) => boolean` | — | Children shown whatever the cap says — your working set. Pins precede the budget rather than being part of it. |
-| `mayHaveChildren` | `(item, at) => boolean` | — | Whether a node has children, whether or not they are in `data` yet. Only consulted for nodes with none; ignored without `loadChildren`. See [Children on demand](/guide/children-on-demand). |
-| `loadChildren` | `(item) => NodeData[] \| Promise<NodeData[]>` | — | Fetches one node's children the first time it is opened. The chart keeps what you return. |
-| `dragAndDrop` | `boolean` | `false` | Dragging a node — or the whole selection, if it is in one — onto a new parent, or between two siblings. Reported through [`nodeDrop`](/api/events) before it is applied. See [Drag and drop](/guide/drag-and-drop). |
-| `canMove` | `(event) => boolean` | — | Your rule on whether a move is allowed — asked during the drag, at the drop, and by `move()`. See [A rule of your own](/api/chart#a-rule-of-your-own). |
-| `history` | `number \| false` | `100` | How many edits `undo` can walk back. `false` turns it off, for an app with its own undo stack. See [Undo, redo](/api/chart#undo-redo-and-what-to-save). |
-| `keyboardEditing` | `boolean` | `false` | Reorder, indent, outdent and delete the focused node from the keyboard. See [Without a pointer](/api/chart#without-a-pointer). |
-| `edgeFlow` | `(parent, child) => boolean` | — | Which connectors are drawn as a travelling dash. **Keeps the chart redrawing** — see [Edges that flow](#edges-that-flow). |
-| `selection` | `boolean` | `false` | Selecting nodes with the pointer — click, ctrl/cmd-click, shift-click, shift-drag for a box, alt-drag for a lasso. `select()` and `selectionChange` work either way; this is only about the pointer. |
-| `keyboard` | `boolean` | `true` | Camera control from the keyboard, and the tab stop that makes the chart reachable at all — see [Navigating](/guide/navigating#keyboard). |
-| `animate` | `boolean` | `true` | Every animation this layer starts on its own: the expand/collapse transition, camera eases, kinetic panning. `prefers-reduced-motion: reduce` forces it off regardless. |
-| `autoPanOnToggle` | `boolean` | `true` | Keeps the toggled node pinned on screen while the layout moves around it. |
-| `ring` | `boolean` | `true` | The one-shot confirmation flash after a single-node toggle. |
-| `toggleOnNodeClick` | `boolean` | `false` | Tapping a node's body expands or collapses it. For cards with no room for a toggle button. |
-| `worker` | `boolean` | `true` | Renders in a Web Worker. Falls back to the main thread on its own — a CSP that blocks workers, a canvas whose context was already taken — with a warning, never a failure. |
+| Option              | Type                                          | Default |                                                                                                                                                                                                                     |
+| ------------------- | --------------------------------------------- | ------- | ------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
+| `maxChildren`       | `number \| ((item) => number)`                | —       | How many children a node draws before the rest are rolled into one node saying how many it stands for. Per parent. See [Very wide levels](/guide/wide-levels).                                                      |
+| `pinChildren`       | `(item, at) => boolean`                       | —       | Children shown whatever the cap says — your working set. Pins precede the budget rather than being part of it.                                                                                                      |
+| `mayHaveChildren`   | `(item, at) => boolean`                       | —       | Whether a node has children, whether or not they are in `data` yet. Only consulted for nodes with none; ignored without `loadChildren`. See [Children on demand](/guide/children-on-demand).                        |
+| `loadChildren`      | `(item) => NodeData[] \| Promise<NodeData[]>` | —       | Fetches one node's children the first time it is opened. The chart keeps what you return.                                                                                                                           |
+| `dragAndDrop`       | `boolean`                                     | `false` | Dragging a node — or the whole selection, if it is in one — onto a new parent, or between two siblings. Reported through [`nodeDrop`](/api/events) before it is applied. See [Drag and drop](/guide/drag-and-drop). |
+| `canMove`           | `(event) => boolean`                          | —       | Your rule on whether a move is allowed — asked during the drag, at the drop, and by `move()`. See [A rule of your own](/api/chart#a-rule-of-your-own).                                                              |
+| `history`           | `number \| false`                             | `100`   | How many edits `undo` can walk back. `false` turns it off, for an app with its own undo stack. See [Undo, redo](/api/chart#undo-redo-and-what-to-save).                                                             |
+| `keyboardEditing`   | `boolean`                                     | `false` | Reorder, indent, outdent and delete the focused node from the keyboard. See [Without a pointer](/api/chart#without-a-pointer).                                                                                      |
+| `edgeFlow`          | `(parent, child) => boolean`                  | —       | Which connectors are drawn as a travelling dash. **Keeps the chart redrawing** — see [Edges that flow](#edges-that-flow).                                                                                           |
+| `selection`         | `boolean`                                     | `false` | Selecting nodes with the pointer — click, ctrl/cmd-click, shift-click, shift-drag for a box, alt-drag for a lasso. `select()` and `selectionChange` work either way; this is only about the pointer.                |
+| `keyboard`          | `boolean`                                     | `true`  | Camera control from the keyboard, and the tab stop that makes the chart reachable at all — see [Navigating](/guide/navigating#keyboard).                                                                            |
+| `animate`           | `boolean`                                     | `true`  | Every animation this layer starts on its own: the expand/collapse transition, camera eases, kinetic panning. `prefers-reduced-motion: reduce` forces it off regardless.                                             |
+| `autoPanOnToggle`   | `boolean`                                     | `true`  | Keeps the toggled node pinned on screen while the layout moves around it.                                                                                                                                           |
+| `ring`              | `boolean`                                     | `true`  | The one-shot confirmation flash after a single-node toggle.                                                                                                                                                         |
+| `toggleOnNodeClick` | `boolean`                                     | `false` | Tapping a node's body expands or collapses it. For cards with no room for a toggle button.                                                                                                                          |
+| `worker`            | `boolean`                                     | `true`  | Renders in a Web Worker. Falls back to the main thread on its own — a CSP that blocks workers, a canvas whose context was already taken — with a warning, never a failure.                                          |
 
 ## Choosing the connector
 
@@ -81,17 +81,17 @@ elbow, a file list's guide line down the gutter, a wheel's spoke. `edgeStyle`
 overrides that when your chart wants a different answer.
 
 ```ts
-createKlad(el, { data, edgeStyle: 'spoke' })   // tidy, but straight lines
-createKlad(el, { data, edgeStyle: 'none' })    // no connectors at all
+createKlad(el, { data, edgeStyle: 'spoke' }) // tidy, but straight lines
+createKlad(el, { data, edgeStyle: 'none' }) // no connectors at all
 ```
 
-| | |
-| --- | --- |
-| `'tiered'` | Down, across, down — the org chart elbow. The default everywhere except the three below. |
-| `'folder'` | A guide line down the indent gutter. What `file` uses. |
-| `'spoke'` | Straight, centre to centre. What `radial` uses. |
+|            |                                                                                            |
+| ---------- | ------------------------------------------------------------------------------------------ |
+| `'tiered'` | Down, across, down — the org chart elbow. The default everywhere except the three below.   |
+| `'folder'` | A guide line down the indent gutter. What `file` uses.                                     |
+| `'spoke'`  | Straight, centre to centre. What `radial` uses.                                            |
 | `'bezier'` | The same two ends as `'tiered'`, curved instead of bent. The one style no layout asks for. |
-| `'none'` | Nothing is drawn between nodes. What `sunburst` uses, since its arcs already touch. |
+| `'none'`   | Nothing is drawn between nodes. What `sunburst` uses, since its arcs already touch.        |
 
 Leaving it out is right almost every time — a folder guide line on a tiered
 chart is not a style choice, it is a mistake. Reach for it when your own cards
@@ -170,10 +170,10 @@ createKlad(el, {
 
 ```ts
 interface NodePlace {
-  depth: number            // distance from a root; a root is 0
-  index: number            // its slot among its own siblings, in data order
-  siblings: number         // how many siblings it has, counting itself
-  parent: NodeData | null  // the parent's data, or null for a root
+  depth: number // distance from a root; a root is 0
+  index: number // its slot among its own siblings, in data order
+  siblings: number // how many siblings it has, counting itself
+  parent: NodeData | null // the parent's data, or null for a root
 }
 ```
 

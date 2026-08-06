@@ -81,7 +81,12 @@ interface Slot {
  * adapter disagree with vanilla and Vue. Mirrors Klad.vue's
  * `WRAPPER_STYLE` exactly.
  */
-const WRAPPER_STYLE: CSSProperties = { display: 'block', boxSizing: 'border-box', width: '100%', height: '100%' }
+const WRAPPER_STYLE: CSSProperties = {
+  display: 'block',
+  boxSizing: 'border-box',
+  width: '100%',
+  height: '100%',
+}
 
 /**
  * Binds React to `@klad/core`. Every chart behaviour — layout, canvas

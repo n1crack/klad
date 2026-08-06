@@ -15,7 +15,8 @@
     "check:packages": "turbo run build && node scripts/check-packages.mjs",
     "typecheck": "turbo run typecheck",
     "lint": "oxlint packages",
-    "format": "prettier --write \"packages/**/*.{ts,vue,json,md}\"",
+    "format": "prettier --write \"packages/**/*.{ts,tsx,vue,json,md}\" \"scripts/**/*.mjs\" \"*.md\"",
+    "format:check": "prettier --check \"packages/**/*.{ts,tsx,vue,json,md}\" \"scripts/**/*.mjs\" \"*.md\"",
     "changeset": "changeset",
     "version-packages": "changeset version && pnpm install --lockfile-only"
   },

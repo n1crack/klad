@@ -1,5 +1,11 @@
 import type { LayoutSettings, Theme } from '@klad/core'
-import { minimapOptionFor, optionsForLayout, type Example, type LayoutName, type MinimapPosition } from './data.js'
+import {
+  minimapOptionFor,
+  optionsForLayout,
+  type Example,
+  type LayoutName,
+  type MinimapPosition,
+} from './data.js'
 import type { ThemeMode } from './theme.js'
 
 /**
@@ -213,9 +219,7 @@ function printFunction(fn: (...args: unknown[]) => unknown, indent: string): str
     .filter((line) => line.trim() !== '')
     .reduce((min, line) => Math.min(min, line.length - line.trimStart().length), Number.POSITIVE_INFINITY)
   const strip = Number.isFinite(base) ? base : 0
-  return lines
-    .map((line, i) => (i === 0 ? line : indent + line.slice(strip)))
-    .join('\n')
+  return lines.map((line, i) => (i === 0 ? line : indent + line.slice(strip))).join('\n')
 }
 
 /**
@@ -238,7 +242,7 @@ function optionLines(snapshot: ConfigSnapshot, indent: string): string {
  * itself, and the node content. Both are the reader's own, and saying so in
  * the code beats a snippet that looks complete and then renders nothing.
  */
-const DATA_NOTE = "// `data` is your own array of { id, parentId?, ... }."
+const DATA_NOTE = '// `data` is your own array of { id, parentId?, ... }.'
 
 function nodeContentNote(hasNodeContent: boolean): string {
   return hasNodeContent
