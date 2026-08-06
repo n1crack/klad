@@ -60,14 +60,11 @@
     "vue": ">=3.5 <4"
   },
   "devDependencies": {
-    "@vitejs/plugin-vue": "^6.0.0",
-    "unplugin-vue": "^7.2.0",
-    "vue": "^3.5.0",
-    "vue-tsc": "^3.3.8"
+    "vue": "^3.5.0"
   },
   "scripts": {
-    "build": "node ../../scripts/copy-license.mjs && tsdown",
+    "build": "node ../../scripts/copy-license.mjs && tsdown && node ../../scripts/normalize-dts.mjs",
     "test": "vitest run",
-    "typecheck": "vue-tsc --noEmit -p tsconfig.json"
+    "typecheck": "tsc --noEmit -p tsconfig.json"
   }
 }

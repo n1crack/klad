@@ -4,8 +4,7 @@
     "rootDir": "src",
     "outDir": "dist",
     "lib": ["ES2023", "DOM", "DOM.Iterable"],
-    "types": [],
-    "jsx": "preserve"
+    "types": []
   },
-  "include": ["src", "src/**/*.vue"]
+  "include": ["src"]
 }

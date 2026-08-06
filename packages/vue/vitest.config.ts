@@ -1,9 +1,9 @@
 import { defineConfig } from 'vitest/config'
-import vue from '@vitejs/plugin-vue'
 import { playwright } from '@vitest/browser-playwright'
 
+// No Vue plugin: there are no Single File Components here any more, and the
+// tests mount the component with `h()` rather than a template.
 export default defineConfig({
-  plugins: [vue()],
   test: {
     include: ['src/**/*.browser.test.ts'],
     setupFiles: ['./src/test-setup.ts'],

@@ -1,7 +1,8 @@
 import type { Plugin } from 'vue'
-import Klad from './Klad.vue'
+import Klad from './Klad.js'
 
 export { Klad }
+export type { KladHandle } from './Klad.js'
 export { useKlad } from './useKlad.js'
 export type { KladContext } from './useKlad.js'
 export type {
