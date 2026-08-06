@@ -624,6 +624,12 @@ export function ReactDemo({ example, layout, mode, onReady, onDrop, onCentreChan
         if (minimapOnRef.current) chartRef.current?.api?.setMinimap(minimapOption())
       },
     }),
+    // `layout` is read by `setMode` above and is deliberately not listed:
+    // changing it remounts this component (see the prop's own docblock and
+    // main.ts's `show`), so it cannot change while this handle is alive and
+    // there is no stale closure to capture. Listing it would compile just as
+    // well and imply a lifecycle this component does not have.
+    // eslint-disable-next-line react-hooks/exhaustive-deps
     [example, minimapOption],
   )
 

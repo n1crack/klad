@@ -203,6 +203,13 @@ export function Klad(props: KladProps): ReactNode {
       // destroyed chart — is what lets the portals below unmount cleanly on
       // this same commit instead of leaking mounted trees under DOM that
       // `chart.destroy()` already detached.
+      //
+      // The lint rule below guards against reading a DOM ref in cleanup, where
+      // `.current` may already point at a different node than the effect saw.
+      // This ref holds a `Map` created once and never reassigned, so there is
+      // no other value it could have moved to — and clearing the map is the
+      // whole point of doing it here.
+      // eslint-disable-next-line react-hooks/exhaustive-deps
       slotsRef.current.clear()
     }
     // Mount once: `options`/`hasChildren` changes are handled by the effect
