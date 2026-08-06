@@ -1,9 +1,26 @@
 {
-  "//": "Declaration-emit config for the published build ONLY — `pnpm typecheck` still uses tsconfig.json, which resolves the workspace through source so an edit in another package is seen immediately.
-
-The difference is `paths`. Every package's `exports` points at its own `.ts` source during development, so TypeScript treats a sibling package as part of this compilation and emits declarations that reference its SOURCE path — `../engine/src/index.d.ts`, a file that is never built and never published. The result compiled, but every type imported across a package boundary silently resolved to `undefined` in the shipped `.d.ts`: `NodeData` became `undefined`, and with it the payload of every event a consumer handles.
-
-Pointing at the siblings' built declarations instead makes the emitted imports name real files. Turbo's `^build` guarantees they exist by the time this runs.",
+  // Declaration-emit config for the published build ONLY — `pnpm typecheck`
+  // still uses tsconfig.json, which resolves the workspace through source so
+  // an edit in another package is seen immediately.
+  //
+  // The difference is `paths`. Every package's `exports` points at its own
+  // `.ts` source during development, so TypeScript treats a sibling package as
+  // part of this compilation and emits declarations that reference its SOURCE
+  // path — `../engine/src/index.d.ts`, a file that is never built and never
+  // published. The result compiled, but every type imported across a package
+  // boundary silently resolved to `undefined` in the shipped `.d.ts`:
+  // `NodeData` became `undefined`, and with it the payload of every event a
+  // consumer handles.
+  //
+  // Pointing at the siblings' built declarations instead makes the emitted
+  // imports name real files. Turbo's `^build` guarantees they exist by the
+  // time this runs.
+  //
+  // Written as comments rather than as a `"//"` key, which is how this started:
+  // that key's value ran across several lines, and a raw newline inside a JSON
+  // string is not legal JSON. TypeScript's own parser tolerated it, so the
+  // build never complained — but `JSON.parse` refuses the file outright, and so
+  // does prettier, which is how it was noticed.
   "extends": "./tsconfig.json",
   "compilerOptions": {
     "paths": {
