@@ -1,5 +1,11 @@
 # @klad/core
 
+## 1.9.0
+
+### Patch Changes
+
+- @klad/engine@1.9.0
+
 ## 1.8.0
 
 ### Minor Changes
