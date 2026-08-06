@@ -30,7 +30,7 @@
     "prettier": "^3.9.6",
     "publint": "^0.3.22",
     "tsdown": "^0.22.14",
-    "turbo": "^2.10.7",
+    "turbo": "^2.10.8",
     "typescript": "5.9.3",
     "vitest": "^4.1.10"
   }
