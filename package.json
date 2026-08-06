@@ -12,7 +12,7 @@
     "docs": "pnpm --filter @klad/docs dev",
     "build": "turbo run build",
     "test": "turbo run test",
-    "check:packages": "turbo run build && node scripts/check-packages.mjs",
+    "check:packages": "turbo run build && node scripts/check-packages.mjs && node scripts/check-published-types.mjs",
     "typecheck": "turbo run typecheck",
     "lint": "oxlint packages",
     "format": "prettier --write \"packages/**/*.{ts,tsx,vue,json,md}\" \"scripts/**/*.mjs\" \"*.md\"",
