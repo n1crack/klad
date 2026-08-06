@@ -1,5 +1,5 @@
 ---
-'@klad/vue': patch
+'@klad/vue': minor
 ---
 
 Fix `@klad/vue`'s types arriving as `any`
@@ -25,6 +25,12 @@ exposed `api` are unchanged — the point is that they are now typed.
 already uses for the same thing, and deliberately not `KladInstance`, which
 `@klad/core` already exports to mean the chart itself. `InstanceType<typeof Klad>`
 carries `api` now too.
+
+Worth knowing before you upgrade: nothing about the runtime changes, but your
+build may stop being green. Anything that type-checked only because these
+types were `any` — a misspelled event, a handler with the wrong payload, a
+prop that was never valid — is now an error, which is the whole point and is
+still a surprise if it lands in CI unannounced.
 
 Two things guard this going forward: a consumer fixture type-checked against
 the built `.d.ts` rather than against source (the workspace resolves the

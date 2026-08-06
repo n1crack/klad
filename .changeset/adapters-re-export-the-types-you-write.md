@@ -1,6 +1,6 @@
 ---
-'@klad/react': patch
-'@klad/vue': patch
+'@klad/react': minor
+'@klad/vue': minor
 ---
 
 Re-export the core types an adapter consumer has to write
