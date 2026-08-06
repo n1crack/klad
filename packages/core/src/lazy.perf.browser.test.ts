@@ -62,11 +62,7 @@ const settle = () => new Promise<void>((resolve) => setTimeout(() => resolve(), 
  * only bounds the wait for a chart that never goes quiet; the assertion that
  * follows is what fails in that case, and it should.
  */
-async function quiet(
-  chart: ReturnType<typeof createKlad>,
-  quietMs = 300,
-  capMs = 10_000,
-): Promise<void> {
+async function quiet(chart: ReturnType<typeof createKlad>, quietMs = 300, capMs = 10_000): Promise<void> {
   let last = performance.now()
   const stop = chart.subscribe(() => {
     last = performance.now()

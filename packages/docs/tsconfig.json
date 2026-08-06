@@ -1,0 +1,10 @@
+{
+  "//": "The docs site is two TypeScript files — the VitePress config and the theme entry — and until this existed neither was type-checked by anything. Small, but they are the files that decide whether the site builds, and a broken one is discovered by a failed deploy rather than by CI. `types: []` matches the rest of the repository; `DOM` is here because the theme entry touches the browser.",
+  "extends": "../../tsconfig.base.json",
+  "compilerOptions": {
+    "noEmit": true,
+    "lib": ["ES2023", "DOM", "DOM.Iterable"],
+    "types": []
+  },
+  "include": [".vitepress/**/*.ts", ".vitepress/**/*.d.ts"]
+}

@@ -41,7 +41,9 @@ export function applyOrientation(
   rtl: boolean,
 ): Bounds {
   if (bounds.minX !== 0 || bounds.minY !== 0) {
-    throw new Error('applyOrientation requires bounds.minX === 0 && bounds.minY === 0 (as layout() guarantees)')
+    throw new Error(
+      'applyOrientation requires bounds.minX === 0 && bounds.minY === 0 (as layout() guarantees)',
+    )
   }
 
   const n = boxes.length / 4

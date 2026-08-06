@@ -879,8 +879,7 @@ export function createCanvas2DRenderer(
       // nearly transparent, which is why the first version read as a flicker
       // however long it ran: the duration was there, the visibility was not.
       const RING_HOLD = 0.35
-      ctx.globalAlpha =
-        progress <= RING_HOLD ? 1 : 1 - easeInQuad((progress - RING_HOLD) / (1 - RING_HOLD))
+      ctx.globalAlpha = progress <= RING_HOLD ? 1 : 1 - easeInQuad((progress - RING_HOLD) / (1 - RING_HOLD))
       ctx.beginPath()
       if (ringRadius > 0) ctx.roundRect(x - grow, y - grow, w + grow * 2, h + grow * 2, ringRadius)
       else ctx.rect(x - grow, y - grow, w + grow * 2, h + grow * 2)

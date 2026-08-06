@@ -271,7 +271,21 @@ function handleNodeClick({ id }: { id: string }): void {
     -->
     <template
       v-if="content !== 'none'"
-      #node="{ id, item, hasChildren, open, toggle, overflow, loading, directChildren, descendants, depth, height, lft, rgt }"
+      #node="{
+        id,
+        item,
+        hasChildren,
+        open,
+        toggle,
+        overflow,
+        loading,
+        directChildren,
+        descendants,
+        depth,
+        height,
+        lft,
+        rgt,
+      }"
     >
       <div v-if="content === 'avatar'" class="avatar-card">
         <div class="avatar-circle" :style="{ background: departmentColor(item) }">
@@ -350,7 +364,8 @@ function handleNodeClick({ id }: { id: string }): void {
           class="file-icon"
           :class="{ 'is-chip': rowFields(item, open).iconColour !== '' }"
           :style="{ background: rowFields(item, open).iconColour || undefined }"
-        >{{ rowFields(item, open).icon }}</span>
+          >{{ rowFields(item, open).icon }}</span
+        >
         <span class="file-name">{{ rowFields(item, open).primary }}</span>
         <span class="file-size">{{ rowFields(item, open).secondary }}</span>
       </div>
@@ -455,20 +470,26 @@ function handleNodeClick({ id }: { id: string }): void {
             :class="{ 'is-on': item.starred === true }"
             :title="item.starred === true ? 'Starred' : 'Star'"
             @click.stop="toggleStar(item)"
-          >★</button>
+          >
+            ★
+          </button>
           <button
             type="button"
             class="action-btn"
             title="Go to this node, marking the way"
             @click.stop="goToNode(id)"
-          >⇢</button>
+          >
+            ⇢
+          </button>
           <button
             v-if="hasChildren"
             type="button"
             class="action-btn"
             title="Expand or collapse"
             @click.stop="toggle"
-          >{{ open ? '−' : '+' }}</button>
+          >
+            {{ open ? '−' : '+' }}
+          </button>
         </div>
       </div>
 

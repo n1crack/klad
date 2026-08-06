@@ -396,8 +396,12 @@ describe('pooled row reuse', () => {
   function makeA11y(): { host: HTMLElement; a11y: A11yTree } {
     const host = document.createElement('div')
     document.body.appendChild(host)
-    const a11y = createA11yTree(host, { onActivate() {}, onFocus() {}, onMove: () => 'moved' as const,
-      onEditKey: () => true as const })
+    const a11y = createA11yTree(host, {
+      onActivate() {},
+      onFocus() {},
+      onMove: () => 'moved' as const,
+      onEditKey: () => true as const,
+    })
     return { host, a11y }
   }
 
@@ -520,8 +524,12 @@ describe('pooled update performance', () => {
     for (let r = 0; r < RUNS; r++) {
       const host = document.createElement('div')
       document.body.appendChild(host)
-      const a11y = createA11yTree(host, { onActivate() {}, onFocus() {}, onMove: () => 'moved' as const,
-      onEditKey: () => true as const })
+      const a11y = createA11yTree(host, {
+        onActivate() {},
+        onFocus() {},
+        onMove: () => 'moved' as const,
+        onEditKey: () => true as const,
+      })
       const open = new Uint8Array(tree.count).fill(1)
       const start = performance.now()
       a11y.update(tree, open, labelOf)
@@ -538,8 +546,12 @@ describe('pooled update performance', () => {
     for (let r = 0; r < RUNS; r++) {
       const host = document.createElement('div')
       document.body.appendChild(host)
-      const a11y = createA11yTree(host, { onActivate() {}, onFocus() {}, onMove: () => 'moved' as const,
-      onEditKey: () => true as const })
+      const a11y = createA11yTree(host, {
+        onActivate() {},
+        onFocus() {},
+        onMove: () => 'moved' as const,
+        onEditKey: () => true as const,
+      })
       const open = new Uint8Array(tree.count).fill(1)
       a11y.update(tree, open, labelOf) // first call: populates the mirror
       open[tree.roots[0]!] = 0 // simulate collapsing the root
@@ -567,8 +579,7 @@ describe('pooled update performance', () => {
     // then reads the children it just said were hidden.
     const chart = make()
     await nextFrame()
-    const names = () =>
-      Array.from(document.querySelectorAll('[role="treeitem"]')).map((el) => el.textContent)
+    const names = () => Array.from(document.querySelectorAll('[role="treeitem"]')).map((el) => el.textContent)
 
     expect(names()).toContain('Leaf')
 
@@ -601,7 +612,6 @@ describe('pooled update performance', () => {
     expect(document.activeElement).toBe(rows[rows.length - 1])
     chart.destroy()
   })
-
 })
 
 describe('accessibility tree windowing', () => {
@@ -678,7 +688,11 @@ describe('accessibility tree windowing', () => {
     // Find preorder index of lastId, then the next visible node's id.
     const idAt = (k: number) => tree.indexToId[order[k]!]!
     let kLast = 0
-    for (let k = 0; k < tree.count; k++) if (idAt(k) === lastId) { kLast = k; break }
+    for (let k = 0; k < tree.count; k++)
+      if (idAt(k) === lastId) {
+        kLast = k
+        break
+      }
     const expectedNextId = idAt(kLast + 1)
     const active = document.activeElement as HTMLElement
     expect(active.dataset.orgchartId).toBe(expectedNextId)
@@ -689,7 +703,7 @@ describe('accessibility tree windowing', () => {
 
   it('End focuses the last visible node, re-windowing to the tail', () => {
     const { container, a11y, tree } = mountA11y(wideTree(500))
-    const first = (rows(container).filter((r) => r.isConnected))[0]!
+    const first = rows(container).filter((r) => r.isConnected)[0]!
     first.focus()
     first.dispatchEvent(new KeyboardEvent('keydown', { key: 'End', bubbles: true }))
     const lastVisibleId = tree.indexToId[tree.order[tree.count - 1]!]!

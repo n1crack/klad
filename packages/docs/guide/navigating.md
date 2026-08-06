@@ -56,9 +56,9 @@ nodes without inventing a path between them.
 ## Showing one branch
 
 ```ts
-chart.api.fitSubtree('eng')  // point the camera at it
-chart.api.isolate('eng')     // make it the chart
-chart.api.isolate(null)      // and back
+chart.api.fitSubtree('eng') // point the camera at it
+chart.api.isolate('eng') // make it the chart
+chart.api.isolate(null) // and back
 ```
 
 The difference matters once a chart is large. `fitSubtree` moves the camera and
@@ -78,7 +78,7 @@ const trail = chart.api.pathTo('eng') // ['ceo', 'cto', 'eng']
 
 ```ts
 const view = chart.api.getView() // { camera, open, highlighted }
-chart.api.setView(view)          // arrive there
+chart.api.setView(view) // arrive there
 chart.api.setView(view, { animate: true }) // fly there
 ```
 
@@ -105,15 +105,15 @@ sits without a second call.
 
 ## Camera
 
-| Call | What it does |
-|---|---|
-| `fit()` | Zooms out far enough to show the whole visible tree. |
-| `fitSubtree(id)` | Frames one branch instead. On a large chart this is the useful one — fitting everything means a zoom level where nothing can be read. |
-| `isolate(id)` | Shows that branch **as** the chart; `isolate(null)` puts the rest back. |
-| `reset()` | Back to the opening view. |
-| `zoomIn()` / `zoomOut()` | One step, about the centre. |
-| `zoomTo(k)` | An exact scale. |
-| `focus(id, opts?)` | Centres a node, opening the way to it. |
+| Call                     | What it does                                                                                                                          |
+| ------------------------ | ------------------------------------------------------------------------------------------------------------------------------------- |
+| `fit()`                  | Zooms out far enough to show the whole visible tree.                                                                                  |
+| `fitSubtree(id)`         | Frames one branch instead. On a large chart this is the useful one — fitting everything means a zoom level where nothing can be read. |
+| `isolate(id)`            | Shows that branch **as** the chart; `isolate(null)` puts the rest back.                                                               |
+| `reset()`                | Back to the opening view.                                                                                                             |
+| `zoomIn()` / `zoomOut()` | One step, about the centre.                                                                                                           |
+| `zoomTo(k)`              | An exact scale.                                                                                                                       |
+| `focus(id, opts?)`       | Centres a node, opening the way to it.                                                                                                |
 
 Every one of them eases rather than jumping, and every one is interrupted the
 instant a user's hand touches the canvas — dragging always wins immediately.
@@ -122,14 +122,14 @@ instant a user's hand touches the canvas — dragging always wins immediately.
 
 Click the chart, or Tab to it, and the camera answers to the keyboard:
 
-| Key | |
-|---|---|
-| Arrows | Pan. Hold **Shift** for a stride rather than a step. |
-| `+` / `-` | Zoom about the middle of the view. |
-| `f` | Fit the whole chart. |
-| `0` | Back to the opening view. |
-| `Home` | Centre the root. |
-| `Esc` | Clear the highlight. |
+| Key       |                                                      |
+| --------- | ---------------------------------------------------- |
+| Arrows    | Pan. Hold **Shift** for a stride rather than a step. |
+| `+` / `-` | Zoom about the middle of the view.                   |
+| `f`       | Fit the whole chart.                                 |
+| `0`       | Back to the opening view.                            |
+| `Home`    | Centre the root.                                     |
+| `Esc`     | Clear the highlight.                                 |
 
 The chart is a tab stop, and the first one inside itself — so "Tab, then
 arrows" works without walking past every card's own buttons to get there. Keys
@@ -142,12 +142,12 @@ must not take focus.
 
 ## Gestures
 
-| Gesture | |
-|---|---|
-| Drag with the primary button, or one finger | Pan. A release with speed coasts to a stop. |
-| Wheel or trackpad scroll | Zoom about the pointer. |
-| Two fingers | Pinch to zoom about the midpoint. |
-| Right or middle button | Nothing. Yours — a right-click reaches your own `contextmenu` handler with the chart holding still under it. |
+| Gesture                                     |                                                                                                              |
+| ------------------------------------------- | ------------------------------------------------------------------------------------------------------------ |
+| Drag with the primary button, or one finger | Pan. A release with speed coasts to a stop.                                                                  |
+| Wheel or trackpad scroll                    | Zoom about the pointer.                                                                                      |
+| Two fingers                                 | Pinch to zoom about the midpoint.                                                                            |
+| Right or middle button                      | Nothing. Yours — a right-click reaches your own `contextmenu` handler with the chart holding still under it. |
 
 The host element is given `touch-action: none` while a chart is mounted, and
 it is handed back on `destroy()`. That is what makes a one-finger drag pan the
@@ -159,12 +159,12 @@ buttons, links and form controls inside a card keep working normally.
 ## Expanding and collapsing
 
 ```ts
-chart.api.expand('cto')          // just this node
-chart.api.expand('cto', true)    // and everything below it
+chart.api.expand('cto') // just this node
+chart.api.expand('cto', true) // and everything below it
 chart.api.collapse('cto', true)
 chart.api.expandAll()
 chart.api.collapseAll()
-chart.api.expandTo('lead-42')    // open the ancestors, without moving the camera
+chart.api.expandTo('lead-42') // open the ancestors, without moving the camera
 ```
 
 A single-node toggle keeps that node pinned exactly where it was on screen

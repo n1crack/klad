@@ -8,19 +8,7 @@ const PARENT = { x: 0, y: 0, w: 300, h: 20 }
 const CHILD = { x: 18, y: 24, w: 300, h: 20 }
 
 const anchors = (style: Parameters<typeof edgeAnchors>[0], rtl = false) =>
-  edgeAnchors(
-    style,
-    false,
-    rtl,
-    PARENT.x,
-    PARENT.y,
-    PARENT.w,
-    PARENT.h,
-    CHILD.x,
-    CHILD.y,
-    CHILD.w,
-    CHILD.h,
-  )
+  edgeAnchors(style, false, rtl, PARENT.x, PARENT.y, PARENT.w, PARENT.h, CHILD.x, CHILD.y, CHILD.w, CHILD.h)
 
 describe('edgeAnchors', () => {
   it('runs the folder spine down the indent gutter, not across the row', () => {
@@ -49,7 +37,9 @@ describe('edgeAnchors', () => {
 
   it('mirrors the folder spine for a right-to-left list', () => {
     const a = anchors('folder', true)
-    expect(a.px).toBeCloseTo(PARENT.x + PARENT.w + (CHILD.x + CHILD.w - (PARENT.x + PARENT.w)) * FOLDER_SPINE_FRAC)
+    expect(a.px).toBeCloseTo(
+      PARENT.x + PARENT.w + (CHILD.x + CHILD.w - (PARENT.x + PARENT.w)) * FOLDER_SPINE_FRAC,
+    )
     expect(a.cx).toBe(CHILD.x + CHILD.w)
   })
 

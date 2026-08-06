@@ -172,9 +172,7 @@ export function hiddenStub(
     case 'spoke':
     case 'none':
     default:
-      return horizontal
-        ? { x: x + w, y: y + h / 2, dx: 1, dy: 0 }
-        : { x: x + w / 2, y: y + h, dx: 0, dy: 1 }
+      return horizontal ? { x: x + w, y: y + h / 2, dx: 1, dy: 0 } : { x: x + w / 2, y: y + h, dx: 0, dy: 1 }
   }
 }
 

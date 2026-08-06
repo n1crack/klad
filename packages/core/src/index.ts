@@ -499,12 +499,7 @@ export interface Options {
    * Keep it cheap, but not anxiously so — during a drag it is consulted only
    * when the target node or the drop mode changes, not on every pointer move.
    */
-  canMove?: (event: {
-    ids: string[]
-    items: NodeData[]
-    parentId: string | null
-    index: number
-  }) => boolean
+  canMove?: (event: { ids: string[]; items: NodeData[]; parentId: string | null; index: number }) => boolean
   /**
    * Fill each node with its top-level branch's colour from `theme.palette`.
    * Omitted, the layout decides: on for `sunburst`, whose segments have
@@ -1801,13 +1796,9 @@ export function createKlad(host: HTMLElement, options: Options): KladInstance {
 
   /** Whether anyone is listening — so building a payload nobody wants can be
    * skipped. Only worth asking for `viewChange`, whose payload walks the tree. */
-  const hasListener = (event: keyof KladEvents): boolean =>
-    (eventListeners.get(event)?.size ?? 0) > 0
+  const hasListener = (event: keyof KladEvents): boolean => (eventListeners.get(event)?.size ?? 0) > 0
 
-  const emit = <E extends keyof KladEvents>(
-    event: E,
-    ...payload: Parameters<KladEvents[E]>
-  ): void => {
+  const emit = <E extends keyof KladEvents>(event: E, ...payload: Parameters<KladEvents[E]>): void => {
     for (const listener of eventListeners.get(event) ?? []) {
       ;(listener as (...args: unknown[]) => void)(...payload)
     }
@@ -1846,10 +1837,7 @@ export function createKlad(host: HTMLElement, options: Options): KladInstance {
     return {
       depth: tree.depth[index]!,
       index: siblingIndexes()[index]!,
-      siblings:
-        parent === -1
-          ? tree.roots.length
-          : tree.childStart[parent + 1]! - tree.childStart[parent]!,
+      siblings: parent === -1 ? tree.roots.length : tree.childStart[parent + 1]! - tree.childStart[parent]!,
       parent: parent === -1 ? null : itemFor(parent),
     }
   }
@@ -1866,9 +1854,7 @@ export function createKlad(host: HTMLElement, options: Options): KladInstance {
 
   const labelOf = (item: NodeData, index: number): string => {
     const own =
-      currentOptions.label === undefined
-        ? defaultLabel(item)
-        : currentOptions.label(item, placeOf(index))
+      currentOptions.label === undefined ? defaultLabel(item) : currentOptions.label(item, placeOf(index))
     if (own !== '') return own
     // An aggregate node the host's `label` had no answer for. Falling back to
     // "+392" rather than drawing a blank card: the node is the chart's own
@@ -1981,7 +1967,15 @@ export function createKlad(host: HTMLElement, options: Options): KladInstance {
         for (const warning of warnings) emit('warning', warning)
       })
     }
-    a11y?.update(tree, open, (index) => labelOf(itemFor(index), index), isolatedIndex, unloaded, filterKeep, overflowHide)
+    a11y?.update(
+      tree,
+      open,
+      (index) => labelOf(itemFor(index), index),
+      isolatedIndex,
+      unloaded,
+      filterKeep,
+      overflowHide,
+    )
   }
 
   /** `options.centre` as a source index, or -1 for "the default centre" —
@@ -2014,8 +2008,7 @@ export function createKlad(host: HTMLElement, options: Options): KladInstance {
    * open could never be fetched at all. Closed, it carries the "more inside"
    * mark and one click both loads and opens it.
    */
-  const opensByDefault = (index: number): boolean =>
-    !collapsedFor(index) && !isUnloaded(index)
+  const opensByDefault = (index: number): boolean => !collapsedFor(index) && !isUnloaded(index)
 
   const initOpen = (): void => {
     open = new Uint8Array(tree.count)
@@ -2478,9 +2471,7 @@ export function createKlad(host: HTMLElement, options: Options): KladInstance {
     const pinBox = pinSource === -1 ? null : boxOfSource(pinSource)
     const pinId: string | undefined = pinSource === -1 ? undefined : tree.indexToId[pinSource]
     const pinScreen =
-      pinBox === null
-        ? null
-        : worldToScreen(camera, pinBox.x + pinBox.w / 2, pinBox.y + pinBox.h / 2)
+      pinBox === null ? null : worldToScreen(camera, pinBox.x + pinBox.w / 2, pinBox.y + pinBox.h / 2)
     const openById = new Map<string, boolean>()
     for (let i = 0; i < tree.count; i++) openById.set(tree.indexToId[i]!, open[i] === 1)
 
@@ -2773,8 +2764,7 @@ export function createKlad(host: HTMLElement, options: Options): KladInstance {
           (item) => (item.parentId ?? null) === parentId && !moving.has(String(item.id)),
         )
         const anchorRow = siblingsBefore[Math.min(index, siblingsBefore.length) - 1]
-        const insertAt =
-          anchorRow === undefined ? 0 : rest.findIndex((item) => item.id === anchorRow.id) + 1
+        const insertAt = anchorRow === undefined ? 0 : rest.findIndex((item) => item.id === anchorRow.id) + 1
         rest.splice(insertAt, 0, ...moved)
         return rest
       },
@@ -2795,8 +2785,7 @@ export function createKlad(host: HTMLElement, options: Options): KladInstance {
   const loadingIds = new Set<string>()
 
   /** Children this node has in the tree right now — loaded or given. */
-  const childCountOf = (index: number): number =>
-    tree.childStart[index + 1]! - tree.childStart[index]!
+  const childCountOf = (index: number): number => tree.childStart[index + 1]! - tree.childStart[index]!
 
   /**
    * True for a node the host says has children that have not been fetched.
@@ -2827,8 +2816,7 @@ export function createKlad(host: HTMLElement, options: Options): KladInstance {
    * fetched answers yes, which is the point: something has to be clickable or
    * the children can never be asked for.
    */
-  const canHaveChildren = (index: number): boolean =>
-    childCountOf(index) > 0 || isUnloaded(index)
+  const canHaveChildren = (index: number): boolean => childCountOf(index) > 0 || isUnloaded(index)
 
   /** The SOURCE-indexed mask the engine needs to mark unloaded nodes as having
    * more inside — see `ChartEngine.setData`. `null` when nothing is lazy,
@@ -3016,10 +3004,7 @@ export function createKlad(host: HTMLElement, options: Options): KladInstance {
    * Re-runs the search when a query is given and otherwise moves the cursor,
    * so a page holding the arrow key does not re-scan the tree per press.
    */
-  const stepFind = (
-    delta: 1 | -1,
-    query?: string | ((item: NodeData) => boolean),
-  ): SearchResult | null => {
+  const stepFind = (delta: 1 | -1, query?: string | ((item: NodeData) => boolean)): SearchResult | null => {
     if (query !== undefined) {
       const found = api.search(query)
       // Starting BEFORE the first hit, so the first `findNext` lands on it
@@ -3033,9 +3018,7 @@ export function createKlad(host: HTMLElement, options: Options): KladInstance {
     // a full lap rather than looping.
     for (let tried = 0; tried < state.ids.length; tried++) {
       state.at =
-        delta === 1
-          ? (state.at + 1) % state.ids.length
-          : (state.at - 1 + state.ids.length) % state.ids.length
+        delta === 1 ? (state.at + 1) % state.ids.length : (state.at - 1 + state.ids.length) % state.ids.length
       const id = state.ids[state.at]!
       const index = tree.idToIndex.get(id)
       if (index === undefined) continue
@@ -3524,7 +3507,10 @@ export function createKlad(host: HTMLElement, options: Options): KladInstance {
     // top-right instead.)
     if (currentOptions.layout === 'file') {
       return {
-        x: currentOptions.rtl === true ? size.width - FIT_PADDING - (rootBox.x + rootBox.w) * k : FIT_PADDING - rootBox.x * k,
+        x:
+          currentOptions.rtl === true
+            ? size.width - FIT_PADDING - (rootBox.x + rootBox.w) * k
+            : FIT_PADDING - rootBox.x * k,
         y: FIT_PADDING - rootBox.y * k,
         k,
       }
@@ -3632,7 +3618,8 @@ export function createKlad(host: HTMLElement, options: Options): KladInstance {
       previous.camera.k === camera.k &&
       sameList(previous.selected ?? null, selectedIds) &&
       sameList(previous.highlighted ?? null, highlightedIds) &&
-      (previous.isolated ?? null) === (isolatedIndex === -1 ? null : (tree.indexToId[isolatedIndex] ?? null)) &&
+      (previous.isolated ?? null) ===
+        (isolatedIndex === -1 ? null : (tree.indexToId[isolatedIndex] ?? null)) &&
       (previous.filter ?? null) === (typeof filterQuery === 'string' ? filterQuery : null) &&
       (previous.uncapped ?? []).length === uncapped.size &&
       (previous.revealed ?? []).length === revealed.size
@@ -3807,7 +3794,15 @@ export function createKlad(host: HTMLElement, options: Options): KladInstance {
   const refreshA11y = (): void => {
     if (!a11yDirty) return
     a11yDirty = false
-    a11y?.update(tree, open, (i) => labelOf(itemFor(i), i), isolatedIndex, unloadedMask(), filterKeep, overflowHide)
+    a11y?.update(
+      tree,
+      open,
+      (i) => labelOf(itemFor(i), i),
+      isolatedIndex,
+      unloadedMask(),
+      filterKeep,
+      overflowHide,
+    )
   }
 
   const scheduleFrame = (): void => {
@@ -4101,7 +4096,11 @@ export function createKlad(host: HTMLElement, options: Options): KladInstance {
     const stillAnimating = animationsEnabled() && chartHost.transitioning
     const t = stillAnimating ? transitionAnchorProgress(anchor.startedAt, now, anchor.opening) : 1
     const world = lerpPoint(anchor.fromCentre, anchor.toCentre, t)
-    const nextCamera = { x: anchor.screenX - world.x * camera.k, y: anchor.screenY - world.y * camera.k, k: camera.k }
+    const nextCamera = {
+      x: anchor.screenX - world.x * camera.k,
+      y: anchor.screenY - world.y * camera.k,
+      k: camera.k,
+    }
     applyCamera(nextCamera)
     if (!stillAnimating) cameraAnchor = null
   }
@@ -4116,8 +4115,7 @@ export function createKlad(host: HTMLElement, options: Options): KladInstance {
   }
 
   const prefersReducedMotion = (): boolean =>
-    typeof window.matchMedia === 'function' &&
-    window.matchMedia('(prefers-reduced-motion: reduce)').matches
+    typeof window.matchMedia === 'function' && window.matchMedia('(prefers-reduced-motion: reduce)').matches
 
   /**
    * Whether this layer is allowed to animate a camera move on its own
@@ -4400,8 +4398,7 @@ export function createKlad(host: HTMLElement, options: Options): KladInstance {
       kept.push(id)
       indices.push(index)
     }
-    const unchanged =
-      kept.length === selectedIds.length && kept.every((id, i) => id === selectedIds[i])
+    const unchanged = kept.length === selectedIds.length && kept.every((id, i) => id === selectedIds[i])
     if (unchanged) return
 
     selectedIds = kept
@@ -4627,7 +4624,9 @@ export function createKlad(host: HTMLElement, options: Options): KladInstance {
         return at !== undefined && overflowInfo(itemFor(at)) === null
       })
       if (dragIds.length === 0) return false
-      const roots = dragIds.map((each) => tree.idToIndex.get(each)).filter((i): i is number => i !== undefined)
+      const roots = dragIds
+        .map((each) => tree.idToIndex.get(each))
+        .filter((i): i is number => i !== undefined)
       // Built once, here, and read as one array lookup per pointer move —
       // see `subtreeMask`. The alternative walks the ancestor chain on every
       // move, at pointer frequency, on a tree of unbounded depth.
@@ -4742,7 +4741,12 @@ export function createKlad(host: HTMLElement, options: Options): KladInstance {
       if (minX === Infinity) return
       const rect = host.getBoundingClientRect()
       animateTo(
-        fitCamera({ minX, minY, maxX, maxY }, { width: rect.width, height: rect.height }, FIT_PADDING, limits),
+        fitCamera(
+          { minX, minY, maxX, maxY },
+          { width: rect.width, height: rect.height },
+          FIT_PADDING,
+          limits,
+        ),
       )
     },
     setCentre(id) {
@@ -5260,9 +5264,7 @@ export function createKlad(host: HTMLElement, options: Options): KladInstance {
       if (ids === null) {
         chartHost.setHighlight(null)
       } else {
-        const indices = ids
-          .map((id) => tree.idToIndex.get(id))
-          .filter((i): i is number => i !== undefined)
+        const indices = ids.map((id) => tree.idToIndex.get(id)).filter((i): i is number => i !== undefined)
         chartHost.setHighlight(Uint32Array.from(indices))
       }
       // No a11y refresh: highlighting does not change which nodes are expanded,
@@ -5644,11 +5646,7 @@ export function createKlad(host: HTMLElement, options: Options): KladInstance {
         // A root has nothing to come out of.
         if (parent === -1) return false
         const grand = tree.parent[parent]!
-        return api.move(
-          id,
-          grand === -1 ? null : tree.indexToId[grand]!,
-          siblingIndexes()[parent]! + 1,
-        )
+        return api.move(id, grand === -1 ? null : tree.indexToId[grand]!, siblingIndexes()[parent]! + 1)
       }
 
       // 'in': under the sibling above, at the end. The first child of a parent

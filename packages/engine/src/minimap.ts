@@ -30,11 +30,7 @@ export interface MinimapTransform {
  * zero-size box) falls back to `scale: 1` centred on the minimap, the same
  * failsafe `fit()` uses for the same condition, rather than dividing by zero.
  */
-export function computeMinimapTransform(
-  bounds: Bounds,
-  size: MinimapSize,
-  padding = 0,
-): MinimapTransform {
+export function computeMinimapTransform(bounds: Bounds, size: MinimapSize, padding = 0): MinimapTransform {
   const w = bounds.maxX - bounds.minX
   const h = bounds.maxY - bounds.minY
   if (w <= 0 || h <= 0) {
@@ -79,11 +75,7 @@ export function minimapToWorld(t: MinimapTransform, mx: number, my: number): { x
  * `camera.k > 0`, which is `visibleRect`'s own contract (see viewport.ts) —
  * this function does not re-validate it.
  */
-export function viewportRectInMinimap(
-  t: MinimapTransform,
-  camera: Camera,
-  viewport: ViewportSize,
-): Bounds {
+export function viewportRectInMinimap(t: MinimapTransform, camera: Camera, viewport: ViewportSize): Bounds {
   const world = visibleRect(camera, viewport)
   const topLeft = worldToMinimap(t, world.minX, world.minY)
   const bottomRight = worldToMinimap(t, world.maxX, world.maxY)
@@ -282,13 +274,7 @@ function boxBlur(grid: Float64Array, w: number, h: number, radius: number): Floa
   return blur1D(blur1D(grid, w, h, radius, true), w, h, radius, false)
 }
 
-function blur1D(
-  grid: Float64Array,
-  w: number,
-  h: number,
-  radius: number,
-  horizontal: boolean,
-): Float64Array {
+function blur1D(grid: Float64Array, w: number, h: number, radius: number, horizontal: boolean): Float64Array {
   const out = new Float64Array(w * h)
   const outerLen = horizontal ? h : w
   const innerLen = horizontal ? w : h

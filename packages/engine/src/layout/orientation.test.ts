@@ -21,9 +21,18 @@ function fixture(): { boxes: Float64Array; bounds: Bounds } {
 function asymmetricFixture(): { boxes: Float64Array; bounds: Bounds } {
   return {
     boxes: Float64Array.from([
-      0, 0, 10, 5, // A
-      15, 8, 20, 6, // B
-      40, 20, 5, 15, // C
+      0,
+      0,
+      10,
+      5, // A
+      15,
+      8,
+      20,
+      6, // B
+      40,
+      20,
+      5,
+      15, // C
     ]),
     bounds: { minX: 0, minY: 0, maxX: 45, maxY: 35 },
   }

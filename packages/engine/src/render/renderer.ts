@@ -44,19 +44,19 @@ export interface RenderContext2D {
   /** Used to trace a sunburst sector's two arcs. `counterclockwise` is what
    * lets the inner arc run back the other way so the sector closes into a
    * single ring segment rather than a bow tie. */
-  arc(x: number, y: number, radius: number, startAngle: number, endAngle: number, counterclockwise?: boolean): void
+  arc(
+    x: number,
+    y: number,
+    radius: number,
+    startAngle: number,
+    endAngle: number,
+    counterclockwise?: boolean,
+  ): void
   closePath(): void
   /** Used to round the two bends of a connector elbow when `theme.edgeCornerRadius` is
    * greater than 0 — see canvas2d.ts's edge-drawing loop. */
   quadraticCurveTo(cpx: number, cpy: number, x: number, y: number): void
-  bezierCurveTo(
-    cp1x: number,
-    cp1y: number,
-    cp2x: number,
-    cp2y: number,
-    x: number,
-    y: number,
-  ): void
+  bezierCurveTo(cp1x: number, cp1y: number, cp2x: number, cp2y: number, x: number, y: number): void
   setLineDash(segments: number[]): void
   lineDashOffset: number
   roundRect(x: number, y: number, w: number, h: number, radii: number): void

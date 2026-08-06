@@ -305,9 +305,13 @@ describe('createKlad', () => {
     // `button: 2` is the right button. The browser opens its context menu on
     // this press, and the chart sliding out from under that menu is exactly
     // what the primary-button check in input.ts prevents.
-    canvas.dispatchEvent(new PointerEvent('pointerdown', { button: 2, clientX: 100, clientY: 100, bubbles: true }))
+    canvas.dispatchEvent(
+      new PointerEvent('pointerdown', { button: 2, clientX: 100, clientY: 100, bubbles: true }),
+    )
     window.dispatchEvent(new PointerEvent('pointermove', { clientX: 160, clientY: 100, bubbles: true }))
-    window.dispatchEvent(new PointerEvent('pointerup', { button: 2, clientX: 160, clientY: 100, bubbles: true }))
+    window.dispatchEvent(
+      new PointerEvent('pointerup', { button: 2, clientX: 160, clientY: 100, bubbles: true }),
+    )
     await nextFrame()
     expect(chart.api.getState().camera.x).toBe(before)
     chart.destroy()
@@ -328,8 +332,12 @@ describe('createKlad', () => {
     // The ignored press must leave no state behind — an early return that
     // still registered the pointer would leave the next real drag looking
     // like the second finger of a pinch.
-    canvas.dispatchEvent(new PointerEvent('pointerdown', { button: 2, clientX: 50, clientY: 50, bubbles: true }))
-    window.dispatchEvent(new PointerEvent('pointerup', { button: 2, clientX: 50, clientY: 50, bubbles: true }))
+    canvas.dispatchEvent(
+      new PointerEvent('pointerdown', { button: 2, clientX: 50, clientY: 50, bubbles: true }),
+    )
+    window.dispatchEvent(
+      new PointerEvent('pointerup', { button: 2, clientX: 50, clientY: 50, bubbles: true }),
+    )
     canvas.dispatchEvent(new PointerEvent('pointerdown', { clientX: 100, clientY: 100, bubbles: true }))
     window.dispatchEvent(new PointerEvent('pointermove', { clientX: 160, clientY: 100, bubbles: true }))
     window.dispatchEvent(new PointerEvent('pointerup', { clientX: 160, clientY: 100, bubbles: true }))
@@ -417,7 +425,7 @@ describe('createKlad', () => {
   // A card can hold a real form control (see the playground's dropdown
   // example). Panning the chart out from under someone typing in it would be
   // a bug, not a feature.
-  it('leaves the keys alone when a card\'s own control has focus', async () => {
+  it("leaves the keys alone when a card's own control has focus", async () => {
     const chart = make()
     await settle()
     const el = document.querySelector('canvas')!.parentElement!
@@ -672,8 +680,12 @@ describe('createKlad', () => {
     await settle()
     const canvas = document.querySelector('canvas')!
     const centre = chart.api.getState().rootScreenCentre
-    canvas.dispatchEvent(new PointerEvent('pointerdown', { clientX: centre.x, clientY: centre.y, bubbles: true }))
-    window.dispatchEvent(new PointerEvent('pointerup', { clientX: centre.x, clientY: centre.y, bubbles: true }))
+    canvas.dispatchEvent(
+      new PointerEvent('pointerdown', { clientX: centre.x, clientY: centre.y, bubbles: true }),
+    )
+    window.dispatchEvent(
+      new PointerEvent('pointerup', { clientX: centre.x, clientY: centre.y, bubbles: true }),
+    )
     await settle()
     // A chart written before selection existed has its own meaning for a
     // click; switching this on underneath it would change what that chart does.
@@ -686,7 +698,9 @@ describe('createKlad', () => {
     await settle()
     const canvas = document.querySelector('canvas')!
     const tap = (x: number, y: number, init: PointerEventInit = {}) => {
-      canvas.dispatchEvent(new PointerEvent('pointerdown', { clientX: x, clientY: y, bubbles: true, ...init }))
+      canvas.dispatchEvent(
+        new PointerEvent('pointerdown', { clientX: x, clientY: y, bubbles: true, ...init }),
+      )
       window.dispatchEvent(new PointerEvent('pointerup', { clientX: x, clientY: y, bubbles: true, ...init }))
     }
     const root = chart.api.getState().rootScreenCentre
@@ -720,7 +734,12 @@ describe('createKlad', () => {
 
     // Shift-drag across the whole chart: everything visible is inside it.
     el.dispatchEvent(
-      new PointerEvent('pointerdown', { clientX: rect.left + 2, clientY: rect.top + 2, shiftKey: true, bubbles: true }),
+      new PointerEvent('pointerdown', {
+        clientX: rect.left + 2,
+        clientY: rect.top + 2,
+        shiftKey: true,
+        bubbles: true,
+      }),
     )
     window.dispatchEvent(
       new PointerEvent('pointermove', { clientX: rect.right - 2, clientY: rect.bottom - 2, bubbles: true }),
@@ -1487,7 +1506,10 @@ describe('createKlad', () => {
     await nextFrame()
     expect(chart.api.stats('a')!.descendants).toBe(3)
 
-    chart.update([{ id: 'a', name: 'Root' }, { id: 'b', parentId: 'a', name: 'Only' }])
+    chart.update([
+      { id: 'a', name: 'Root' },
+      { id: 'b', parentId: 'a', name: 'Only' },
+    ])
     await nextFrame()
 
     expect(chart.api.stats('a')).toEqual({
@@ -1620,9 +1642,7 @@ describe('createKlad', () => {
 
     const after = chart.api.getState()
     // The layout really did re-measure...
-    expect(after.bounds.maxY - after.bounds.minY).toBeGreaterThan(
-      before.bounds.maxY - before.bounds.minY,
-    )
+    expect(after.bounds.maxY - after.bounds.minY).toBeGreaterThan(before.bounds.maxY - before.bounds.minY)
     // ...without disturbing any of the state the user owns.
     expect(after.visibleCount).toBe(before.visibleCount)
     expect(after.camera).toEqual(before.camera)
@@ -2528,7 +2548,10 @@ describe('drag and drop', () => {
       worker: false,
       dragAndDrop: true,
       mayHaveChildren: (item) => Number(item.childCount ?? 0) > 0,
-      loadChildren: () => [{ id: 'c1', name: 'Fetched one' }, { id: 'c2', name: 'Fetched two' }],
+      loadChildren: () => [
+        { id: 'c1', name: 'Fetched one' },
+        { id: 'c2', name: 'Fetched two' },
+      ],
       renderNode: (el: HTMLElement, ctx: NodeContext) => {
         el.textContent = String(ctx.item.name ?? '')
       },
@@ -2766,7 +2789,6 @@ describe('drag and drop', () => {
       chart.destroy()
     })
   })
-
 })
 
 describe('children on demand', () => {
@@ -3900,8 +3922,9 @@ describe('very wide levels', () => {
     await settle()
 
     const boxOf = (id: string) =>
-      document.querySelector<HTMLElement>(`.klad-overlay-node[data-klad-id="${id}"]`)?.getBoundingClientRect() ??
-      null
+      document
+        .querySelector<HTMLElement>(`.klad-overlay-node[data-klad-id="${id}"]`)
+        ?.getBoundingClientRect() ?? null
     const before = boxOf('r')!
     expect(before).not.toBeNull()
 
@@ -3942,8 +3965,9 @@ describe('very wide levels', () => {
     await nextFrame()
     await settle()
     const boxOf = (id: string) =>
-      document.querySelector<HTMLElement>(`.klad-overlay-node[data-klad-id="${id}"]`)?.getBoundingClientRect() ??
-      null
+      document
+        .querySelector<HTMLElement>(`.klad-overlay-node[data-klad-id="${id}"]`)
+        ?.getBoundingClientRect() ?? null
 
     const before = Math.round(boxOf('c0')!.left)
     chart.api.showMore('klad:more:r')
@@ -4023,8 +4047,9 @@ describe('very wide levels', () => {
     await settle()
 
     const boxOf = (id: string) =>
-      document.querySelector<HTMLElement>(`.klad-overlay-node[data-klad-id="${id}"]`)?.getBoundingClientRect() ??
-      null
+      document
+        .querySelector<HTMLElement>(`.klad-overlay-node[data-klad-id="${id}"]`)
+        ?.getBoundingClientRect() ?? null
     const before = boxOf('klad:more:r')!
     expect(before).not.toBeNull()
 

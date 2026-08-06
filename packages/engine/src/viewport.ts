@@ -42,9 +42,7 @@ const MIN_POSITIVE_K = 1e-6
  * inverted config (`maxK < minK`) resolve to a sane clamp instead of an empty one.
  */
 function resolveLimits(limits: ZoomLimits): { minK: number; maxK: number } {
-  const minK = Number.isFinite(limits.minK)
-    ? Math.max(MIN_POSITIVE_K, limits.minK)
-    : MIN_POSITIVE_K
+  const minK = Number.isFinite(limits.minK) ? Math.max(MIN_POSITIVE_K, limits.minK) : MIN_POSITIVE_K
   const maxK = Number.isFinite(limits.maxK) ? Math.max(minK, limits.maxK) : Infinity
   return { minK, maxK }
 }
@@ -80,13 +78,7 @@ export function pan(camera: Camera, dx: number, dy: number): Camera {
  * other inputs: `camera.k` and `factor` are both assumed to be finite, and a
  * `NaN` in either still yields a `NaN` camera.
  */
-export function zoomAt(
-  camera: Camera,
-  sx: number,
-  sy: number,
-  factor: number,
-  limits: ZoomLimits,
-): Camera {
+export function zoomAt(camera: Camera, sx: number, sy: number, factor: number, limits: ZoomLimits): Camera {
   const { minK, maxK } = resolveLimits(limits)
   const k = Math.min(maxK, Math.max(minK, camera.k * factor))
   if (k === camera.k) return { ...camera }
@@ -101,12 +93,7 @@ export function zoomAt(
  * {@link resolveLimits} for how non-positive, non-finite, and inverted configs
  * are resolved.
  */
-export function fit(
-  bounds: Bounds,
-  size: ViewportSize,
-  padding: number,
-  limits: ZoomLimits,
-): Camera {
+export function fit(bounds: Bounds, size: ViewportSize, padding: number, limits: ZoomLimits): Camera {
   const w = bounds.maxX - bounds.minX
   const h = bounds.maxY - bounds.minY
   if (w <= 0 || h <= 0) {

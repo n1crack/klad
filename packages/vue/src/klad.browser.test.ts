@@ -1,6 +1,6 @@
 import { describe, expect, it } from 'vitest'
 import { createApp, defineComponent, h, ref } from 'vue'
-import Klad from './Klad.vue'
+import Klad from './Klad.js'
 
 const DATA = [
   { id: 'a', name: 'Root' },
@@ -20,10 +20,13 @@ function mount(setup: () => unknown) {
   return { app, el }
 }
 
-describe('Klad.vue', () => {
+describe('Klad', () => {
   it('renders a canvas', async () => {
-    const { app, el } = mount(() => () =>
-      h(Klad, { options: { data: DATA, nodeSize: { w: 120, h: 48 }, worker: false } }),
+    const { app, el } = mount(
+      () => () =>
+        h(Klad, {
+          options: { data: DATA, nodeSize: { w: 120, h: 48 }, worker: false },
+        }),
     )
     await nextFrame()
     expect(el.querySelector('canvas')).not.toBeNull()
@@ -32,20 +35,23 @@ describe('Klad.vue', () => {
 
   it('renders the #node slot for visible nodes when zoomed in', async () => {
     const chartRef = ref<{ api: { zoomTo(k: number): void } } | null>(null)
-    const { app, el } = mount(() => () =>
-      h(
-        Klad,
-        {
-          ref: chartRef,
-          options: {
-            data: DATA,
-            nodeSize: { w: 120, h: 48 },
-            label: (item) => String(item.name ?? ''),
-            worker: false,
+    const { app, el } = mount(
+      () => () =>
+        h(
+          Klad,
+          {
+            ref: chartRef,
+            options: {
+              data: DATA,
+              nodeSize: { w: 120, h: 48 },
+              label: (item) => String(item.name ?? ''),
+              worker: false,
+            },
           },
-        },
-        { node: ({ id }: { id: string }) => h('span', { class: 'card' }, id) },
-      ),
+          {
+            node: ({ id }: { id: string }) => h('span', { class: 'card' }, id),
+          },
+        ),
     )
     await nextFrame()
     chartRef.value?.api.zoomTo(1)
@@ -62,23 +68,26 @@ describe('Klad.vue', () => {
     // layer undid that — e.g. by keying slot content so Vue itself decides
     // to replace the container — a camera change would swap the element
     // identity out from under the pool and panning would stutter at scale.
-    const chartRef = ref<{ api: { zoomTo(k: number): void; getState(): { camera: { x: number } } } } | null>(
-      null,
-    )
-    const { app, el } = mount(() => () =>
-      h(
-        Klad,
-        {
-          ref: chartRef,
-          options: {
-            data: DATA,
-            nodeSize: { w: 120, h: 48 },
-            label: (item) => String(item.name ?? ''),
-            worker: false,
+    const chartRef = ref<{
+      api: { zoomTo(k: number): void; getState(): { camera: { x: number } } }
+    } | null>(null)
+    const { app, el } = mount(
+      () => () =>
+        h(
+          Klad,
+          {
+            ref: chartRef,
+            options: {
+              data: DATA,
+              nodeSize: { w: 120, h: 48 },
+              label: (item) => String(item.name ?? ''),
+              worker: false,
+            },
           },
-        },
-        { node: ({ id }: { id: string }) => h('span', { class: 'card' }, id) },
-      ),
+          {
+            node: ({ id }: { id: string }) => h('span', { class: 'card' }, id),
+          },
+        ),
     )
     await nextFrame()
     chartRef.value?.api.zoomTo(1)
@@ -99,11 +108,12 @@ describe('Klad.vue', () => {
 
   it('emits nodeClick', async () => {
     const seen: string[] = []
-    const { app } = mount(() => () =>
-      h(Klad, {
-        options: { data: DATA, nodeSize: { w: 120, h: 48 }, worker: false },
-        onNodeClick: (event: { id: string }) => seen.push(event.id),
-      }),
+    const { app } = mount(
+      () => () =>
+        h(Klad, {
+          options: { data: DATA, nodeSize: { w: 120, h: 48 }, worker: false },
+          onNodeClick: (event: { id: string }) => seen.push(event.id),
+        }),
     )
     await nextFrame()
     // Driven through the exposed api rather than synthesising a pointer event,
@@ -115,11 +125,16 @@ describe('Klad.vue', () => {
   it('reacts to a data prop change', async () => {
     const data = ref(DATA)
     const chartRef = ref<{ api: { getState(): { nodeCount: number } } } | null>(null)
-    const { app } = mount(() => () =>
-      h(Klad, {
-        ref: chartRef,
-        options: { data: data.value, nodeSize: { w: 120, h: 48 }, worker: false },
-      }),
+    const { app } = mount(
+      () => () =>
+        h(Klad, {
+          ref: chartRef,
+          options: {
+            data: data.value,
+            nodeSize: { w: 120, h: 48 },
+            worker: false,
+          },
+        }),
     )
     await nextFrame()
     expect(chartRef.value!.api.getState().nodeCount).toBe(3)
@@ -131,8 +146,11 @@ describe('Klad.vue', () => {
   })
 
   it('destroys the chart on unmount', async () => {
-    const { app, el } = mount(() => () =>
-      h(Klad, { options: { data: DATA, nodeSize: { w: 120, h: 48 }, worker: false } }),
+    const { app, el } = mount(
+      () => () =>
+        h(Klad, {
+          options: { data: DATA, nodeSize: { w: 120, h: 48 }, worker: false },
+        }),
     )
     await nextFrame()
     app.unmount()

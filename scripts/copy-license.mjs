@@ -22,6 +22,4 @@ const FILES = ['LICENSE', 'LICENSE-COMMERCIAL.md']
 const repoRoot = resolve(dirname(fileURLToPath(import.meta.url)), '..')
 const packageDir = process.cwd()
 
-await Promise.all(
-  FILES.map((file) => copyFile(join(repoRoot, file), join(packageDir, file))),
-)
+await Promise.all(FILES.map((file) => copyFile(join(repoRoot, file), join(packageDir, file))))

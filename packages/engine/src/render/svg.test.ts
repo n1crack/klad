@@ -230,8 +230,8 @@ function frameFrom(built: Built): Frame {
     ringActive: false,
     ringBox: new Float64Array(4),
     ringProgress: 0,
-  edgeFlow: null,
-  edgeFlowSeconds: 0,
+    edgeFlow: null,
+    edgeFlowSeconds: 0,
   }
 }
 
@@ -301,62 +301,65 @@ function parseTexts(svg: string): RecordedText[] {
   return out
 }
 
-describe.each<Orientation>(['tb', 'bt', 'lr', 'rl'])('toSVG matches canvas2d geometry (%s)', (orientation) => {
-  it('draws identical node rects, connector elbows, and label anchors', () => {
-    const built = buildFixture(orientation)
-    const { ctx, surface, rects, edgeSegments, texts } = makeRecorder()
-    const renderer = createCanvas2DRenderer(surface, DEFAULT_THEME, measurerFor)
-    renderer.draw(frameFrom(built))
-    void ctx
+describe.each<Orientation>(['tb', 'bt', 'lr', 'rl'])(
+  'toSVG matches canvas2d geometry (%s)',
+  (orientation) => {
+    it('draws identical node rects, connector elbows, and label anchors', () => {
+      const built = buildFixture(orientation)
+      const { ctx, surface, rects, edgeSegments, texts } = makeRecorder()
+      const renderer = createCanvas2DRenderer(surface, DEFAULT_THEME, measurerFor)
+      renderer.draw(frameFrom(built))
+      void ctx
 
-    // padding: 0 so svg.ts's offsetX/offsetY collapse to -bounds.minX/-minY,
-    // which is 0 here (layout()/applyOrientation() guarantee minX===minY===0)
-    // — i.e. identical world-space coordinates to what the canvas frame used
-    // (camera { x: 0, y: 0, k: 1 }), so no translation needs to be undone
-    // before comparing numbers.
-    const svg = toSVG(exportDataFrom(built), { padding: 0 })
+      // padding: 0 so svg.ts's offsetX/offsetY collapse to -bounds.minX/-minY,
+      // which is 0 here (layout()/applyOrientation() guarantee minX===minY===0)
+      // — i.e. identical world-space coordinates to what the canvas frame used
+      // (camera { x: 0, y: 0, k: 1 }), so no translation needs to be undone
+      // before comparing numbers.
+      const svg = toSVG(exportDataFrom(built), { padding: 0 })
 
-    const svgRects = parseRects(svg)
-    expect(svgRects).toHaveLength(rects.length)
-    for (let i = 0; i < rects.length; i++) {
-      expect(svgRects[i]!.x).toBeCloseTo(rects[i]!.x, 1)
-      expect(svgRects[i]!.y).toBeCloseTo(rects[i]!.y, 1)
-      expect(svgRects[i]!.w).toBeCloseTo(rects[i]!.w, 1)
-      expect(svgRects[i]!.h).toBeCloseTo(rects[i]!.h, 1)
-      expect(svgRects[i]!.radius).toBeCloseTo(rects[i]!.radius, 1)
-    }
-
-    const svgEdges = parseEdgeSegments(svg)
-    expect(svgEdges).toHaveLength(edgeSegments.length)
-    expect(svgEdges.length).toBeGreaterThan(0)
-    for (let e = 0; e < edgeSegments.length; e++) {
-      const expected = edgeSegments[e]!
-      const actual = svgEdges[e]!
-      expect(actual).toHaveLength(expected.length)
-      for (let p = 0; p < expected.length; p++) {
-        expect(actual[p]!.x).toBeCloseTo(expected[p]!.x, 1)
-        expect(actual[p]!.y).toBeCloseTo(expected[p]!.y, 1)
+      const svgRects = parseRects(svg)
+      expect(svgRects).toHaveLength(rects.length)
+      for (let i = 0; i < rects.length; i++) {
+        expect(svgRects[i]!.x).toBeCloseTo(rects[i]!.x, 1)
+        expect(svgRects[i]!.y).toBeCloseTo(rects[i]!.y, 1)
+        expect(svgRects[i]!.w).toBeCloseTo(rects[i]!.w, 1)
+        expect(svgRects[i]!.h).toBeCloseTo(rects[i]!.h, 1)
+        expect(svgRects[i]!.radius).toBeCloseTo(rects[i]!.radius, 1)
       }
-    }
 
-    // Anchor POSITION must match the canvas exactly — same box, same
-    // labelPadding, same vertical-centre formula. Text CONTENT deliberately
-    // is not compared against the canvas recording here: this fixture's
-    // smaller boxes (e.g. 60x30 for 'a1') are exactly the case where
-    // canvas2d.ts's zoom-dependent measurer.truncate() shortens the label
-    // to fit, while toSVG's whole point is to never do that (see toSVG's
-    // docblock) — so svg text content is asserted against the FULL source
-    // label instead, and is expected to legitimately differ from the
-    // canvas's (possibly truncated) text whenever a box is snug.
-    const svgTexts = parseTexts(svg)
-    expect(svgTexts).toHaveLength(texts.length)
-    for (let i = 0; i < texts.length; i++) {
-      expect(svgTexts[i]!.x).toBeCloseTo(texts[i]!.x, 1)
-      expect(svgTexts[i]!.y).toBeCloseTo(texts[i]!.y, 1)
-      expect(svgTexts[i]!.text).toBe(built.labels[i])
-    }
-  })
-})
+      const svgEdges = parseEdgeSegments(svg)
+      expect(svgEdges).toHaveLength(edgeSegments.length)
+      expect(svgEdges.length).toBeGreaterThan(0)
+      for (let e = 0; e < edgeSegments.length; e++) {
+        const expected = edgeSegments[e]!
+        const actual = svgEdges[e]!
+        expect(actual).toHaveLength(expected.length)
+        for (let p = 0; p < expected.length; p++) {
+          expect(actual[p]!.x).toBeCloseTo(expected[p]!.x, 1)
+          expect(actual[p]!.y).toBeCloseTo(expected[p]!.y, 1)
+        }
+      }
+
+      // Anchor POSITION must match the canvas exactly — same box, same
+      // labelPadding, same vertical-centre formula. Text CONTENT deliberately
+      // is not compared against the canvas recording here: this fixture's
+      // smaller boxes (e.g. 60x30 for 'a1') are exactly the case where
+      // canvas2d.ts's zoom-dependent measurer.truncate() shortens the label
+      // to fit, while toSVG's whole point is to never do that (see toSVG's
+      // docblock) — so svg text content is asserted against the FULL source
+      // label instead, and is expected to legitimately differ from the
+      // canvas's (possibly truncated) text whenever a box is snug.
+      const svgTexts = parseTexts(svg)
+      expect(svgTexts).toHaveLength(texts.length)
+      for (let i = 0; i < texts.length; i++) {
+        expect(svgTexts[i]!.x).toBeCloseTo(texts[i]!.x, 1)
+        expect(svgTexts[i]!.y).toBeCloseTo(texts[i]!.y, 1)
+        expect(svgTexts[i]!.text).toBe(built.labels[i])
+      }
+    })
+  },
+)
 
 describe.each<Orientation>(['tb', 'bt', 'lr', 'rl'])(
   'rounded connector elbows (edgeCornerRadius > 0) match between canvas and svg (%s)',
@@ -536,7 +539,7 @@ describe('edge corner radius clamps against a short connector', () => {
       branchOf: null,
       branchDepth: null,
       highlight: null,
-    selected: null,
+      selected: null,
       dragIndex: -1,
       dropIndex: -1,
       dropMode: 'into',
@@ -548,8 +551,8 @@ describe('edge corner radius clamps against a short connector', () => {
       ringActive: false,
       ringBox: new Float64Array(4),
       ringProgress: 0,
-  edgeFlow: null,
-  edgeFlowSeconds: 0,
+      edgeFlow: null,
+      edgeFlowSeconds: 0,
     }
     expect(() => renderer.draw(frame)).not.toThrow()
   })

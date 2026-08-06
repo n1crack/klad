@@ -52,7 +52,11 @@ describe('resolveDropMode', () => {
     // anticlockwise" is not a position anyone is trying to express with a
     // pointer. Reducing to `into` is the honest answer, not a guess.
     for (const layout of ['radial', 'sunburst'] as const) {
-      for (const [x, y] of [[2, 2], [50, 20], [98, 38]] as const) {
+      for (const [x, y] of [
+        [2, 2],
+        [50, 20],
+        [98, 38],
+      ] as const) {
         expect(resolveDropMode(layout, false, ROW, x, y)).toBe('into')
       }
     }
@@ -88,9 +92,7 @@ describe('subtreeMask', () => {
     // Dragging a node AND one of its own descendants is a selection a viewer
     // can easily make; marking the overlap twice must not loop.
     const mask = subtreeMask(tree, [at('a'), at('a1'), at('b')])
-    expect(Array.from(mask)).toEqual(
-      Array.from({ length: tree.count }, (_, i) => (i === at('root') ? 0 : 1)),
-    )
+    expect(Array.from(mask)).toEqual(Array.from({ length: tree.count }, (_, i) => (i === at('root') ? 0 : 1)))
   })
 
   it('ignores out-of-range roots rather than throwing', () => {

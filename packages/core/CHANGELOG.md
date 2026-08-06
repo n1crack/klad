@@ -7,7 +7,7 @@
 - b217f4b: `edgeStyle: 'bezier'` — a curved connector.
 
   ```ts
-  createKlad(el, { data, edgeStyle: "bezier" });
+  createKlad(el, { data, edgeStyle: 'bezier' })
   ```
 
   The same two ends a `'tiered'` elbow joins, with a curve in between instead of
@@ -28,8 +28,8 @@
   ```ts
   createKlad(el, {
     data,
-    edgeFlow: (parent, child) => child.status === "active",
-  });
+    edgeFlow: (parent, child) => child.status === 'active',
+  })
   ```
 
   For a flow, a dependency, a route that is carrying something. Asked once per
@@ -78,7 +78,7 @@
 - ccb0c29: `edit` — every change to the shape, however it was made.
 
   ```ts
-  chart.on("edit", (change) => queue.push(change));
+  chart.on('edit', (change) => queue.push(change))
   ```
 
   A drag reports itself through `nodeDrop` and an API call is something you made
@@ -98,9 +98,9 @@
   ### findNext / findPrevious
 
   ```ts
-  chart.api.findNext("rossi"); // start, and go to the first
-  chart.api.findNext(); // the next
-  chart.api.findPrevious(); // back one
+  chart.api.findNext('rossi') // start, and go to the first
+  chart.api.findNext() // the next
+  chart.api.findPrevious() // back one
   ```
 
   `search` answers a question and changes nothing; `filter` changes what the chart
@@ -114,7 +114,7 @@
   ### leafCount on stats(id)
 
   ```ts
-  chart.api.stats("src")!.leafCount; // how many files, at any depth
+  chart.api.stats('src')!.leafCount // how many files, at any depth
   ```
 
   A different question from `descendants`, and usually the one being asked: "how
@@ -126,11 +126,8 @@
   ### filterChange and layoutChange
 
   ```ts
-  chart.on(
-    "filterChange",
-    ({ query, matched }) => (count.textContent = `${matched.length}`),
-  );
-  chart.on("layoutChange", ({ settings }) => mirror(settings));
+  chart.on('filterChange', ({ query, matched }) => (count.textContent = `${matched.length}`))
+  chart.on('layoutChange', ({ settings }) => mirror(settings))
   ```
 
   `layoutChange` carries the settings as they now stand rather than the delta, so
@@ -150,7 +147,7 @@
 - f8ac009: `viewChange` — one event for the whole view.
 
   ```ts
-  chart.on("viewChange", (view) => store.save(view)); // straight back into setView
+  chart.on('viewChange', (view) => store.save(view)) // straight back into setView
   ```
 
   Camera, open branches, selection, highlight, isolation, filter and lifted caps,
@@ -184,7 +181,7 @@
 - f31e5cd: Restructuring the tree from the keyboard.
 
   ```ts
-  createKlad(el, { data, keyboardEditing: true });
+  createKlad(el, { data, keyboardEditing: true })
   ```
 
   On the focused node:
@@ -217,11 +214,10 @@
   `Shift+Enter` emits `addRequested` with the parent and index to use, and waits:
 
   ```ts
-  chart.on("addRequested", ({ parentId, index }) => {
-    const name = prompt("Name?");
-    if (name !== null)
-      chart.api.add({ id: crypto.randomUUID(), name }, parentId, index);
-  });
+  chart.on('addRequested', ({ parentId, index }) => {
+    const name = prompt('Name?')
+    if (name !== null) chart.api.add({ id: crypto.randomUUID(), name }, parentId, index)
+  })
   ```
 
   Ignore it and nothing happens.
@@ -243,10 +239,10 @@
   them.
 
   ```ts
-  chart.api.move("lead-42", "engineering", 0);
-  chart.api.add({ id: "new-hire", name: "Sam" }, "engineering");
-  chart.api.remove("closed-team");
-  chart.api.getData(); // your rows, with the edits applied
+  chart.api.move('lead-42', 'engineering', 0)
+  chart.api.add({ id: 'new-hire', name: 'Sam' }, 'engineering')
+  chart.api.remove('closed-team')
+  chart.api.getData() // your rows, with the edits applied
   ```
 
   Each returns whether it happened. Dragging was the only edit there was, and it
@@ -259,8 +255,7 @@
   ### Your rule, asked while the pointer is still down
 
   ```ts
-  canMove: ({ items, parentId }) =>
-    parentId === null || items.every((item) => item.kind !== "contractor");
+  canMove: ({ items, parentId }) => parentId === null || items.every((item) => item.kind !== 'contractor')
   ```
 
   Refusing in `nodeDrop` answered too late: the drop indicator had already said
@@ -292,9 +287,9 @@
 - a4de406: Undo, redo, and the changes as something you can send.
 
   ```ts
-  chart.api.undo();
-  chart.api.changes(); // what to PATCH
-  chart.api.markSaved(); // sent
+  chart.api.undo()
+  chart.api.changes() // what to PATCH
+  chart.api.markSaved() // sent
   ```
 
   A drag that restructures somebody's organisation with no way back is a
@@ -335,7 +330,7 @@
   viewer is.
 
   ```ts
-  socket.on("tree", (rows) => chart.api.reconcile(rows));
+  socket.on('tree', (rows) => chart.api.reconcile(rows))
   ```
 
   `update(data)` means "this is a different tree": it resets your expand state,
@@ -363,8 +358,8 @@
 - 956b7fd: The line between a parent and a child is a setting now.
 
   ```ts
-  createKlad(el, { data, edgeStyle: "spoke" }); // tidy, but straight lines
-  createKlad(el, { data, edgeStyle: "none" }); // no connectors at all
+  createKlad(el, { data, edgeStyle: 'spoke' }) // tidy, but straight lines
+  createKlad(el, { data, edgeStyle: 'none' }) // no connectors at all
   ```
 
   `'tiered' | 'folder' | 'spoke' | 'none'`. Each layout still picks the one that
@@ -403,7 +398,7 @@
   createKlad(el, {
     data,
     collapsedByDefault: (item, at) => at.depth > 2,
-  });
+  })
   ```
 
   `{ depth, index, siblings, parent }` — distance from a root, the slot among its
@@ -515,8 +510,8 @@
 - a854c03: `filter(query)` — reduce the chart to what matches.
 
   ```ts
-  const found = chart.api.filter("schema"); // the ids that matched
-  chart.api.filter(null); // back to the whole tree
+  const found = chart.api.filter('schema') // the ids that matched
+  chart.api.filter(null) // back to the whole tree
   ```
 
   A substring on the label, or your own predicate. What stays is the matches
@@ -555,9 +550,9 @@
   comparisons:
 
   ```ts
-  const branch = chart.api.stats("engineering")!;
-  const node = chart.api.stats("lead-42")!;
-  const inside = node.lft > branch.lft && node.rgt < branch.rgt;
+  const branch = chart.api.stats('engineering')!
+  const node = chart.api.stats('lead-42')!
+  const inside = node.lft > branch.lft && node.rgt < branch.rgt
   ```
 
   That is what makes filtering a large tree by branch cheap enough to do per
@@ -622,7 +617,7 @@
     data,
     maxChildren: 8,
     pinChildren: (item) => watching.has(String(item.id)),
-  });
+  })
   ```
 
   Eight children are drawn as themselves and everything after them is replaced
@@ -833,9 +828,8 @@
   createKlad(host, {
     data: roots,
     mayHaveChildren: (item) => Number(item.childCount) > 0,
-    loadChildren: (item) =>
-      fetch(`/api/children/${item.id}`).then((r) => r.json()),
-  });
+    loadChildren: (item) => fetch(`/api/children/${item.id}`).then((r) => r.json()),
+  })
   ```
 
   Two options rather than one, because the chart can only know what it has been
@@ -1113,7 +1107,7 @@
   actually carries, falling back to its `id`.
 
   ```ts
-  createKlad(host, { data }); // a working chart
+  createKlad(host, { data }) // a working chart
   ```
 
   Both were required before, and neither had to be: the first was a number

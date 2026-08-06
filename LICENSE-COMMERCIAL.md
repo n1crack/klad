@@ -5,7 +5,7 @@ Klad is dual-licensed.
 - **GNU AGPL v3 or later** — the default, in [LICENSE](LICENSE). Free to use,
   modify and distribute, on the AGPL's terms.
 - **Commercial licence** — for use the AGPL does not permit. Available from the
-  copyright holder; see *Getting one* below.
+  copyright holder; see _Getting one_ below.
 
 ## Which one do I need?
 

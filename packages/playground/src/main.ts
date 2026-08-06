@@ -453,7 +453,11 @@ function layoutRange(
   return wrapper
 }
 
-function layoutToggle(labelText: string, initial: boolean, write: (on: boolean) => LayoutSettings): HTMLElement {
+function layoutToggle(
+  labelText: string,
+  initial: boolean,
+  write: (on: boolean) => LayoutSettings,
+): HTMLElement {
   const input = document.createElement('input')
   input.type = 'checkbox'
   input.checked = initial
@@ -479,10 +483,18 @@ function syncLayoutKnobs(example: Example, layout: LayoutName): void {
 
   if (layout === 'file') {
     knobs.push(
-      layoutRange('Indent', 'layout-indent', { min: 4, max: 48, step: 1 }, step ?? 18, (v) => ({ layoutStep: v })),
-      layoutRange('Row gap', 'layout-rowgap', { min: 0, max: 24, step: 1 }, layoutState.rowGap ?? preset.rowGap ?? 2, (v) => ({
-        rowGap: v,
+      layoutRange('Indent', 'layout-indent', { min: 4, max: 48, step: 1 }, step ?? 18, (v) => ({
+        layoutStep: v,
       })),
+      layoutRange(
+        'Row gap',
+        'layout-rowgap',
+        { min: 0, max: 24, step: 1 },
+        layoutState.rowGap ?? preset.rowGap ?? 2,
+        (v) => ({
+          rowGap: v,
+        }),
+      ),
     )
   } else if (layout === 'radial' || layout === 'sunburst') {
     knobs.push(
@@ -496,19 +508,37 @@ function syncLayoutKnobs(example: Example, layout: LayoutName): void {
     )
     if (layout === 'sunburst') {
       knobs.push(
-        layoutRange('Rings shown', 'layout-rings', { min: 1, max: 8, step: 1 }, layoutState.maxRings ?? preset.maxRings ?? 3, (v) => ({
-          maxRings: v,
-        })),
+        layoutRange(
+          'Rings shown',
+          'layout-rings',
+          { min: 1, max: 8, step: 1 },
+          layoutState.maxRings ?? preset.maxRings ?? 3,
+          (v) => ({
+            maxRings: v,
+          }),
+        ),
       )
     }
   } else {
     knobs.push(
-      layoutRange('Sibling gap', 'layout-gapx', { min: 4, max: 80, step: 2 }, layoutState.spacing?.x ?? 16, (v) => ({
-        spacing: { ...layoutState.spacing, x: v },
-      })),
-      layoutRange('Level gap', 'layout-gapy', { min: 16, max: 200, step: 4 }, layoutState.spacing?.y ?? 48, (v) => ({
-        spacing: { ...layoutState.spacing, y: v },
-      })),
+      layoutRange(
+        'Sibling gap',
+        'layout-gapx',
+        { min: 4, max: 80, step: 2 },
+        layoutState.spacing?.x ?? 16,
+        (v) => ({
+          spacing: { ...layoutState.spacing, x: v },
+        }),
+      ),
+      layoutRange(
+        'Level gap',
+        'layout-gapy',
+        { min: 16, max: 200, step: 4 },
+        layoutState.spacing?.y ?? 48,
+        (v) => ({
+          spacing: { ...layoutState.spacing, y: v },
+        }),
+      ),
     )
   }
 
@@ -538,9 +568,13 @@ function syncLayoutKnobs(example: Example, layout: LayoutName): void {
   // segments have nothing else to carry structure), so the checkbox is seeded
   // from what the chart is actually doing rather than from a fixed `false`.
   knobs.push(
-    layoutToggle('Colour by branch', layoutState.colourBranches ?? preset.colourBranches ?? layout === 'sunburst', (on) => ({
-      colourBranches: on,
-    })),
+    layoutToggle(
+      'Colour by branch',
+      layoutState.colourBranches ?? preset.colourBranches ?? layout === 'sunburst',
+      (on) => ({
+        colourBranches: on,
+      }),
+    ),
   )
 
   layoutKnobFields.append(...knobs)
@@ -882,8 +916,18 @@ const THEME_CONTROLS: { caption: string; controls: ThemeControl[] }[] = [
   {
     caption: 'Nodes',
     controls: [
-      colourControl('Fill', 'node-fill-input', (theme) => theme.nodeFill, (nodeFill) => ({ nodeFill })),
-      colourControl('Border', 'node-stroke-input', (theme) => theme.nodeStroke, (nodeStroke) => ({ nodeStroke })),
+      colourControl(
+        'Fill',
+        'node-fill-input',
+        (theme) => theme.nodeFill,
+        (nodeFill) => ({ nodeFill }),
+      ),
+      colourControl(
+        'Border',
+        'node-stroke-input',
+        (theme) => theme.nodeStroke,
+        (nodeStroke) => ({ nodeStroke }),
+      ),
       rangeControl(
         'Border width',
         'node-stroke-width-range',
@@ -904,7 +948,12 @@ const THEME_CONTROLS: { caption: string; controls: ThemeControl[] }[] = [
   {
     caption: 'Connectors',
     controls: [
-      colourControl('Colour', 'edge-stroke-input', (theme) => theme.edgeStroke, (edgeStroke) => ({ edgeStroke })),
+      colourControl(
+        'Colour',
+        'edge-stroke-input',
+        (theme) => theme.edgeStroke,
+        (edgeStroke) => ({ edgeStroke }),
+      ),
       rangeControl(
         'Width',
         'edge-width-range',
@@ -945,7 +994,12 @@ const THEME_CONTROLS: { caption: string; controls: ThemeControl[] }[] = [
   {
     caption: 'Labels',
     controls: [
-      colourControl('Colour', 'label-colour-input', (theme) => theme.labelColour, (labelColour) => ({ labelColour })),
+      colourControl(
+        'Colour',
+        'label-colour-input',
+        (theme) => theme.labelColour,
+        (labelColour) => ({ labelColour }),
+      ),
       rangeControl(
         'Size',
         'label-size-range',
@@ -965,14 +1019,24 @@ const THEME_CONTROLS: { caption: string; controls: ThemeControl[] }[] = [
   {
     caption: 'Highlight',
     controls: [
-      colourControl('Accent', 'accent-input', (theme) => theme.ringStroke, (accent) => ({
-        ringStroke: accent,
-        edgeHighlightStroke: accent,
-        highlightStroke: accent,
-      })),
-      colourControl('Lit fill', 'highlight-fill-input', (theme) => theme.highlightFill, (highlightFill) => ({
-        highlightFill,
-      })),
+      colourControl(
+        'Accent',
+        'accent-input',
+        (theme) => theme.ringStroke,
+        (accent) => ({
+          ringStroke: accent,
+          edgeHighlightStroke: accent,
+          highlightStroke: accent,
+        }),
+      ),
+      colourControl(
+        'Lit fill',
+        'highlight-fill-input',
+        (theme) => theme.highlightFill,
+        (highlightFill) => ({
+          highlightFill,
+        }),
+      ),
       rangeControl(
         'Ring width',
         'ring-width-range',
@@ -1362,9 +1426,7 @@ function syncSelectionPanel(): void {
   // The first few names, then a count: a panel that grows with the selection
   // would push the chart off the screen exactly when the selection got
   // interesting.
-  const named = ids
-    .slice(0, 4)
-    .map((id) => String(example.data.find((item) => item.id === id)?.name ?? id))
+  const named = ids.slice(0, 4).map((id) => String(example.data.find((item) => item.id === id)?.name ?? id))
   selectionNames.textContent =
     ids.length > 4 ? `${named.join(', ')} +${ids.length - 4} more` : named.join(', ')
 }
@@ -1937,8 +1999,7 @@ function syncGotoControl(example: Example): void {
     const depthOf = new Map<string, number>()
     gotoItems = example.data.map((item) => {
       const parentId = item.parentId
-      const depth =
-        parentId === undefined || parentId === null ? 0 : (depthOf.get(String(parentId)) ?? 0) + 1
+      const depth = parentId === undefined || parentId === null ? 0 : (depthOf.get(String(parentId)) ?? 0) + 1
       depthOf.set(item.id, depth)
       // Non-breaking spaces: the list renders its label as text, and ordinary
       // leading whitespace would collapse to nothing.
@@ -2035,7 +2096,10 @@ function rgbToHex(colour: string): string {
   const channels = colour.match(/-?\d*\.?\d+/g)
   if (channels === null || channels.length < 3) return '#ffffff'
   const scale = colour.trim().startsWith('color(') ? 255 : 1
-  const toHex = (n: number) => Math.max(0, Math.min(255, Math.round(n * scale))).toString(16).padStart(2, '0')
+  const toHex = (n: number) =>
+    Math.max(0, Math.min(255, Math.round(n * scale)))
+      .toString(16)
+      .padStart(2, '0')
   return `#${toHex(Number(channels[0]))}${toHex(Number(channels[1]))}${toHex(Number(channels[2]))}`
 }
 

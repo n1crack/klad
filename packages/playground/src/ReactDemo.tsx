@@ -1,5 +1,14 @@
 /** @jsxImportSource react */
-import { useCallback, useEffect, useImperativeHandle, useMemo, useRef, type CSSProperties, type ReactNode, type Ref } from 'react'
+import {
+  useCallback,
+  useEffect,
+  useImperativeHandle,
+  useMemo,
+  useRef,
+  type CSSProperties,
+  type ReactNode,
+  type Ref,
+} from 'react'
 import {
   Klad,
   type KladApi,
@@ -74,10 +83,7 @@ function renderCard(context: NodeContext): ReactNode {
     // `overflow-card.ts`. A React copy of a virtual list would be a second
     // place for it to drift.
     return (
-      <div
-        className="card is-overflow"
-        onClick={(event) => openPickerFor(event.currentTarget, over, id)}
-      >
+      <div className="card is-overflow" onClick={(event) => openPickerFor(event.currentTarget, over, id)}>
         <strong>{overflowLabel(over)}</strong>
         <small>Click to search and pick</small>
       </div>
@@ -312,10 +318,7 @@ function renderAccordion(context: NodeContext, onSlide: () => void): ReactNode {
       </div>
       {/* Driven by the same eased number the node's height is, so the text
           fades in as the room for it appears rather than popping at one end. */}
-      <div
-        className={`accordion-body${progress > 0 ? ' is-open' : ''}`}
-        style={{ opacity: progress }}
-      >
+      <div className={`accordion-body${progress > 0 ? ' is-open' : ''}`} style={{ opacity: progress }}>
         {String(item.department ?? '—')} · {context.directChildren} direct · {context.descendants} total
       </div>
     </div>
@@ -445,7 +448,15 @@ export interface ReactDemoProps {
  * function that returns null) so this adapter never claims overlay DOM it
  * doesn't need — matching the vanilla and Vue "canvas only" behaviour.
  */
-export function ReactDemo({ example, layout, mode, onReady, onDrop, onCentreChange, ref }: ReactDemoProps): ReactNode {
+export function ReactDemo({
+  example,
+  layout,
+  mode,
+  onReady,
+  onDrop,
+  onCentreChange,
+  ref,
+}: ReactDemoProps): ReactNode {
   const chartRef = useRef<KladHandle>(null)
 
   /**
@@ -486,16 +497,13 @@ export function ReactDemo({ example, layout, mode, onReady, onDrop, onCentreChan
   /** The viewer's own silhouette colour, or `null` while the mode's default applies. */
   const silhouetteRef = useRef<string | null>(null)
 
-  const minimapOption = useCallback(
-    (): NonNullable<Options['minimap']> => {
-      const base = minimapOptionFor(example, minimapOnRef.current, minimapPositionRef.current, modeRef.current)
-      // `typeof base !== 'object'` rather than `=== false`: the option's type
-      // allows a bare `true`, which has nowhere to carry a colour.
-      if (typeof base !== 'object' || silhouetteRef.current === null) return base
-      return { ...base, silhouetteColour: silhouetteRef.current }
-    },
-    [example],
-  )
+  const minimapOption = useCallback((): NonNullable<Options['minimap']> => {
+    const base = minimapOptionFor(example, minimapOnRef.current, minimapPositionRef.current, modeRef.current)
+    // `typeof base !== 'object'` rather than `=== false`: the option's type
+    // allows a bare `true`, which has nowhere to carry a colour.
+    if (typeof base !== 'object' || silhouetteRef.current === null) return base
+    return { ...base, silhouetteColour: silhouetteRef.current }
+  }, [example])
 
   const options: Options = useMemo<Options>(
     () => ({
@@ -504,7 +512,12 @@ export function ReactDemo({ example, layout, mode, onReady, onDrop, onCentreChan
       label: (item) => String(item.name ?? ''),
       ...optionsForLayout(example, layout),
       theme: themeFor(example, layout, EDGE_RADIUS_DEFAULT, mountedModeRef.current),
-      minimap: minimapOptionFor(example, minimapOnRef.current, minimapPositionRef.current, mountedModeRef.current),
+      minimap: minimapOptionFor(
+        example,
+        minimapOnRef.current,
+        minimapPositionRef.current,
+        mountedModeRef.current,
+      ),
     }),
     [example, layout],
   )
@@ -531,10 +544,7 @@ export function ReactDemo({ example, layout, mode, onReady, onDrop, onCentreChan
    * and writing it per stack is exactly how half the examples ended up working
    * on only one of them.
    */
-  const slide = useMemo(
-    () => createAccordionSlide(() => chartRef.current?.api, example),
-    [example],
-  )
+  const slide = useMemo(() => createAccordionSlide(() => chartRef.current?.api, example), [example])
   useEffect(() => () => slide.stop(), [slide])
 
   /**
@@ -624,6 +634,12 @@ export function ReactDemo({ example, layout, mode, onReady, onDrop, onCentreChan
         if (minimapOnRef.current) chartRef.current?.api?.setMinimap(minimapOption())
       },
     }),
+    // `layout` is read by `setMode` above and is deliberately not listed:
+    // changing it remounts this component (see the prop's own docblock and
+    // main.ts's `show`), so it cannot change while this handle is alive and
+    // there is no stale closure to capture. Listing it would compile just as
+    // well and imply a lifecycle this component does not have.
+    // eslint-disable-next-line react-hooks/exhaustive-deps
     [example, minimapOption],
   )
 

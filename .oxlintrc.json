@@ -1,0 +1,48 @@
+{
+  "$schema": "./node_modules/oxlint/configuration_schema.json",
+
+  // Until this file existed, oxlint ran on its defaults: the `correctness`
+  // category with the typescript, unicorn and oxc plugins. That is a sound
+  // floor and it reported nothing — which is the reason to widen it rather
+  // than to leave it alone. Zero findings on 42k lines means either a clean
+  // codebase or a narrow linter, and the only way to tell is to ask more.
+  //
+  // Note that listing `plugins` OVERWRITES the default set, so the three
+  // defaults are restated rather than implied.
+  //
+  // Every addition was measured before being added. `import`, `promise`,
+  // `node` and `vue` each reported ZERO on the current tree: they cost
+  // nothing today and are here for what they catch tomorrow — `import`
+  // especially, in a monorepo that is ESM-only and publishes `exports` maps.
+  // `react` reported four, all four false positives in context and all four
+  // now carrying a comment saying why; it stays on because the rules that
+  // produced them (`exhaustive-deps` above all) are worth having pointed at
+  // React code that nothing else checks.
+  "plugins": ["typescript", "unicorn", "oxc", "import", "promise", "node", "vue", "react"],
+
+  "categories": {
+    "correctness": "error"
+  },
+
+  // The wider categories were measured and left off deliberately, recorded
+  // here so the next person does not have to measure again to find out why:
+  // `style` reports 16259 and overlaps prettier, which already owns
+  // formatting here; `restriction` 3666; `pedantic` 706. `suspicious` (181)
+  // and `perf` (29) are the two worth having — mostly test files in both
+  // cases — but what they need is a pass of their own, not a flag flipped in
+  // a commit about something else.
+  "rules": {},
+
+  "overrides": [
+    {
+      // The React adapter's tests pass node content through the `children`
+      // PROP rather than as JSX children, because the prop is the thing under
+      // test: `children` is a render function in this API, and passing it the
+      // canonical way would exercise the wrong path.
+      "files": ["**/*.test.tsx"],
+      "rules": {
+        "react/no-children-prop": "off"
+      }
+    }
+  ]
+}

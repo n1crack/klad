@@ -160,7 +160,10 @@ export function attachMarquee(host: HTMLElement, callbacks: MarqueeCallbacks): (
  *
  * Used for the lasso; a box is a bounds check the caller does directly.
  */
-export function pointInPolygon(point: { x: number; y: number }, polygon: { x: number; y: number }[]): boolean {
+export function pointInPolygon(
+  point: { x: number; y: number },
+  polygon: { x: number; y: number }[],
+): boolean {
   let inside = false
   for (let i = 0, j = polygon.length - 1; i < polygon.length; j = i++) {
     const a = polygon[i]!

@@ -375,7 +375,9 @@ export function createA11yTree(container: HTMLElement, callbacks: A11yCallbacks)
       event.preventDefault()
       if (grabbed === null) {
         grabbed = id
-        announce(`${labelFor(id)} picked up. Move to a node and press M to drop it there, or Escape to cancel.`)
+        announce(
+          `${labelFor(id)} picked up. Move to a node and press M to drop it there, or Escape to cancel.`,
+        )
       } else {
         const from = grabbed
         grabbed = null
@@ -622,8 +624,7 @@ export function createA11yTree(container: HTMLElement, callbacks: A11yCallbacks)
         // answer and overrides collapse; the isolate root is visible whatever
         // its parent says, any other genuine root is not, and everything else
         // resolves through its parent as usual.
-        const filtered =
-          (hide !== null && hide[index] === 1) || (keep !== null && keep[index] !== 1)
+        const filtered = (hide !== null && hide[index] === 1) || (keep !== null && keep[index] !== 1)
         const isVisible = filtered
           ? false
           : index === isolate

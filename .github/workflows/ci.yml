@@ -35,6 +35,11 @@ jobs:
       - run: pnpm exec playwright install --with-deps chromium
 
       - run: pnpm lint
+      # Formatting is prettier's job here — oxlint's `style` category is off
+      # precisely so the two do not both own it. Checked rather than trusted:
+      # without this the config drifts out of agreement with the tree, and the
+      # next person to run `pnpm format` gets a diff touching everything.
+      - run: pnpm format:check
       - run: pnpm typecheck
       - run: pnpm test
       # Last, and not merely for speed: a build that fails after everything
@@ -50,3 +55,42 @@ jobs:
       # failure modes survive a green test suite and a green build, and both
       # are only discoverable after publishing unless something checks here.
       - run: pnpm check:packages
+
+  # `@klad/vue` declares `vue: ">=3.5 <4"`, so the day 3.6 leaves release
+  # candidate every consumer's install resolves to it whether or not anything
+  # here has ever run against it. This job is that run.
+  #
+  # Deliberately not required to pass: it tracks a moving target, and a broken
+  # release candidate is Vue's news rather than a reason to block a merge here.
+  # It is here to make the news arrive before a consumer's bug report does.
+  vue-next:
+    runs-on: ubuntu-latest
+    continue-on-error: true
+    steps:
+      - uses: actions/checkout@v7
+
+      - uses: pnpm/action-setup@v6
+
+      - uses: actions/setup-node@v7
+        with:
+          node-version-file: package.json
+          cache: pnpm
+
+      - run: pnpm install --frozen-lockfile
+      - run: pnpm exec playwright install --with-deps chromium
+
+      # Built against the pinned Vue, so what follows measures the release
+      # candidate against the declarations this repository actually publishes.
+      - run: pnpm build
+
+      # Only the two packages that resolve Vue. This rewrites the lockfile in
+      # the runner's checkout on purpose; nothing commits it back.
+      - run: pnpm --filter @klad/vue --filter @klad/playground add -D vue@rc
+      - run: pnpm --filter @klad/vue list vue
+
+      - run: pnpm --filter @klad/vue test
+
+      # The consumer fixture matters more here than the unit tests do: it is
+      # what would notice Vue changing the shape of a component's public type,
+      # which is a thing a passing runtime test cannot see.
+      - run: pnpm --filter @klad/playground exec vue-tsc --noEmit -p tsconfig.consumer.json

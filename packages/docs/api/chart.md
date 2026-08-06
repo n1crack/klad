@@ -41,15 +41,15 @@ chartRef.current?.api?.fit()
 
 ## Camera
 
-| Method | |
-|---|---|
-| `fit()` | Zoom out to show the whole visible tree. |
-| `fitSubtree(id)` | Frame one branch instead — the smallest camera that shows `id` and everything visible below it. On a chart of thousands, "show me Engineering" is the question people actually have. |
-| `isolate(id \| null)` | Show one branch **as** the chart: `id` becomes the root and everything else stops existing — for the layout, the minimap, the keyboard tree and export alike. `fitSubtree` points the camera; this changes what is there. |
-| `reset()` | Back to the opening view. |
-| `zoomIn()` / `zoomOut()` | One step about the viewport centre. |
-| `zoomTo(k)` | An exact scale, within `zoomLimits`. |
-| `focus(id, opts?)` | Centre a node, opening every collapsed ancestor on the way. `{ ring: true }` flashes the confirmation ring on arrival. |
+| Method                   |                                                                                                                                                                                                                           |
+| ------------------------ | ------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
+| `fit()`                  | Zoom out to show the whole visible tree.                                                                                                                                                                                  |
+| `fitSubtree(id)`         | Frame one branch instead — the smallest camera that shows `id` and everything visible below it. On a chart of thousands, "show me Engineering" is the question people actually have.                                      |
+| `isolate(id \| null)`    | Show one branch **as** the chart: `id` becomes the root and everything else stops existing — for the layout, the minimap, the keyboard tree and export alike. `fitSubtree` points the camera; this changes what is there. |
+| `reset()`                | Back to the opening view.                                                                                                                                                                                                 |
+| `zoomIn()` / `zoomOut()` | One step about the viewport centre.                                                                                                                                                                                       |
+| `zoomTo(k)`              | An exact scale, within `zoomLimits`.                                                                                                                                                                                      |
+| `focus(id, opts?)`       | Centre a node, opening every collapsed ancestor on the way. `{ ring: true }` flashes the confirmation ring on arrival.                                                                                                    |
 
 ### Saving where you are
 
@@ -59,7 +59,7 @@ const view = chart.api.getView()
 localStorage.setItem('chart', JSON.stringify(view))
 
 chart.api.setView(JSON.parse(localStorage.getItem('chart')!))
-chart.api.setView(view, { animate: true })   // fly there instead of arriving
+chart.api.setView(view, { animate: true }) // fly there instead of arriving
 ```
 
 A view is a plain serialisable object naming nodes by id, so it survives the
@@ -78,7 +78,7 @@ ignored rather than throwing, which is what keeps an old bookmark usable.
 ### Hearing about it
 
 ```ts
-chart.on('viewChange', (view) => store.save(view))   // straight back into setView
+chart.on('viewChange', (view) => store.save(view)) // straight back into setView
 ```
 
 One event for the whole view rather than subscribing to five and merging them
@@ -92,13 +92,13 @@ if you need to reorder.
 
 ## Selection
 
-| Method | |
-|---|---|
-| `select(ids \| null)` | Set the selection. Unknown ids are ignored. |
-| `getSelection()` | The current selection, in the order it was given. |
+| Method                |                                                   |
+| --------------------- | ------------------------------------------------- |
+| `select(ids \| null)` | Set the selection. Unknown ids are ignored.       |
+| `getSelection()`      | The current selection, in the order it was given. |
 
-Selection is what the *viewer* picked; [`highlight`](#highlighting) is what the
-*chart* is pointing at (a search hit, the route to a node). They co-occur —
+Selection is what the _viewer_ picked; [`highlight`](#highlighting) is what the
+_chart_ is pointing at (a search hit, the route to a node). They co-occur —
 select three people, then search — so they are drawn differently and stored
 separately.
 
@@ -115,17 +115,17 @@ chart written before this existed already has its own meaning for a click.
 
 ## Tree
 
-| Method | |
-|---|---|
-| `expand(id, deep?)` | Open a node, or its whole subtree. |
-| `collapse(id, deep?)` | Close it. |
-| `expandAll()` / `collapseAll()` | Everything. |
-| `expandTo(id)` | Open the ancestors of a node without moving the camera. |
-| `stats(id)` | `{ directChildren, descendants, depth, height, leafCount, lft, rgt }`, or `null`. Describes the whole tree, not the expanded part. |
-| `pathTo(id)` | The root-to-node id chain, inclusive. `null` for an unknown id. |
-| `showMore(id)` | Lift the cap on the parent an aggregate node belongs to. `id` is the aggregate node's own. See [Very wide levels](/guide/wide-levels). |
-| `reveal(ids)` | Bring specific children back past a cap without lifting it. |
-| `refresh(opts?)` | Re-read every node's `nodeSize`, `label`, `maxChildren` and `pinChildren`, and lay out again — keeping expand/collapse, camera and highlight. `{ keep: id }` holds one node's screen position across the relayout. See [Sizing](/guide/sizing). |
+| Method                          |                                                                                                                                                                                                                                                 |
+| ------------------------------- | ----------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
+| `expand(id, deep?)`             | Open a node, or its whole subtree.                                                                                                                                                                                                              |
+| `collapse(id, deep?)`           | Close it.                                                                                                                                                                                                                                       |
+| `expandAll()` / `collapseAll()` | Everything.                                                                                                                                                                                                                                     |
+| `expandTo(id)`                  | Open the ancestors of a node without moving the camera.                                                                                                                                                                                         |
+| `stats(id)`                     | `{ directChildren, descendants, depth, height, leafCount, lft, rgt }`, or `null`. Describes the whole tree, not the expanded part.                                                                                                              |
+| `pathTo(id)`                    | The root-to-node id chain, inclusive. `null` for an unknown id.                                                                                                                                                                                 |
+| `showMore(id)`                  | Lift the cap on the parent an aggregate node belongs to. `id` is the aggregate node's own. See [Very wide levels](/guide/wide-levels).                                                                                                          |
+| `reveal(ids)`                   | Bring specific children back past a cap without lifting it.                                                                                                                                                                                     |
+| `refresh(opts?)`                | Re-read every node's `nodeSize`, `label`, `maxChildren` and `pinChildren`, and lay out again — keeping expand/collapse, camera and highlight. `{ keep: id }` holds one node's screen position across the relayout. See [Sizing](/guide/sizing). |
 
 ### Is this node inside that branch?
 
@@ -158,15 +158,15 @@ The three ways the tree's **shape** can change. Each returns whether it
 happened, so a refused edit is something you branch on rather than something
 you discover by looking.
 
-| Method | |
-|---|---|
-| `move(ids, toParentId, index?)` | Move one or several under a new parent, at `index` among its children — appended when omitted, `null` makes them roots. |
-| `add(items, parentId?, index?)` | Add rows. Omit the parent and each row keeps its own `parentId`; pass `null` to make them roots. |
-| `remove(ids)` | Remove them **and everything below them**. |
-| `getData()` | The rows the chart holds right now — your data with the edits applied. A copy. |
-| `undo()` / `redo()` | Reverse the last edit, or put it back. See [Undo, redo and what to save](#undo-redo-and-what-to-save). |
-| `changes()` / `isDirty()` / `markSaved()` | What to send, whether there is anything, and "sent". |
-| `reconcile(data)` | Take a fresh copy of the tree without losing where the viewer is. See [Data that keeps arriving](#data-that-keeps-arriving). |
+| Method                                    |                                                                                                                              |
+| ----------------------------------------- | ---------------------------------------------------------------------------------------------------------------------------- |
+| `move(ids, toParentId, index?)`           | Move one or several under a new parent, at `index` among its children — appended when omitted, `null` makes them roots.      |
+| `add(items, parentId?, index?)`           | Add rows. Omit the parent and each row keeps its own `parentId`; pass `null` to make them roots.                             |
+| `remove(ids)`                             | Remove them **and everything below them**.                                                                                   |
+| `getData()`                               | The rows the chart holds right now — your data with the edits applied. A copy.                                               |
+| `undo()` / `redo()`                       | Reverse the last edit, or put it back. See [Undo, redo and what to save](#undo-redo-and-what-to-save).                       |
+| `changes()` / `isDirty()` / `markSaved()` | What to send, whether there is anything, and "sent".                                                                         |
+| `reconcile(data)`                         | Take a fresh copy of the tree without losing where the viewer is. See [Data that keeps arriving](#data-that-keeps-arriving). |
 
 ```ts
 if (!chart.api.move('lead-42', 'engineering', 0)) {
@@ -190,8 +190,7 @@ allows, and they go in [`canMove`](/api/options):
 createKlad(el, {
   data,
   dragAndDrop: true,
-  canMove: ({ items, parentId }) =>
-    parentId === null || items.every((item) => item.kind !== 'contractor'),
+  canMove: ({ items, parentId }) => parentId === null || items.every((item) => item.kind !== 'contractor'),
 })
 ```
 
@@ -222,13 +221,13 @@ pointer move.
 Turn on [`keyboardEditing`](/api/options) and the focused node can be
 restructured from the keyboard:
 
-| | |
-| --- | --- |
-| `Alt` + `↑` / `↓` | One slot among its siblings. |
-| `Alt` + `←` | Out one level, to just after its old parent. |
-| `Alt` + `→` | In one level, under the sibling above it. |
-| `Delete` / `Backspace` | The node and everything under it. |
-| `Shift` + `Enter` | Asks for a new sibling — see below. |
+|                        |                                              |
+| ---------------------- | -------------------------------------------- |
+| `Alt` + `↑` / `↓`      | One slot among its siblings.                 |
+| `Alt` + `←`            | Out one level, to just after its old parent. |
+| `Alt` + `→`            | In one level, under the sibling above it.    |
+| `Delete` / `Backspace` | The node and everything under it.            |
+| `Shift` + `Enter`      | Asks for a new sibling — see below.          |
 
 Separate from `dragAndDrop`, which already gives the keyboard its own version
 of a drag: `m` picks a node up, arrows carry the focus, `m` drops it there,
@@ -267,7 +266,7 @@ saveButton.onclick = async () => {
 
 `changes()` describes what to **do** — `move`, `add`, `remove`, with ids rather
 than indices, so a change still means the same thing after your own store has
-moved on. What it takes to *reverse* each edit the chart keeps to itself.
+moved on. What it takes to _reverse_ each edit the chart keeps to itself.
 
 **The log is the product; undo is the convenience.** An app with its own undo
 stack does not want a second one underneath it — two stacks make Ctrl+Z a coin
@@ -278,7 +277,7 @@ Reversing a move puts each node back with **its own** former parent and slot,
 which is not always the set's: a batch move can have come from several parents.
 Reversing a remove puts the whole subtree back.
 
-Positions are remembered as the sibling a node sat *after*, never as an index —
+Positions are remembered as the sibling a node sat _after_, never as an index —
 an index is only right until the next edit moves something in front of it.
 
 `history` defaults to 100 edits, and costs memory rather than speed: nothing on
@@ -291,7 +290,7 @@ subtree it took out until that record falls off the end.
 describing the tree, and an edit made before that description refers to a shape
 nobody is claiming any more.
 
-One limit stated rather than rounded: undoing back *past* the save point leaves
+One limit stated rather than rounded: undoing back _past_ the save point leaves
 `isDirty()` true with nothing in `changes()` to send. The chart differs from
 what was saved by an edit being **absent**, which no forward operation
 describes — send `getData()` in that case.
@@ -305,10 +304,10 @@ new tree — it is the same one, later.
 socket.on('tree', (rows) => chart.api.reconcile(rows))
 ```
 
-| | |
-| --- | --- |
-| `update(data)` | **A different tree.** Resets your expand state, forgets what `loadChildren` fetched, drops the caps you had lifted. Right when the chart is genuinely being pointed at something else. |
-| `reconcile(data)` | **The same tree, later.** Keeps all of it, plus the camera, the selection and the filter. |
+|                   |                                                                                                                                                                                        |
+| ----------------- | -------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
+| `update(data)`    | **A different tree.** Resets your expand state, forgets what `loadChildren` fetched, drops the caps you had lifted. Right when the chart is genuinely being pointed at something else. |
+| `reconcile(data)` | **The same tree, later.** Keeps all of it, plus the camera, the selection and the filter.                                                                                              |
 
 The difference animates: rows that arrived fade in, rows that left fade out,
 everything else tweens to where it now sits. A viewer watching sees what
@@ -335,10 +334,10 @@ hundred calls very much does.
 Every method takes an array for this reason. Measured on the same 20,000-node
 chart:
 
-| | |
-| --- | --- |
-| One `move` | ~350 ms |
-| 100 separate `move` calls | ~1300 ms |
+|                                |             |
+| ------------------------------ | ----------- |
+| One `move`                     | ~350 ms     |
+| 100 separate `move` calls      | ~1300 ms    |
 | **100 ids in one `move` call** | **~355 ms** |
 
 So a bulk reassign is one call with a hundred ids, not a hundred calls. Same
@@ -363,11 +362,11 @@ through the same door.
 
 ## Finding and marking
 
-| Method | |
-|---|---|
-| `search(query)` | Substring on the label, or your own `(item) => boolean`. Returns `{ id, item, path }[]`. Scans the whole tree; changes nothing. |
-| `filter(query \| null)` | Reduce the chart to the matches and the ancestors that lead to them. Returns the ids that matched. See [Filtering](/guide/filtering). |
-| `highlight(ids \| null)` | Light those nodes, and the connectors between any two of them that are parent and child. |
+| Method                   |                                                                                                                                       |
+| ------------------------ | ------------------------------------------------------------------------------------------------------------------------------------- |
+| `search(query)`          | Substring on the label, or your own `(item) => boolean`. Returns `{ id, item, path }[]`. Scans the whole tree; changes nothing.       |
+| `filter(query \| null)`  | Reduce the chart to the matches and the ancestors that lead to them. Returns the ids that matched. See [Filtering](/guide/filtering). |
+| `highlight(ids \| null)` | Light those nodes, and the connectors between any two of them that are parent and child.                                              |
 
 ### Searching and filtering are different things
 
@@ -381,8 +380,8 @@ what is not.
 `filter` is a **command**: it changes what the chart is.
 
 ```ts
-const found = chart.api.filter('schema')   // ['src/lib/schema.ts', 'src/db/schema-utils.ts']
-chart.api.filter(null)                     // back to the whole tree
+const found = chart.api.filter('schema') // ['src/lib/schema.ts', 'src/db/schema-utils.ts']
+chart.api.filter(null) // back to the whole tree
 ```
 
 What stays is the matches plus the ancestors that lead to them — so the result
@@ -411,9 +410,9 @@ chart is. This is the third thing, and neither of those does it: keep the whole
 tree in front of me and take me to the next hit.
 
 ```ts
-chart.api.findNext('rossi')   // start, and go to the first
-chart.api.findNext()          // the next
-chart.api.findPrevious()      // back one
+chart.api.findNext('rossi') // start, and go to the first
+chart.api.findNext() // the next
+chart.api.findPrevious() // back one
 ```
 
 Each call brings the node onto screen, opening whatever it was folded behind.
@@ -425,11 +424,11 @@ have since moved is not a place. Give the query again to restart.
 
 ## Export
 
-| Method | |
-|---|---|
-| `toSVG(opts?)` | The whole visible tree as a standalone SVG string — real `<text>`, resolution-independent, never a screenshot of the current camera. |
-| `toBlob({ format, scale? })` | `'png'` or `'jpeg'`, redrawn offscreen at `scale` DPI. Also a document, not a screen grab. |
-| `print()` | The SVG, into a hidden iframe, printed. |
+| Method                       |                                                                                                                                      |
+| ---------------------------- | ------------------------------------------------------------------------------------------------------------------------------------ |
+| `toSVG(opts?)`               | The whole visible tree as a standalone SVG string — real `<text>`, resolution-independent, never a screenshot of the current camera. |
+| `toBlob({ format, scale? })` | `'png'` or `'jpeg'`, redrawn offscreen at `scale` DPI. Also a document, not a screen grab.                                           |
+| `print()`                    | The SVG, into a hidden iframe, printed.                                                                                              |
 
 Both exports cover the visible tree regardless of where the camera happens to
 be — collapsed branches are excluded, everything else is included.
@@ -439,19 +438,19 @@ be — collapsed branches are excluded, everything else is included.
 These change one thing without the tree-state reset that going through
 `update()` would cause:
 
-| Method | |
-|---|---|
-| `setTheme(partial)` | Merged over the **current** theme, not the defaults. Paint-only: camera, expand state and scroll position are untouched, and a transition mid-flight keeps animating in the new colours. |
-| `setMinimap(boolean \| options)` | On, off, moved or resized. |
-| `setRing(boolean)` | The confirmation flash. An already-fading ring finishes rather than being cut off. |
+| Method                           |                                                                                                                                                                                          |
+| -------------------------------- | ---------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
+| `setTheme(partial)`              | Merged over the **current** theme, not the defaults. Paint-only: camera, expand state and scroll position are untouched, and a transition mid-flight keeps animating in the new colours. |
+| `setMinimap(boolean \| options)` | On, off, moved or resized.                                                                                                                                                               |
+| `setRing(boolean)`               | The confirmation flash. An already-fading ring finishes rather than being cut off.                                                                                                       |
 
 ## Layout
 
-| Method | |
-|---|---|
+| Method                              |                                                                                                                                                                                                                                                                                                                                                                                                             |
+| ----------------------------------- | ----------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
 | `setLayoutOptions(settings, opts?)` | Change the shape and its tuning — `layout`, `layoutStep`, `rowGap`, `maxRings`, `colourBranches`, `spacing`, `orientation`, `rtl`. Relayouts without touching open state or the camera, which is what makes it usable behind a slider. Pass `{ fit: true }` to settle the view once a drag ends; the fit is queued until after the relayout, so it frames the new geometry rather than the one it replaced. |
-| `setCentre(id \| null)` | **Sunburst only.** Drill into one node: it widens to the full circle and travels inward while everything else closes at the seam, over about 600ms. Nothing is pruned and the camera does not move — a wheel's frame does not depend on what is at its centre. `null` returns to the root. |
-| `getCentre()` | The id currently at the middle of the wheel, or `null`. Pair it with each node's ancestors to build a breadcrumb. |
+| `setCentre(id \| null)`             | **Sunburst only.** Drill into one node: it widens to the full circle and travels inward while everything else closes at the seam, over about 600ms. Nothing is pruned and the camera does not move — a wheel's frame does not depend on what is at its centre. `null` returns to the root.                                                                                                                  |
+| `getCentre()`                       | The id currently at the middle of the wheel, or `null`. Pair it with each node's ancestors to build a breadcrumb.                                                                                                                                                                                                                                                                                           |
 
 `setCentre` is deliberately not `isolate`. Isolating prunes the tree, so the
 nodes that leave have no "after" and the change can only cut; a focus change
@@ -459,11 +458,11 @@ keeps every node and only moves it, which is what there is to animate.
 
 ## Instance
 
-| Member | |
-|---|---|
+| Member                   |                                                                                         |
+| ------------------------ | --------------------------------------------------------------------------------------- |
 | `update(data, options?)` | Replace the data. Resets open state — use `refresh()` if all you did was change a size. |
-| `subscribe(fn)` | Called with `ChartState` whenever it changes. Returns an unsubscribe. |
-| `on(event, fn)` | See [Events](/api/events). Returns an unsubscribe. |
-| `destroy()` | Removes everything it created and releases the worker. |
+| `subscribe(fn)`          | Called with `ChartState` whenever it changes. Returns an unsubscribe.                   |
+| `on(event, fn)`          | See [Events](/api/events). Returns an unsubscribe.                                      |
+| `destroy()`              | Removes everything it created and releases the worker.                                  |
 
 `ChartState` is `{ nodeCount, visibleCount, camera, bounds, rootScreenCentre }`.

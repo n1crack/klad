@@ -6,6 +6,7 @@
     "dev": "node scripts/bundle-playground.mjs && vitepress dev .",
     "build": "node scripts/bundle-playground.mjs && vitepress build .",
     "preview": "vitepress preview .",
+    "typecheck": "tsc --noEmit -p tsconfig.json",
     "images": "node scripts/build-images.mjs"
   },
   "devDependencies": {

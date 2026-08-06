@@ -78,13 +78,7 @@ export function layout(tree: Tree, sizes: Float64Array, opts: LayoutOptions): La
    * a shift caused by one pair does not bunch the nodes in between.
    * `sibs` is the sibling list (CSR slice, or the root list for the forest pass).
    */
-  const distributeExtra = (
-    sibs: Int32Array,
-    from: number,
-    i: number,
-    si: number,
-    dist: number,
-  ): void => {
+  const distributeExtra = (sibs: Int32Array, from: number, i: number, si: number, dist: number): void => {
     if (si === i - 1) return
     const nr = i - si
     shift[sibs[from + si + 1]!]! += dist / nr
@@ -271,8 +265,7 @@ export function layout(tree: Tree, sizes: Float64Array, opts: LayoutOptions): La
 
     const first = sibs[from]!
     const last = sibs[to - 1]!
-    prelim[i] =
-      (prelim[first]! + mod[first]! + mod[last]! + prelim[last]! + width(last)) / 2 - width(i) / 2
+    prelim[i] = (prelim[first]! + mod[first]! + mod[last]! + prelim[last]! + width(last)) / 2 - width(i) / 2
 
     el[i] = el[first]!
     msel[i] = msel[first]!
