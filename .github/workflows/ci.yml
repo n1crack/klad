@@ -33,11 +33,9 @@ jobs:
       # things under test are a canvas, a pointer and a Web Worker, none of
       # which a DOM shim can stand in for honestly.
       #
-      # The browser download is cached on the resolved Playwright version, so
-      # a run only pays for it when that version actually changes. `--with-deps`
-      # installs system libraries through apt and is not cacheable, so it stays
-      # on the miss path only; the runner image already carries them, and the
-      # install below is a no-op when the browser is restored.
+      # Cached on the resolved Playwright version, so the download is only paid
+      # for when that changes. The apt side of `--with-deps` is not cacheable,
+      # hence the separate `install-deps` on a hit.
       - id: playwright-version
         run: echo "v=$(node -p "require('playwright/package.json').version")" >> "$GITHUB_OUTPUT"
 
@@ -50,9 +48,8 @@ jobs:
       - if: steps.playwright-cache.outputs.cache-hit != 'true'
         run: pnpm exec playwright install --with-deps chromium
 
-      # Restored browsers still need the system libraries, which the cache does
-      # not carry. Cheap when they are already present, which on this image
-      # they are.
+      # A restored browser still needs the system libraries, which the runner
+      # image already has — so this is a no-op in practice.
       - if: steps.playwright-cache.outputs.cache-hit == 'true'
         run: pnpm exec playwright install-deps chromium
 

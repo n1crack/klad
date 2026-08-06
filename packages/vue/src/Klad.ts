@@ -23,38 +23,18 @@ import {
 import { ORG_CHART_KEY } from './useKlad.js'
 
 /**
- * A render function rather than a Single File Component, and that is not a
- * style preference.
+ * A render function, not an SFC: SFC declarations need `vue-tsc`, which pins
+ * this package to TypeScript 5. The template was one `<div>`, so there was
+ * nothing to lose.
  *
- * An SFC's declarations can only be emitted by `vue-tsc`, which is built on
- * TypeScript's JavaScript compiler API — the API that TypeScript 7 removed
- * when the compiler became a native binary. Staying an SFC meant staying on
- * TypeScript 5 for the one published package that is otherwise ordinary
- * TypeScript, and the template being replaced here was a single `<div>`:
- * nothing that made an SFC worth that tooling lived in it. The entire typed
- * surface was in the script block, which is what this file still is.
+ * The `@vue/runtime-core` references these declarations used to carry came
+ * from `tsconfig.build.json` being invalid JSON — a `"//"` value spanning
+ * several lines, which TypeScript parsed leniently and stripped, taking its
+ * `paths` with it. Consumers could not resolve those imports, and
+ * `skipLibCheck` made the component silently `any` instead of erroring.
  *
- * It is also not what fixed the bug it was written for. These declarations
- * named `@vue/runtime-core` — private to `vue`, unresolvable for a consumer
- * who does not get a flattened `node_modules`, and `skipLibCheck` turned that
- * into silence rather than an error, so the whole component became `any`. The
- * rewrite did not stop it; the emitted references survived and briefly
- * multiplied. What stopped it was `tsconfig.build.json` turning out not to be
- * legal JSON: a `"//"` value ran across several lines, TypeScript's tolerant
- * parser took the file and quietly dropped what it could not read, and without
- * that config's `paths` the emitter named the package a symbol is DECLARED in
- * instead of the one this package depends on. Fixing the JSON emptied the
- * output of `@vue/runtime-core` entirely.
- *
- * Worth stating because the first explanation was wrong in a believable way:
- * it really is inference that prints those names, but inference was only
- * reaching for them because module resolution had been silently misconfigured.
- * A symptom two levels from its cause, and a fix that looked like it worked.
- *
- * See `type-tests/consumer.vue` in the playground and
- * `scripts/check-published-types.mjs`, which install this package the way a
- * stranger would. They are the only checks here that look at what a consumer
- * actually receives.
+ * `type-tests/consumer.vue` and `scripts/check-published-types.mjs` check the
+ * built `.d.ts` the way a consumer would.
  */
 
 /** The payload of one of the vanilla layer's events, as an emit declares it. */
