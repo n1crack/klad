@@ -35,6 +35,11 @@ jobs:
       - run: pnpm exec playwright install --with-deps chromium
 
       - run: pnpm lint
+      # Formatting is prettier's job here — oxlint's `style` category is off
+      # precisely so the two do not both own it. Checked rather than trusted:
+      # without this the config drifts out of agreement with the tree, and the
+      # next person to run `pnpm format` gets a diff touching everything.
+      - run: pnpm format:check
       - run: pnpm typecheck
       - run: pnpm test
       # Last, and not merely for speed: a build that fails after everything
