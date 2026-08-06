@@ -23,28 +23,18 @@ import {
 import { ORG_CHART_KEY } from './useKlad.js'
 
 /**
- * A render function rather than a Single File Component, and that is not a
- * style preference.
+ * A render function, not an SFC: SFC declarations need `vue-tsc`, which pins
+ * this package to TypeScript 5. The template was one `<div>`, so there was
+ * nothing to lose.
  *
- * An SFC's declarations can only be emitted by `vue-tsc`, which is built on
- * TypeScript's JavaScript compiler API — the API that TypeScript 7 removed
- * when the compiler became a native binary. Staying an SFC meant staying on
- * TypeScript 5 for the one published package that is otherwise ordinary
- * TypeScript, and the template being replaced here was a single `<div>`:
- * nothing that made an SFC worth that tooling lived in it. The entire typed
- * surface was in the script block, which is what this file still is.
+ * The `@vue/runtime-core` references these declarations used to carry came
+ * from `tsconfig.build.json` being invalid JSON — a `"//"` value spanning
+ * several lines, which TypeScript parsed leniently and stripped, taking its
+ * `paths` with it. Consumers could not resolve those imports, and
+ * `skipLibCheck` made the component silently `any` instead of erroring.
  *
- * What it did NOT fix, so that nobody assumes it did: the declarations also
- * named `@vue/runtime-core`, a package this one does not depend on and `vue`
- * only re-exports, which consumers resolving strictly could not find — see
- * `scripts/normalize-dts.mjs` for what that cost and what corrects it. That
- * leak comes from type INFERENCE, not from Volar, so it survived the rewrite
- * and briefly got worse.
- *
- * See `type-tests/consumer.vue` in the playground, which pins this component's
- * public surface against the built `.d.ts` rather than against this source.
- * It is what caught the above, and it is the only check here that looks at
- * what a consumer actually receives.
+ * `type-tests/consumer.vue` and `scripts/check-published-types.mjs` check the
+ * built `.d.ts` the way a consumer would.
  */
 
 /** The payload of one of the vanilla layer's events, as an emit declares it. */

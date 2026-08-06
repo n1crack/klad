@@ -32,7 +32,26 @@ jobs:
       # The test suites run in a real Chromium (vitest browser mode): the
       # things under test are a canvas, a pointer and a Web Worker, none of
       # which a DOM shim can stand in for honestly.
-      - run: pnpm exec playwright install --with-deps chromium
+      #
+      # Cached on the resolved Playwright version, so the download is only paid
+      # for when that changes. The apt side of `--with-deps` is not cacheable,
+      # hence the separate `install-deps` on a hit.
+      - id: playwright-version
+        run: echo "v=$(node -p "require('playwright/package.json').version")" >> "$GITHUB_OUTPUT"
+
+      - id: playwright-cache
+        uses: actions/cache@v4
+        with:
+          path: ~/.cache/ms-playwright
+          key: playwright-chromium-${{ runner.os }}-${{ steps.playwright-version.outputs.v }}
+
+      - if: steps.playwright-cache.outputs.cache-hit != 'true'
+        run: pnpm exec playwright install --with-deps chromium
+
+      # A restored browser still needs the system libraries, which the runner
+      # image already has — so this is a no-op in practice.
+      - if: steps.playwright-cache.outputs.cache-hit == 'true'
+        run: pnpm exec playwright install-deps chromium
 
       - run: pnpm lint
       # Formatting is prettier's job here — oxlint's `style` category is off
@@ -77,7 +96,23 @@ jobs:
           cache: pnpm
 
       - run: pnpm install --frozen-lockfile
-      - run: pnpm exec playwright install --with-deps chromium
+
+      # Same cache as `verify`, same key, so whichever job runs first pays for
+      # the download and the other does not.
+      - id: playwright-version
+        run: echo "v=$(node -p "require('playwright/package.json').version")" >> "$GITHUB_OUTPUT"
+
+      - id: playwright-cache
+        uses: actions/cache@v4
+        with:
+          path: ~/.cache/ms-playwright
+          key: playwright-chromium-${{ runner.os }}-${{ steps.playwright-version.outputs.v }}
+
+      - if: steps.playwright-cache.outputs.cache-hit != 'true'
+        run: pnpm exec playwright install --with-deps chromium
+
+      - if: steps.playwright-cache.outputs.cache-hit == 'true'
+        run: pnpm exec playwright install-deps chromium
 
       # Built against the pinned Vue, so what follows measures the release
       # candidate against the declarations this repository actually publishes.
