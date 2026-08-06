@@ -2,8 +2,12 @@ name: CI
 
 on:
   push:
-    branches: [main, dev]
+    branches: [main]
   pull_request:
+  # By hand, for when a push event produces no run at all — which is what
+  # happened to two merges to `main` while GitHub's runners were backed up,
+  # leaving nothing to say whether the branch was green.
+  workflow_dispatch:
 
 # A second push to the same branch makes the first run's answer irrelevant, so
 # cancel it rather than pay for both. Never cancels on main: those runs are the
