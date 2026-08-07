@@ -1,5 +1,11 @@
 # @klad/react
 
+## 1.9.1
+
+### Patch Changes
+
+- @klad/core@1.9.1
+
 ## 1.9.0
 
 ### Minor Changes

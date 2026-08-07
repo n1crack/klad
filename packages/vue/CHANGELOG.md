@@ -1,5 +1,17 @@
 # @klad/vue
 
+## 1.9.1
+
+### Patch Changes
+
+- Emit the Vue package's declarations correctly instead of rewriting them after the build.
+
+  1.9.0 shipped working types, but only because a post-build script rewrote the module names in them. The reference to `@vue/runtime-core` it was scrubbing came from `tsconfig.build.json` not being legal JSON: a `"//"` value ran across several lines, TypeScript's tolerant parser dropped what it could not read, and the `paths` that point the sibling packages at their built declarations went with it. With the config fixed the emitter names the right packages on its own, and the script is gone.
+
+  No runtime change. What replaces the script is `scripts/check-published-types.mjs`, which packs each package, installs it into an empty project with hoisting off, and type-checks that its main export has not degraded to `any` — the failure mode that made this invisible in the first place, since an unresolvable import inside a `.d.ts` is silent under `skipLibCheck`.
+  - @klad/engine@1.9.1
+  - @klad/core@1.9.1
+
 ## 1.9.0
 
 ### Minor Changes

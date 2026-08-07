@@ -1,6 +1,6 @@
 {
   "name": "@klad/engine",
-  "version": "1.9.0",
+  "version": "1.9.1",
   "description": "Klad — a canvas tree engine for tens of thousands of nodes. Tiered, file, radial and sunburst layouts, with a DOM overlay for your own node content. Frameworkless.",
   "keywords": [
     "tree",
