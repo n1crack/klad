@@ -78,21 +78,49 @@ const tsconfig = {
 const tarballs = mkdtempSync(join(tmpdir(), 'klad-types-'))
 let failed = false
 
-for (const { dir, name, symbol, peers } of SUBJECTS) {
+const pack = (dir) =>
+  runPnpm(['pack', '--pack-destination', tarballs], {
+    cwd: join(repoRoot, dir),
+    encoding: 'utf8',
+  })
+    .trim()
+    .split('\n')
+    .at(-1)
+    .trim()
+
+/**
+ * Every package packed before any is installed, because they depend on each
+ * other by exact version and that version is not on the registry yet — a
+ * release is the whole point of running this. `overrides` below points those
+ * dependencies at the tarballs, so what gets checked is the set about to be
+ * published rather than the set already published.
+ */
+const packed = new Map(SUBJECTS.map(({ dir, name }) => [name, pack(dir)]))
+
+/**
+ * A workspace root of its own, which does two things. `overrides` is the only
+ * home pnpm 10 still reads them from — the `pnpm` key in `package.json` is
+ * ignored now, silently apart from a warning. And a root here stops pnpm
+ * walking up out of the temp directory into this repository's workspace, which
+ * would resolve the package from source and check the one thing this exists
+ * not to check.
+ */
+const workspaceYaml = `packages: []\noverrides:\n${[...packed]
+  .map(([name, file]) => `  '${name}': file:${file}\n`)
+  .join('')}`
+
+for (const { name, symbol, peers } of SUBJECTS) {
   process.stdout.write(`\n── ${name} · types as installed ──\n`)
   const consumer = mkdtempSync(join(tmpdir(), 'klad-consumer-'))
   try {
-    const packed = runPnpm(['pack', '--pack-destination', tarballs], {
-      cwd: join(repoRoot, dir),
-      encoding: 'utf8',
-    })
-    const tarball = packed.trim().split('\n').at(-1).trim()
+    const tarball = packed.get(name)
 
     mkdirSync(consumer, { recursive: true })
     writeFileSync(
       join(consumer, 'package.json'),
       JSON.stringify({ name: 'consumer', private: true, type: 'module' }),
     )
+    writeFileSync(join(consumer, 'pnpm-workspace.yaml'), workspaceYaml)
     writeFileSync(join(consumer, 'tsconfig.json'), JSON.stringify(tsconfig, null, 2))
     writeFileSync(join(consumer, 'probe.ts'), probe(name, symbol))
 
@@ -105,10 +133,7 @@ for (const { dir, name, symbol, peers } of SUBJECTS) {
      */
     writeFileSync(join(consumer, '.npmrc'), 'hoist=false\nshamefully-hoist=false\n')
 
-    // `--ignore-workspace` so this temp directory is not adopted into the
-    // repository's workspace, which would resolve the package from source and
-    // check the very thing this exists to avoid checking.
-    runPnpm(['add', '--ignore-workspace', tarball, ...peers, 'typescript@5.9.3'], {
+    runPnpm(['add', tarball, ...peers, 'typescript@5.9.3'], {
       cwd: consumer,
       stdio: 'pipe',
     })
@@ -142,7 +167,12 @@ for (const { dir, name, symbol, peers } of SUBJECTS) {
       failed = true
     }
   } catch (error) {
+    // `stdio: 'pipe'` above means pnpm's own explanation is on the error rather
+    // than on the terminal, and without it all a failing install says is which
+    // command failed.
+    const detail = `${error.stdout ?? ''}${error.stderr ?? ''}`.trim()
     process.stdout.write(`could not check ${name}: ${error.message}\n`)
+    if (detail) process.stdout.write(`${detail}\n`)
     failed = true
   } finally {
     rmSync(consumer, { recursive: true, force: true })
