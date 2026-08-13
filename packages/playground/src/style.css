@@ -1733,10 +1733,13 @@ button.overflow-panel-row {
  */
 .slot-frame {
   position: absolute;
-  inset: 2px;
+  /* A hair off the edge, and a hair wide: enough of a gap to read as a second
+     line rather than as a thick border, and no more. The alpha carries what
+     the width no longer can. */
+  inset: 1.5px;
   z-index: 1;
   pointer-events: none;
-  border: 0.75px solid color-mix(in srgb, var(--accent) 24%, transparent);
+  border: 0.5px solid color-mix(in srgb, var(--accent) 34%, transparent);
   border-radius: 999px;
   opacity: 1;
   transition:
