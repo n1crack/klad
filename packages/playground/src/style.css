@@ -1722,7 +1722,30 @@ button.overflow-panel-row {
      clipping instead (it is the only child that needs it). */
   position: relative;
   isolation: isolate;
-  transition: border-color 160ms ease;
+  /*
+   * The inner line, as an OUTLINE on the card rather than a second box inside
+   * it. A separate element — border or inset shadow — is a second rectangle
+   * for the compositor to round, and the card is SCALED by the camera, so each
+   * of its four sides lands on a different fraction of a device pixel: the
+   * line ends up sitting visibly closer to one corner than the other. An
+   * outline is one shape, offset inwards, and it follows the border radius on
+   * its own.
+   *
+   * Under the pointer it travels OUT to the edge and goes as it arrives, so
+   * the card opens up rather than gaining another ring. Nothing moves, nothing
+   * grows.
+   */
+  outline: 1px solid color-mix(in srgb, var(--accent) 26%, transparent);
+  outline-offset: -3px;
+  transition:
+    border-color 160ms ease,
+    outline-offset 200ms ease,
+    outline-color 200ms ease;
+}
+
+.slot-card:hover {
+  outline-offset: 0px;
+  outline-color: transparent;
 }
 
 /*
@@ -1732,42 +1755,6 @@ button.overflow-panel-row {
  * Under the pointer it travels OUT to the edge and goes as it arrives, so the
  * card opens up instead of gaining another ring. Nothing moves and nothing
  * grows: the only thing that happens is this line leaving.
- */
-.slot-frame {
-  position: absolute;
-  /* A hair off the edge, and a hair wide: enough of a gap to read as a second
-     line rather than as a thick border, and no more. The alpha carries what
-     the width no longer can. */
-  inset: 1.5px;
-  z-index: 1;
-  pointer-events: none;
-  /* An inset ring rather than a border. A sub-pixel BORDER is rounded per side
-     as the card is scaled by the camera, which lands it a fraction closer to
-     one corner than the other — visibly so, since the eye is comparing two
-     parallel lines. One shape has one rounding. */
-  box-shadow: inset 0 0 0 0.5px color-mix(in srgb, var(--accent) 34%, transparent);
-  border-radius: 999px;
-  opacity: 1;
-  transition:
-    inset 200ms ease,
-    opacity 200ms ease;
-}
-
-.slot-card:hover .slot-frame {
-  inset: 0;
-  opacity: 0;
-}
-
-/*
- * The wash: the branch's colour poured in from the leading edge and gone by the
- * middle. Its own element rather than a background layer on the card, because
- * it is masked — and the mask is the effect.
- *
- * Hovering does not slide it away or fade it evenly: the mask is a grid of
- * small squares whose size is animated in steps, so the wash breaks up where it
- * stands, going out patch by patch and coming back the same way. `steps()` is
- * doing the work — a smooth interpolation reads as a dissolve, and the ask was
- * for something that cracks.
  */
 /*
  * How much of each mask cell the wash still fills: half a turn is a solid
@@ -1782,15 +1769,26 @@ button.overflow-panel-row {
   initial-value: 50%;
 }
 
+/*
+ * The wash: the branch's colour poured in from the leading edge and gone by the
+ * middle. Its own element rather than a background layer on the card, because
+ * it is masked — and the mask is the effect.
+ *
+ * Hovering does not slide it away or fade it evenly: the mask is a grid of
+ * small cells that erode where they stand, so the sheet breaks up in place,
+ * going out patch by patch and coming back the same way. `steps()` is doing
+ * that work — a smooth interpolation reads as a dissolve, and the ask was for
+ * something that cracks.
+ */
 .slot-wash {
   position: absolute;
   inset: 0;
   z-index: 0;
   pointer-events: none;
+  /* The same stadium the card is. Without it the wash paints its own square
+     box and its corners stand outside the card's rounded ends. */
+  border-radius: 999px;
   background: linear-gradient(90deg, color-mix(in srgb, var(--accent) 30%, transparent), transparent 60%);
-  /* One 6px cell, eroding from the middle of each: at 50% the cells meet and
-     the wash is solid, at 0% there is nothing left. Nothing moves sideways —
-     the sheet cracks and goes out where it stands, which is the ask. */
   --slot-cover: 50%;
   -webkit-mask-image: repeating-conic-gradient(#000 0% var(--slot-cover), transparent 0% 50%);
   mask-image: repeating-conic-gradient(#000 0% var(--slot-cover), transparent 0% 50%);
@@ -1962,8 +1960,7 @@ button.overflow-panel-row {
 
 @media (prefers-reduced-motion: reduce) {
   .slot-card,
-  .slot-wash,
-  .slot-frame {
+  .slot-wash {
     transition: none;
   }
 }

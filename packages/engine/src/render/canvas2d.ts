@@ -123,12 +123,19 @@ export function createCanvas2DRenderer(
     // camera zoomed far out cannot ask for a million of them.
     if (theme.gridDot !== 'transparent' && theme.gridSpacing > 0) {
       const step = theme.gridSpacing * k
-      if (step >= 6) {
+      // Faded out across the last stretch rather than cut off at a threshold:
+      // a grid that switches off between one zoom step and the next flashes,
+      // which is worse than the crowding it was avoiding. Gone by 5px, whole
+      // by 11px, and the loop is skipped entirely once there is nothing left
+      // to see.
+      const strength = Math.min(1, Math.max(0, (step - 5) / 6))
+      if (strength > 0) {
         const w = surface.width / devicePixelRatio
         const h = surface.height / devicePixelRatio
         const radius = Math.max(0.5, theme.gridDotSize * Math.min(1, k))
         const startX = camera.x % step
         const startY = camera.y % step
+        ctx.globalAlpha = strength
         ctx.fillStyle = theme.gridDot
         for (let x = startX; x < w; x += step) {
           for (let y = startY; y < h; y += step) {
@@ -137,6 +144,7 @@ export function createCanvas2DRenderer(
             ctx.fill()
           }
         }
+        ctx.globalAlpha = 1
       }
     }
 

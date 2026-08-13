@@ -224,7 +224,6 @@ function renderSlot(element: HTMLElement, context: NodeContext): void {
     card.className = 'slot-card'
     card.append(
       Object.assign(document.createElement('span'), { className: 'slot-wash' }),
-      Object.assign(document.createElement('span'), { className: 'slot-frame' }),
       Object.assign(document.createElement('span'), { className: 'slot-icon' }),
       Object.assign(document.createElement('div'), { className: 'slot-text' }),
       Object.assign(document.createElement('span'), { className: 'slot-more' }),

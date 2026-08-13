@@ -343,7 +343,6 @@ function handleNodeClick({ id }: { id: string }): void {
         :style="{ '--accent': slotBranchColour(SHARED_DATA, String(item.id)) ?? 'var(--slot-hub)' }"
       >
         <span class="slot-wash" />
-        <span class="slot-frame" />
         <span class="slot-icon">{{ DEPARTMENT_GLYPH[departmentOf(item)] }}</span>
         <div class="slot-text">
           <span class="slot-kind">{{ departmentOf(item) }}</span>
