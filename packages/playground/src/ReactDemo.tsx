@@ -37,6 +37,7 @@ import {
   type Example,
   type LayoutName,
   type MinimapPosition,
+  DEPARTMENT_GLYPH,
   SHARED_DATA,
   slotBranchColour,
 } from './data.js'
@@ -162,15 +163,18 @@ function renderSlot(context: NodeContext): ReactNode {
   const style = { '--accent': accent ?? 'var(--slot-hub)' } as CSSProperties
   const classes = ['slot-card']
   if (accent === null) classes.push('is-hub')
-  if (context.open) classes.push('is-open')
   if (context.hasChildren) classes.push('has-children')
+  if (context.open) classes.push('is-open')
   return (
     <div className={classes.join(' ')} style={style}>
-      <span className="slot-dot" />
+      <span className="slot-wash" />
+      <span className="slot-icon">{DEPARTMENT_GLYPH[departmentOf(item)]}</span>
       <div className="slot-text">
-        <strong>{String(item.name ?? '')}</strong>
-        <small>{String(item.title ?? '')}</small>
+        <span className="slot-kind">{departmentOf(item)}</span>
+        <span className="slot-role">{String(item.title ?? '')}</span>
+        <span className="slot-name">{String(item.name ?? '')}</span>
       </div>
+      <span className="slot-more">{headcountOf(item) > 0 ? headcountOf(item) : ''}</span>
     </div>
   )
 }

@@ -2,6 +2,7 @@ import { createKlad, type KladApi, type LayoutSettings, type Options, type Theme
 import { openPickerFor, overflowLabel } from './overflow-card.js'
 import {
   DEPARTMENT_COLOR,
+  DEPARTMENT_GLYPH,
   SHARED_DATA,
   slotBranchColour,
   EDGE_RADIUS_DEFAULT,
@@ -222,22 +223,32 @@ function renderSlot(element: HTMLElement, context: NodeContext): void {
     card = document.createElement('div')
     card.className = 'slot-card'
     card.append(
-      Object.assign(document.createElement('span'), { className: 'slot-dot' }),
+      Object.assign(document.createElement('span'), { className: 'slot-wash' }),
+      Object.assign(document.createElement('span'), { className: 'slot-icon' }),
       Object.assign(document.createElement('div'), { className: 'slot-text' }),
+      Object.assign(document.createElement('span'), { className: 'slot-more' }),
     )
     card
       .querySelector('.slot-text')!
-      .append(document.createElement('strong'), document.createElement('small'))
+      .append(
+        Object.assign(document.createElement('span'), { className: 'slot-kind' }),
+        Object.assign(document.createElement('span'), { className: 'slot-role' }),
+        Object.assign(document.createElement('span'), { className: 'slot-name' }),
+      )
     element.append(card)
   }
   const item = context.item
+  const department = (item.department as Department | undefined) ?? 'Executive'
   const accent = slotBranchColour(SHARED_DATA, String(item.id))
   card.style.setProperty('--accent', accent ?? 'var(--slot-hub)')
   card.classList.toggle('is-hub', accent === null)
-  card.classList.toggle('is-open', context.open)
   card.classList.toggle('has-children', context.hasChildren)
-  card.querySelector('strong')!.textContent = String(item.name ?? '')
-  card.querySelector('small')!.textContent = String(item.title ?? '')
+  card.classList.toggle('is-open', context.open)
+  card.querySelector('.slot-more')!.textContent = String(item.headcount ?? '')
+  card.querySelector('.slot-icon')!.textContent = DEPARTMENT_GLYPH[department]
+  card.querySelector('.slot-kind')!.textContent = department
+  card.querySelector('.slot-role')!.textContent = String(item.title ?? '')
+  card.querySelector('.slot-name')!.textContent = String(item.name ?? '')
 }
 
 /** Department-coloured accent + department and headcount badges. */

@@ -23,6 +23,7 @@ import {
   type Example,
   type LayoutName,
   type MinimapPosition,
+  DEPARTMENT_GLYPH,
   SHARED_DATA,
   slotBranchColour,
 } from './data.js'
@@ -336,16 +337,19 @@ function handleNodeClick({ id }: { id: string }): void {
         class="slot-card"
         :class="{
           'is-hub': slotBranchColour(SHARED_DATA, String(item.id)) === null,
-          'is-open': open,
           'has-children': hasChildren,
+          'is-open': open,
         }"
         :style="{ '--accent': slotBranchColour(SHARED_DATA, String(item.id)) ?? 'var(--slot-hub)' }"
       >
-        <span class="slot-dot" />
+        <span class="slot-wash" />
+        <span class="slot-icon">{{ DEPARTMENT_GLYPH[departmentOf(item)] }}</span>
         <div class="slot-text">
-          <strong>{{ String(item.name ?? '') }}</strong>
-          <small>{{ String(item.title ?? '') }}</small>
+          <span class="slot-kind">{{ departmentOf(item) }}</span>
+          <span class="slot-role">{{ String(item.title ?? '') }}</span>
+          <span class="slot-name">{{ String(item.name ?? '') }}</span>
         </div>
+        <span class="slot-more">{{ headcountOf(item) > 0 ? headcountOf(item) : '' }}</span>
       </div>
 
       <div

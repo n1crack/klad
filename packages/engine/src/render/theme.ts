@@ -82,6 +82,30 @@ export interface Theme {
    */
   edgeBranchColours: boolean
   /**
+   * Whether a highlighted connector is RECOLOURED, or merely lit.
+   *
+   * `true` — the default, and what every existing consumer gets — paints the
+   * path in `edgeHighlightStroke`, which is what makes a route read as a
+   * route on a chart whose connectors are all one colour anyway.
+   *
+   * `false` keeps each connector's own colour and gives it the extra width
+   * and the halo only. On a chart that already colours its connectors by
+   * branch, recolouring the path throws away the one thing it was saying —
+   * which branch this is — at the exact moment the viewer is asking about it.
+   */
+  edgeHighlightRecolours: boolean
+  /**
+   * Whether to draw the "there is more inside this" mark — the short stub and
+   * dot hanging off a collapsed node (rectangular layouts), the inner arc or
+   * halo (the wheels).
+   *
+   * On by default: at a zoom where the cards and their toggles are gone it is
+   * the only thing saying a branch continues. A design that says so its own
+   * way — a badge on the card, a count, a chevron — turns it off rather than
+   * having both.
+   */
+  hiddenMark: boolean
+  /**
    * A flowing connector — see `Options.edgeFlow`. Its own colour and weight
    * because "this one is different" is the whole message, and a dash pattern
    * in the same ink as everything else reads as a rendering artefact.
@@ -220,6 +244,8 @@ export const DEFAULT_THEME: Readonly<Theme> = Object.freeze({
   edgeHighlightWidth: 2.5,
   edgeHighlightGlow: 0,
   edgeBranchColours: false,
+  edgeHighlightRecolours: true,
+  hiddenMark: true,
   edgeFlowStroke: '#2563eb',
   edgeFlowWidth: 2,
   edgeFlowDash: [6, 6],

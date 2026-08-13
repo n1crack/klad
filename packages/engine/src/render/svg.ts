@@ -604,7 +604,7 @@ export function toSVG(data: ExportData, opts: SvgExportOptions = {}): string {
   // "There is more inside this" — see `Frame.hasHidden`. Emitted with the
   // nodes, before the labels, so it sits over its own segment and under the
   // text, exactly as on the canvas.
-  const hidden = data.hasHidden
+  const hidden = theme.hiddenMark ? data.hasHidden : null
   if (hidden !== null && sectors !== null) {
     for (let i = 0; i < n; i++) {
       if (hidden[i] !== 1) continue

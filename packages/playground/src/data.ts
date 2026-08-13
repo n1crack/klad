@@ -276,6 +276,22 @@ export function slotBranchColour(data: NodeItem[], id: string): string | null {
   return SLOT_PALETTE[slot % SLOT_PALETTE.length]!
 }
 
+/**
+ * One glyph per department, for the showcase card's icon tile. Text rather than
+ * an image for the same reason the avatars are initials: a playground that
+ * needed the network to draw a node would be teaching the wrong lesson.
+ */
+export const DEPARTMENT_GLYPH: Record<Department, string> = {
+  Executive: '◆',
+  Engineering: '⌘',
+  Design: '✎',
+  Product: '◈',
+  Sales: '↗',
+  Marketing: '◎',
+  Finance: '∑',
+  Support: '☂',
+}
+
 /** "Person 3" -> "P3", "CEO" -> "CE". No network imagery needed — initials are the avatar. */
 export function initials(name: string): string {
   const parts = name
@@ -1194,6 +1210,11 @@ export const EXAMPLES: Example[] = [
       colourBranches: true,
       toggleOnNodeClick: true,
       spacing: { x: 28, y: 64 },
+      // Both tiers arrive earlier than the default (0.25 / 0.6): these cards
+      // are wide and their text is small, so there is still something worth
+      // reading at a zoom where the stock thresholds would already have
+      // dropped to a label — and the diagram is at its best seen whole.
+      lodThresholds: { text: 0.12, overlay: 0.34 },
       theme: {
         palette: [...SLOT_PALETTE],
         // The connectors are the point of this example, so they are given the
@@ -1208,20 +1229,29 @@ export const EXAMPLES: Example[] = [
         // dark surface and vanishes on the light one, and an example that
         // only works in one mode is not a showcase. What this example does
         // add is the weight and the halo.
-        edgeHighlightWidth: 3.5,
-        edgeHighlightGlow: 14,
+        edgeHighlightWidth: 3,
+        // Enough halo to say "this one", not enough to bloom over the diagram.
+        edgeHighlightGlow: 7,
+        // The lit path keeps its branch's colour and takes only the weight and
+        // the halo — recolouring it would throw away the one thing the
+        // connectors are saying at the moment the viewer asks about it.
+        edgeHighlightRecolours: false,
+        // The card carries its own "there is more inside" mark (see
+        // `.slot-more`), so the chart's stub would be a second one hanging
+        // into empty space.
+        hiddenMark: false,
         // The cards are DOM (see `renderSlot`); what the canvas paints under
         // them is only the shape, and it has to be the same stadium the card
         // is, or the two disagree at the corners while a branch animates.
         cornerRadius: 32,
         nodeFill: 'transparent',
         nodeStroke: 'transparent',
-        // A node ON the lit route is ringed rather than filled: the card is
-        // already there, in its branch's colour, and a highlight fill would
-        // paint over the thing it is pointing at. The ring itself is the
-        // mode's highlight ink, same as the route through it.
+        // Nothing is painted on a node to say it is on the route: the cards
+        // are the design, and the connectors through them already say it in
+        // the branch's own colour. A ring in the mode's highlight ink would be
+        // a third colour arriving on a card that has two.
         highlightFill: 'transparent',
-        nodeStrokeWidth: 2,
+        highlightStroke: 'transparent',
       },
     },
     content: 'slot',

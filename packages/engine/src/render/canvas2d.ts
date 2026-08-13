@@ -345,7 +345,11 @@ export function createCanvas2DRenderer(
           anyLit = true
         }
         if (anyLit) {
-          ctx.strokeStyle = theme.edgeHighlightStroke
+          // Recoloured, or merely lit — see `Theme.edgeHighlightRecolours`.
+          // When the path keeps its own colours it cannot be one path any
+          // more, so it is grouped exactly as pass 1 groups the rest.
+          const litColour = theme.edgeHighlightRecolours || fills === null ? theme.edgeHighlightStroke : null
+          ctx.strokeStyle = litColour ?? theme.edgeHighlightStroke
           ctx.lineWidth = theme.edgeHighlightWidth
           // The halo first, as a second stroke of the SAME path under the
           // line itself: canvas shadows are cast by whatever is drawn, so
@@ -354,16 +358,47 @@ export function createCanvas2DRenderer(
           // `edgeHighlightGlow`). Cleared immediately, because the shadow is
           // context state and every node and label drawn after this would
           // otherwise wear it too.
-          if (theme.edgeHighlightGlow > 0) {
-            ctx.shadowColor = theme.edgeHighlightStroke
-            ctx.shadowBlur = theme.edgeHighlightGlow
+          if (litColour !== null) {
+            if (theme.edgeHighlightGlow > 0) {
+              ctx.shadowColor = litColour
+              ctx.shadowBlur = theme.edgeHighlightGlow
+              ctx.stroke()
+              ctx.shadowBlur = 0
+              ctx.shadowColor = 'transparent'
+              calls.edgeStrokes += 1
+            }
             ctx.stroke()
-            ctx.shadowBlur = 0
-            ctx.shadowColor = 'transparent'
             calls.edgeStrokes += 1
+          } else {
+            // Per colour, at the highlight's width, each with its own halo:
+            // the branch keeps saying which branch it is while the route says
+            // where it goes.
+            const byColour = new Map<string, number[]>()
+            for (let n = 0; n < edgeCount; n++) {
+              const i = edges[n]!
+              const p = parent[i]!
+              if (p === -1 || !edgeLit(i, p)) continue
+              const colour = fillFor(i)
+              const bucket = byColour.get(colour)
+              if (bucket === undefined) byColour.set(colour, [i])
+              else bucket.push(i)
+            }
+            for (const [colour, bucket] of byColour) {
+              ctx.beginPath()
+              for (const i of bucket) traceEdge(i, parent[i]!)
+              ctx.strokeStyle = colour
+              if (theme.edgeHighlightGlow > 0) {
+                ctx.shadowColor = colour
+                ctx.shadowBlur = theme.edgeHighlightGlow
+                ctx.stroke()
+                ctx.shadowBlur = 0
+                ctx.shadowColor = 'transparent'
+                calls.edgeStrokes += 1
+              }
+              ctx.stroke()
+              calls.edgeStrokes += 1
+            }
           }
-          ctx.stroke()
-          calls.edgeStrokes += 1
         }
       }
 
@@ -597,7 +632,7 @@ export function createCanvas2DRenderer(
     //
     // Skipped at the `block` tier along with the labels: at a zoom where a node
     // is a few pixels of colour, a mark on it is a few pixels of noise.
-    const hidden = frame.hasHidden
+    const hidden = theme.hiddenMark ? frame.hasHidden : null
     if (hidden !== null && frame.tier !== 'block') {
       ctx.lineWidth = 1.5
       for (let n = 0; n < visibleCount; n++) {
