@@ -21,8 +21,11 @@ parent itself, because that is the only definition under which a ring is
 exactly the union of the ring outside it.
 
 Zero, negative and non-finite all count as zero: a leaf worth nothing gets no
-arc, which is the honest picture. A tree where nothing is worth anything falls
-back to counting, rather than dividing by zero.
+arc, which is the honest picture. There is no per-leaf default of `1` — that is
+only neutral against leaf COUNTS, and against real weights it is an arbitrary
+quantity in somebody else's units. A tree where nothing is worth anything falls
+back to counting instead, so a `weight` wired to a field the data does not have
+degrades to the unweighted wheel rather than to an empty one.
 
 Two more pieces that go with it:
 

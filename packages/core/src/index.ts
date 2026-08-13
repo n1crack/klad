@@ -555,15 +555,14 @@ export interface Options {
    * createKlad(el, { data, layout: 'sunburst', weight: (item) => Number(item.sizeKb ?? 0) })
    * ```
    *
-   * A leaf worth `0` gets no arc — nothing is nothing, and that is the honest
-   * picture. Anything that is not a number at all is different: it is this
-   * function saying it does not know, and "no information" defaults to `1`,
-   * the same as every leaf on a chart with no `weight`. So a dataset where
-   * only some rows carry a size still draws, with the unmeasured ones taking a
-   * minimum share rather than vanishing.
+   * Zero, negative and non-finite all count as zero: a leaf worth nothing gets
+   * no arc, which is the honest picture. There is no per-leaf default of `1` —
+   * `1` is only neutral against leaf COUNTS, and against real weights it is an
+   * arbitrary quantity in somebody else's units.
    *
-   * A tree where NOTHING is worth anything falls back to counting leaves,
-   * rather than dividing by zero.
+   * A tree where NOTHING is worth anything falls back to counting leaves, so
+   * a `weight` that turns out to have no data behind it degrades to the
+   * unweighted wheel rather than to an empty one.
    */
   weight?: (item: NodeData) => number
   worker?: boolean
@@ -1954,14 +1953,14 @@ export function createKlad(host: HTMLElement, options: Options): KladInstance {
       labels[i] = labelOf(item, i)
       if (weights !== null) {
         const w = weightOf!(item)
-        // Two different answers, kept apart. A number — including zero — is
-        // taken at its word: a leaf worth nothing gets no arc, which is the
-        // honest picture. Anything that is NOT a number is the function saying
-        // it does not know (a row with no size, a field that was never
-        // filled), and the default for "no information" is one, the same as
-        // for a chart with no `weight` at all. Never `NaN`, which would poison
-        // every ancestor's total.
-        weights[i] = Number.isFinite(w) ? Math.max(0, w) : 1
+        // Anything that is not a usable number is zero. Deliberately NOT one:
+        // `1` is only neutral against leaf counts, and against real weights it
+        // is an arbitrary quantity in somebody else's units — three unmeasured
+        // files worth `1` each would outweigh a measured sibling of `0.5`. The
+        // honest reading of "no information" here is "nothing to add", and the
+        // case where that would erase the whole chart — nothing measured
+        // anywhere — is caught by the layout's own fall back to counting.
+        weights[i] = Number.isFinite(w) && w > 0 ? w : 0
       }
     }
     // Options FIRST, then the data. The order matters on the very first pass:
@@ -3540,7 +3539,7 @@ export function createKlad(host: HTMLElement, options: Options): KladInstance {
       const size = sizeOf(item, src)
       if (weights !== null) {
         const w = weightOf!(item)
-        weights[i] = Number.isFinite(w) ? Math.max(0, w) : 1
+        weights[i] = Number.isFinite(w) && w > 0 ? w : 0
       }
       // Transposed for a horizontal tidy tree, exactly as the engine does —
       // the layout always works in a top-down space and `applyOrientation`

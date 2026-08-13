@@ -6533,21 +6533,34 @@ describe('weight', () => {
    * read the wheel's own geometry without reaching into the worker. */
   const arcs = (chart: ReturnType<typeof createKlad>): string => chart.api.toSVG()
 
-  it('takes an unmeasured leaf as one rather than dropping it', async () => {
-    // `kb` is missing on `tiny`, so the host's function returns `undefined`.
-    // The contract is that it still draws — "I do not know" is not "nothing".
-    const chart = createKlad(host(), {
-      data: [...SIZED.slice(0, 3), { id: 'tiny', parentId: 'root' }],
+  it('falls back to counting when nothing is measured, rather than drawing nothing', async () => {
+    // A `weight` wired to a field the data does not have. Every leaf comes
+    // back zero, and the honest degradation is the unweighted wheel — not an
+    // empty one, and not a per-leaf default of `1`, which would be an
+    // arbitrary quantity in somebody else's units the moment ONE row did have
+    // a size.
+    const unmeasured = createKlad(host(), {
+      data: SIZED,
       nodeSize: { w: 40, h: 40 },
       layout: 'sunburst',
       worker: false,
-      weight: (item) => item.kb as number,
+      weight: (item) => item.notAField as number,
     })
     await nextFrame()
     await settle()
-    // Four sectors: the hub and three children, none of them collapsed away.
-    expect(arcs(chart).match(/<path/g)?.length ?? 0).toBeGreaterThanOrEqual(4)
-    chart.destroy()
+    const fallback = unmeasured.api.toSVG()
+    unmeasured.destroy()
+
+    const plain = createKlad(host(), {
+      data: SIZED,
+      nodeSize: { w: 40, h: 40 },
+      layout: 'sunburst',
+      worker: false,
+    })
+    await nextFrame()
+    await settle()
+    expect(fallback).toEqual(plain.api.toSVG())
+    plain.destroy()
   })
 
   it('reaches the layout at all — a weighted wheel is not an unweighted one', async () => {
