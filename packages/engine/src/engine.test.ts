@@ -2,6 +2,7 @@ import { describe, expect, it, vi } from 'vitest'
 import { createChartEngine } from './engine.js'
 import { toWireTree, wireTreeToTree } from './worker/protocol.js'
 import { normalize } from './tree.js'
+import { HIDDEN_DOT_PX, HIDDEN_STUB_PX } from './render/edge-geometry.js'
 import { fit } from './viewport.js'
 import { gridSizeFor } from './render/decimate.js'
 import type { Frame, Renderer } from './render/renderer.js'
@@ -53,6 +54,13 @@ function fakeRenderer(): Renderer & { frames: Frame[] } {
  * comfortably past its end) says it through this one constant.
  */
 const TRANSITION_MS = 390
+
+/**
+ * How far past the node's exit edge a reveal starts — the "more inside" mark's
+ * own length plus its dot, in world units at `k = 1` (which is what every test
+ * here renders at). See `revealOrigin` in engine.ts.
+ */
+const REVEAL_REACH = HIDDEN_STUB_PX + HIDDEN_DOT_PX * 2
 
 const DATA = [{ id: 'a' }, { id: 'b', parentId: 'a' }, { id: 'c', parentId: 'b' }, { id: 'd', parentId: 'a' }]
 
@@ -1072,9 +1080,10 @@ describe('ChartEngine expand/collapse transition', () => {
     expect(progress).toBeGreaterThan(0.1)
     expect(progress).toBeLessThan(0.9)
     const qSettledTop = settled('q').y
-    const pLiveBottom = pLive.y + pLive.h
-    const fromOwnParent = pLiveBottom + (qSettledTop - pLiveBottom) * progress
-    const fromToggledNode = a.y + a.h + (qSettledTop - (a.y + a.h)) * progress
+    const pOrigin = pLive.y + pLive.h + REVEAL_REACH
+    const aOrigin = a.y + a.h + REVEAL_REACH
+    const fromOwnParent = pOrigin + (qSettledTop - pOrigin) * progress
+    const fromToggledNode = aOrigin + (qSettledTop - aOrigin) * progress
 
     expect(q.y).toBeCloseTo(fromOwnParent, 6)
     // Not a distinction without a difference: a visible distance apart, which
@@ -1113,10 +1122,11 @@ describe('ChartEngine expand/collapse transition', () => {
     const qIdx = Array.from(engine.visibleToSource).indexOf(tree.idToIndex.get('q')!)
     const qStart = { x: frame.boxes[qIdx * 4]!, y: frame.boxes[qIdx * 4 + 1]! }
 
-    // Bottom edge, horizontal centre of 'a' — NOT 'a's top-left corner (the
-    // old, wrong growth-start point) and not 'a's own centre either.
+    // Horizontal centre of 'a', and just past the tip of the mark hanging off
+    // its bottom edge — NOT 'a's top-left corner (the old, wrong growth-start
+    // point), not its centre, and not flush against its underside either.
     expect(qStart.x).toBeCloseTo(aBox.x + aBox.w / 2, 6)
-    expect(qStart.y).toBeCloseTo(aBox.y + aBox.h, 6)
+    expect(qStart.y).toBeCloseTo(aBox.y + aBox.h + REVEAL_REACH, 6)
     // A genuine POINT, not sized like the parent — confirms this grows from
     // a single spot and expands outward, rather than starting already
     // shaped like the whole parent box.
@@ -1153,7 +1163,7 @@ describe('ChartEngine expand/collapse transition', () => {
     const frame = renderer.frames.at(-1)!
     expect(frame.ghostCount).toBe(1)
     expect(frame.ghostBoxes[0]).toBeCloseTo(aBoxNow.x + aBoxNow.w / 2, 1)
-    expect(frame.ghostBoxes[1]).toBeCloseTo(aBoxNow.y + aBoxNow.h, 1)
+    expect(frame.ghostBoxes[1]).toBeCloseTo(aBoxNow.y + aBoxNow.h + REVEAL_REACH, 1)
   })
 
   it("grows a revealed child from the parent's TRAILING edge under lr orientation, not its bottom edge", () => {
@@ -1187,7 +1197,7 @@ describe('ChartEngine expand/collapse transition', () => {
     const frame = renderer.frames.at(-1)!
     const qIdx = Array.from(engine.visibleToSource).indexOf(tree.idToIndex.get('q')!)
 
-    expect(frame.boxes[qIdx * 4]).toBeCloseTo(aBox.x + aBox.w, 6) // right edge
+    expect(frame.boxes[qIdx * 4]).toBeCloseTo(aBox.x + aBox.w + REVEAL_REACH, 6) // past the mark
     expect(frame.boxes[qIdx * 4 + 1]).toBeCloseTo(aBox.y + aBox.h / 2, 6) // vertical centre
     expect(frame.boxes[qIdx * 4 + 2]).toBeCloseTo(0, 6)
     expect(frame.boxes[qIdx * 4 + 3]).toBeCloseTo(0, 6)

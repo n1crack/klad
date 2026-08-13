@@ -2,7 +2,7 @@ import type { TextMeasurer } from '../text/measure.js'
 import type { DrawCallStats, Frame, Renderer, RenderSurface } from './renderer.js'
 import type { Theme } from './theme.js'
 import { easeInQuad, easeOutCubic } from '../viewport.js'
-import { bezierControls, edgeAnchors, hiddenStub } from './edge-geometry.js'
+import { bezierControls, edgeAnchors, hiddenStub, HIDDEN_DOT_PX, HIDDEN_STUB_PX } from './edge-geometry.js'
 import { computeNodeFills, inkOn } from './palette.js'
 import {
   isSectorVisible,
@@ -13,15 +13,10 @@ import {
   sectorPath,
 } from './sector.js'
 
-/**
- * The rectangular "more inside" mark, in SCREEN pixels: how far the stub
- * reaches out of the node, and the radius of the dot it ends in. Screen rather
- * than world so the mark is the same size at every zoom — it exists to be
- * noticed from far out, which is exactly where a world-scaled one would be
- * sub-pixel. Shared with `svg.ts`, whose export has to match the canvas.
- */
-export const HIDDEN_STUB_PX = 9
-export const HIDDEN_DOT_PX = 2.5
+// Re-exported from where the mark's GEOMETRY lives, so the numbers and the
+// function that places them cannot drift apart — and so the engine can read
+// them without importing a renderer backend. `svg.ts` imports them from here.
+export { HIDDEN_DOT_PX, HIDDEN_STUB_PX } from './edge-geometry.js'
 
 /**
  * Canvas2D backend.

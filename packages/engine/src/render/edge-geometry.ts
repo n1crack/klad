@@ -124,6 +124,17 @@ export function bezierControls(
 }
 
 /**
+ * The rectangular "more inside" mark, in SCREEN pixels: how far the stub
+ * reaches out of the node, and the radius of the dot it ends in. Screen rather
+ * than world so the mark is the same size at every zoom — it exists to be
+ * noticed from far out, which is exactly where a world-scaled one would be
+ * sub-pixel. Shared with `canvas2d.ts` and `svg.ts`, whose drawing has to
+ * match, and with the engine, whose reveal starts where this mark ends.
+ */
+export const HIDDEN_STUB_PX = 9
+export const HIDDEN_DOT_PX = 2.5
+
+/**
  * Where a "there is more inside this" mark hangs off a node, for the
  * rectangular layouts — the direction its first connector WOULD leave in, as a
  * unit vector, plus the point it would leave from.

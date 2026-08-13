@@ -2,7 +2,14 @@ import type { Bounds } from './types.js'
 import type { Camera } from './viewport.js'
 import type { EdgeStyle, Renderer } from './render/renderer.js'
 import type { DropMode } from './drag/drop-target.js'
-import { edgeAnchors, edgeBBox, edgeStyleDrawsConnectors } from './render/edge-geometry.js'
+import {
+  edgeAnchors,
+  edgeBBox,
+  edgeStyleDrawsConnectors,
+  hiddenStub,
+  HIDDEN_DOT_PX,
+  HIDDEN_STUB_PX,
+} from './render/edge-geometry.js'
 import { isSectorVisible } from './render/sector.js'
 import type { ExportData } from './render/svg.js'
 import type { EngineOptions, WireTree } from './worker/protocol.js'
@@ -509,6 +516,34 @@ function boxAt(boxes: Float64Array, i: number): Box {
  * See `render()`'s `applyTween` and the ghost-drawing loop, both in
  * `createChartEngine`.
  */
+/**
+ * Where a reveal actually starts, and where a collapse ends: just past the
+ * tip of the "more inside" mark that hangs off the node while it is shut.
+ *
+ * The mark IS the promise — a short stub off the node's exit edge ending in a
+ * dot, the one thing on a closed branch that says something is in there. So a
+ * branch opening out of the end of it is the promise being kept, in the place
+ * it was made. Starting flush against the node's own edge instead, which is
+ * what this did, put the first frame of the reveal underneath the card and
+ * behind the mark: the owner saw the children arrive "from the very top",
+ * touching the parent, rather than out of the tip a few pixels below it.
+ *
+ * `k` converts the mark's SCREEN length into world units, because that is how
+ * the mark itself is drawn (see `HIDDEN_STUB_PX`): the same handful of pixels
+ * at every zoom, so the reveal starts the same distance out however far the
+ * camera is. Styles with no mark (`folder`) start at the plain exit point —
+ * there is no tip to start from.
+ */
+function revealOrigin(box: Box, horizontal: boolean, style: EdgeStyle, rtl: boolean, k: number): Box {
+  const exit = exitBox(box, horizontal, style, rtl)
+  const stub = hiddenStub(style, horizontal, rtl, box.x, box.y, box.w, box.h)
+  if (stub === null || k <= 0) return exit
+  // Past the dot, not merely to it: the dot has a radius, and starting inside
+  // it reads as the card emerging from behind the mark.
+  const reach = (HIDDEN_STUB_PX + HIDDEN_DOT_PX * 2) / k
+  return { x: exit.x + stub.dx * reach, y: exit.y + stub.dy * reach, w: 0, h: 0 }
+}
+
 function exitBox(box: Box, horizontal: boolean, style: EdgeStyle, rtl: boolean): Box {
   // Where a revealed child grows FROM has to be where its connector attaches,
   // or the two disagree in the one moment a viewer is watching them: the card
@@ -2153,7 +2188,7 @@ export function createChartEngine(renderer: Renderer): ChartEngine {
           // `renderBoxes`, so it tracks the anchor's LIVE position: the
           // parent is often mid-move itself while this runs, and a child
           // growing out of where the parent used to be visibly hangs off it.
-          from = exitBox(boxAt(renderBoxes, entry.anchor), horizontal, edgeStyle, options.rtl)
+          from = revealOrigin(boxAt(renderBoxes, entry.anchor), horizontal, edgeStyle, options.rtl, camera.k)
         }
         writeBox(renderBoxes, idx, lerpBox(from, settled, easing.emphasisPos))
       }
@@ -2223,7 +2258,7 @@ export function createChartEngine(renderer: Renderer): ChartEngine {
             // exit edge in the column it already occupies, so it leaves the
             // way it arrived instead of sliding sideways into a point under
             // the middle of the parent.
-            to = exitBox(boxAt(renderBoxes, ghost.anchor), horizontal, edgeStyle, options.rtl)
+            to = revealOrigin(boxAt(renderBoxes, ghost.anchor), horizontal, edgeStyle, options.rtl, camera.k)
           }
           writeBox(ghostDrawBoxes, g, lerpBox(ghost.from, to, easing.emphasisPos))
           ghostDrawAlpha[g] = easing.ghostAlpha
