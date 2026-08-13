@@ -1,5 +1,14 @@
 # @klad/react
 
+## 1.11.0
+
+### Patch Changes
+
+- Updated dependencies [217d4f2]
+- Updated dependencies [217d4f2]
+- Updated dependencies [217d4f2]
+  - @klad/core@1.11.0
+
 ## 1.10.0
 
 ### Patch Changes

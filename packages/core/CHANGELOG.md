@@ -1,5 +1,118 @@
 # @klad/core
 
+## 1.11.0
+
+### Minor Changes
+
+- 217d4f2: Six theme tokens for a chart worth looking at, and a hook for the cards on top
+  of it. Every one of them defaults to what the chart already drew.
+
+  ```ts
+  createKlad(el, {
+    data,
+    colourBranches: true,
+    theme: {
+      edgeBranchColours: true, // a connector in the colour of the node it leads to
+      edgeHighlightRecolours: false, // …and it keeps that colour while lit
+      edgeHighlightGlow: 3, // a halo under the lit route, in screen pixels
+      nodeBranchColours: false, // the cards are your own DOM; leave the boxes alone
+      hiddenMark: false, // and they say "more inside" their own way
+      gridDot: 'rgba(128, 132, 148, 0.3)', // a dot grid, painted on the canvas
+      gridSpacing: 26,
+      gridDotSize: 1,
+    },
+  })
+  ```
+
+  - `edgeBranchColours` takes the CHILD's own fill rather than a branch base
+    colour, so a branch reads as one family shading away from the root. Drawn as
+    one stroked path per distinct colour — the cost is the palette's size, not
+    the edge count.
+  - `edgeHighlightRecolours: false` is what makes that worth having: recolouring
+    a lit route throws away which branch it is at the moment somebody is asking.
+    A highlight now also fades in and out rather than switching on.
+  - `gridDot` and its two sizes draw the grid on the canvas rather than behind
+    it. A grid in CSS is composited from a style the page updates after the fact,
+    while the diagram comes from the camera the frame was rendered with — so it
+    lags a frame behind on every pan. Here it is one draw from one camera.
+  - The overlay root carries `data-klad-moving` while the chart animates. A
+    toggle slides every card under a pointer that has not moved, so the browser
+    fires `:hover` on each one in turn; the attribute is how your CSS can decline
+    to animate on that.
+
+- 217d4f2: `lockPan` — hold the chart centred and refuse to pan.
+
+  ```ts
+  createKlad(el, { data, layout: 'sunburst', lockPan: true, zoomLimits: { minK: 0.35, maxK: 6 } })
+  chart.api.setLockPan(false) // live, and it re-centres on the spot
+  ```
+
+  For a diagram that IS its bounds — a sunburst, a radial — where a pan can only
+  take a disc that was already fully on screen off the side of it, and where the
+  camera coming to rest somewhere arbitrary is the one state a centred design has
+  no answer for. Zoom still works, anchored on the middle of the viewport rather
+  than on the pointer, since a lock is precisely the discarding of the
+  translation `zoomAt` solves for.
+
+  It survives the diagram changing size, which is the case it exists for: a
+  sunburst drilled into is a different disc, and one held at the previous disc's
+  centre sits off to one side.
+
+- 217d4f2: `weight` — a sunburst whose sectors are sizes, not counts.
+
+  ```ts
+  createKlad(el, {
+    data,
+    layout: 'sunburst',
+    weight: (item) => Number(item.sizeKb ?? 0),
+  })
+  ```
+
+  Until now every leaf took an equal slice of its parent's arc, so a 1 KB config
+  file and a 480 KB bundle drew the same sector — a picture of the directory
+  listing rather than of the disk. `weight` is read on the LEAVES; a parent's
+  share is the sum of what is under it whatever the function returns for the
+  parent itself, because that is the only definition under which a ring is
+  exactly the union of the ring outside it.
+
+  Zero, negative and non-finite all count as zero: a leaf worth nothing gets no
+  arc, which is the honest picture. There is no per-leaf default of `1` — that is
+  only neutral against leaf COUNTS, and against real weights it is an arbitrary
+  quantity in somebody else's units. A tree where nothing is worth anything falls
+  back to counting instead, so a `weight` wired to a field the data does not have
+  degrades to the unweighted wheel rather than to an empty one.
+
+  Two more pieces that go with it:
+
+  - **`nodeHighlightRecolours`** and **`highlightLift`** — a lit node can keep
+    its own fill and get brighter instead of being repainted in `highlightFill`.
+    On a wheel a sector's colour is which branch it belongs to, so flooding it
+    with one accent answers "which one is the pointer on" by deleting the answer
+    to "what is it". The lift is a shift in OKLab lightness, so one number is the
+    same perceived step on a pale leaf and a saturated root.
+  - **`chart.api.overflow(id)`** — what an aggregate node stands for, reachable
+    without rendering one. A canvas-only chart has no `renderNode` to read
+    `NodeContext.overflow` from, and "what is inside this +42" is a fair question
+    to ask about a sector you can see.
+
+  Two fixes that came with it:
+
+  - `toSVG`/`toBlob`/`print` lay the tree out again from scratch rather than
+    reading the engine's geometry, and were not given the weights — so an
+    exported wheel divided its arcs by leaf count while the one on screen divided
+    them by size. Same for worker mode, where the weights never reached the
+    message at all.
+  - A cap no longer invents an aggregate node to stand for exactly ONE child. It
+    took the room the child would have taken, said strictly less, and cost a
+    click to get back what was already there.
+
+### Patch Changes
+
+- Updated dependencies [217d4f2]
+- Updated dependencies [217d4f2]
+- Updated dependencies [217d4f2]
+  - @klad/engine@1.11.0
+
 ## 1.10.0
 
 ### Minor Changes
