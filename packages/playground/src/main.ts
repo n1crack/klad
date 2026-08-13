@@ -2062,6 +2062,54 @@ function syncSelectionControl(example: Example): void {
 }
 
 /**
+ * The pan lock, for the layouts that are a fixed shape rather than a plane.
+ *
+ * A wheel is its own bounds: there is nothing off to the side to go and look
+ * at, so a pan can only ever take the diagram off the screen, and the camera
+ * coming to rest somewhere arbitrary is the one state a centred design has no
+ * answer for. Locked, the zoom still works and stays anchored on the middle.
+ *
+ * A toggle rather than a fixed behaviour, because the point of a playground is
+ * to be able to feel the difference — see `Options.lockPan`.
+ */
+const lockButton = document.createElement('button')
+lockButton.type = 'button'
+lockButton.className = 'btn btn-icon'
+const lockField = document.createElement('div')
+lockField.className = 'surface-panel surface-panel-corner'
+lockField.append(lockButton)
+
+for (const type of ['pointerdown', 'wheel'] as const) {
+  lockField.addEventListener(type, (event) => event.stopPropagation())
+}
+
+let panLocked = false
+
+function updateLockButton(): void {
+  lockButton.textContent = panLocked ? '\u{1F512}' : '\u{1F513}'
+  lockButton.title = panLocked ? 'Panning locked — click to unlock' : 'Panning free — click to lock'
+  lockButton.setAttribute('aria-pressed', String(panLocked))
+  lockButton.setAttribute('aria-label', lockButton.title)
+}
+
+lockButton.onclick = () => {
+  panLocked = !panLocked
+  updateLockButton()
+  currentApi?.setLockPan(panLocked)
+}
+
+/** Shows the lock only where it means something, and re-reads the example's
+ * own setting on every mount — a toggle left on from the previous example
+ * would be describing a chart that is not there any more. */
+function syncLockControl(example: Example): void {
+  lockField.remove()
+  panLocked = example.options.lockPan === true
+  updateLockButton()
+  if (example.lockControl !== true) return
+  surface.append(lockField)
+}
+
+/**
  * Fills the branch picker with the nodes that HAVE children — framing a leaf
  * is framing one card, which is a zoom rather than an answer — and hides the
  * panel for every example that did not ask for it.
@@ -2916,6 +2964,7 @@ function show(stack: Stack, exampleId: string, layout: LayoutName): void {
   // at all; before it, the selection, branch and breadcrumb panels appeared
   // only on the vanilla stack, because the other two deleted them on mount.
   syncGotoControl(example)
+  syncLockControl(example)
   syncOrientationControl(example, layout)
   syncViewControl(example)
   syncSelectionControl(example)

@@ -6466,3 +6466,57 @@ describe('a connector that flows', () => {
     chart.destroy()
   })
 })
+
+describe('lockPan', () => {
+  /**
+   * The lock's whole contract: a drag that pans an unlocked chart moves a
+   * locked one not at all, and the zoom it exists to protect still works.
+   */
+  const drag = (from: number, to: number): void => {
+    const canvas = document.querySelector('canvas')!
+    canvas.dispatchEvent(new PointerEvent('pointerdown', { clientX: from, clientY: 300, bubbles: true }))
+    window.dispatchEvent(new PointerEvent('pointermove', { clientX: to, clientY: 300, bubbles: true }))
+    window.dispatchEvent(new PointerEvent('pointerup', { clientX: to, clientY: 300, bubbles: true }))
+  }
+
+  it('holds the camera through a drag that would otherwise pan', async () => {
+    const chart = make({ lockPan: true })
+    await settle()
+    const before = chart.api.getState().camera
+    drag(200, 520)
+    await nextFrame()
+    const after = chart.api.getState().camera
+    expect(after.x).toBeCloseTo(before.x, 5)
+    expect(after.y).toBeCloseTo(before.y, 5)
+    chart.destroy()
+  })
+
+  it('keeps the chart centred while zooming', async () => {
+    const chart = make({ lockPan: true })
+    await settle()
+    const before = chart.api.getState().camera
+    chart.api.zoomIn()
+    await settle()
+    const after = chart.api.getState().camera
+    expect(after.k).toBeGreaterThan(before.k)
+    // Centred means the content's own middle lands on the viewport's middle,
+    // whatever the zoom did. The host is 800x600 (see `host()`).
+    const b = chart.api.getState().bounds
+    expect(((b.minX + b.maxX) / 2) * after.k + after.x).toBeCloseTo(400, 3)
+    expect(((b.minY + b.maxY) / 2) * after.k + after.y).toBeCloseTo(300, 3)
+    chart.destroy()
+  })
+
+  it('centres on the spot when the lock is turned on', async () => {
+    const chart = make()
+    await settle()
+    drag(200, 520)
+    await nextFrame()
+    chart.api.setLockPan(true)
+    await nextFrame()
+    const after = chart.api.getState().camera
+    const b = chart.api.getState().bounds
+    expect(((b.minX + b.maxX) / 2) * after.k + after.x).toBeCloseTo(400, 3)
+    chart.destroy()
+  })
+})

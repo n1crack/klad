@@ -523,6 +523,21 @@ export interface Options {
    */
   minimap?: boolean | MinimapOptions
   zoomLimits?: ZoomLimits
+  /**
+   * Hold the chart centred and refuse to pan. Zoom still works, anchored on
+   * the middle of the viewport rather than on the pointer.
+   *
+   * For a diagram that IS its bounds — a sunburst, a radial — where panning
+   * only ever moves a disc that was already fully on screen off the side of
+   * it, and where the camera coming to rest somewhere arbitrary is the one
+   * state the design has no answer for. A tiered chart wants the opposite,
+   * which is why this is off by default.
+   *
+   * Not a substitute for `zoomLimits`: a lock keeps the wheel centred, and a
+   * floor keeps it from being zoomed down to a dot. Most locked charts want
+   * both.
+   */
+  lockPan?: boolean
   worker?: boolean
   renderNode?: (element: HTMLElement, context: NodeContext) => void
   /**
@@ -1218,6 +1233,12 @@ export interface KladApi {
    */
   setRing(enabled: boolean): void
   /**
+   * Turns `Options.lockPan` on or off after construction. Locking centres the
+   * chart on the spot rather than waiting for the next camera change, so the
+   * button that calls this can be a toggle and not a "lock, then fit".
+   */
+  setLockPan(locked: boolean): void
+  /**
    * Changes how the tree is ARRANGED, after construction — the shape itself,
    * and every knob that tunes it.
    *
@@ -1361,6 +1382,8 @@ export function createKlad(host: HTMLElement, options: Options): KladInstance {
   // live theme update needs. See `api.setTheme` for the merge-and-repaint
   // side of this.
   let theme = resolveTheme(options.theme)
+  /** `Options.lockPan`, live — see `constrainCamera` and `api.setLockPan`. */
+  let panLocked = options.lockPan === true
   const configuredLimits = options.zoomLimits ?? DEFAULT_LIMITS
 
   /**
@@ -3943,11 +3966,21 @@ export function createKlad(host: HTMLElement, options: Options): KladInstance {
         // Deliberately NOT `animateTo`: the opening camera must appear already
         // positioned. Tweening in from an arbitrary starting camera on load
         // would read as a glitch, not a courtesy.
-        camera = openingCamera()
+        camera = constrainCamera(openingCamera())
         chartHost.setCamera(camera)
         drawn = await chartHost.render(now)
         boxes = chartHost.boxes
         refreshRenderBoxBySource()
+      }
+      // A lock is a promise about where the diagram is, not about what the
+      // pointer may do, so it has to survive the diagram CHANGING size: a
+      // sunburst drilled into is a different disc, and one held at the
+      // previous disc's centre sits off to one side. Cheap enough to check
+      // every frame — `constrainCamera` is a rect read and two multiplies —
+      // and only applied when it actually moves something.
+      if (panLocked) {
+        const centred = constrainCamera(camera)
+        if (centred.x !== camera.x || centred.y !== camera.y) applyCamera(camera)
       }
       // Runs after the relayout above, so it sees the boxes the toggle actually
       // produced rather than stale ones from before it.
@@ -4211,9 +4244,31 @@ export function createKlad(host: HTMLElement, options: Options): KladInstance {
     return true
   }
 
+  /**
+   * `lockPan`, applied to one camera value.
+   *
+   * The whole option is this function plus the fact that every camera change
+   * in the chart goes through `applyCamera` — a drag, a fling, a wheel, a
+   * pinch, the keyboard, the minimap, `fit`, a toggle's anchor. Rather than
+   * teach each of those to behave, the lock takes the `k` they asked for and
+   * throws their `x`/`y` away, so the content stays centred by construction.
+   *
+   * That is also why zooming under a lock is anchored on the middle of the
+   * viewport and not on the pointer: `zoomAt` solves for a translation, and a
+   * translation is exactly what is being discarded.
+   */
+  const constrainCamera = (next: Camera): Camera => {
+    if (!panLocked) return next
+    const rect = host.getBoundingClientRect()
+    // Nothing laid out yet — an empty `bounds` would centre on the origin,
+    // which is a worse guess than leaving the camera where it is.
+    if (bounds.maxX <= bounds.minX && bounds.maxY <= bounds.minY) return next
+    return centreOn(next, bounds, { width: rect.width, height: rect.height })
+  }
+
   /** Applies a camera value immediately: no easing, no animation bookkeeping. */
   const applyCamera = (next: Camera): void => {
-    camera = next
+    camera = constrainCamera(next)
     chartHost.setCamera(camera)
     emit('viewportChange', { camera })
     scheduleFrame()
@@ -5717,6 +5772,16 @@ export function createKlad(host: HTMLElement, options: Options): KladInstance {
       if (opts?.fit === true) pendingFullFit = true
       scheduleFrame()
     },
+    setLockPan(locked) {
+      if (locked === panLocked) return
+      panLocked = locked
+      currentOptions = { ...currentOptions, lockPan: locked }
+      // Re-applying the CURRENT camera is what re-centres it: `applyCamera`
+      // runs it through `constrainCamera`, which is now in force. Unlocking is
+      // the same call and deliberately changes nothing — the chart stays where
+      // the lock left it, which is where the viewer was looking.
+      applyCamera(camera)
+    },
     setRing(enabled) {
       // Every genuine single-toggle call site reads `currentOptions.ring`
       // live at the moment it toggles (see `setOpenFlag`/`expand`/`collapse`
@@ -5956,6 +6021,9 @@ export function createKlad(host: HTMLElement, options: Options): KladInstance {
     },
     update(data, partial) {
       currentOptions = { ...currentOptions, ...partial, data }
+      // Mirrored into its own variable, so a `lockPan` arriving in `partial`
+      // has to be copied across — the same way `theme` is re-resolved below.
+      if (partial?.lockPan !== undefined) panLocked = partial.lockPan
       // A new dataset. What was fetched belonged to the old one — its parents
       // may not even be here any more — and keeping it would graft the
       // previous tree's branches onto this one. `refresh()` is the call that

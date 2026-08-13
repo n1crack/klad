@@ -484,6 +484,13 @@ export interface Example {
    */
   viewControl?: boolean
   /**
+   * Shows the pan-lock toggle in the top-right corner of the chart. For the
+   * layouts a lock is FOR — the wheels, whose diagram is its own bounds —
+   * where the toggle is how a viewer feels what `Options.lockPan` does rather
+   * than reading about it.
+   */
+  lockControl?: boolean
+  /**
    * Shows the selection panel: what is selected right now, and the two
    * commands (select every visible node, clear) that an app would build on
    * top of a selection. Per-example, like the others.
@@ -1608,7 +1615,21 @@ export const EXAMPLES: Example[] = [
     description:
       'The same file tree as a wheel, each segment sized by what it holds and coloured by which top-level folder it belongs to. Click a segment to drill into it: it widens to the full circle and travels inward while the rest closes at the seam. Click the centre to come back out.',
     data: FILE_DATA,
-    options: { layout: 'sunburst' },
+    options: {
+      layout: 'sunburst',
+      // A wheel is its own bounds, so panning it can only take it off the
+      // screen — and its drill-in animation ends with the disc centred, which
+      // a stray pan quietly breaks. Locked by default here, with the toggle in
+      // the corner for anyone who wants to see why.
+      lockPan: true,
+      // The floor is a whole disc that still fits: below it there is nothing
+      // to read and nothing to click, and a wheel zoomed to a dot in the
+      // middle of an empty frame looks broken rather than zoomed out. The
+      // ceiling is generous — drilling into a deep folder is a real thing to
+      // want to do up close.
+      zoomLimits: { minK: 0.35, maxK: 6 },
+    },
+    lockControl: true,
     content: 'none',
   },
   {

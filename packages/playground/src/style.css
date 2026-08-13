@@ -3006,3 +3006,18 @@ button.overflow-panel-row {
   background: var(--surface-raised);
   transform: translateY(-1px);
 }
+
+/* Top-right instead of the top-left every other panel takes: the corner a
+   sunburst leaves emptiest, and away from the breadcrumb it would otherwise
+   sit beside. */
+.surface-panel-corner {
+  left: auto;
+  right: 0.6rem;
+  padding: 0.3rem;
+}
+
+.surface-panel-corner .btn-icon {
+  padding: 0.25rem 0.45rem;
+  font-size: 1rem;
+  line-height: 1.2;
+}

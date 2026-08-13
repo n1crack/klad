@@ -47,11 +47,12 @@ what each shape is for.
 
 ## Appearance
 
-| Option       | Type                        | Default                   |                                                                                                                                            |
-| ------------ | --------------------------- | ------------------------- | ------------------------------------------------------------------------------------------------------------------------------------------ |
-| `theme`      | `Partial<Theme>`            | —                         | Colours and weights the canvas draws with. See [Theme](/api/theme).                                                                        |
-| `minimap`    | `boolean \| MinimapOptions` | `false`                   | `{ position, width, height, silhouetteColour }`. `silhouetteColour` is the one piece your own CSS cannot restyle — set it for a dark host. |
-| `zoomLimits` | `{ minK, maxK: number }`    | `{ minK: 0.05, maxK: 4 }` | The floor is lowered automatically — never raised — when the tree is wider than the viewport, so `fit()` can always show everything.       |
+| Option       | Type                        | Default                   |                                                                                                                                                                                                                                                                                                              |
+| ------------ | --------------------------- | ------------------------- | ------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------ |
+| `theme`      | `Partial<Theme>`            | —                         | Colours and weights the canvas draws with. See [Theme](/api/theme).                                                                                                                                                                                                                                          |
+| `minimap`    | `boolean \| MinimapOptions` | `false`                   | `{ position, width, height, silhouetteColour }`. `silhouetteColour` is the one piece your own CSS cannot restyle — set it for a dark host.                                                                                                                                                                   |
+| `zoomLimits` | `{ minK, maxK: number }`    | `{ minK: 0.05, maxK: 4 }` | The floor is lowered automatically — never raised — when the tree is wider than the viewport, so `fit()` can always show everything.                                                                                                                                                                         |
+| `lockPan`    | `boolean`                   | `false`                   | Holds the chart centred and refuses to pan; zoom still works, anchored on the middle of the viewport rather than the pointer. For a diagram that IS its bounds — a sunburst, a radial — where a pan can only take a disc that was fully on screen off the side of it. Usually set with a `zoomLimits` floor. |
 
 ## Behaviour
 
