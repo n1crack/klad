@@ -24,6 +24,13 @@ export interface LayoutOptions {
    */
   rowGap?: number | undefined
   /**
+   * `sunburst` only: what each node is worth, in PRUNED index space, or `null`
+   * for "every node counts as one". A parent's own entry is ignored — its
+   * share is the sum of what is under it, which is the only definition under
+   * which a ring is exactly the union of the ring outside it.
+   */
+  weights?: Float64Array | null | undefined
+  /**
    * `sunburst` only: the node the wheel is currently centred on, as an index
    * into `tree`, or `-1` for the whole forest (the default).
    *

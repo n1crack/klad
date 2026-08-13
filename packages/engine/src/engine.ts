@@ -57,6 +57,16 @@ export interface ChartEngine {
      */
     keep?: Uint8Array | null,
     hide?: Uint8Array | null,
+    /**
+     * What each node is WORTH, for the layouts that divide a fixed extent
+     * between siblings — the sunburst, today. `null` (the default) leaves
+     * every node worth the same, which is what the wheel has always done.
+     *
+     * Here rather than in `setOptions` for the same reason the masks are:
+     * it is indexed against this tree, and a weight array that arrives a
+     * message later is briefly a set of proportions for a tree that is gone.
+     */
+    weights?: Float64Array | null,
   ): void
   setOptions(partial: Partial<EngineOptions>): void
   /**
@@ -940,6 +950,14 @@ export function transitionAnchorProgress(startedAt: number, now: number, opening
  * Kept under two-thirds of a second all the same — this is a navigation step,
  * and a viewer drilling three levels down should not be waiting on it.
  */
+/**
+ * How long a highlight takes to come up, and to go down again when it is
+ * cleared. Short — it is a response to a pointer, and anything slower reads as
+ * lag rather than as polish — but long enough that the glow it carries arrives
+ * rather than appears.
+ */
+const HIGHLIGHT_FADE_MS = 260
+
 const POLAR_DURATION_MS = 620
 
 /** One node's polar geometry, as captured at the instant a focus change
@@ -1435,6 +1453,9 @@ export function createChartEngine(renderer: Renderer): ChartEngine {
     order: new Int32Array(0),
   })
   let sourceSizes: Float64Array = new Float64Array(0)
+  /** `setData`'s `weights`, in SOURCE index space. `null` — the common case —
+   * means every node is worth the same. */
+  let sourceWeights: Float64Array | null = null
   let sourceLabels: string[] = []
   /**
    * SOURCE-indexed: 1 where the host has said a node has children it has not
@@ -1545,6 +1566,22 @@ export function createChartEngine(renderer: Renderer): ChartEngine {
   let camera: Camera = { x: 0, y: 0, k: 1 }
   let viewport = { width: 0, height: 0, dpr: 1 }
   let highlightSource: Uint32Array | null = null
+  /**
+   * The set the highlight is fading OUT of, and when the change happened.
+   *
+   * A highlight that snaps on and off is fine when it is a search result being
+   * stepped through; under a pointer it is a strobe. So a change is a short
+   * animation: the incoming set comes up over `HIGHLIGHT_FADE_MS`, and a
+   * cleared one goes down over the same window rather than vanishing between
+   * two frames.
+   *
+   * `highlightChangedAt` is stamped at the first render AFTER the change, not
+   * in `setHighlight`, for the same reason the transition's clock is: this
+   * layer reads no clock of its own (see the module docblock).
+   */
+  let highlightPrev: Uint32Array | null = null
+  let highlightChangedAt: number | null = null
+  let highlightPending = false
   /** Source index the visible tree is re-rooted at, or -1 for the whole forest. */
   let isolateSource = -1
   let selectionSource: Uint32Array | null = null
@@ -1651,6 +1688,9 @@ export function createChartEngine(renderer: Renderer): ChartEngine {
   let ghostDrawCount = 0
   let ghostDrawAlpha = new Float32Array(0)
   let revealAlphaBuffer = new Float32Array(0)
+  /** Companion to `revealAlphaBuffer`, for connectors — see its use in
+   * `render()`. Same growth-and-reuse discipline. */
+  let edgeAlphaBuffer = new Float32Array(0)
   // Interpolated boxes for exactly the SOURCE indices `render()` most
   // recently returned, in the same order (4 float64s per entry) — freshly
   // allocated every `render()` call (same discipline as `drawn` itself,
@@ -1788,6 +1828,10 @@ export function createChartEngine(renderer: Renderer): ChartEngine {
 
     const n = pruned.tree.count
     const sizes = new Float64Array(n * 2)
+    // Only allocated when there are weights to carry: every chart that has
+    // never heard of them pays nothing, which matters because this runs on
+    // every relayout.
+    const weights = sourceWeights === null ? null : new Float64Array(n)
     prunedLabels = Array.from({ length: n })
 
     // Orientation is TIDY'S concern and nothing else's. A file list has one
@@ -1812,6 +1856,7 @@ export function createChartEngine(renderer: Renderer): ChartEngine {
       sizes[i * 2] = horizontal ? h : w
       sizes[i * 2 + 1] = horizontal ? w : h
       prunedLabels[i] = sourceLabels[src] ?? ''
+      if (weights !== null) weights[i] = sourceWeights![src] ?? 0
     }
 
     // `options.focus` is a SOURCE index — it has to be, since it survives
@@ -1830,6 +1875,7 @@ export function createChartEngine(renderer: Renderer): ChartEngine {
       rowGap: options.rowGap,
       focus: focusPruned,
       maxRings: options.maxRings,
+      weights,
     })
     boxes = result.boxes
     sectors = result.sectors ?? null
@@ -2200,6 +2246,7 @@ export function createChartEngine(renderer: Renderer): ChartEngine {
     // matching the 50k budget.
     let ghostCount = 0
     let revealAlpha: Float32Array | null = null
+    let edgeAlpha: Float32Array | null = null
     if (transition !== null) {
       // `progress < 1` is guaranteed here — the `>= 1` case was already
       // resolved above, before culling.
@@ -2305,6 +2352,31 @@ export function createChartEngine(renderer: Renderer): ChartEngine {
           }
         }
         if (anyRevealed) revealAlpha = revealAlphaBuffer
+      }
+
+      // The same alpha for the CONNECTOR into a node that is arriving.
+      //
+      // Without it the line to a revealed child is at full strength from the
+      // first frame while the child itself is still at nothing: the connector
+      // arrives before the thing it connects, drawn through space where there
+      // is not yet a node — worst on the deeper branches, where the line is
+      // longest. Keyed by the edge's CHILD, which is what `edgeDrawBuffer`
+      // holds, so an edge fades exactly in step with the card at its end.
+      if (edgeDrawCount > 0) {
+        if (edgeAlphaBuffer.length < edgeDrawCount) {
+          edgeAlphaBuffer = new Float32Array(edgeDrawCount)
+        }
+        let anyFading = false
+        for (let e = 0; e < edgeDrawCount; e++) {
+          const entry = transition.fromBySource.get(visibleToSource[edgeDrawBuffer[e]!]!)
+          if (entry !== undefined && entry.revealed) {
+            edgeAlphaBuffer[e] = easing.emphasisAlpha
+            anyFading = true
+          } else {
+            edgeAlphaBuffer[e] = 1
+          }
+        }
+        if (anyFading) edgeAlpha = edgeAlphaBuffer
       }
 
       if (transition.ghostQuad !== null && viewport.width > 0 && viewport.height > 0) {
@@ -2413,7 +2485,19 @@ export function createChartEngine(renderer: Renderer): ChartEngine {
       return marks
     }
 
-    highlightBuffer = markSource(highlightSource, highlightBuffer)
+    // The fade, resolved before the mask is built: whichever set is on screen
+    // right now is the one to mark. See `highlightPrev`.
+    if (highlightPending) {
+      highlightChangedAt = now
+      highlightPending = false
+    }
+    const fade =
+      highlightChangedAt === null || !animate
+        ? 1
+        : Math.min(1, Math.max(0, (now - highlightChangedAt) / HIGHLIGHT_FADE_MS))
+    const fadingOut = highlightSource === null && highlightPrev !== null && fade < 1
+    const highlightAlpha = fadingOut ? 1 - fade : fade
+    highlightBuffer = markSource(fadingOut ? highlightPrev : highlightSource, highlightBuffer)
     selectionBuffer = markSource(selectionSource, selectionBuffer)
 
     let dragPruned = -1
@@ -2458,12 +2542,14 @@ export function createChartEngine(renderer: Renderer): ChartEngine {
       horizontal: options.layout === 'tidy' && (options.orientation === 'lr' || options.orientation === 'rl'),
       rtl: options.rtl,
       highlight: highlightBuffer,
+      highlightAlpha,
       selected: selectionBuffer,
       dragIndex: dragPruned,
       dropIndex: dropPruned,
       dropMode,
       dropValid,
       revealAlpha,
+      edgeAlpha,
       ghostBoxes: ghostDrawBoxes,
       ghostAlpha: ghostDrawAlpha,
       ghostCount,
@@ -2556,7 +2642,7 @@ export function createChartEngine(renderer: Renderer): ChartEngine {
   }
 
   return {
-    setData(tree, sizes, labels, openFlags, unloaded, keep, hide) {
+    setData(tree, sizes, labels, openFlags, unloaded, keep, hide, weights) {
       sourceTree = wireTreeToTree(tree)
       // Defensive-copy every caller-owned buffer. In the worker path these
       // arrive as structured clones the engine already owns, but the
@@ -2565,6 +2651,7 @@ export function createChartEngine(renderer: Renderer): ChartEngine {
       // `setOpen`'s case) silently reach through into the caller, and the
       // worker/main-thread paths would disagree about when a change lands.
       sourceSizes = Float64Array.from(sizes)
+      sourceWeights = weights === null || weights === undefined ? null : Float64Array.from(weights)
       sourceLabels = [...labels]
       // Defensive-copied like every other caller-owned buffer, and sized to
       // the tree rather than to whatever length arrived — a short mask
@@ -2734,7 +2821,10 @@ export function createChartEngine(renderer: Renderer): ChartEngine {
       selectionSource = ids
     },
     setHighlight(ids) {
+      if (ids === highlightSource) return
+      highlightPrev = highlightSource
       highlightSource = ids
+      highlightPending = true
     },
     setDrag(index) {
       dragSource = index

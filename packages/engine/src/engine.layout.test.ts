@@ -695,3 +695,69 @@ describe('animateNextLayout', () => {
     expect(engine.transitioning).toBe(false)
   })
 })
+
+describe('weights', () => {
+  /**
+   * A sunburst's arcs are proportions, and a weight is the answer to
+   * "proportional to what". `FLAT` is one root over three leaves: unweighted
+   * they take a third of the turn each; weighted 6/3/1 they take 60%, 30% and
+   * 10% of it.
+   */
+  const FLAT: NodeData[] = [
+    { id: 'root' },
+    { id: 'a', parentId: 'root' },
+    { id: 'b', parentId: 'root' },
+    { id: 'c', parentId: 'root' },
+  ]
+
+  function wheel(weights: Float64Array | null) {
+    const renderer = fakeRenderer()
+    const engine = createChartEngine(renderer)
+    const tree = normalize(FLAT)
+    engine.setViewport(800, 600, 1)
+    engine.setOptions({ layout: 'sunburst' })
+    engine.setData(
+      toWireTree(tree),
+      new Float64Array(tree.count * 2).fill(40),
+      tree.indexToId.slice(),
+      new Uint8Array(tree.count).fill(1),
+      null,
+      null,
+      null,
+      weights,
+    )
+    engine.render(0)
+    const frame = renderer.frames[renderer.frames.length - 1]!
+    const sectors = frame.sectors!
+    return (id: string): number => {
+      const i = tree.idToIndex.get(id)!
+      return sectors[i * 6 + 5]! - sectors[i * 6 + 4]!
+    }
+  }
+
+  it('divides a parent by leaf count when there are no weights', () => {
+    const span = wheel(null)
+    expect(span('a')).toBeCloseTo(span('b'), 6)
+    expect(span('b')).toBeCloseTo(span('c'), 6)
+  })
+
+  it('divides it by weight when there are', () => {
+    const span = wheel(Float64Array.from([0, 6, 3, 1]))
+    const total = span('a') + span('b') + span('c')
+    expect(span('a') / total).toBeCloseTo(0.6, 5)
+    expect(span('b') / total).toBeCloseTo(0.3, 5)
+    expect(span('c') / total).toBeCloseTo(0.1, 5)
+  })
+
+  it('gives a weightless leaf no arc at all', () => {
+    const span = wheel(Float64Array.from([0, 1, 0, 1]))
+    expect(span('b')).toBeCloseTo(0, 6)
+    expect(span('a')).toBeCloseTo(span('c'), 6)
+  })
+
+  it('counts the leaves of a branch that is all zeroes, rather than losing it', () => {
+    const span = wheel(new Float64Array(4))
+    expect(span('a')).toBeCloseTo(span('b'), 6)
+    expect(span('a')).toBeGreaterThan(0)
+  })
+})

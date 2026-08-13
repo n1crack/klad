@@ -50,8 +50,11 @@ gtag('config', '${GA_ID}')`,
       ]
     : []
 
+// Leads with what people actually type. "Tree engine" is what this IS, but an
+// org chart is what somebody is looking for when they need one, and a
+// description that never says the words is a description no query matches.
 const DESCRIPTION =
-  'A framework-agnostic tree engine for very large hierarchies. Four layouts — tiered, file, radial and sunburst — drawn on a canvas in a Web Worker, with your Vue, React or plain-DOM components mounted only where they can be read.'
+  'An org chart and tree diagram library for very large hierarchies. Four layouts — tiered, indented file rows, radial and sunburst — drawn on a canvas in a Web Worker, with your Vue, React or plain-DOM components mounted only where they can be read.'
 
 /**
  * Schema.org structured data (JSON-LD), site-wide. It does not by itself change
@@ -153,7 +156,15 @@ export default defineConfig({
 
   // Emits sitemap.xml. A crawler would find the pages either way; what this
   // adds is the `lastmod` it uses to decide how often to come back.
-  sitemap: { hostname: `${SITE_URL}${BASE}` },
+  sitemap: {
+    hostname: `${SITE_URL}${BASE}`,
+    // The playground is a separate Vite app copied in under `public/`, so
+    // VitePress does not know it is a page and leaves it out. It is the most
+    // linked-to thing on the site and it is where somebody deciding whether to
+    // use this ends up, so it goes in by hand. No `lastmod`: it is built from
+    // another package, and a date taken from this build would be a guess.
+    transformItems: (items) => [...items, { url: 'playground/' }],
+  },
 
   head: [
     ...ANALYTICS,
@@ -225,8 +236,7 @@ export default defineConfig({
       // navigation — the playground is a separate Vite app copied in under
       // `public/`, not one of VitePress's own routes.
       { text: 'Playground', link: '/playground/', target: '_self' },
-      { text: 'Roadmap', link: '/roadmap' },
-      { text: 'Licence', link: '/licence' },
+      { text: 'Pricing', link: '/pricing' },
     ],
 
     sidebar: {

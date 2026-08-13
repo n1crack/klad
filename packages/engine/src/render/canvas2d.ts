@@ -3,7 +3,7 @@ import type { DrawCallStats, Frame, Renderer, RenderSurface } from './renderer.j
 import type { Theme } from './theme.js'
 import { easeInQuad, easeOutCubic } from '../viewport.js'
 import { bezierControls, edgeAnchors, hiddenStub, HIDDEN_DOT_PX, HIDDEN_STUB_PX } from './edge-geometry.js'
-import { computeNodeFills, inkOn } from './palette.js'
+import { computeNodeFills, inkOn, lift } from './palette.js'
 import {
   isSectorVisible,
   labelPlacement,
@@ -115,6 +115,44 @@ export function createCanvas2DRenderer(
 
     const { boxes, parent, visible, visibleCount, edges, edgeCount, camera } = frame
     const k = camera.k
+
+    // The dot grid, before anything else — see `Theme.gridDot`. Drawn from the
+    // camera this frame was rendered with, so it cannot lag the diagram the
+    // way a CSS background does. Bounded by the viewport, not by the chart:
+    // the loop runs once per dot ON SCREEN, and the spacing is clamped so a
+    // camera zoomed far out cannot ask for a million of them.
+    if (theme.gridDot !== 'transparent' && theme.gridSpacing > 0) {
+      const step = theme.gridSpacing * k
+      // Faded out across the last stretch rather than cut off at a threshold:
+      // a grid that switches off between one zoom step and the next flashes,
+      // which is worse than the crowding it was avoiding. Gone by 5px, whole
+      // by 11px, and the loop is skipped entirely once there is nothing left
+      // to see.
+      const strength = Math.min(1, Math.max(0, (step - 5) / 6))
+      if (strength > 0) {
+        const w = surface.width / devicePixelRatio
+        const h = surface.height / devicePixelRatio
+        const radius = Math.max(0.5, theme.gridDotSize * Math.min(1, k))
+        const startX = camera.x % step
+        const startY = camera.y % step
+        ctx.globalAlpha = strength
+        ctx.fillStyle = theme.gridDot
+        for (let x = startX; x < w; x += step) {
+          for (let y = startY; y < h; y += step) {
+            ctx.beginPath()
+            ctx.arc(x, y, radius, 0, Math.PI * 2, false)
+            ctx.fill()
+          }
+        }
+        ctx.globalAlpha = 1
+      }
+    }
+
+    // Connectors are drawn as one path per colour, so their ends and bends are
+    // set once here: round, because a slot-cornered elbow arriving at a port
+    // reads as cut off with the default butt cap.
+    ctx.lineCap = 'round'
+    ctx.lineJoin = 'round'
 
     // Edges first so nodes paint over the joins. Walks `edges`/`edgeCount`,
     // an INDEPENDENT index from `visible`/`visibleCount` — a connector can
@@ -276,21 +314,94 @@ export function createCanvas2DRenderer(
     const edgeLit = (i: number, p: number): boolean =>
       highlight !== null && highlight[i] === 1 && highlight[p] === 1
 
+    /**
+     * How strongly the lit pass paints — the fade in and out (see
+     * `Frame.highlightAlpha`).
+     *
+     * While it is under 1 the ORDINARY pass keeps drawing those edges too, and
+     * the lit pass lays over them. Skipping them there, as this did, meant a
+     * route being lit had nothing under it but its own half-drawn self: the
+     * line dimmed towards nothing and then popped back at full weight, which
+     * is the opposite of a fade.
+     */
+    const litAlpha = Math.min(1, Math.max(0, frame.highlightAlpha))
+
+    const unlitFill = frame.tier === 'block' ? theme.blockFill : theme.nodeFill
+
+    // Per-node branch colour, where the layout asked for one. Still loses to
+    // highlight and selection: those mean "the chart is answering you", and an
+    // ambient branch colour must not drown out an answer. Resolved up here,
+    // above the connectors, because `edgeBranchColours` paints each of those
+    // in the colour of the node it leads to.
+    const fills =
+      frame.branchOf !== null && frame.branchDepth !== null && frame.tier !== 'block'
+        ? branchFills(frame.branchOf, frame.branchDepth)
+        : null
+    // Nodes may opt out of the branch colours the connectors are using — see
+    // `Theme.nodeBranchColours`. `fills` stays whole for the edge passes.
+    const nodeFills = theme.nodeBranchColours ? fills : null
+    const fillFor = (i: number): string => (nodeFills !== null ? (nodeFills[i] ?? unlitFill) : unlitFill)
+
     if (edgeCount > 0) {
       // Pass 1: everything not on a highlighted path. When nothing is
       // highlighted at all — the whole steady state — the `edgeLit` test is a
       // null check and this is the single pass it always was.
-      ctx.beginPath()
-      for (let n = 0; n < edgeCount; n++) {
-        const i = edges[n]!
-        const p = parent[i]!
-        if (p === -1 || edgeLit(i, p)) continue
-        traceEdge(i, p)
-      }
-      ctx.strokeStyle = theme.edgeStroke
       ctx.lineWidth = theme.edgeWidth
-      ctx.stroke()
-      calls.edgeStrokes = 1
+      // A connector into an arriving node fades with it — see `Frame.edgeAlpha`.
+      // Rounded into a handful of buckets: every fading edge in a transition
+      // shares one alpha, so this is two groups in practice, not one per edge.
+      const edgeAlpha = frame.edgeAlpha
+      const alphaOfEdge = (n: number): number =>
+        edgeAlpha === null ? 1 : Math.round(Math.min(1, Math.max(0, edgeAlpha[n]!)) * 20) / 20
+      if (fills !== null && theme.edgeBranchColours) {
+        // One path per COLOUR, not per edge: a chart has as many connector
+        // colours as the palette has entries, however many thousand edges
+        // hang off them, so this stays a handful of strokes. Keyed by the
+        // colour string itself — `fillFor` already memoises the palette work
+        // (see `branchFills`), so this is a map lookup per edge and no colour
+        // maths at all.
+        const byColour = new Map<string, number[]>()
+        for (let n = 0; n < edgeCount; n++) {
+          const i = edges[n]!
+          const p = parent[i]!
+          if (p === -1 || (edgeLit(i, p) && litAlpha >= 1)) continue
+          const key = `${fills[i] ?? theme.edgeStroke}|${alphaOfEdge(n)}`
+          const bucket = byColour.get(key)
+          if (bucket === undefined) byColour.set(key, [i])
+          else bucket.push(i)
+        }
+        for (const [key, bucket] of byColour) {
+          const split = key.lastIndexOf('|')
+          const alpha = Number(key.slice(split + 1))
+          ctx.beginPath()
+          for (const i of bucket) traceEdge(i, parent[i]!)
+          ctx.strokeStyle = key.slice(0, split)
+          if (alpha < 1) ctx.globalAlpha = alpha
+          ctx.stroke()
+          ctx.globalAlpha = 1
+          calls.edgeStrokes += 1
+        }
+      } else {
+        const byAlpha = new Map<number, number[]>()
+        for (let n = 0; n < edgeCount; n++) {
+          const i = edges[n]!
+          const p = parent[i]!
+          if (p === -1 || (edgeLit(i, p) && litAlpha >= 1)) continue
+          const alpha = alphaOfEdge(n)
+          const bucket = byAlpha.get(alpha)
+          if (bucket === undefined) byAlpha.set(alpha, [i])
+          else bucket.push(i)
+        }
+        ctx.strokeStyle = theme.edgeStroke
+        for (const [alpha, bucket] of byAlpha) {
+          ctx.beginPath()
+          for (const i of bucket) traceEdge(i, parent[i]!)
+          if (alpha < 1) ctx.globalAlpha = alpha
+          ctx.stroke()
+          ctx.globalAlpha = 1
+          calls.edgeStrokes += 1
+        }
+      }
 
       // Pass 2: the highlighted path, drawn after so it lies over the
       // ordinary edges it crosses rather than under them, and thicker, so it
@@ -306,10 +417,64 @@ export function createCanvas2DRenderer(
           anyLit = true
         }
         if (anyLit) {
-          ctx.strokeStyle = theme.edgeHighlightStroke
+          // The whole lit pass, halo included, so the route brightens as one
+          // thing rather than the line and its glow arriving separately.
+          if (litAlpha < 1) ctx.globalAlpha = litAlpha
+          // Recoloured, or merely lit — see `Theme.edgeHighlightRecolours`.
+          // When the path keeps its own colours it cannot be one path any
+          // more, so it is grouped exactly as pass 1 groups the rest.
+          const litColour = theme.edgeHighlightRecolours || fills === null ? theme.edgeHighlightStroke : null
+          ctx.strokeStyle = litColour ?? theme.edgeHighlightStroke
           ctx.lineWidth = theme.edgeHighlightWidth
-          ctx.stroke()
-          calls.edgeStrokes = 2
+          // The halo first, as a second stroke of the SAME path under the
+          // line itself: canvas shadows are cast by whatever is drawn, so
+          // this is the cheapest way to get one — no offscreen pass, no
+          // filter. Screen pixels, deliberately unscaled by `k` (see
+          // `edgeHighlightGlow`). Cleared immediately, because the shadow is
+          // context state and every node and label drawn after this would
+          // otherwise wear it too.
+          if (litColour !== null) {
+            if (theme.edgeHighlightGlow > 0) {
+              ctx.shadowColor = litColour
+              ctx.shadowBlur = theme.edgeHighlightGlow
+              ctx.stroke()
+              ctx.shadowBlur = 0
+              ctx.shadowColor = 'transparent'
+              calls.edgeStrokes += 1
+            }
+            ctx.stroke()
+            calls.edgeStrokes += 1
+          } else {
+            // Per colour, at the highlight's width, each with its own halo:
+            // the branch keeps saying which branch it is while the route says
+            // where it goes.
+            const byColour = new Map<string, number[]>()
+            for (let n = 0; n < edgeCount; n++) {
+              const i = edges[n]!
+              const p = parent[i]!
+              if (p === -1 || !edgeLit(i, p)) continue
+              const colour = fills?.[i] ?? theme.edgeStroke
+              const bucket = byColour.get(colour)
+              if (bucket === undefined) byColour.set(colour, [i])
+              else bucket.push(i)
+            }
+            for (const [colour, bucket] of byColour) {
+              ctx.beginPath()
+              for (const i of bucket) traceEdge(i, parent[i]!)
+              ctx.strokeStyle = colour
+              if (theme.edgeHighlightGlow > 0) {
+                ctx.shadowColor = colour
+                ctx.shadowBlur = theme.edgeHighlightGlow
+                ctx.stroke()
+                ctx.shadowBlur = 0
+                ctx.shadowColor = 'transparent'
+                calls.edgeStrokes += 1
+              }
+              ctx.stroke()
+              calls.edgeStrokes += 1
+            }
+          }
+          ctx.globalAlpha = 1
         }
       }
 
@@ -388,16 +553,6 @@ export function createCanvas2DRenderer(
     // exactly the kind of per-node cost the 50k budget can't absorb for a
     // no-op paint.
     const blockFillSkipped = frame.tier === 'block' && theme.blockFill === 'transparent'
-    const unlitFill = frame.tier === 'block' ? theme.blockFill : theme.nodeFill
-
-    // Per-node branch colour, where the layout asked for one. Still loses to
-    // highlight and selection: those mean "the chart is answering you", and an
-    // ambient branch colour must not drown out an answer.
-    const fills =
-      frame.branchOf !== null && frame.branchDepth !== null && frame.tier !== 'block'
-        ? branchFills(frame.branchOf, frame.branchDepth)
-        : null
-    const fillFor = (i: number): string => (fills !== null ? (fills[i] ?? unlitFill) : unlitFill)
 
     const sectors = frame.sectors
     /**
@@ -500,7 +655,17 @@ export function createCanvas2DRenderer(
         if (i === frame.dragIndex || revealAlpha < 1) ctx.globalAlpha = 1
         continue
       }
-      ctx.fillStyle = lit ? theme.highlightFill : fillFor(i)
+      // A lit node either takes the accent or keeps its own colour and gets
+      // brighter — see `Theme.nodeHighlightRecolours`. The lift goes through
+      // the node's ACTUAL fill (`fillFor`), so on a branch-coloured chart each
+      // sector lifts from where it already was rather than towards a shared
+      // colour, and which branch it is survives being pointed at.
+      const fill = fillFor(i)
+      ctx.fillStyle = lit
+        ? theme.nodeHighlightRecolours
+          ? theme.highlightFill
+          : lift(fill, theme.highlightLift)
+        : fill
       ctx.fill()
       if (frame.tier !== 'block') {
         if (sectors !== null) {
@@ -553,7 +718,7 @@ export function createCanvas2DRenderer(
     //
     // Skipped at the `block` tier along with the labels: at a zoom where a node
     // is a few pixels of colour, a mark on it is a few pixels of noise.
-    const hidden = frame.hasHidden
+    const hidden = theme.hiddenMark ? frame.hasHidden : null
     if (hidden !== null && frame.tier !== 'block') {
       ctx.lineWidth = 1.5
       for (let n = 0; n < visibleCount; n++) {
@@ -589,17 +754,22 @@ export function createCanvas2DRenderer(
           const o = i * 4
           const w = boxes[o + 2]! * k
           const h = boxes[o + 3]! * k
+          // Clear of the marker, not hugging it: at three pixels out, in the
+          // marker's own colour, the ring read as a soft edge on the dot
+          // rather than as a second thing — which is the one reading it must
+          // not have. Five and most of the way opaque, so it is a RING with a
+          // gap inside it.
           ctx.beginPath()
           ctx.arc(
             (boxes[o]! + boxes[o + 2]! / 2) * k + camera.x,
             (boxes[o + 1]! + boxes[o + 3]! / 2) * k + camera.y,
-            Math.max(w, h) / 2 + 3,
+            Math.max(w, h) / 2 + 5,
             0,
             Math.PI * 2,
             false,
           )
           ctx.strokeStyle = fills !== null ? fillFor(i) : theme.labelColour
-          ctx.globalAlpha = 0.5
+          ctx.globalAlpha = 0.85
           ctx.stroke()
           ctx.globalAlpha = 1
         } else {

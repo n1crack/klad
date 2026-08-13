@@ -180,6 +180,30 @@ export function depthStep(base: string, depth: number): string {
   return toHex(r, g, bl)
 }
 
+/**
+ * `base` shifted `amount` in OKLab lightness — positive lighter, negative
+ * darker. `0` returns `base` string-identical.
+ *
+ * Perceptual rather than a multiply on the channels, and the same axis
+ * `depthStep` moves along, so a hover lift on a branch-coloured shape lands
+ * where the eye expects it whether the shape is a pale leaf or a saturated
+ * root. Clamped away from both ends: a lift that reached pure white would
+ * make two adjacent lit shapes indistinguishable, which is the opposite of
+ * what a hover state is for.
+ *
+ * Anything the parser doesn't understand comes back unchanged, same contract
+ * as `depthStep`.
+ */
+export function lift(base: string, amount: number): string {
+  if (amount === 0) return base
+  const rgb = parseHex(base)
+  if (rgb === null) return base
+  const [L, a, b] = rgbToOklab(rgb[0], rgb[1], rgb[2])
+  const nL = Math.min(0.95, Math.max(0.06, L + amount))
+  const [r, g, bl] = oklabToRgb(nL, a, b)
+  return toHex(r, g, bl)
+}
+
 /** WCAG relative luminance of a hex colour, or `null` if it isn't one. */
 function luminance(hex: string): number | null {
   const rgb = parseHex(hex)

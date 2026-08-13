@@ -48,6 +48,7 @@ self.onmessage = (event: MessageEvent<MainToWorker>): void => {
           message.unloaded,
           message.keep,
           message.hide,
+          message.weights,
         )
         break
       case 'options':

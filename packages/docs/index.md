@@ -3,7 +3,7 @@ layout: home
 # SEO <title> for the home page (the hero above is separate). `titleTemplate:
 # false` keeps VitePress from appending "| Klad" on top of a title that already
 # starts with the name.
-title: Klad — Canvas tree engine for very large hierarchies
+title: Klad — Canvas org chart and tree engine for Vue, React and JS
 titleTemplate: false
 
 hero:
@@ -32,6 +32,55 @@ features:
   - title: 🧩 Your components on top
     details: A Vue slot, a React render prop, or plain DOM. Real components mount only for the nodes on screen and zoomed in far enough to read, pooled and reused as you move.
 ---
+
+<script setup>
+// `withBase`, because these are raw `src` values and not VitePress links: the
+// router prefixes `base` onto its own links, and nothing prefixes it onto
+// these. The playground is a separate Vite app copied in under `public/`, not
+// one of VitePress's own routes.
+import { ref } from 'vue'
+import { withBase } from 'vitepress'
+
+// The claim this page used to make in prose — one library, several shapes —
+// made instead by the thing itself. Each tab is a playground example in embed
+// mode; switching one swaps the frame's `src`, and the app's bundle is already
+// cached by then.
+//
+// The radial only earns its tab because it opens two generations deep rather
+// than all four: its names run OUTWARD along their own spoke, so every extra
+// ring puts another word on the same line, and a fitted wheel four deep has
+// them running into each other. Closed, it is legible and the branches are an
+// invitation — see the example's `collapsedByDefault`.
+const demos = [
+  { id: 'slots', label: 'Org chart', alt: 'An org chart of coloured cards you can pan, zoom and expand' },
+  { id: 'file-tree', label: 'File tree', alt: 'A tree as indented file-explorer rows' },
+  { id: 'radial', label: 'Radial', alt: 'A tree with the root at the centre and generations as rings' },
+  { id: 'sunburst', label: 'Sunburst', alt: 'A tree as a wheel of nested arc segments you can drill into' },
+]
+const current = ref(demos[0])
+</script>
+
+<div class="home-demo">
+  <div class="home-demo-tabs" role="tablist" aria-label="Layout">
+    <button
+      v-for="demo in demos"
+      :key="demo.id"
+      role="tab"
+      type="button"
+      :class="{ 'is-active': demo.id === current.id }"
+      :aria-selected="demo.id === current.id"
+      @click="current = demo"
+    >{{ demo.label }}</button>
+  </div>
+  <div class="home-demo-frame">
+    <iframe
+      :key="current.id"
+      :src="withBase(`/playground/?example=${current.id}&embed=1`)"
+      :title="current.alt"
+      loading="lazy"
+    />
+  </div>
+</div>
 
 ## Quick Start
 
@@ -112,34 +161,6 @@ export function Chart() {
 Pan, zoom, click, keyboard navigation. `data` is flat — `{ id, parentId?, ...yours }` —
 so the array from your API is usually already the right shape.
 
-## Same Data, Four Shapes
-
-An org chart is one thing a tree can look like. Add `layout` and the same array
-draws as something else entirely — no second data structure, no second library.
-
-```ts
-createKlad(el, { data, layout: 'file' }) // indented rows, folder guide lines
-createKlad(el, { data, layout: 'radial' }) // root at the centre, generations as rings
-createKlad(el, { data, layout: 'sunburst' }) // nested arcs you can drill into
-```
-
-File explorers, ASTs, taxonomies, dependency trees, family trees, disk usage —
-all the same shape of problem, and the reason this is a tree engine rather than
-an org chart component. Try them in the
-<a href="/playground/" target="_self">playground</a>.
-
-<!-- A raw anchor, not a markdown link. The playground is a separate Vite app
-     copied in under `public/`, not one of VitePress's own routes — so a
-     markdown link hands it to the SPA router, which finds no page for it and
-     renders a 404. The nav entry has carried `target: '_self'` for this reason
-     since it was added; this one did not. -->
-
-## One Thing to Know
-
-`nodeSize` is declared, not measured. Layout runs in a Web Worker, where there
-is no element to call `getBoundingClientRect()` on — that is what buys the
-scale. Your content fits the box you declare — more in [Sizing](/guide/sizing).
-
 <p class="home-support">
   If you like this library, please consider giving it a
   <a href="https://github.com/n1crack/klad" target="_blank" rel="noopener">star on GitHub</a>
@@ -147,6 +168,81 @@ scale. Your content fits the box you declare — more in [Sizing](/guide/sizing)
 </p>
 
 <style>
+/*
+ * The live demo. An iframe rather than a component built into this theme: the
+ * playground is already a built app served from under this site, so framing it
+ * means the example, its cards' CSS and its data have ONE implementation —
+ * and a screenshot of a chart engine is the one thing that cannot show what it
+ * does.
+ *
+ * A fixed height rather than an aspect ratio: what the frame is worth showing
+ * is the top few levels at a readable zoom, and that is a number of pixels,
+ * not a proportion of the width. `lazy` on the iframe — it is below the fold
+ * on most screens, and it starts a Web Worker.
+ */
+.vp-doc .home-demo {
+  margin: 2.5rem 0 3rem;
+  border-radius: 14px;
+  border: 1px solid var(--vp-c-divider);
+  overflow: hidden;
+  background: var(--vp-c-bg-soft);
+}
+.vp-doc .home-demo-frame {
+  height: 500px;
+}
+.vp-doc .home-demo iframe {
+  display: block;
+  width: 100%;
+  height: 100%;
+  border: 0;
+}
+@media (max-width: 640px) {
+  .vp-doc .home-demo-frame {
+    height: 340px;
+  }
+}
+
+/* A strip of tabs, not a picker: four is few enough to show all of them, and
+   the whole point is that the reader can see there are four. Scrollable rather
+   than wrapped on a narrow screen, so the frame below never moves. */
+.vp-doc .home-demo-tabs {
+  display: flex;
+  gap: 0.25rem;
+  padding: 0.5rem 0.5rem 0;
+  overflow-x: auto;
+  scrollbar-width: none;
+  border-bottom: 1px solid var(--vp-c-divider);
+}
+.vp-doc .home-demo-tabs::-webkit-scrollbar {
+  display: none;
+}
+.vp-doc .home-demo-tabs button {
+  flex: 0 0 auto;
+  padding: 0.45rem 0.85rem;
+  border: 0;
+  border-radius: 8px 8px 0 0;
+  background: transparent;
+  color: var(--vp-c-text-2);
+  font-size: 0.85rem;
+  font-weight: 500;
+  line-height: 1.4;
+  cursor: pointer;
+  transition:
+    color 140ms ease,
+    background 140ms ease;
+}
+.vp-doc .home-demo-tabs button:hover {
+  color: var(--vp-c-text-1);
+  background: var(--vp-c-default-soft);
+}
+/* The active tab is joined to the frame under it — the border it sits on is
+   covered by its own background, so the strip reads as a folder tab and not as
+   a button that happens to be darker. */
+.vp-doc .home-demo-tabs button.is-active {
+  color: var(--vp-c-brand-1);
+  background: var(--vp-c-bg);
+  box-shadow: 0 1px 0 0 var(--vp-c-bg);
+}
 /* Scoped under .vp-doc so it out-specifies VitePress's own `.vp-doc p` margin
    rule — otherwise `margin-left/right: 0` from that rule wins and the box sticks
    to the left instead of centring. */

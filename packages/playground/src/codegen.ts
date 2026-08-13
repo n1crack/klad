@@ -104,6 +104,11 @@ function optionsOf(snapshot: ConfigSnapshot): [key: string, value: unknown][] {
     'maxRings',
     'centre',
     'colourBranches',
+    // Two more of the same kind: a wheel pasted without its lock pans away
+    // from centre on the first drag, and without its floor zooms down to a
+    // dot — neither of which is the chart the reader is looking at.
+    'lockPan',
+    'zoomLimits',
     'orientation',
     'rtl',
     'collapsedByDefault',

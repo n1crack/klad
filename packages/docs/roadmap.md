@@ -224,6 +224,52 @@ just an odd-looking gap.
 The playground has a **Flowing edges** example, because an animated edge is the
 sort of thing a screenshot cannot argue for.
 
+## 1.10 — released: the toggle holds still
+
+Opening or closing a node moved the camera. Not by design — a click that
+drifted a pixel, a second click while the first was still animating, or a drag
+that started during the transition each took the node you were watching off the
+screen, and they compounded. The rule now is one sentence: **while a node is
+opening or closing, that node stays where you clicked it**, and nothing — pan,
+fling, a second click — outranks it.
+
+- A click resolves against what is **on screen** rather than the layout the
+  chart is heading for, so a card you aim at mid-animation is the card that
+  toggles.
+- Children caught mid-reveal or mid-collapse are carried at the size and place
+  they were last drawn at, instead of snapping to full size or onto their
+  parent's box.
+- Children grow out of the tip below their own parent, at every depth.
+- Siblings pack the same distance apart whichever one of them has children.
+- The two animation phases overlap further, so an open reads as one move rather
+  than two (450ms → 390ms).
+
+1.9 carried no features: it repaired the published type declarations, and added
+a check that reads them the way a consumer does.
+
+## 1.11 — a chart you would put on a home page
+
+Everything here is a token, and every one of them defaults to what the chart
+already did. It is one release's worth of the difference between a diagram that
+is correct and one somebody wants to look at.
+
+- **`edgeBranchColours`** — a connector in the colour of the node it leads to,
+  taken from that node's own fill rather than a branch base, so a branch reads
+  as one family shading away from the root. One stroked path per colour.
+- **`edgeHighlightGlow`** and **`edgeHighlightRecolours`** — a halo under the
+  lit route, in screen pixels; and the choice not to repaint that route, for a
+  chart whose connectors already say which branch they are. Lighting one now
+  fades in and out rather than switching.
+- **`gridDot`, `gridSpacing`, `gridDotSize`** — a dot grid, drawn on the canvas
+  and not behind it, so it cannot lag a frame behind the diagram on a pan.
+- **`nodeBranchColours`** and **`hiddenMark`** — two things to turn **off**,
+  both for the same kind of chart: one whose nodes are its own DOM cards and
+  which says "there is more inside" in its own way.
+
+The playground's **Lit branches** example is built out of exactly these, and it
+is the chart on this site's home page — live, not a picture. A hover there
+lights the whole route back to the root.
+
 ## 2.0 — beyond trees
 
 Family trees, dependency graphs and git histories all give a node several ways

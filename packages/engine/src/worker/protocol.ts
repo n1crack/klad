@@ -150,6 +150,7 @@ export type MainToWorkerMessage =
        * transition: the worker renders after every message. */
       keep: Uint8Array | null
       hide: Uint8Array | null
+      weights: Float64Array | null
     }
   | { t: 'options'; options: Partial<EngineOptions> }
   | { t: 'camera'; camera: Camera }

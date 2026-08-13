@@ -21,6 +21,9 @@ export interface ChartHost {
     unloaded?: Uint8Array | null,
     keep?: Uint8Array | null,
     hide?: Uint8Array | null,
+    /** Per-node weights for the layouts that divide a fixed extent between
+     * siblings — see `ChartEngine.setData`. */
+    weights?: Float64Array | null,
   ): void
   setOptions(partial: Partial<EngineOptions>): void
   /** See `ChartEngine.setOpen`'s docblock — `ring` defaults to `true` here too. */
@@ -323,9 +326,9 @@ export function createChartHost(canvas: HTMLCanvasElement, theme: Theme, preferW
       return worker !== null
     },
 
-    setData(tree, sizes, labels, open, unloaded = null, keep = null, hide = null) {
-      engine?.setData(tree, sizes, labels, open, unloaded, keep, hide)
-      post({ t: 'data', tree, sizes, labels, open, unloaded, keep, hide })
+    setData(tree, sizes, labels, open, unloaded = null, keep = null, hide = null, weights = null) {
+      engine?.setData(tree, sizes, labels, open, unloaded, keep, hide, weights)
+      post({ t: 'data', tree, sizes, labels, open, unloaded, keep, hide, weights })
     },
     setOptions(partial) {
       engine?.setOptions(partial)

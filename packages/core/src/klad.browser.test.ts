@@ -6466,3 +6466,174 @@ describe('a connector that flows', () => {
     chart.destroy()
   })
 })
+
+describe('lockPan', () => {
+  /**
+   * The lock's whole contract: a drag that pans an unlocked chart moves a
+   * locked one not at all, and the zoom it exists to protect still works.
+   */
+  const drag = (from: number, to: number): void => {
+    const canvas = document.querySelector('canvas')!
+    canvas.dispatchEvent(new PointerEvent('pointerdown', { clientX: from, clientY: 300, bubbles: true }))
+    window.dispatchEvent(new PointerEvent('pointermove', { clientX: to, clientY: 300, bubbles: true }))
+    window.dispatchEvent(new PointerEvent('pointerup', { clientX: to, clientY: 300, bubbles: true }))
+  }
+
+  it('holds the camera through a drag that would otherwise pan', async () => {
+    const chart = make({ lockPan: true })
+    await settle()
+    const before = chart.api.getState().camera
+    drag(200, 520)
+    await nextFrame()
+    const after = chart.api.getState().camera
+    expect(after.x).toBeCloseTo(before.x, 5)
+    expect(after.y).toBeCloseTo(before.y, 5)
+    chart.destroy()
+  })
+
+  it('keeps the chart centred while zooming', async () => {
+    const chart = make({ lockPan: true })
+    await settle()
+    const before = chart.api.getState().camera
+    chart.api.zoomIn()
+    await settle()
+    const after = chart.api.getState().camera
+    expect(after.k).toBeGreaterThan(before.k)
+    // Centred means the content's own middle lands on the viewport's middle,
+    // whatever the zoom did. The host is 800x600 (see `host()`).
+    const b = chart.api.getState().bounds
+    expect(((b.minX + b.maxX) / 2) * after.k + after.x).toBeCloseTo(400, 3)
+    expect(((b.minY + b.maxY) / 2) * after.k + after.y).toBeCloseTo(300, 3)
+    chart.destroy()
+  })
+
+  it('centres on the spot when the lock is turned on', async () => {
+    const chart = make()
+    await settle()
+    drag(200, 520)
+    await nextFrame()
+    chart.api.setLockPan(true)
+    await nextFrame()
+    const after = chart.api.getState().camera
+    const b = chart.api.getState().bounds
+    expect(((b.minX + b.maxX) / 2) * after.k + after.x).toBeCloseTo(400, 3)
+    chart.destroy()
+  })
+})
+
+describe('weight', () => {
+  const SIZED = [
+    { id: 'root' },
+    { id: 'big', parentId: 'root', kb: 60 },
+    { id: 'small', parentId: 'root', kb: 30 },
+    { id: 'tiny', parentId: 'root', kb: 10 },
+  ]
+
+  /** The drawn arc of one node, from the SVG export — the one place a test can
+   * read the wheel's own geometry without reaching into the worker. */
+  const arcs = (chart: ReturnType<typeof createKlad>): string => chart.api.toSVG()
+
+  it('falls back to counting when nothing is measured, rather than drawing nothing', async () => {
+    // A `weight` wired to a field the data does not have. Every leaf comes
+    // back zero, and the honest degradation is the unweighted wheel — not an
+    // empty one, and not a per-leaf default of `1`, which would be an
+    // arbitrary quantity in somebody else's units the moment ONE row did have
+    // a size.
+    const unmeasured = createKlad(host(), {
+      data: SIZED,
+      nodeSize: { w: 40, h: 40 },
+      layout: 'sunburst',
+      worker: false,
+      weight: (item) => item.notAField as number,
+    })
+    await nextFrame()
+    await settle()
+    const fallback = unmeasured.api.toSVG()
+    unmeasured.destroy()
+
+    const plain = createKlad(host(), {
+      data: SIZED,
+      nodeSize: { w: 40, h: 40 },
+      layout: 'sunburst',
+      worker: false,
+    })
+    await nextFrame()
+    await settle()
+    expect(fallback).toEqual(plain.api.toSVG())
+    plain.destroy()
+  })
+
+  it('reaches the layout at all — a weighted wheel is not an unweighted one', async () => {
+    // The zero/negative semantics have their own tests against the layout
+    // (packages/engine); what only this layer can go wrong at is the wiring,
+    // so this asserts the arcs actually change.
+    const plain = createKlad(host(), {
+      data: SIZED,
+      nodeSize: { w: 40, h: 40 },
+      layout: 'sunburst',
+      worker: false,
+    })
+    await nextFrame()
+    await settle()
+    const even = arcs(plain)
+    plain.destroy()
+
+    const weighted = createKlad(host(), {
+      data: SIZED,
+      nodeSize: { w: 40, h: 40 },
+      layout: 'sunburst',
+      worker: false,
+      weight: (item) => Number(item.kb ?? 0),
+    })
+    await nextFrame()
+    await settle()
+    expect(arcs(weighted)).not.toEqual(even)
+    weighted.destroy()
+  })
+})
+
+describe('lockPan and the opening view', () => {
+  it('still frames the whole chart on mount', async () => {
+    // The lock throws away x/y, never k — so the opening fit's ZOOM has to
+    // survive it. It did not: a locked radial came up at 1x with its centre
+    // off the bottom of the frame, because the re-centre ran against bounds
+    // from a layout that was no longer the one being drawn.
+    const chart = make({ layout: 'radial', lockPan: true, nodeSize: { w: 18, h: 18 } })
+    await settle()
+    const { camera, bounds } = chart.api.getState()
+    const width = (bounds.maxX - bounds.minX) * camera.k
+    const height = (bounds.maxY - bounds.minY) * camera.k
+    expect(width).toBeLessThanOrEqual(800)
+    expect(height).toBeLessThanOrEqual(600)
+    // …and centred, which is the lock's own job.
+    expect(((bounds.minX + bounds.maxX) / 2) * camera.k + camera.x).toBeCloseTo(400, 3)
+    expect(((bounds.minY + bounds.maxY) / 2) * camera.k + camera.y).toBeCloseTo(300, 3)
+    chart.destroy()
+  })
+
+  it('survives the layout being retuned under it', async () => {
+    // What the playground actually does on mount: apply the layout preset's
+    // own step, with a fit. The lock must not eat that fit's zoom.
+    const chart = make({
+      layout: 'radial',
+      lockPan: true,
+      nodeSize: { w: 18, h: 18 },
+      // The floor the showcase sets. A wheel that needs LESS than this to fit
+      // is exactly the case `recomputeLimits` lowers it for.
+      zoomLimits: { minK: 0.3, maxK: 6 },
+      data: Array.from({ length: 28 }, (_, i) =>
+        i === 0
+          ? { id: 'n0', name: 'root' }
+          : { id: `n${i}`, parentId: `n${Math.floor((i - 1) / 3)}`, name: `n${i}` },
+      ),
+    })
+    await settle()
+    chart.api.setLayoutOptions({ layoutStep: 190 }, { fit: true })
+    await settle()
+    await settle()
+    const { camera, bounds } = chart.api.getState()
+    expect((bounds.maxX - bounds.minX) * camera.k).toBeLessThanOrEqual(800)
+    expect(((bounds.minY + bounds.maxY) / 2) * camera.k + camera.y).toBeCloseTo(300, 3)
+    chart.destroy()
+  })
+})

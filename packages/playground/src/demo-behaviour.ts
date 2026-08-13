@@ -23,6 +23,10 @@ import { accordionProgress, centreControlFor, type Example, type LayoutName } fr
  * the event however it already does.
  */
 
+/** How many of a roll-up's members a click uncovers. Small enough that the
+ * ring stays readable after one, big enough that it is visibly progress. */
+const UNCOVER_AT_A_TIME = 6
+
 /**
  * The sunburst's drill-down, as a pure decision: given the node that was
  * clicked, what should the centre become?
@@ -39,7 +43,7 @@ import { accordionProgress, centreControlFor, type Example, type LayoutName } fr
 export function createDrill(
   example: Example,
   layout: LayoutName,
-): (clickedId: string, currentCentre: string | null) => string | null | undefined {
+): (clickedId: string, currentCentre: string | null, api: KladApi) => string | null | undefined {
   if (!centreControlFor(layout)) return () => undefined
 
   const parentOf = new Map<string, string | null>()
@@ -48,7 +52,25 @@ export function createDrill(
   }
   const rootId = example.data[0] === undefined ? null : String(example.data[0].id)
 
-  return (clickedId, currentCentre) => {
+  return (clickedId, currentCentre, api) => {
+    // An aggregate node stands for the siblings too small to draw. It has no
+    // children of its own, so drilling into it centres on a node with nothing
+    // inside and leaves a viewer looking at one flat disc.
+    //
+    // Nor does it lift the cap: a folder with four hundred tiny files would
+    // come back as four hundred slivers, which is the state the roll-up exists
+    // to prevent. A click uncovers the LARGEST few and leaves the rest rolled
+    // up, so the tail opens a handful at a time and every click is an
+    // improvement on the picture rather than a gamble on it.
+    const rolled = api.overflow(clickedId)
+    if (rolled !== null) {
+      const next = [...rolled.items]
+        .sort((a, b) => Number(b.sizeKb ?? 0) - Number(a.sizeKb ?? 0))
+        .slice(0, UNCOVER_AT_A_TIME)
+        .map((item) => String(item.id))
+      api.reveal(next)
+      return undefined
+    }
     const centre = currentCentre ?? rootId
     if (clickedId !== centre) return clickedId
     const parent = parentOf.get(clickedId) ?? null
@@ -83,6 +105,58 @@ export function goTo(api: KladApi, id: string): void {
  * never relayouts per frame. An app animating node sizes on a large tree
  * should expect the same distinction to matter.
  */
+/**
+ * Lights the route from the root to whatever the pointer is over.
+ *
+ * `pathTo` gives the chain of ids, `highlight` lights it, and the chart draws
+ * the connectors along it in its own highlight ink — thicker, and with the
+ * halo this example's theme asks for. That is the whole of it: no per-node
+ * bookkeeping, no hover class on a card, and nothing to undo, because the next
+ * call replaces the set and a `null` clears it.
+ *
+ * Returns a handler rather than subscribing itself, so each demo can attach it
+ * the way its own stack does and drop it with the rest of its listeners.
+ */
+export function createHoverTrail(
+  apiOf: () => KladApi | null | undefined,
+  example: Example,
+): (event: { id: string | null }) => void {
+  return (event) => {
+    reportHover(event.id)
+    // `'node'` lights only what the pointer is actually on. On a wheel the
+    // path to the root is the ring stack the segment already sits inside, so
+    // lighting it says nothing the picture was not saying — what a viewer
+    // wants confirmed there is "this one, the one I am pointing at".
+    const mode = example.hoverTrail === true ? 'path' : (example.hoverHighlight ?? null)
+    if (mode === null) return
+    const api = apiOf()
+    if (api === null || api === undefined) return
+    if (event.id === null) {
+      api.highlight(null)
+      return
+    }
+    api.highlight(mode === 'path' ? api.pathTo(event.id) : [event.id])
+  }
+}
+
+/**
+ * Who to tell when the pointer moves onto or off a node.
+ *
+ * A single module-level slot rather than a per-demo callback prop: all three
+ * demos already call `createHoverTrail`, and threading a fourth handler
+ * through each adapter's own idiom to reach the one panel in `main.ts` would
+ * be three edits to say one thing. Same shape as `setWorkingSetHook`.
+ */
+let hoverReporter: ((id: string | null) => void) | null = null
+
+export function setHoverReporter(report: ((id: string | null) => void) | null): void {
+  hoverReporter = report
+}
+
+function reportHover(id: string | null): void {
+  hoverReporter?.(id)
+}
+
 export function createAccordionSlide(
   apiOf: () => KladApi | null | undefined,
   example: Example,

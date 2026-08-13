@@ -523,6 +523,48 @@ export interface Options {
    */
   minimap?: boolean | MinimapOptions
   zoomLimits?: ZoomLimits
+  /**
+   * Hold the chart centred and refuse to pan. Zoom still works, anchored on
+   * the middle of the viewport rather than on the pointer.
+   *
+   * For a diagram that IS its bounds — a sunburst, a radial — where panning
+   * only ever moves a disc that was already fully on screen off the side of
+   * it, and where the camera coming to rest somewhere arbitrary is the one
+   * state the design has no answer for. A tiered chart wants the opposite,
+   * which is why this is off by default.
+   *
+   * Not a substitute for `zoomLimits`: a lock keeps the wheel centred, and a
+   * floor keeps it from being zoomed down to a dot. Most locked charts want
+   * both.
+   */
+  lockPan?: boolean
+  /**
+   * What a node is WORTH, for the layouts that divide a fixed extent between
+   * siblings. The sunburst, today: with no weight every leaf takes an equal
+   * slice of its parent's arc, and with one the arcs are proportional — which
+   * is what turns a wheel of a file tree into a picture of where the disk
+   * went.
+   *
+   * Read on the LEAVES. A parent's share is the sum of what is under it,
+   * whatever this returns for the parent itself, because that is the only
+   * definition under which a ring is exactly the union of the ring outside it
+   * — and it means a folder whose recorded size disagrees with its contents
+   * cannot make its own children overflow their arc.
+   *
+   * ```ts
+   * createKlad(el, { data, layout: 'sunburst', weight: (item) => Number(item.sizeKb ?? 0) })
+   * ```
+   *
+   * Zero, negative and non-finite all count as zero: a leaf worth nothing gets
+   * no arc, which is the honest picture. There is no per-leaf default of `1` —
+   * `1` is only neutral against leaf COUNTS, and against real weights it is an
+   * arbitrary quantity in somebody else's units.
+   *
+   * A tree where NOTHING is worth anything falls back to counting leaves, so
+   * a `weight` that turns out to have no data behind it degrades to the
+   * unweighted wheel rather than to an empty one.
+   */
+  weight?: (item: NodeData) => number
   worker?: boolean
   renderNode?: (element: HTMLElement, context: NodeContext) => void
   /**
@@ -985,6 +1027,16 @@ export interface KladApi {
    */
   showMore(id: string): void
   /**
+   * What an aggregate node stands for, or `null` if `id` is an ordinary node
+   * (or nothing at all).
+   *
+   * The same object `NodeContext.overflow` carries, reachable without
+   * rendering one: a canvas-only chart has no `renderNode` to read it from,
+   * and "what is inside this +42" is a fair question to be able to ask about a
+   * sector you can see.
+   */
+  overflow(id: string): { parentId: string; count: number; ids: string[]; items: NodeData[] } | null
+  /**
    * Brings specific children back into view past a cap, without lifting it.
    *
    * This is what a picker on an aggregate node calls — `overflow.ids` lists
@@ -1218,6 +1270,12 @@ export interface KladApi {
    */
   setRing(enabled: boolean): void
   /**
+   * Turns `Options.lockPan` on or off after construction. Locking centres the
+   * chart on the spot rather than waiting for the next camera change, so the
+   * button that calls this can be a toggle and not a "lock, then fit".
+   */
+  setLockPan(locked: boolean): void
+  /**
    * Changes how the tree is ARRANGED, after construction — the shape itself,
    * and every knob that tunes it.
    *
@@ -1361,6 +1419,8 @@ export function createKlad(host: HTMLElement, options: Options): KladInstance {
   // live theme update needs. See `api.setTheme` for the merge-and-repaint
   // side of this.
   let theme = resolveTheme(options.theme)
+  /** `Options.lockPan`, live — see `constrainCamera` and `api.setLockPan`. */
+  let panLocked = options.lockPan === true
   const configuredLimits = options.zoomLimits ?? DEFAULT_LIMITS
 
   /**
@@ -1649,6 +1709,12 @@ export function createKlad(host: HTMLElement, options: Options): KladInstance {
 
       const rest = children.filter((child) => !shown.has(String(child.id)))
       if (rest.length === 0) continue
+      // One left over is not worth hiding. The aggregate takes exactly the
+      // room the child would have taken and says strictly less — "+1" where
+      // the name was — and it costs a click to get back what was already
+      // there. So the cap gives that one child a pass rather than inventing a
+      // node to stand for it.
+      if (rest.length === 1) continue
       const ids = rest.map((child) => String(child.id))
       for (const id of ids) hidden.add(id)
       const moreId = MORE_ID + parentId
@@ -1875,12 +1941,27 @@ export function createKlad(host: HTMLElement, options: Options): KladInstance {
   const applyData = (emitWarnings = true): void => {
     const sizes = new Float64Array(tree.count * 2)
     const labels: string[] = Array.from({ length: tree.count })
+    // Only built when there is a `weight` to ask, so a chart that never heard
+    // of it allocates nothing per relayout.
+    const weightOf = currentOptions.weight
+    const weights = weightOf === undefined ? null : new Float64Array(tree.count)
     for (let i = 0; i < tree.count; i++) {
       const item = itemFor(i)
       const size = sizeOf(item, i)
       sizes[i * 2] = size.w
       sizes[i * 2 + 1] = size.h
       labels[i] = labelOf(item, i)
+      if (weights !== null) {
+        const w = weightOf!(item)
+        // Anything that is not a usable number is zero. Deliberately NOT one:
+        // `1` is only neutral against leaf counts, and against real weights it
+        // is an arbitrary quantity in somebody else's units — three unmeasured
+        // files worth `1` each would outweigh a measured sibling of `0.5`. The
+        // honest reading of "no information" here is "nothing to add", and the
+        // case where that would erase the whole chart — nothing measured
+        // anywhere — is caught by the layout's own fall back to counting.
+        weights[i] = Number.isFinite(w) && w > 0 ? w : 0
+      }
     }
     // Options FIRST, then the data. The order matters on the very first pass:
     // each of these relayouts, and whichever runs last is the geometry the
@@ -1954,7 +2035,7 @@ export function createKlad(host: HTMLElement, options: Options): KladInstance {
     // the only honest answer — the alternative is framing an arbitrary branch.
     if (isolatedIndex === -1) isolatedId = null
     if (isolatedIndex !== wasIsolated) chartHost.setIsolate(isolatedIndex)
-    chartHost.setData(toWireTree(tree), sizes, labels, open, unloaded, filterKeep, overflowHide)
+    chartHost.setData(toWireTree(tree), sizes, labels, open, unloaded, filterKeep, overflowHide, weights)
     // Deferred: applyData() runs synchronously inside createKlad, before the
     // caller has had a chance to attach a 'warning' listener via `on()`. Emitting
     // here directly would drop every warning raised on the initial load. Queuing
@@ -3445,10 +3526,21 @@ export function createKlad(host: HTMLElement, options: Options): KladInstance {
 
     const sizes: Float64Array = new Float64Array(n * 2)
     const labels: string[] = Array.from({ length: n })
+    // The export lays the tree out again from scratch rather than reading the
+    // engine's geometry, so every per-node input the live layout gets has to
+    // be rebuilt here too — `weight` included. Without it an exported wheel
+    // divided its arcs by leaf count while the one on screen divided them by
+    // size, which is a different picture of the same data.
+    const weightOf = currentOptions.weight
+    const weights = weightOf === undefined ? null : new Float64Array(n)
     for (let i = 0; i < n; i++) {
       const src = visible.toSource[i]!
       const item = itemFor(src)
       const size = sizeOf(item, src)
+      if (weights !== null) {
+        const w = weightOf!(item)
+        weights[i] = Number.isFinite(w) && w > 0 ? w : 0
+      }
       // Transposed for a horizontal tidy tree, exactly as the engine does —
       // the layout always works in a top-down space and `applyOrientation`
       // swaps back. Without this an `lr` export drew every card rotated.
@@ -3470,6 +3562,7 @@ export function createKlad(host: HTMLElement, options: Options): KladInstance {
       rowGap: currentOptions.rowGap,
       focus: centre === -1 ? -1 : (visible.fromSource[centre] ?? -1),
       maxRings: currentOptions.maxRings,
+      weights,
     })
     const exportBounds = isPolarLayout(layoutName)
       ? result.bounds
@@ -3841,6 +3934,18 @@ export function createKlad(host: HTMLElement, options: Options): KladInstance {
   let findState: { ids: string[]; at: number } | null = null
   /** Ids of the selected nodes, in the order they were given. */
   let selectedIds: string[] = []
+  /**
+   * When the engine's highlight fade is due to finish — see its
+   * `HIGHLIGHT_FADE_MS`. The fade is a pure function of the engine's clock, so
+   * the only thing this layer owes it is frames: without them a highlight
+   * cleared on a still chart would freeze halfway out, exactly the way the
+   * ring did before `ringActive` existed.
+   */
+  let highlightFadeUntil = 0
+  /** Mirrors the attribute written on the overlay root while the layout moves
+   * — see its use in `scheduleFrame`. Held so the DOM is only touched when the
+   * answer actually changes. */
+  let overlayMoving = false
   /** Set when the next relayout is a different TREE — see the minimap call. */
   let minimapNeedsRefit = false
 
@@ -3931,11 +4036,21 @@ export function createKlad(host: HTMLElement, options: Options): KladInstance {
         // Deliberately NOT `animateTo`: the opening camera must appear already
         // positioned. Tweening in from an arbitrary starting camera on load
         // would read as a glitch, not a courtesy.
-        camera = openingCamera()
+        camera = constrainCamera(openingCamera())
         chartHost.setCamera(camera)
         drawn = await chartHost.render(now)
         boxes = chartHost.boxes
         refreshRenderBoxBySource()
+      }
+      // A lock is a promise about where the diagram is, not about what the
+      // pointer may do, so it has to survive the diagram CHANGING size: a
+      // sunburst drilled into is a different disc, and one held at the
+      // previous disc's centre sits off to one side. Cheap enough to check
+      // every frame — `constrainCamera` is a rect read and two multiplies —
+      // and only applied when it actually moves something.
+      if (panLocked) {
+        const centred = constrainCamera(camera)
+        if (centred.x !== camera.x || centred.y !== camera.y) applyCamera(camera)
       }
       // Runs after the relayout above, so it sees the boxes the toggle actually
       // produced rather than stale ones from before it.
@@ -4141,7 +4256,26 @@ export function createKlad(host: HTMLElement, options: Options): KladInstance {
       // the worker to report back per frame, and the first is one scan of a
       // mask this layer already holds. A marked edge inside a collapsed branch
       // costs nothing; one scrolled just off the edge still ticks.
-      if (chartHost.transitioning || chartHost.ringActive || anyFlowVisible()) {
+      // A CSS hook for the host's own card styles: the layout is moving, so a
+      // pointer standing still is passed over by one node after another and
+      // `:hover` fires on each of them in turn. Nothing here can stop that —
+      // it is the browser's own hit testing — but a design can decline to
+      // ANIMATE on it, which is the difference between a card lighting up as
+      // it goes by and a run of cards strobing. Left as an attribute rather
+      // than `pointer-events: none`, so a card's buttons keep working through
+      // a transition.
+      const moving = chartHost.transitioning
+      if (moving !== overlayMoving) {
+        overlayMoving = moving
+        if (moving) overlayRoot.setAttribute('data-klad-moving', '')
+        else overlayRoot.removeAttribute('data-klad-moving')
+      }
+      if (
+        chartHost.transitioning ||
+        chartHost.ringActive ||
+        performance.now() < highlightFadeUntil ||
+        anyFlowVisible()
+      ) {
         scheduleFrame()
       }
     })
@@ -4180,9 +4314,31 @@ export function createKlad(host: HTMLElement, options: Options): KladInstance {
     return true
   }
 
+  /**
+   * `lockPan`, applied to one camera value.
+   *
+   * The whole option is this function plus the fact that every camera change
+   * in the chart goes through `applyCamera` — a drag, a fling, a wheel, a
+   * pinch, the keyboard, the minimap, `fit`, a toggle's anchor. Rather than
+   * teach each of those to behave, the lock takes the `k` they asked for and
+   * throws their `x`/`y` away, so the content stays centred by construction.
+   *
+   * That is also why zooming under a lock is anchored on the middle of the
+   * viewport and not on the pointer: `zoomAt` solves for a translation, and a
+   * translation is exactly what is being discarded.
+   */
+  const constrainCamera = (next: Camera): Camera => {
+    if (!panLocked) return next
+    const rect = host.getBoundingClientRect()
+    // Nothing laid out yet — an empty `bounds` would centre on the origin,
+    // which is a worse guess than leaving the camera where it is.
+    if (bounds.maxX <= bounds.minX && bounds.maxY <= bounds.minY) return next
+    return centreOn(next, bounds, { width: rect.width, height: rect.height })
+  }
+
   /** Applies a camera value immediately: no easing, no animation bookkeeping. */
   const applyCamera = (next: Camera): void => {
-    camera = next
+    camera = constrainCamera(next)
     chartHost.setCamera(camera)
     emit('viewportChange', { camera })
     scheduleFrame()
@@ -4800,6 +4956,14 @@ export function createKlad(host: HTMLElement, options: Options): KladInstance {
       })
     },
     onMove(screenX, screenY) {
+      // Not while the layout is moving. A toggle slides every node under a
+      // pointer that has not gone anywhere, so re-asking "what is under it"
+      // per movement hands back a different node every few frames — and
+      // anything driven off `nodeHover` (a lit route, a card state) then
+      // strobes for the length of the transition. The last answer stands until
+      // the chart settles, which is also the honest one: the viewer is
+      // pointing at what they were pointing at.
+      if (chartHost.transitioning) return
       if (destroyed) return
       const world = screenToWorld(camera, screenX, screenY)
       void chartHost.hitTest(world.x, world.y).then((index) => {
@@ -5002,6 +5166,19 @@ export function createKlad(host: HTMLElement, options: Options): KladInstance {
       // is what makes isolating feel like arriving somewhere.
       pendingFullFit = true
       scheduleFrame()
+    },
+    overflow(id) {
+      const info = overflowOf.get(id)
+      if (info === undefined) return null
+      return {
+        ...info,
+        // Ids that are no longer in the data are dropped rather than reported
+        // as holes: the caller asked what this node stands for, and a `null`
+        // in the middle of that list is not an answer to anything.
+        items: info.ids
+          .map((each) => itemById.get(each))
+          .filter((item): item is NodeData => item !== undefined),
+      }
     },
     showMore(id) {
       const info = overflowOf.get(id)
@@ -5488,6 +5665,10 @@ export function createKlad(host: HTMLElement, options: Options): KladInstance {
         const indices = ids.map((id) => tree.idToIndex.get(id)).filter((i): i is number => i !== undefined)
         chartHost.setHighlight(Uint32Array.from(indices))
       }
+      // Frames for the length of the engine's fade — see `highlightFadeUntil`.
+      // A little longer than the fade itself, so the last frame lands after it
+      // has finished rather than one short of it.
+      highlightFadeUntil = performance.now() + 240
       // No a11y refresh: highlighting does not change which nodes are expanded,
       // and the mirror rebuild is expensive enough that doing it per search would
       // be felt.
@@ -5561,6 +5742,7 @@ export function createKlad(host: HTMLElement, options: Options): KladInstance {
         // A PNG that arrives with someone else's selection outlined on it is
         // a picture of their afternoon, not of the org.
         highlight: null,
+        highlightAlpha: 1,
         selected: null,
         dragIndex: -1,
         // An export is a picture of the CHART; a drop preview is a picture of
@@ -5570,6 +5752,7 @@ export function createKlad(host: HTMLElement, options: Options): KladInstance {
         dropMode: 'into',
         dropValid: true,
         revealAlpha: null,
+        edgeAlpha: null,
         ghostBoxes: EMPTY_GHOST_BOXES,
         ghostAlpha: EMPTY_GHOST_ALPHA,
         ghostCount: 0,
@@ -5671,6 +5854,16 @@ export function createKlad(host: HTMLElement, options: Options): KladInstance {
       // loop fits once it has — the same mechanism `isolate` uses.
       if (opts?.fit === true) pendingFullFit = true
       scheduleFrame()
+    },
+    setLockPan(locked) {
+      if (locked === panLocked) return
+      panLocked = locked
+      currentOptions = { ...currentOptions, lockPan: locked }
+      // Re-applying the CURRENT camera is what re-centres it: `applyCamera`
+      // runs it through `constrainCamera`, which is now in force. Unlocking is
+      // the same call and deliberately changes nothing — the chart stays where
+      // the lock left it, which is where the viewer was looking.
+      applyCamera(camera)
     },
     setRing(enabled) {
       // Every genuine single-toggle call site reads `currentOptions.ring`
@@ -5911,6 +6104,9 @@ export function createKlad(host: HTMLElement, options: Options): KladInstance {
     },
     update(data, partial) {
       currentOptions = { ...currentOptions, ...partial, data }
+      // Mirrored into its own variable, so a `lockPan` arriving in `partial`
+      // has to be copied across — the same way `theme` is re-resolved below.
+      if (partial?.lockPan !== undefined) panLocked = partial.lockPan
       // A new dataset. What was fetched belonged to the old one — its parents
       // may not even be here any more — and keeping it would graft the
       // previous tree's branches onto this one. `refresh()` is the call that

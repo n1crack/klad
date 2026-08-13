@@ -21,6 +21,23 @@ export interface RenderContext2D {
   fillStyle: unknown
   strokeStyle: unknown
   lineWidth: number
+  /**
+   * The halo under a highlighted path — see `Theme.edgeHighlightGlow`. Widened
+   * to `unknown` for the same reason `fillStyle` is: the DOM type accepts more
+   * than a string, and these are only ever written.
+   *
+   * Both are context state that outlives the call that sets them, so the
+   * renderer clears them the moment the glow is drawn; every backend that
+   * implements this interface has to honour that or the nodes and labels
+   * drawn afterwards wear the halo too.
+   */
+  shadowColor: unknown
+  shadowBlur: number
+  /** `'butt' | 'round' | 'square'` and `'miter' | 'round' | 'bevel'`, widened
+   * for the same reason `fillStyle` is. Set once per frame for the connector
+   * passes — see the `lineCap` write in `canvas2d.ts`. */
+  lineCap: string
+  lineJoin: string
   font: string
   globalAlpha: number
   textBaseline: string
@@ -211,6 +228,13 @@ export interface Frame {
   /** 1 per highlighted node index, or null when nothing is highlighted. */
   highlight: Uint8Array | null
   /**
+   * How strongly to paint `highlight`, 0..1 — a highlight arriving or leaving
+   * is animated rather than switched (see the engine's `HIGHLIGHT_FADE_MS`).
+   * `1` is the settled state and the only value a hand-assembled frame needs
+   * to supply.
+   */
+  highlightAlpha: number
+  /**
    * 1 per SELECTED node index, or null when nothing is selected. Keyed the
    * same way as `highlight`, and separate from it for the reason
    * `theme.selectionStroke` is separate from `highlightStroke`: the two say
@@ -247,6 +271,16 @@ export interface Frame {
    * an in-progress expand carry a value below `1`.
    */
   revealAlpha: Float32Array | null
+  /**
+   * Per-EDGE opacity for `edges[0, edgeCount)`, or `null` when every connector
+   * is at full strength — which is every frame outside a reveal.
+   *
+   * A connector into a node that is arriving fades with it. Otherwise the line
+   * is at full weight from the first frame while the node at its end is still
+   * at nothing, and it reads as the connector arriving first, drawn through
+   * space where there is not yet anything to connect.
+   */
+  edgeAlpha: Float32Array | null
   /**
    * Nodes removed by an in-progress collapse, still shrinking/fading toward
    * the ancestor that swallowed them. `[x, y, w, h]` per ghost at

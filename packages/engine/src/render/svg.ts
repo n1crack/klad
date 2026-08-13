@@ -351,6 +351,10 @@ function createPathRecorder(): RenderContext2D & { data(): string } {
     fillStyle: '',
     strokeStyle: '',
     lineWidth: 0,
+    shadowColor: '',
+    shadowBlur: 0,
+    lineCap: '',
+    lineJoin: '',
     font: '',
     globalAlpha: 1,
     textBaseline: '',
@@ -519,6 +523,52 @@ export function toSVG(data: ExportData, opts: SvgExportOptions = {}): string {
       ? computeNodeFills(n, data.branchOf, data.branchDepth, theme.palette, theme.paletteOther, theme.hubFill)
       : null
 
+  /** Strips the two characters that could break out of an attribute or a
+   * `<style>` block. Everything written through it is a theme token, i.e. the
+   * consumer's own string. */
+  const css = (value: string | number): string => String(value).replace(/[<>]/g, '')
+
+  /**
+   * The connectors, as one `<path>` normally and one per COLOUR when the theme
+   * paints them by branch — the same grouping the canvas does, for the same
+   * reason (see `Theme.edgeBranchColours`), so the export keeps matching what
+   * is on screen.
+   *
+   * An inline `style` rather than a `stroke` attribute: `.e` in the stylesheet
+   * above sets a stroke, and a stylesheet rule beats a presentation attribute
+   * however specific the attribute looks. Inline style beats both.
+   */
+  const edgeParts: string[] = []
+  if (fills !== null && theme.edgeBranchColours) {
+    const byColour = new Map<string, number[]>()
+    for (let i = 0; i < n; i++) {
+      if (parent[i]! === -1) continue
+      const colour = fills[i] ?? theme.edgeStroke
+      const bucket = byColour.get(colour)
+      if (bucket === undefined) byColour.set(colour, [i])
+      else bucket.push(i)
+    }
+    for (const [colour, bucket] of byColour) {
+      const only = new Int32Array(parent.length).fill(-1)
+      for (const i of bucket) only[i] = parent[i]!
+      const path = buildEdgePath(
+        boxes,
+        only,
+        horizontal,
+        data.rtl,
+        data.edgeStyle,
+        offsetX,
+        offsetY,
+        theme.edgeCornerRadius,
+      )
+      if (path.length > 0) {
+        edgeParts.push(`<path class="e" style="stroke:${css(colour)}" d="${path}"/>`)
+      }
+    }
+  } else if (edgePath.length > 0) {
+    edgeParts.push(`<path class="e" d="${edgePath}"/>`)
+  }
+
   const radiusAttr = theme.cornerRadius > 0 ? ` rx="${fmt(theme.cornerRadius)}"` : ''
   const nodeParts: string[] = []
   if (sectors !== null) {
@@ -556,7 +606,7 @@ export function toSVG(data: ExportData, opts: SvgExportOptions = {}): string {
   // "There is more inside this" — see `Frame.hasHidden`. Emitted with the
   // nodes, before the labels, so it sits over its own segment and under the
   // text, exactly as on the canvas.
-  const hidden = data.hasHidden
+  const hidden = theme.hiddenMark ? data.hasHidden : null
   if (hidden !== null && sectors !== null) {
     for (let i = 0; i < n; i++) {
       if (hidden[i] !== 1) continue
@@ -696,8 +746,6 @@ export function toSVG(data: ExportData, opts: SvgExportOptions = {}): string {
   // theme is exactly the kind of thing that gets built from a colour picker or a
   // per-tenant row in a database. No valid colour or font shorthand contains an
   // angle bracket, so dropping them costs nothing and removes the hole.
-  const css = (value: string | number): string => String(value).replace(/[<>]/g, '')
-
   const style =
     `.n{fill:${css(theme.nodeFill)};stroke:${css(theme.nodeStroke)};stroke-width:${css(theme.nodeStrokeWidth)}}` +
     // Sectors carry their own `fill` attribute (per-branch), so the class only
@@ -712,14 +760,15 @@ export function toSVG(data: ExportData, opts: SvgExportOptions = {}): string {
     // the canvas draws a solid dot.
     `.hs{fill:none;stroke-width:1.5;opacity:0.75}` +
     `.hd{stroke:none;opacity:0.75}` +
-    `.e{fill:none;stroke:${css(theme.edgeStroke)};stroke-width:${css(theme.edgeWidth)}}` +
+    `.e{fill:none;stroke:${css(theme.edgeStroke)};stroke-width:${css(theme.edgeWidth)};` +
+    `stroke-linecap:round;stroke-linejoin:round}` +
     `.l{fill:${css(theme.labelColour)};font:${css(theme.labelFont)};dominant-baseline:middle}`
 
   return (
     `<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 ${fmt(width)} ${fmt(height)}"` +
     ` width="${fmt(width)}" height="${fmt(height)}">` +
     `<style>${style}</style>` +
-    (edgePath.length > 0 ? `<path class="e" d="${edgePath}"/>` : '') +
+    edgeParts.join('') +
     nodeParts.join('') +
     labelParts.join('') +
     `</svg>`

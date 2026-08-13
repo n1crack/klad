@@ -37,8 +37,11 @@ import {
   type Example,
   type LayoutName,
   type MinimapPosition,
+  DEPARTMENT_GLYPH,
+  SHARED_DATA,
+  slotBranchColour,
 } from './data.js'
-import { createAccordionSlide, createDrill, goTo } from './demo-behaviour.js'
+import { createAccordionSlide, createDrill, createHoverTrail, goTo } from './demo-behaviour.js'
 import type { ThemeMode } from './theme.js'
 import { openPickerFor, overflowLabel } from './overflow-card.js'
 
@@ -143,6 +146,36 @@ function renderStatus(context: NodeContext): ReactNode {
           </span>
         )}
       </div>
+    </div>
+  )
+}
+
+/**
+ * The showcase card — a stadium ("slot", as a technical drawing means it) with
+ * the branch's own colour on its leading edge. Same accent the chart paints
+ * that branch's connectors with (see `slotBranchColour`), so the card and the
+ * line arriving at it agree by construction. The hover lift is CSS; the canvas
+ * lights the route (see the `nodeHover` wiring).
+ */
+function renderSlot(context: NodeContext): ReactNode {
+  const item = context.item
+  const accent = slotBranchColour(SHARED_DATA, String(item.id))
+  const style = { '--accent': accent ?? 'var(--slot-hub)' } as CSSProperties
+  const classes = ['slot-card']
+  if (accent === null) classes.push('is-hub')
+  if (context.hasChildren) classes.push('has-children')
+  if (context.open) classes.push('is-open')
+  if (context.depth === 0) classes.push('is-root')
+  return (
+    <div className={classes.join(' ')} style={style}>
+      <span className="slot-wash" />
+      <span className="slot-icon">{DEPARTMENT_GLYPH[departmentOf(item)]}</span>
+      <div className="slot-text">
+        <span className="slot-kind">{departmentOf(item)}</span>
+        <span className="slot-role">{String(item.title ?? '')}</span>
+        <span className="slot-name">{String(item.name ?? '')}</span>
+      </div>
+      <span className="slot-more">{headcountOf(item) > 0 ? headcountOf(item) : ''}</span>
     </div>
   )
 }
@@ -383,6 +416,7 @@ const RENDERERS: Record<Exclude<Example['content'], 'none'>, (context: NodeConte
   avatar: renderAvatar,
   monogram: renderMonogram,
   status: renderStatus,
+  slot: renderSlot,
   photo: renderPhoto,
   counts: renderCounts,
   bounds: renderBounds,
@@ -558,13 +592,20 @@ export function ReactDemo({
     ({ id }: { id: string }) => {
       const api = chartRef.current?.api
       if (!api) return
-      const next = drill(id, api.getCentre())
+      const next = drill(id, api.getCentre(), api)
       if (next === undefined) return
       api.setCentre(next)
       onCentreChange?.(api.getCentre())
     },
     [drill, onCentreChange],
   )
+
+  /**
+   * The route under the pointer — shared with the other two stacks
+   * (`createHoverTrail`), delivered through React's own prop.
+   */
+  const hoverTrail = useMemo(() => createHoverTrail(() => chartRef.current?.api, example), [example])
+  const handleNodeHover = useCallback((event: { id: string | null }) => hoverTrail(event), [hoverTrail])
 
   const cardHandlers = useMemo(
     () => ({
@@ -657,6 +698,7 @@ export function ReactDemo({
         onReady={handleReady}
         onNodeDrop={handleNodeDrop}
         onNodeClick={handleNodeClick}
+        onNodeHover={handleNodeHover}
       />
     )
   }

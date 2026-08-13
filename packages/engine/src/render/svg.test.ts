@@ -70,6 +70,10 @@ function makeRecorder(): {
     fillStyle: undefined,
     strokeStyle: undefined,
     lineWidth: 0,
+    shadowColor: undefined,
+    shadowBlur: 0,
+    lineCap: '',
+    lineJoin: '',
     font: '',
     globalAlpha: 1,
     textBaseline: '',
@@ -218,12 +222,14 @@ function frameFrom(built: Built): Frame {
     horizontal: built.horizontal,
     rtl: false,
     highlight: null,
+    highlightAlpha: 1,
     selected: null,
     dragIndex: -1,
     dropIndex: -1,
     dropMode: 'into',
     dropValid: true,
     revealAlpha: null,
+    edgeAlpha: null,
     ghostBoxes: new Float64Array(0),
     ghostAlpha: new Float32Array(0),
     ghostCount: 0,
@@ -539,12 +545,14 @@ describe('edge corner radius clamps against a short connector', () => {
       branchOf: null,
       branchDepth: null,
       highlight: null,
+      highlightAlpha: 1,
       selected: null,
       dragIndex: -1,
       dropIndex: -1,
       dropMode: 'into',
       dropValid: true,
       revealAlpha: null,
+      edgeAlpha: null,
       ghostBoxes: new Float64Array(0),
       ghostAlpha: new Float32Array(0),
       ghostCount: 0,
@@ -785,5 +793,33 @@ describe('toSVG document shape', () => {
     const style = /<style>([\s\S]*?)<\/style>/.exec(svg)?.[1] ?? ''
     expect(style).not.toContain('<')
     expect(style).not.toContain('>')
+  })
+})
+
+describe('branch-coloured connectors', () => {
+  it('draws one path per colour when the theme asks, and one for everything otherwise', () => {
+    // Two branches under a root, so two colours — and the connectors are
+    // grouped by the node each one leads TO, exactly as the canvas groups
+    // them (see `Theme.edgeBranchColours`).
+    // `buildFixture`'s tree: a root with three children, two of which have
+    // children of their own — so three branches, and connectors at two depths.
+    const built = buildFixture('tb')
+    const data: ExportData = {
+      ...exportDataFrom(built),
+      branchOf: Int32Array.from([-1, 0, 1, 2, 0, 0, 1]),
+      branchDepth: Int32Array.from([0, 0, 0, 0, 1, 1, 1]),
+    }
+
+    const plain = toSVG(data, { padding: 0 })
+    expect(plain.match(/<path class="e"/g)).toHaveLength(1)
+    expect(plain).not.toContain('style="stroke:')
+
+    const coloured = toSVG(data, { padding: 0, theme: { edgeBranchColours: true } })
+    const paths = coloured.match(/<path class="e" style="stroke:[^"]+"/g) ?? []
+    // One per distinct colour, and the four connectors are spread across
+    // them rather than all landing on one.
+    expect(paths.length).toBeGreaterThan(1)
+    expect(new Set(paths).size).toBe(paths.length)
+    expect(coloured.match(/ d="/g)).toHaveLength(paths.length)
   })
 })

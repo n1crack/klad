@@ -139,6 +139,27 @@ renderNode(element, context) {
 }
 ```
 
+## While the layout moves
+
+A toggle slides every card under a pointer that has not gone anywhere, so the
+browser fires `:hover` on one card after another as they pass. Nothing can stop
+that — it is the browser's own hit testing — but a design can decline to
+_animate_ on it, which is the difference between a card lighting up as it goes
+by and a run of cards strobing.
+
+The overlay root carries `data-klad-moving` for as long as the chart animates:
+
+```css
+.klad-overlay[data-klad-moving] .card:hover {
+  /* hold whatever the hover normally does */
+  transform: none;
+  animation: none;
+}
+```
+
+An attribute rather than `pointer-events: none`, so a card's own buttons keep
+working through a transition.
+
 ## Interactive content
 
 Cards are ordinary DOM in an ordinary stacking context, so buttons, inputs and

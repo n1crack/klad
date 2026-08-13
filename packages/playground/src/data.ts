@@ -1,4 +1,11 @@
-import { DEFAULT_THEME, type LayoutName, type MinimapPosition, type Options, type Theme } from '@klad/core'
+import {
+  DEFAULT_THEME,
+  type LayoutName,
+  type MinimapPosition,
+  type NodePlace,
+  type Options,
+  type Theme,
+} from '@klad/core'
 import { baseTheme, chartTokens, silhouetteColour, type ThemeMode } from './theme.js'
 
 export type { LayoutName, MinimapPosition } from '@klad/core'
@@ -125,6 +132,14 @@ export function nodeFillDefault(mode: ThemeMode): string {
 export const BLOCK_FILL_SEED = '#e2e8f0'
 
 /**
+ * The same idea for the grid: `DEFAULT_THEME.gridDot` is `'transparent'`, so
+ * the swatch needs a value ready for the moment the box is ticked. Pitched to
+ * read as a grid and not as content — a dot that competes with the connectors
+ * makes the chart harder to read, which is the opposite of what a grid is for.
+ */
+export const GRID_DOT_SEED = '#c7cbd6'
+
+/**
  * The initial swatch value for the "Ring colour" control — the library's own
  * default (`DEFAULT_THEME.ringStroke` in packages/engine/src/render/theme.ts),
  * same convention as `nodeFillDefault` above.
@@ -154,8 +169,15 @@ export function themeFor(
   return {
     ...chartTokens(mode),
     ...LAYOUT_PRESETS[layout]!.theme,
-    ...example.options.theme,
     edgeCornerRadius,
+    // The example's own theme LAST, so an example that has an opinion about
+    // the elbow radius keeps it at mount — the slider is a control over
+    // whatever the chart starts with, not a value every example has to accept.
+    // Dragging it still wins immediately: that goes through `api.setTheme`,
+    // which merges over the live theme (see each demo's `setTheme`), and the
+    // sidebar re-reads its own position from `effectiveTheme` on every example
+    // switch, so the two never disagree about what is on screen.
+    ...example.options.theme,
   }
 }
 
@@ -235,6 +257,63 @@ export const DEPARTMENT_COLOR: Record<Department, string> = {
   Marketing: '#ea580c',
   Finance: '#0d9488',
   Support: '#db2777',
+}
+
+/**
+ * The showcase example's palette — vivid enough to carry a connector at a
+ * couple of pixels wide, and legible on both the light and the dark surface.
+ *
+ * Shared by the chart and the cards on purpose: the chart paints each branch's
+ * connectors from `theme.palette` (see `Theme.edgeBranchColours`), and a card
+ * that picked its accent from anywhere else would be a second, disagreeing
+ * answer to "which branch is this".
+ */
+export const SLOT_PALETTE = ['#6366f1', '#06b6d4', '#f43f5e', '#f59e0b', '#22c55e', '#a855f7'] as const
+
+/**
+ * The nodes the showcase starts with open — the root, both of its children,
+ * and one node at the end of the second branch.
+ *
+ * Ids, not names: `buildOrg` numbers people from one and ids from zero, so
+ * `n7` is Person 8. See `buildOrg` below.
+ */
+const SLOT_OPEN_AT_START = new Set(['ceo', 'n0', 'n1', 'n7'])
+
+/**
+ * Which of `SLOT_PALETTE` a node belongs to: the index of the ROOT-LEVEL
+ * ancestor it hangs off, which is exactly how the engine assigns branch
+ * colours. The root itself has no branch and takes `null`.
+ */
+export function slotBranchColour(data: NodeItem[], id: string): string | null {
+  const parentOf = new Map(data.map((item) => [String(item.id), item.parentId]))
+  const roots = data.filter((item) => item.parentId === undefined).map((item) => String(item.id))
+  const topLevel = data
+    .filter((item) => item.parentId !== undefined && roots.includes(String(item.parentId)))
+    .map((item) => String(item.id))
+  let at: string | undefined = id
+  while (at !== undefined && !topLevel.includes(at)) {
+    if (roots.includes(at)) return null
+    at = parentOf.get(at) === undefined ? undefined : String(parentOf.get(at))
+  }
+  if (at === undefined) return null
+  const slot = topLevel.indexOf(at)
+  return SLOT_PALETTE[slot % SLOT_PALETTE.length]!
+}
+
+/**
+ * One glyph per department, for the showcase card's icon tile. Text rather than
+ * an image for the same reason the avatars are initials: a playground that
+ * needed the network to draw a node would be teaching the wrong lesson.
+ */
+export const DEPARTMENT_GLYPH: Record<Department, string> = {
+  Executive: '◆',
+  Engineering: '⌘',
+  Design: '✎',
+  Product: '◈',
+  Sales: '↗',
+  Marketing: '◎',
+  Finance: '∑',
+  Support: '☂',
 }
 
 /** "Person 3" -> "P3", "CEO" -> "CE". No network imagery needed — initials are the avatar. */
@@ -371,6 +450,7 @@ export type NodeContentKind =
   | 'dropdown'
   | 'accordion'
   | 'actions'
+  | 'slot'
   | 'none'
 
 export interface Example {
@@ -411,6 +491,13 @@ export interface Example {
    */
   viewControl?: boolean
   /**
+   * Shows the pan-lock toggle in the top-right corner of the chart. For the
+   * layouts a lock is FOR — the wheels, whose diagram is its own bounds —
+   * where the toggle is how a viewer feels what `Options.lockPan` does rather
+   * than reading about it.
+   */
+  lockControl?: boolean
+  /**
    * Shows the selection panel: what is selected right now, and the two
    * commands (select every visible node, clear) that an app would build on
    * top of a selection. Per-example, like the others.
@@ -434,6 +521,27 @@ export interface Example {
    */
   editControl?: boolean
   /**
+   * Lights the path from the root to whatever the pointer is over, using
+   * `highlight` + `pathTo` — see each demo's `nodeHover` wiring. Per-example
+   * like the other controls: a chart where every hover repaints a route is a
+   * showcase, not a default, and the examples about something else should
+   * stay quiet under the pointer.
+   */
+  hoverTrail?: boolean
+  /**
+   * What a hover lights, for the examples that want the pointer answered but
+   * not with a whole route: `'node'` lights just what is under it. Ignored
+   * when `hoverTrail` is on, which is the same idea with a bigger answer.
+   */
+  hoverHighlight?: 'node'
+  /**
+   * Shows the floating read-out panel: what the pointer is on, what it weighs,
+   * and what share of its parent and of the whole it accounts for. For the
+   * sunburst, where the width of a sector IS a number and there is nowhere on
+   * a sector to write it.
+   */
+  hoverPanel?: boolean
+  /**
    * Readable source for this example's function options, by option name.
    *
    * The code panel prints a function with `toString()`, which in a production
@@ -455,7 +563,13 @@ export interface Example {
 // Small enough that the whole chart is comprehensible at 1:1. A few hundred nodes
 // is realistic but spreads subtrees thousands of pixels apart, so you only ever see
 // a vertical slice of it — which is what the Large example is for.
-const SHARED_DATA = buildOrg(28)
+/**
+ * The org every example draws unless it says otherwise. Exported because a
+ * custom card sometimes has to ask something about the TREE rather than about
+ * its own node — `slotBranchColour` walks to the branch root to find which
+ * colour the chart is painting that branch in.
+ */
+export const SHARED_DATA = buildOrg(28)
 
 /**
  * Which department everybody is in, for the Editing example's `canMove`.
@@ -880,6 +994,23 @@ export const WIDE_DATA: NodeItem[] = buildWideTree()
 
 export const FILE_DATA: NodeItem[] = buildFileTree()
 
+/**
+ * What fraction of its parent a file-tree row accounts for, by size.
+ *
+ * The sunburst caps on this rather than on a count: on a wheel whose widths
+ * ARE the sizes, "the first eight" is an arbitrary eight, and what makes a
+ * sibling worth its own sector is whether anybody could see it. A parent with
+ * no recorded size — or one smaller than its child, which the fixture does not
+ * produce but a real filesystem would — reports 1, so the child is kept: the
+ * failure mode of this function should be showing something, not hiding it.
+ */
+export function significantShare(item: NodeItem, at: NodePlace): number {
+  const own = Number(item.sizeKb ?? 0)
+  const parent = Number(at.parent?.sizeKb ?? 0)
+  if (!(parent > 0)) return 1
+  return own / parent
+}
+
 /** Row height for the file-explorer example, and the width every row shares.
  * A file list is a list: uniform rows, one column, the indent doing the work. */
 export const FILE_ROW = { w: 340, h: 30 }
@@ -1128,6 +1259,87 @@ export const EXAMPLES: Example[] = [
     data: SHARED_DATA,
     options: { minimap: true },
     content: 'card',
+  },
+  {
+    id: 'slots',
+    name: 'Lit branches',
+    description:
+      'Every connector in the colour of the card it leads to, elbows rounded into slots, and the whole route to the root lighting up under the pointer.',
+    data: SHARED_DATA,
+    options: {
+      nodeSize: { w: 164, h: 50 },
+      colourBranches: true,
+      toggleOnNodeClick: true,
+      spacing: { x: 20, y: 46 },
+      // A deliberately uneven opening shape: both top-level branches out, one
+      // node on the far side taken a level deeper. Everything open is a wall
+      // wider than any frame, and everything closed is a single card — this is
+      // a chart with something to look at that visibly has more to open.
+      collapsedByDefault: (item) => !SLOT_OPEN_AT_START.has(String(item.id)),
+      // Both tiers arrive earlier than the default (0.25 / 0.6): these cards
+      // are wide and their text is small, so there is still something worth
+      // reading at a zoom where the stock thresholds would already have
+      // dropped to a label — and the diagram is at its best seen whole.
+      lodThresholds: { text: 0.12, overlay: 0.34 },
+      theme: {
+        palette: [...SLOT_PALETTE],
+        // The paper, painted by the chart itself so it cannot lag a pan — see
+        // `Theme.gridDot`. A CSS background on the element was a frame behind
+        // on every drag, which reads as the diagram sliding over glass.
+        // A literal colour, not a `color-mix` on `currentColor`: this string
+        // is handed to a canvas, which has no element to resolve either
+        // against. Mid-grey at low alpha, so it sits under both surfaces.
+        gridDot: 'rgba(128, 132, 148, 0.3)',
+        gridSpacing: 26,
+        gridDotSize: 1,
+        // The connectors are the point of this example, so they are given the
+        // weight of one: coloured per branch, thick enough to read as ink
+        // rather than as a hairline, and bent through a radius big enough to
+        // turn each elbow into the slot shape of a technical drawing.
+        edgeBranchColours: true,
+        // The connectors carry the branch colours; the boxes do not. The canvas
+        // only paints a box when the card is not there — under the overlay's
+        // zoom threshold, and for a frame or two mid-zoom — and a solid
+        // coloured slab in place of a card reads as the chart flashing.
+        nodeBranchColours: false,
+        edgeWidth: 1.5,
+        edgeCornerRadius: 18,
+        // The lit route keeps the mode's OWN highlight ink rather than a
+        // colour of this example's choosing: white reads beautifully on the
+        // dark surface and vanishes on the light one, and an example that
+        // only works in one mode is not a showcase. What this example does
+        // add is the weight and the halo.
+        edgeHighlightWidth: 3,
+        // Enough halo to say "this one", not enough to bloom over the diagram.
+        edgeHighlightGlow: 3,
+        // The lit path keeps its branch's colour and takes only the weight and
+        // the halo — recolouring it would throw away the one thing the
+        // connectors are saying at the moment the viewer asks about it.
+        edgeHighlightRecolours: false,
+        // The card carries its own "there is more inside" mark (see
+        // `.slot-more`), so the chart's stub would be a second one hanging
+        // into empty space.
+        hiddenMark: false,
+        // The cards are DOM (see `renderSlot`); what the canvas paints under
+        // them is only the shape, and it has to be the same stadium the card
+        // is, or the two disagree at the corners while a branch animates.
+        cornerRadius: 25,
+        // NOT transparent: the DOM card is dropped below the overlay zoom
+        // threshold and for a frame or two during a zoom step, and a
+        // transparent node then shows the grid straight through where a card
+        // should be. The mode's own node fill sits exactly under the card and
+        // is never seen otherwise.
+        nodeStroke: 'transparent',
+        // Nothing is painted on a node to say it is on the route: the cards
+        // are the design, and the connectors through them already say it in
+        // the branch's own colour. A ring in the mode's highlight ink would be
+        // a third colour arriving on a card that has two.
+        highlightFill: 'transparent',
+        highlightStroke: 'transparent',
+      },
+    },
+    content: 'slot',
+    hoverTrail: true,
   },
   {
     id: 'orientations',
@@ -1429,9 +1641,57 @@ export const EXAMPLES: Example[] = [
     id: 'radial',
     name: 'Radial',
     description:
-      'Root at the centre, each generation a ring further out, and every name turned to run along its own spoke — flipped on the left-hand side so nothing reads upside down. For trees that are wide and shallow, where a tiered chart runs off the side of the screen.',
+      'Root at the centre, each generation a ring further out, and every name turned to run along its own spoke — flipped on the left-hand side so nothing reads upside down. Each spoke takes the colour of the node it reaches, and hovering one lights the whole run back to the centre. For trees that are wide and shallow, where a tiered chart runs off the side of the screen.',
     data: SHARED_DATA,
-    options: { layout: 'radial', minimap: true },
+    options: {
+      layout: 'radial',
+      colourBranches: true,
+      toggleOnNodeClick: true,
+      zoomLimits: { minK: 0.3, maxK: 6 },
+      // Names are the content here — the nodes are 18px markers — so the text
+      // tier has to survive being fitted into a small frame. The default
+      // (0.25) drops it at exactly the zoom a whole wheel arrives at, which
+      // leaves a diagram of unlabelled dots.
+      lodThresholds: { text: 0.06, overlay: 0.9 },
+      // Two generations open, not four. A radial's names run OUTWARD along
+      // their own spoke, so every extra ring puts another word on the same
+      // line — three deep and the names on one arm run into each other at any
+      // zoom that fits the wheel. Closed, the wheel is legible and the branches
+      // are an invitation; what is inside a shut one is what the read-out
+      // panel is for.
+      collapsedByDefault: (_item, at) => at.depth >= 2,
+      theme: {
+        palette: [...SLOT_PALETTE],
+        // The same paper as the org-chart showcase, for the same reason: a
+        // grid on the canvas cannot lag the diagram on a pan.
+        gridDot: 'rgba(128, 132, 148, 0.3)',
+        gridSpacing: 26,
+        gridDotSize: 1,
+        // Every spoke in the colour of the node it reaches, and a hover lights
+        // the whole run back to the centre WITHOUT repainting it — on a wheel
+        // the colour is which branch you are in, which is the thing a viewer
+        // tracing a spoke inward is asking about.
+        edgeBranchColours: true,
+        edgeHighlightRecolours: false,
+        edgeHighlightGlow: 3,
+        edgeWidth: 1.25,
+        edgeHighlightWidth: 2.5,
+        // The markers: dots, not boxes. A radius past half the node's size is
+        // clamped to a circle, so one number covers it.
+        cornerRadius: 9,
+        nodeStroke: 'transparent',
+        nodeBranchColours: true,
+        // A lit marker brightens rather than turning one flat accent colour —
+        // see `nodeHighlightRecolours`.
+        nodeHighlightRecolours: false,
+        highlightLift: 0.16,
+        highlightFill: 'transparent',
+        highlightStroke: 'transparent',
+        labelFont: '12px system-ui, -apple-system, Segoe UI, sans-serif',
+      },
+    },
+    hoverTrail: true,
+    hoverPanel: true,
     content: 'none',
   },
   {
@@ -1440,7 +1700,46 @@ export const EXAMPLES: Example[] = [
     description:
       'The same file tree as a wheel, each segment sized by what it holds and coloured by which top-level folder it belongs to. Click a segment to drill into it: it widens to the full circle and travels inward while the rest closes at the seam. Click the centre to come back out.',
     data: FILE_DATA,
-    options: { layout: 'sunburst' },
+    options: {
+      layout: 'sunburst',
+      // The whole point of a disk-usage wheel: a sector's width is what the
+      // thing WEIGHS, not how many things are in it. Without this a 1 KB
+      // config file and a 480 KB bundle take the same slice, which is a
+      // picture of the directory listing rather than of the disk.
+      weight: (item) => Number(item.sizeKb ?? 0),
+      // …and once width means size, the tail is unreadable: dozens of files
+      // too small to see, each with a sliver nobody can point at. `pinChildren`
+      // keeps whatever is worth a look — a fiftieth of its parent, here — and
+      // `maxChildren: 0` rolls every other sibling into the single "+N more"
+      // node the chart already knows how to make. Click it to open the tail
+      // up; the aggregate is a real node, so it has a real arc, exactly as
+      // wide as the things it stands for put together.
+      maxChildren: 0,
+      pinChildren: (item, at) => significantShare(item, at) >= 0.02,
+      theme: {
+        // The pointer is answered by the sector getting BRIGHTER, not by it
+        // turning yellow: on this chart a sector's colour is which top-level
+        // folder it belongs to, and flooding it with one flat accent would
+        // answer "which one is under the pointer" by deleting the answer to
+        // "what is it". Same argument as `edgeHighlightRecolours`.
+        nodeHighlightRecolours: false,
+        highlightLift: 0.14,
+      },
+      // A wheel is its own bounds, so panning it can only take it off the
+      // screen — and its drill-in animation ends with the disc centred, which
+      // a stray pan quietly breaks. Locked by default here, with the toggle in
+      // the corner for anyone who wants to see why.
+      lockPan: true,
+      // The floor is a whole disc that still fits: below it there is nothing
+      // to read and nothing to click, and a wheel zoomed to a dot in the
+      // middle of an empty frame looks broken rather than zoomed out. The
+      // ceiling is generous — drilling into a deep folder is a real thing to
+      // want to do up close.
+      zoomLimits: { minK: 0.35, maxK: 6 },
+    },
+    lockControl: true,
+    hoverHighlight: 'node',
+    hoverPanel: true,
     content: 'none',
   },
   {

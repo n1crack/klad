@@ -2,7 +2,7 @@
 import { Klad } from '@klad/vue'
 import type { KladApi, LayoutSettings, NodeContext, Options, Theme } from '@klad/vue'
 import { computed, onBeforeUnmount, ref } from 'vue'
-import { createAccordionSlide, createDrill, goTo } from './demo-behaviour.js'
+import { createAccordionSlide, createDrill, createHoverTrail, goTo } from './demo-behaviour.js'
 import { openPickerFor, overflowLabel } from './overflow-card.js'
 import {
   DEPARTMENT_COLOR,
@@ -23,6 +23,9 @@ import {
   type Example,
   type LayoutName,
   type MinimapPosition,
+  DEPARTMENT_GLYPH,
+  SHARED_DATA,
+  slotBranchColour,
 } from './data.js'
 import type { ThemeMode } from './theme.js'
 
@@ -242,10 +245,20 @@ function goToNode(id: string): void {
  */
 const drill = createDrill(props.example, props.layout)
 
+/**
+ * The route under the pointer — shared with the other two stacks
+ * (`createHoverTrail`), delivered through the adapter's own emit.
+ */
+const hoverTrail = createHoverTrail(() => chartRef.value?.api, props.example)
+
+function handleNodeHover(event: { id: string | null }): void {
+  hoverTrail(event)
+}
+
 function handleNodeClick({ id }: { id: string }): void {
   const api = chartRef.value?.api
   if (!api) return
-  const next = drill(id, api.getCentre())
+  const next = drill(id, api.getCentre(), api)
   if (next === undefined) return
   api.setCentre(next)
   emit('centreChange', api.getCentre())
@@ -260,6 +273,7 @@ function handleNodeClick({ id }: { id: string }): void {
     @ready="handleReady"
     @node-drop="handleNodeDrop"
     @node-click="handleNodeClick"
+    @node-hover="handleNodeHover"
   >
     <!--
       One `#node` slot, branching on the LAYOUT's content treatment — the same
@@ -310,6 +324,33 @@ function handleNodeClick({ id }: { id: string }): void {
         <button v-if="hasChildren" type="button" class="toggle-btn" @click="toggle">
           {{ open ? '−' : '+' }}
         </button>
+      </div>
+
+      <!--
+        The showcase card: a stadium ("slot", as a technical drawing means it)
+        carrying the branch's own colour, the same one the chart paints that
+        branch's connectors with. The hover lift is CSS; the canvas lights the
+        route (see the `nodeHover` wiring below).
+      -->
+      <div
+        v-else-if="content === 'slot'"
+        class="slot-card"
+        :class="{
+          'is-hub': slotBranchColour(SHARED_DATA, String(item.id)) === null,
+          'has-children': hasChildren,
+          'is-open': open,
+          'is-root': depth === 0,
+        }"
+        :style="{ '--accent': slotBranchColour(SHARED_DATA, String(item.id)) ?? 'var(--slot-hub)' }"
+      >
+        <span class="slot-wash" />
+        <span class="slot-icon">{{ DEPARTMENT_GLYPH[departmentOf(item)] }}</span>
+        <div class="slot-text">
+          <span class="slot-kind">{{ departmentOf(item) }}</span>
+          <span class="slot-role">{{ String(item.title ?? '') }}</span>
+          <span class="slot-name">{{ String(item.name ?? '') }}</span>
+        </div>
+        <span class="slot-more">{{ headcountOf(item) > 0 ? headcountOf(item) : '' }}</span>
       </div>
 
       <div

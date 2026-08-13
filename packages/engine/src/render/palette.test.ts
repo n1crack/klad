@@ -1,5 +1,5 @@
 import { describe, expect, it } from 'vitest'
-import { computeNodeFills, DARK_PALETTE, DEFAULT_PALETTE, depthStep, inkOn } from './palette.js'
+import { computeNodeFills, DARK_PALETTE, DEFAULT_PALETTE, depthStep, inkOn, lift } from './palette.js'
 
 const HUB = '#f0efec'
 const OTHER = '#9c9c96'
@@ -144,5 +144,33 @@ describe('computeNodeFills', () => {
 
   it('handles an empty tree', () => {
     expect(computeNodeFills(0, new Int32Array(0), new Int32Array(0), DEFAULT_PALETTE, OTHER, HUB)).toEqual([])
+  })
+})
+
+describe('lift', () => {
+  it('returns the base untouched at zero', () => {
+    expect(lift('#3b82f6', 0)).toBe('#3b82f6')
+  })
+
+  it('lightens and darkens around the base', () => {
+    const base = '#3b82f6'
+    const lighter = lift(base, 0.12)
+    const darker = lift(base, -0.12)
+    expect(lighter).not.toBe(base)
+    expect(darker).not.toBe(base)
+    // Ordering is the whole contract: whatever the maths, up is up.
+    const l = (hex: string) => parseInt(hex.slice(1, 3), 16) + parseInt(hex.slice(3, 5), 16)
+    expect(l(lighter)).toBeGreaterThan(l(base))
+    expect(l(darker)).toBeLessThan(l(base))
+  })
+
+  it('stops short of both ends, so two lifted shapes stay apart', () => {
+    expect(lift('#ffffff', 0.9)).not.toBe('#ffffff')
+    expect(lift('#000000', -0.9)).toBe(lift('#0a0a0a', -0.9))
+  })
+
+  it('passes through anything it cannot parse, like depthStep', () => {
+    expect(lift('currentColor', 0.2)).toBe('currentColor')
+    expect(lift('var(--x)', -0.2)).toBe('var(--x)')
   })
 })

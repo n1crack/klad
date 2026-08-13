@@ -11,7 +11,11 @@
  */
 :root {
   color-scheme: light dark;
-  font-family: system-ui, -apple-system, 'Segoe UI', sans-serif;
+  font-family:
+    system-ui,
+    -apple-system,
+    'Segoe UI',
+    sans-serif;
 
   --accent: #2563eb;
   --accent-contrast: #ffffff;
@@ -185,7 +189,10 @@ body {
   background: transparent;
   color: var(--text-muted);
   cursor: pointer;
-  transition: color 120ms ease, background 120ms ease, border-color 120ms ease;
+  transition:
+    color 120ms ease,
+    background 120ms ease,
+    border-color 120ms ease;
 }
 
 .app-theme-toggle svg {
@@ -220,7 +227,10 @@ body {
   padding: 0.36rem 0.7rem;
   border-radius: var(--radius-sm);
   border: 1px solid transparent;
-  transition: color 120ms ease, background 120ms ease, border-color 120ms ease;
+  transition:
+    color 120ms ease,
+    background 120ms ease,
+    border-color 120ms ease;
 }
 
 .app-back:hover {
@@ -329,7 +339,10 @@ body {
   text-transform: uppercase;
   color: var(--text-muted);
   cursor: pointer;
-  transition: color 120ms ease, background 120ms ease, border-color 120ms ease;
+  transition:
+    color 120ms ease,
+    background 120ms ease,
+    border-color 120ms ease;
 }
 
 .rail-tab span {
@@ -495,7 +508,9 @@ body {
        by script (they are the same elements at every width). */
     transform: translateY(-102%);
     visibility: hidden;
-    transition: transform 180ms ease, visibility 180ms;
+    transition:
+      transform 180ms ease,
+      visibility 180ms;
   }
 
   .layout.is-controls-open .sidebar {
@@ -524,7 +539,6 @@ body {
   .code-block {
     max-height: 40vh;
   }
-
 
   .sidebar-group-body .btn {
     flex: 1 1 auto;
@@ -735,7 +749,9 @@ body {
   font-weight: 600;
   color: var(--text-muted);
   cursor: pointer;
-  transition: background 120ms ease, color 120ms ease;
+  transition:
+    background 120ms ease,
+    color 120ms ease;
 }
 
 .segment:hover {
@@ -775,7 +791,10 @@ body {
   /* The marker for the checked row, transparent until then: an indent that
      appears and disappears would make the whole list jump by 3px. */
   border-left: 3px solid transparent;
-  transition: background 120ms ease, color 120ms ease, border-color 120ms ease;
+  transition:
+    background 120ms ease,
+    color 120ms ease,
+    border-color 120ms ease;
 }
 
 .option-row:hover {
@@ -814,7 +833,9 @@ body {
   background: var(--surface);
   color: canvastext;
   cursor: pointer;
-  transition: border-color 120ms ease, box-shadow 120ms ease;
+  transition:
+    border-color 120ms ease,
+    box-shadow 120ms ease;
 }
 
 .select:hover {
@@ -835,7 +856,11 @@ body {
   color: canvastext;
   font-weight: 600;
   cursor: pointer;
-  transition: background 120ms ease, border-color 120ms ease, box-shadow 120ms ease, transform 80ms ease;
+  transition:
+    background 120ms ease,
+    border-color 120ms ease,
+    box-shadow 120ms ease,
+    transform 80ms ease;
 }
 
 .btn:hover {
@@ -889,7 +914,9 @@ body {
   border: 1px solid var(--border-strong);
   background: var(--surface);
   cursor: pointer;
-  transition: border-color 120ms ease, box-shadow 120ms ease;
+  transition:
+    border-color 120ms ease,
+    box-shadow 120ms ease;
 }
 
 .color-input:hover {
@@ -1137,7 +1164,10 @@ body {
   cursor: pointer;
   opacity: 0.55;
   backdrop-filter: blur(4px);
-  transition: opacity 120ms ease, color 120ms ease, border-color 120ms ease;
+  transition:
+    opacity 120ms ease,
+    color 120ms ease,
+    border-color 120ms ease;
 }
 
 .code-frame:hover .code-copy,
@@ -1659,6 +1689,325 @@ button.overflow-panel-row {
 }
 
 /* Status card: department-coloured accent + department/headcount badges. */
+/*
+ * The showcase card, and the surface it sits on.
+ *
+ * A stadium — a slot, in the sense a technical drawing means it — with an icon
+ * tile at its leading end, three lines of text in falling volume (what kind of
+ * thing this is, what it does, what it is called), and the branch's own colour
+ * in the border, in a wash behind the text, and in the middle line.
+ *
+ * `--accent` is written by whichever stack rendered it (see `slotBranchColour`
+ * in data.ts) and is the SAME colour the chart paints that branch's connectors
+ * with, so a card and the line arriving at it match by construction rather than
+ * by two lists that have to be kept in step.
+ */
+.slot-card {
+  --slot-hub: color-mix(in srgb, canvastext 55%, canvas 45%);
+  --accent: var(--slot-hub);
+  box-sizing: border-box;
+  width: 100%;
+  height: 100%;
+  display: flex;
+  align-items: center;
+  gap: 0.55rem;
+  padding: 0 0.9rem 0 0.45rem;
+  /* Fully rounded ends: half the card's own height, whatever that is. */
+  border-radius: 999px;
+  border: 1px solid color-mix(in srgb, var(--accent) 50%, transparent);
+  background: var(--surface-raised);
+  color: var(--text);
+  /* NOT `overflow: hidden`: the ports sit half outside the box, and clipping
+     them left two half-discs looking sliced off. The wash does its own
+     clipping instead (it is the only child that needs it). */
+  position: relative;
+  isolation: isolate;
+  /*
+   * The inner line, as an OUTLINE on the card rather than a second box inside
+   * it. A separate element — border or inset shadow — is a second rectangle
+   * for the compositor to round, and the card is SCALED by the camera, so each
+   * of its four sides lands on a different fraction of a device pixel: the
+   * line ends up sitting visibly closer to one corner than the other. An
+   * outline is one shape, offset inwards, and it follows the border radius on
+   * its own.
+   *
+   * Under the pointer it travels OUT to the edge and goes as it arrives, so
+   * the card opens up rather than gaining another ring. Nothing moves, nothing
+   * grows.
+   */
+  outline: 1px solid color-mix(in srgb, var(--accent) 26%, transparent);
+  outline-offset: -3px;
+  transition:
+    border-color 160ms ease,
+    outline-offset 200ms ease,
+    outline-color 200ms ease;
+}
+
+.slot-card:hover {
+  outline-offset: 0px;
+  outline-color: transparent;
+}
+
+/*
+ * The inner frame: a second hairline set in from the edge, with a gap between
+ * the two — the detail that makes a slot read as machined rather than drawn.
+ *
+ * Under the pointer it travels OUT to the edge and goes as it arrives, so the
+ * card opens up instead of gaining another ring. Nothing moves and nothing
+ * grows: the only thing that happens is this line leaving.
+ */
+/*
+ * How much of each mask cell the wash still fills: half a turn is a solid
+ * sheet, nothing is bare card. Declared with `@property` because a plain custom
+ * property is a string to the animation engine and would jump; typed as a
+ * percentage it interpolates, and `steps()` then breaks that interpolation into
+ * the handful of stages the effect wants.
+ */
+@property --slot-cover {
+  syntax: '<percentage>';
+  inherits: true;
+  initial-value: 50%;
+}
+
+/*
+ * The wash: the branch's colour poured in from the leading edge and gone by the
+ * middle. Its own element rather than a background layer on the card, because
+ * it is masked — and the mask is the effect.
+ *
+ * Hovering does not slide it away or fade it evenly: the mask is a grid of
+ * small cells that erode where they stand, so the sheet breaks up in place,
+ * going out patch by patch and coming back the same way. `steps()` is doing
+ * that work — a smooth interpolation reads as a dissolve, and the ask was for
+ * something that cracks.
+ */
+.slot-wash {
+  position: absolute;
+  inset: 0;
+  z-index: 0;
+  pointer-events: none;
+  /* The same stadium the card is. Without it the wash paints its own square
+     box and its corners stand outside the card's rounded ends. */
+  border-radius: 999px;
+  background: linear-gradient(90deg, color-mix(in srgb, var(--accent) 30%, transparent), transparent 60%);
+  --slot-cover: 50%;
+  -webkit-mask-image: repeating-conic-gradient(#000 0% var(--slot-cover), transparent 0% 50%);
+  mask-image: repeating-conic-gradient(#000 0% var(--slot-cover), transparent 0% 50%);
+  -webkit-mask-size: 6px 6px;
+  mask-size: 6px 6px;
+  transition:
+    --slot-cover 260ms steps(5, end),
+    opacity 260ms steps(5, end);
+}
+
+/* Under the pointer the cells erode to nothing, piece by piece; leaving puts
+   them back the same way, because the transition runs both directions. */
+.slot-card:hover .slot-wash {
+  --slot-cover: 0%;
+  opacity: 0;
+}
+
+/* Everything the viewer actually reads sits above the wash. */
+.slot-card .slot-icon,
+.slot-card .slot-text {
+  z-index: 1;
+}
+
+/* The icon tile: a rounded square in the branch's colour, holding one glyph.
+   Square rather than round so it reads as a chip on the slot rather than as a
+   second port. */
+.slot-card .slot-icon {
+  flex: none;
+  display: grid;
+  place-items: center;
+  width: 1.75rem;
+  height: 1.75rem;
+  border-radius: 0.6rem;
+  background: color-mix(in srgb, var(--accent) 18%, var(--surface-sunken));
+  border: 1px solid color-mix(in srgb, var(--accent) 32%, transparent);
+  color: var(--accent);
+  font-size: 0.8rem;
+  line-height: 1;
+}
+
+.slot-card .slot-text {
+  min-width: 0;
+  display: flex;
+  flex-direction: column;
+  gap: 0.02rem;
+}
+
+/* Falling volume, top to bottom: the kind of thing, what it does, what it is
+   called. The middle line is the only coloured text on the card — it is the one
+   that says which branch you are looking at. */
+.slot-card .slot-kind {
+  font-size: 0.5rem;
+  letter-spacing: 0.05em;
+  text-transform: uppercase;
+  color: var(--text-muted);
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+}
+
+.slot-card .slot-role {
+  font-size: 0.56rem;
+  font-weight: 500;
+  color: var(--accent);
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+}
+
+.slot-card .slot-name {
+  font-size: 0.68rem;
+  font-weight: 600;
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+}
+
+/*
+ * The ports: the two points a connector actually attaches to — the top-centre
+ * and bottom-centre of the box, which is where `edgeAnchors` puts them for a
+ * top-to-bottom chart. Drawn on the card rather than by the chart because they
+ * belong to this design, and placed to the pixel so a line appears to arrive AT
+ * something instead of just stopping.
+ */
+.slot-card::before,
+.slot-card::after {
+  content: '';
+  position: absolute;
+  /* `border-box`, because this stylesheet sets it per selector rather than on
+     `*`: without it the port's own border is added to its width, and the
+     negative margin that centres it then lands it a border to the right of the
+     connector it is supposed to cap. */
+  box-sizing: border-box;
+  left: 50%;
+  z-index: 2;
+  width: 0.38rem;
+  height: 0.38rem;
+  margin-left: -0.19rem;
+  border-radius: 999px;
+  background: color-mix(in srgb, var(--accent) 75%, var(--surface));
+  border: 1px solid color-mix(in srgb, var(--accent) 85%, transparent);
+  transition: box-shadow 160ms ease;
+}
+
+/*
+ * `-0.19rem` is half the port, and the `- 1px` is the card's own border: an
+ * absolutely positioned child is placed against the PADDING box, which sits
+ * inside that border, so without it every port hangs a border's width into the
+ * card and the connector arrives a pixel above its centre. Visible the moment
+ * the chart is zoomed in, which is where a port is worth drawing at all.
+ */
+.slot-card::before {
+  top: calc(-0.19rem - 1px);
+}
+
+/* The root has nothing above it, and a port is a claim that something attaches
+   there. On every other card the inbound port is capping a real connector. */
+.slot-card.is-root::before {
+  display: none;
+}
+
+/* A port with no connector at it is worse than no port, so the outbound one is
+   drawn only when there is something hanging off it. */
+.slot-card::after {
+  display: none;
+  bottom: calc(-0.19rem - 1px);
+}
+
+.slot-card.has-children.is-open::after {
+  display: block;
+}
+
+/*
+ * A branch that is SHUT says so on the card itself: a ring at the trailing end,
+ * where the connectors would have left. The chart's own "more inside" mark is
+ * turned off for this example (`hiddenMark: false`) — a stub hanging into empty
+ * space is the wrong gesture for a design whose nodes have ports.
+ */
+.slot-more {
+  position: absolute;
+  right: 0.7rem;
+  top: 50%;
+  z-index: 2;
+  transform: translateY(-50%);
+  display: none;
+  place-items: center;
+  width: 1rem;
+  height: 1rem;
+  border-radius: 999px;
+  border: 1px solid color-mix(in srgb, var(--accent) 55%, transparent);
+  background: color-mix(in srgb, var(--accent) 14%, transparent);
+  color: var(--accent);
+  font-size: 0.62rem;
+  font-weight: 600;
+  line-height: 1;
+}
+
+.slot-card.has-children:not(.is-open) .slot-more {
+  display: grid;
+}
+
+/* The root has no branch — it is the thing the branches hang off rather than
+   one of them, exactly as the engine treats it — so it takes the neutral ink
+   and no wash. */
+.slot-card.is-hub {
+  border-color: color-mix(in srgb, canvastext 25%, transparent);
+}
+
+.slot-card.is-hub .slot-wash {
+  display: none;
+}
+
+/*
+ * Hover: the hairline inside the edge thickens and the border comes up to full
+ * strength. No lift — a card that jumps a pixel under the pointer moves the
+ * thing you are pointing at — and no bloom: the halo on the connectors is the
+ * loud part of this design, and two loud parts is one too many.
+ */
+.slot-card:hover {
+  border-color: var(--accent);
+}
+
+.slot-card:hover::before,
+.slot-card:hover::after {
+  box-shadow: 0 0 0 3px color-mix(in srgb, var(--accent) 25%, transparent);
+}
+
+/*
+ * While the layout is moving, the card does not react to the pointer at all.
+ *
+ * A toggle slides every node under a pointer that has not gone anywhere, so
+ * the browser fires `:hover` on one card after another as they pass — and a
+ * run of cards each starting their own wash-crumble is a strobe. The chart
+ * marks the overlay while it animates (`data-klad-moving`); this simply
+ * declines the invitation.
+ */
+.klad-overlay[data-klad-moving] .slot-card:hover {
+  border-color: color-mix(in srgb, var(--accent) 50%, transparent);
+  outline-offset: -3px;
+  outline-color: color-mix(in srgb, var(--accent) 26%, transparent);
+}
+
+.klad-overlay[data-klad-moving] .slot-card:hover .slot-wash {
+  --slot-cover: 50%;
+  opacity: 1;
+}
+
+.klad-overlay[data-klad-moving] .slot-card:hover::before,
+.klad-overlay[data-klad-moving] .slot-card:hover::after {
+  box-shadow: none;
+}
+
+@media (prefers-reduced-motion: reduce) {
+  .slot-card,
+  .slot-wash {
+    transition: none;
+  }
+}
+
 .status-card {
   --accent: #64748b;
   box-sizing: border-box;
@@ -2392,7 +2741,9 @@ button.overflow-panel-row {
   cursor: pointer;
   /* Rotated rather than swapped for a second glyph, so the disclosure reads as
      one control turning rather than two characters alternating. */
-  transition: transform 140ms ease, color 140ms ease;
+  transition:
+    transform 140ms ease,
+    color 140ms ease;
 }
 
 .surface.is-file .file-chevron.is-open {
@@ -2590,4 +2941,139 @@ button.overflow-panel-row {
 .surface-chart {
   position: absolute;
   inset: 0;
+}
+
+/*
+ * ---------------------------------------------------------------------------
+ * Embed mode (`?embed=1`)
+ * ---------------------------------------------------------------------------
+ *
+ * The chart and nothing else, for the iframe on the documentation site's home
+ * page. Everything the shell adds is a control for choosing what to look at,
+ * and the embed has already chosen — the frame is one example, offered to be
+ * played with rather than browsed.
+ *
+ * Hidden rather than never built: the app's own wiring reads the controls it
+ * is hiding (the code panel renders from them, the theme sync writes to them),
+ * and a shell that exists but is not shown is a much smaller claim than a
+ * second start-up path that has to keep agreeing with this one. The parts with
+ * a per-frame cost — the minimap, the snippet — are closed instead of hidden,
+ * in main.ts.
+ */
+#app[data-embed] .app-header,
+#app[data-embed] .sidebar,
+#app[data-embed] .code-drawer,
+#app[data-embed] .example-description {
+  display: none;
+}
+
+/* No margin, no border, no radius: the framing is the iframe's, and a card
+   inside a card reads as a mistake. */
+#app[data-embed] .surface {
+  margin: 0;
+  border: 0;
+  border-radius: 0;
+  box-shadow: none;
+}
+
+/* The way out of the frame and into the playground proper. Bottom-right,
+   where it is furthest from the root of a top-down chart and so least likely
+   to sit over anything. */
+.embed-link {
+  position: absolute;
+  right: 0.75rem;
+  bottom: 0.75rem;
+  z-index: 5;
+  display: inline-flex;
+  align-items: center;
+  gap: 0.35rem;
+  padding: 0.4rem 0.7rem;
+  border-radius: 999px;
+  border: 1px solid var(--border);
+  background: color-mix(in srgb, var(--surface-raised) 88%, transparent);
+  backdrop-filter: blur(6px);
+  color: var(--text);
+  font-size: 0.8rem;
+  font-weight: 500;
+  text-decoration: none;
+  box-shadow: var(--shadow-sm);
+  transition:
+    background 140ms ease,
+    transform 140ms ease;
+}
+
+.embed-link:hover {
+  background: var(--surface-raised);
+  transform: translateY(-1px);
+}
+
+/* Top-right instead of the top-left every other panel takes: the corner a
+   sunburst leaves emptiest, and away from the breadcrumb it would otherwise
+   sit beside. */
+.surface-panel-corner {
+  left: auto;
+  right: 0.6rem;
+  padding: 0.3rem;
+}
+
+.surface-panel-corner .btn-icon {
+  padding: 0.25rem 0.45rem;
+  font-size: 1rem;
+  line-height: 1.2;
+}
+
+/*
+ * The hover read-out. Bottom-left rather than beside the lock: a wheel is a
+ * circle in a rectangle, so the corners are the only space it never occupies,
+ * and the two the pointer is least often travelling through are the bottom
+ * ones.
+ */
+.surface-panel-read {
+  top: auto;
+  bottom: 0.6rem;
+  left: 0.6rem;
+  max-width: min(22rem, calc(100% - 1.2rem));
+  padding: 0.55rem 0.7rem;
+}
+
+.read-body {
+  display: flex;
+  flex-direction: column;
+  gap: 0.2rem;
+  min-width: 12rem;
+}
+
+.read-title {
+  font-size: 0.88rem;
+  font-weight: 600;
+  /* A path can be long and a panel that resizes as the pointer sweeps is a
+     panel nobody can read. */
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.read-meta,
+.read-share {
+  font-size: 0.72rem;
+  color: var(--text-muted);
+}
+
+/* The share, drawn as well as written: a bar answers "how much of the whole"
+   at a glance, which is the question a sunburst is already asking. */
+.read-bar {
+  display: block;
+  height: 3px;
+  margin: 0.2rem 0 0.1rem;
+  border-radius: 999px;
+  background: color-mix(in srgb, currentColor 15%, transparent);
+  overflow: hidden;
+}
+
+.read-bar > span {
+  display: block;
+  height: 100%;
+  border-radius: inherit;
+  background: var(--accent-strong, #60a5fa);
+  transition: width 120ms ease;
 }

@@ -2,6 +2,9 @@ import { createKlad, type KladApi, type LayoutSettings, type Options, type Theme
 import { openPickerFor, overflowLabel } from './overflow-card.js'
 import {
   DEPARTMENT_COLOR,
+  DEPARTMENT_GLYPH,
+  SHARED_DATA,
+  slotBranchColour,
   EDGE_RADIUS_DEFAULT,
   initials,
   minimapDefaultOn,
@@ -22,7 +25,7 @@ import {
   type MinimapPosition,
   type NodeContentKind,
 } from './data.js'
-import { createAccordionSlide, createDrill, goTo } from './demo-behaviour.js'
+import { createAccordionSlide, createDrill, createHoverTrail, goTo } from './demo-behaviour.js'
 import type { ThemeMode } from './theme.js'
 
 const DEFAULT_NODE_SIZE = { w: 180, h: 64 }
@@ -201,6 +204,52 @@ function renderMonogram(element: HTMLElement, context: NodeContext): void {
   card.querySelector<HTMLDivElement>('.monogram-circle')!.textContent = initials(String(item.name ?? ''))
   card.querySelector('.monogram-name')!.textContent = String(item.name ?? '')
   syncToggleButton(card, context)
+}
+
+/**
+ * The showcase card: a stadium — a slot, in the sense a technical drawing
+ * means it — with the branch's own colour running down its leading edge and a
+ * dot to pick it up again at the end.
+ *
+ * The accent comes from the same palette the chart paints connectors with (see
+ * `SLOT_PALETTE`), so a card and the line arriving at it are the same colour by
+ * construction rather than by two lists that have to be kept in step. The
+ * hover state is CSS on the element itself: the canvas underneath lights the
+ * ROUTE (see the `nodeHover` wiring), and the card lifts to meet it.
+ */
+function renderSlot(element: HTMLElement, context: NodeContext): void {
+  let card = element.firstElementChild as HTMLDivElement | null
+  if (card === null) {
+    card = document.createElement('div')
+    card.className = 'slot-card'
+    card.append(
+      Object.assign(document.createElement('span'), { className: 'slot-wash' }),
+      Object.assign(document.createElement('span'), { className: 'slot-icon' }),
+      Object.assign(document.createElement('div'), { className: 'slot-text' }),
+      Object.assign(document.createElement('span'), { className: 'slot-more' }),
+    )
+    card
+      .querySelector('.slot-text')!
+      .append(
+        Object.assign(document.createElement('span'), { className: 'slot-kind' }),
+        Object.assign(document.createElement('span'), { className: 'slot-role' }),
+        Object.assign(document.createElement('span'), { className: 'slot-name' }),
+      )
+    element.append(card)
+  }
+  const item = context.item
+  const department = (item.department as Department | undefined) ?? 'Executive'
+  const accent = slotBranchColour(SHARED_DATA, String(item.id))
+  card.style.setProperty('--accent', accent ?? 'var(--slot-hub)')
+  card.classList.toggle('is-hub', accent === null)
+  card.classList.toggle('has-children', context.hasChildren)
+  card.classList.toggle('is-open', context.open)
+  card.classList.toggle('is-root', context.depth === 0)
+  card.querySelector('.slot-more')!.textContent = String(item.headcount ?? '')
+  card.querySelector('.slot-icon')!.textContent = DEPARTMENT_GLYPH[department]
+  card.querySelector('.slot-kind')!.textContent = department
+  card.querySelector('.slot-role')!.textContent = String(item.title ?? '')
+  card.querySelector('.slot-name')!.textContent = String(item.name ?? '')
 }
 
 /** Department-coloured accent + department and headcount badges. */
@@ -551,6 +600,7 @@ const RENDERERS: Record<NodeContentKind, RenderNode | null> = {
   avatar: renderAvatar,
   monogram: renderMonogram,
   status: renderStatus,
+  slot: renderSlot,
   photo: renderPhoto,
   none: null,
 }
@@ -784,8 +834,13 @@ export function mountVanilla(
    * a viewer will look for it.
    */
   const drill = createDrill(example, layout)
+  const stopHoverTrail = chart.on(
+    'nodeHover',
+    createHoverTrail(() => chart.api, example),
+  )
+
   const stopDrill = chart.on('nodeClick', ({ id }) => {
-    const next = drill(id, chart.api.getCentre())
+    const next = drill(id, chart.api.getCentre(), chart.api)
     if (next === undefined) return
     chart.api.setCentre(next)
     onCentreChange?.(chart.api.getCentre())
@@ -836,6 +891,7 @@ export function mountVanilla(
       slide.stop()
       host.removeEventListener('playground:goto', onGoto)
       stopDrill()
+      stopHoverTrail()
       stopDrop?.()
       stopEdit()
       chart.destroy()

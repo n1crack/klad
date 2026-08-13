@@ -1,0 +1,8 @@
+# Everything here is public documentation, and all of it is meant to be found.
+User-agent: *
+Allow: /
+
+# The one thing worth saying explicitly. `sitemap.xml` is emitted by VitePress
+# at build time and carries a `lastmod` per page, which is what a crawler uses
+# to decide how often to come back — it will not find it by guessing.
+Sitemap: https://klad.ozdemir.be/sitemap.xml

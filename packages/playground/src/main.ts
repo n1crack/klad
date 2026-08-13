@@ -4,6 +4,7 @@ import { createRoot, type Root } from 'react-dom/client'
 import type { ChartView, EdgeStyle, KladApi, LayoutSettings, NodeData, Theme } from '@klad/core'
 import {
   BLOCK_FILL_SEED,
+  GRID_DOT_SEED,
   EDGE_RADIUS_MAX,
   EDGE_RADIUS_MIN,
   EDGE_WIDTH_MAX,
@@ -27,9 +28,11 @@ import {
   type Example,
   type LayoutName,
   type MinimapPosition,
+  type NodeItem,
   setWorkingSetHook,
 } from './data.js'
 import { closeOverflowPanel, openOverflowPanel } from './overflow-panel.js'
+import { setHoverReporter } from './demo-behaviour.js'
 import {
   applyTheme,
   chartTokens,
@@ -65,6 +68,21 @@ startAnalytics()
 const root = document.querySelector<HTMLDivElement>('#app')
 if (root === null) throw new Error('#app element not found')
 root.innerHTML = ''
+
+/**
+ * `?embed=1` — the chart alone, no shell.
+ *
+ * For the documentation site's home page, which frames one example rather than
+ * describing it. An iframe of the app that is already built and copied in
+ * under the docs site, rather than a second copy of a showcase in the docs
+ * theme: the example, its cards' CSS and its data have one implementation, and
+ * whatever the playground grows the home page gets.
+ *
+ * Read here rather than beside the rest of the URL handling at the bottom,
+ * because the shell reads it as it is being built.
+ */
+const EMBEDDED = new URLSearchParams(window.location.search).get('embed') === '1'
+if (EMBEDDED) root.dataset.embed = ''
 
 // --- shell: a slim header bar above everything, then a sidebar + chart-area layout ---
 
@@ -841,6 +859,100 @@ function rangeControl(
   }
 }
 
+/** A checkbox for one of the theme's boolean tokens. */
+function switchControl(
+  labelText: string,
+  id: string,
+  read: (theme: Theme) => boolean,
+  write: (on: boolean) => Partial<Theme>,
+): ThemeControl {
+  const input = document.createElement('input')
+  input.type = 'checkbox'
+  input.id = id
+  input.className = 'checkbox-input'
+  input.onchange = () => {
+    applyThemeTokens(write(input.checked))
+  }
+  const wrapper = document.createElement('div')
+  wrapper.className = 'field'
+  const label = document.createElement('label')
+  label.textContent = labelText
+  label.htmlFor = id
+  const row = document.createElement('div')
+  row.className = 'field-range-row'
+  row.append(input)
+  wrapper.append(label, row)
+  return {
+    element: wrapper,
+    sync(theme) {
+      input.checked = read(theme)
+    },
+  }
+}
+
+/**
+ * A colour token whose "off" is the word `'transparent'` rather than a colour:
+ * a checkbox for whether to paint at all, plus the swatch it gates. `<input
+ * type="color">` cannot represent "none", and the two tokens shaped like this
+ * — the block tier's fill and the grid — both default to off, so the control
+ * has to be able to say so.
+ *
+ * The swatch stays live while unchecked, which pre-arms a colour for the
+ * moment the box is ticked.
+ */
+function optionalColourControl(
+  labelText: string,
+  id: string,
+  seed: string,
+  offLabel: string,
+  read: (theme: Theme) => string,
+  write: (value: string) => Partial<Theme>,
+): ThemeControl {
+  const checkbox = document.createElement('input')
+  checkbox.type = 'checkbox'
+  checkbox.id = `${id}-checkbox`
+  checkbox.className = 'checkbox-input'
+  const input = document.createElement('input')
+  input.type = 'color'
+  input.id = id
+  input.className = 'color-input'
+  input.value = seed
+  const out = readout()
+  out.setAttribute('for', id)
+
+  const apply = (): void => {
+    const value = checkbox.checked ? input.value : 'transparent'
+    out.textContent = checkbox.checked ? value.toUpperCase() : offLabel
+    applyThemeTokens(write(value))
+  }
+  checkbox.onchange = apply
+  input.oninput = apply
+
+  const wrapper = document.createElement('div')
+  wrapper.className = 'field'
+  const label = document.createElement('label')
+  label.textContent = labelText
+  label.htmlFor = checkbox.id
+  const row = document.createElement('div')
+  row.className = 'field-range-row'
+  row.append(checkbox, input, out)
+  wrapper.append(label, row)
+
+  return {
+    element: wrapper,
+    sync(theme) {
+      const value = read(theme)
+      // An example may set the token to something no swatch can show — a
+      // translucent `rgba()` for the grid. The tick still reflects the truth;
+      // only the swatch keeps its own last value.
+      const on = value !== 'transparent'
+      checkbox.checked = on
+      if (/^#[0-9a-f]{6}$/i.test(value)) input.value = value
+      out.textContent = on ? value.toUpperCase() : offLabel
+    },
+  }
+}
+
 /**
  * "Shape fill" — the `block` LOD tier's own fill (`theme.blockFill`),
  * independent of the node fill above it. Defaults to `'transparent'`: zoomed
@@ -851,46 +963,14 @@ function rangeControl(
  * while unchecked pre-arms a colour for the moment the box is ticked.
  */
 function blockFillControl(): ThemeControl {
-  const checkbox = document.createElement('input')
-  checkbox.type = 'checkbox'
-  checkbox.id = 'block-fill-checkbox'
-  checkbox.className = 'checkbox-input'
-  const input = document.createElement('input')
-  input.type = 'color'
-  input.id = 'block-fill-input'
-  input.className = 'color-input'
-  input.value = BLOCK_FILL_SEED
-  const out = readout()
-  out.setAttribute('for', 'block-fill-input')
-
-  const apply = (): void => {
-    const value = checkbox.checked ? input.value : 'transparent'
-    out.textContent = checkbox.checked ? value.toUpperCase() : 'Transparent'
-    applyThemeTokens({ blockFill: value })
-  }
-  checkbox.onchange = apply
-  input.oninput = apply
-
-  const wrapper = document.createElement('div')
-  wrapper.className = 'field'
-  const label = document.createElement('label')
-  label.textContent = 'Shape fill'
-  label.htmlFor = checkbox.id
-  const row = document.createElement('div')
-  row.className = 'field-range-row'
-  row.append(checkbox, input, out)
-  wrapper.append(label, row)
-
-  return {
-    element: wrapper,
-    sync(theme) {
-      const value = theme.blockFill
-      const on = value !== 'transparent'
-      checkbox.checked = on
-      if (/^#[0-9a-f]{6}$/i.test(value)) input.value = value
-      out.textContent = on ? value.toUpperCase() : 'Transparent'
-    },
-  }
+  return optionalColourControl(
+    'Shape fill',
+    'block-fill-input',
+    BLOCK_FILL_SEED,
+    'Transparent',
+    (theme) => theme.blockFill,
+    (blockFill) => ({ blockFill }),
+  )
 }
 
 /**
@@ -943,6 +1023,21 @@ const THEME_CONTROLS: { caption: string; controls: ThemeControl[] }[] = [
         (cornerRadius) => ({ cornerRadius }),
       ),
       blockFillControl(),
+      // Inert unless the example colours its branches at all, like the flow
+      // tokens below — and in the same way worth having beside the fill it
+      // overrides rather than in a section of its own.
+      switchControl(
+        'Branch colours',
+        'node-branch-colours',
+        (theme) => theme.nodeBranchColours,
+        (nodeBranchColours) => ({ nodeBranchColours }),
+      ),
+      switchControl(
+        'More-inside mark',
+        'hidden-mark',
+        (theme) => theme.hiddenMark,
+        (hiddenMark) => ({ hiddenMark }),
+      ),
     ],
   },
   {
@@ -969,6 +1064,12 @@ const THEME_CONTROLS: { caption: string; controls: ThemeControl[] }[] = [
         { min: EDGE_RADIUS_MIN, max: EDGE_RADIUS_MAX, step: 1 },
         (theme) => theme.edgeCornerRadius,
         (edgeCornerRadius) => ({ edgeCornerRadius }),
+      ),
+      switchControl(
+        'Branch colours',
+        'edge-branch-colours',
+        (theme) => theme.edgeBranchColours,
+        (edgeBranchColours) => ({ edgeBranchColours }),
       ),
       // The flow tokens sit with the other connector tokens rather than in a
       // group of their own: they do nothing at all unless an example marks
@@ -1050,6 +1151,46 @@ const THEME_CONTROLS: { caption: string; controls: ThemeControl[] }[] = [
         { min: 0, max: 16, step: 1 },
         (theme) => theme.ringMaxOffset,
         (ringMaxOffset) => ({ ringMaxOffset }),
+      ),
+      rangeControl(
+        'Route glow',
+        'edge-glow-range',
+        { min: 0, max: 16, step: 1 },
+        (theme) => theme.edgeHighlightGlow,
+        (edgeHighlightGlow) => ({ edgeHighlightGlow }),
+      ),
+      switchControl(
+        'Recolour route',
+        'edge-highlight-recolours',
+        (theme) => theme.edgeHighlightRecolours,
+        (edgeHighlightRecolours) => ({ edgeHighlightRecolours }),
+      ),
+    ],
+  },
+  {
+    caption: 'Grid',
+    controls: [
+      optionalColourControl(
+        'Dots',
+        'grid-dot-input',
+        GRID_DOT_SEED,
+        'None',
+        (theme) => theme.gridDot,
+        (gridDot) => ({ gridDot }),
+      ),
+      rangeControl(
+        'Spacing',
+        'grid-spacing-range',
+        { min: 8, max: 96, step: 2 },
+        (theme) => theme.gridSpacing,
+        (gridSpacing) => ({ gridSpacing }),
+      ),
+      rangeControl(
+        'Dot size',
+        'grid-dot-size-range',
+        { min: 0.5, max: 4, step: 0.5 },
+        (theme) => theme.gridDotSize,
+        (gridDotSize) => ({ gridDotSize }),
       ),
     ],
   },
@@ -1923,6 +2064,192 @@ function syncSelectionControl(example: Example): void {
 }
 
 /**
+ * The hover read-out, for a chart whose shapes ARE numbers.
+ *
+ * A sunburst's sector says "this is bigger than that" and nothing else: there
+ * is no room on an arc to write what it weighs, and a tooltip that follows the
+ * pointer would cover the neighbours you are comparing it against. So the
+ * panel is fixed in a corner and the pointer stays free — you sweep the wheel
+ * and read one place.
+ *
+ * Absolutely positioned, like every other surface panel: it floats OVER the
+ * chart rather than taking a column beside it, so nothing reflows and the
+ * wheel is the same size whether the pointer is on it or not.
+ */
+const hoverField = document.createElement('div')
+hoverField.className = 'surface-panel surface-panel-read'
+const hoverTitle = document.createElement('strong')
+hoverTitle.className = 'read-title'
+const hoverMeta = document.createElement('span')
+hoverMeta.className = 'read-meta'
+const hoverBar = document.createElement('span')
+hoverBar.className = 'read-bar'
+const hoverBarFill = document.createElement('span')
+hoverBar.append(hoverBarFill)
+const hoverShare = document.createElement('span')
+hoverShare.className = 'read-share'
+const hoverBody = document.createElement('div')
+hoverBody.className = 'read-body'
+hoverBody.append(hoverTitle, hoverMeta, hoverBar, hoverShare)
+hoverField.append(hoverBody)
+
+/** `1.2 MB`, `640 KB`, `0 KB` — the units a file manager would use. */
+function formatKb(kb: number): string {
+  if (kb >= 1024 * 1024) return `${(kb / (1024 * 1024)).toFixed(1)} GB`
+  if (kb >= 1024) return `${(kb / 1024).toFixed(1)} MB`
+  return `${Math.round(kb)} KB`
+}
+
+/** A share as a percentage, with enough precision to stay non-zero for the
+ * slivers this panel exists to explain. */
+function formatShare(share: number): string {
+  if (!(share > 0)) return '0%'
+  if (share < 0.001) return '<0.1%'
+  return `${(share * 100).toFixed(share < 0.01 ? 1 : 0)}%`
+}
+
+function sizeOfItem(item: NodeItem | undefined): number {
+  return Number(item?.sizeKb ?? 0)
+}
+
+/**
+ * Fills the panel for one hovered id, or empties it.
+ *
+ * An aggregate node is not in `example.data` — the chart invented it — so it
+ * is looked up through `api.overflow`, which is also the only way to say what
+ * it stands for. That branch is the point of the panel as much as the ordinary
+ * one: "+42" is exactly the label that raises a question.
+ */
+function renderHoverPanel(example: Example, id: string | null): void {
+  // Nothing under the pointer: the panel goes away entirely rather than
+  // sitting there saying "point at a segment". A permanent box in the corner
+  // of the chart is chrome; one that appears when it has something to say is
+  // an answer.
+  if (id === null) {
+    hoverField.remove()
+    return
+  }
+  if (!hoverField.isConnected) surface.append(hoverField)
+
+  const byId = new Map(example.data.map((item) => [String(item.id), item]))
+  const total = sizeOfItem(example.data[0])
+  const item = byId.get(id)
+  const rolled = item === undefined ? (currentApi?.overflow(id) ?? null) : null
+
+  if (rolled !== null) {
+    const kb = rolled.items.reduce((sum, each) => sum + sizeOfItem(each as NodeItem), 0)
+    const parent = byId.get(rolled.parentId)
+    hoverTitle.textContent = `${rolled.count} smaller item${rolled.count === 1 ? '' : 's'}`
+    hoverMeta.textContent = `${formatKb(kb)} · rolled up in ${String(parent?.name ?? rolled.parentId)}`
+    const share = total > 0 ? kb / total : 0
+    hoverBarFill.style.width = `${Math.max(1, share * 100)}%`
+    hoverShare.textContent = `${formatShare(share)} of ${String(example.data[0]?.name ?? 'the whole')} · click to uncover the largest`
+    return
+  }
+
+  if (item === undefined) {
+    hoverTitle.textContent = id
+    hoverMeta.textContent = ''
+    hoverBarFill.style.width = '0%'
+    hoverShare.textContent = ''
+    return
+  }
+
+  // A dataset with no sizes in it — the org chart — gets the other read-out:
+  // who this is, and how much of the tree hangs off them. The panel is worth
+  // having on any chart whose nodes are too small to carry their own text; it
+  // is only the sunburst that has a number to divide.
+  if (item.sizeKb === undefined) {
+    const stats = currentApi?.stats(id) ?? null
+    hoverTitle.textContent = String(item.name ?? item.id)
+    hoverMeta.textContent = [String(item.title ?? ''), String(item.department ?? '')]
+      .filter((part) => part !== '')
+      .join(' · ')
+    hoverBar.style.display = 'none'
+    hoverShare.textContent =
+      stats === null || stats.descendants === 0
+        ? 'No reports'
+        : `${stats.directChildren} direct · ${stats.descendants} in the branch`
+    return
+  }
+  hoverBar.style.display = ''
+
+  const kb = sizeOfItem(item)
+  const parent = item.parentId === undefined ? undefined : byId.get(String(item.parentId))
+  const parentKb = sizeOfItem(parent)
+  const share = total > 0 ? kb / total : 0
+  const whole = String(example.data[0]?.name ?? 'the whole')
+  hoverTitle.textContent = String(item.name ?? item.id)
+  hoverMeta.textContent = formatKb(kb)
+  hoverBarFill.style.width = `${Math.max(1, share * 100)}%`
+  // Two shares are worth saying — of the parent, and of everything — but only
+  // while they are two different facts. A child of the root has one parent and
+  // it is the whole, so saying it twice reads as a bug in the panel.
+  hoverShare.textContent =
+    parent === undefined
+      ? 'everything'
+      : parent.parentId === undefined
+        ? `${formatShare(share)} of ${whole}`
+        : `${formatShare(parentKb > 0 ? kb / parentKb : 0)} of ${String(parent.name ?? '')} · ${formatShare(share)} of ${whole}`
+}
+
+/** Shows the read-out for the examples that asked for it, and keeps it fed. */
+function syncHoverPanel(example: Example): void {
+  hoverField.remove()
+  setHoverReporter(null)
+  if (example.hoverPanel !== true) return
+  setHoverReporter((id) => renderHoverPanel(example, id))
+}
+
+/**
+ * The pan lock, for the layouts that are a fixed shape rather than a plane.
+ *
+ * A wheel is its own bounds: there is nothing off to the side to go and look
+ * at, so a pan can only ever take the diagram off the screen, and the camera
+ * coming to rest somewhere arbitrary is the one state a centred design has no
+ * answer for. Locked, the zoom still works and stays anchored on the middle.
+ *
+ * A toggle rather than a fixed behaviour, because the point of a playground is
+ * to be able to feel the difference — see `Options.lockPan`.
+ */
+const lockButton = document.createElement('button')
+lockButton.type = 'button'
+lockButton.className = 'btn btn-icon'
+const lockField = document.createElement('div')
+lockField.className = 'surface-panel surface-panel-corner'
+lockField.append(lockButton)
+
+for (const type of ['pointerdown', 'wheel'] as const) {
+  lockField.addEventListener(type, (event) => event.stopPropagation())
+}
+
+let panLocked = false
+
+function updateLockButton(): void {
+  lockButton.textContent = panLocked ? '\u{1F512}' : '\u{1F513}'
+  lockButton.title = panLocked ? 'Panning locked — click to unlock' : 'Panning free — click to lock'
+  lockButton.setAttribute('aria-pressed', String(panLocked))
+  lockButton.setAttribute('aria-label', lockButton.title)
+}
+
+lockButton.onclick = () => {
+  panLocked = !panLocked
+  updateLockButton()
+  currentApi?.setLockPan(panLocked)
+}
+
+/** Shows the lock only where it means something, and re-reads the example's
+ * own setting on every mount — a toggle left on from the previous example
+ * would be describing a chart that is not there any more. */
+function syncLockControl(example: Example): void {
+  lockField.remove()
+  panLocked = example.options.lockPan === true
+  updateLockButton()
+  if (example.lockControl !== true) return
+  surface.append(lockField)
+}
+
+/**
  * Fills the branch picker with the nodes that HAVE children — framing a leaf
  * is framing one card, which is a zoom rather than an answer — and hides the
  * panel for every example that did not ask for it.
@@ -2493,6 +2820,22 @@ description.onclick = () => description.classList.toggle('is-expanded')
 const surface = document.createElement('div')
 surface.className = 'surface'
 
+/**
+ * The way out of an embed: the same example in the playground proper, with
+ * every control the frame is hiding.
+ *
+ * `_blank` because the frame's parent is the documentation site — navigating
+ * inside the iframe would leave a whole playground in a box, and navigating
+ * the parent would take a reader off the page they were reading. Re-appended
+ * by `show()`, like every other thing that floats over the chart: mounting an
+ * example clears the surface.
+ */
+const embedLink = document.createElement('a')
+embedLink.className = 'embed-link'
+embedLink.target = '_blank'
+embedLink.rel = 'noopener'
+embedLink.textContent = 'Open in the playground ↗'
+
 const content = document.createElement('main')
 content.className = 'content'
 content.append(description, surface)
@@ -2613,6 +2956,11 @@ function show(stack: Stack, exampleId: string, layout: LayoutName): void {
   chartRoot.className = 'surface-chart'
   surface.append(chartRoot)
 
+  if (EMBEDDED) {
+    embedLink.href = `${window.location.pathname}?example=${encodeURIComponent(exampleId)}`
+    surface.append(embedLink)
+  }
+
   const example = findExample(exampleId)
   layoutBlurb.textContent = LAYOUT_PRESETS[layout]!.blurb
   syncLayoutKnobs(example, layout)
@@ -2630,7 +2978,10 @@ function show(stack: Stack, exampleId: string, layout: LayoutName): void {
   // the controls must reflect what's ACTUALLY showing. The canvas background
   // isn't part of any example's declared options (it's chrome, not data), so
   // it deliberately carries over across a stack/example switch instead.
-  minimapOn = minimapDefaultOn(example)
+  // No minimap in an embed: it is a navigation aid for a viewport somebody is
+  // working in, and the frame on the home page is a viewport somebody is
+  // looking at. It also lands on the corner the way out sits in.
+  minimapOn = !EMBEDDED && minimapDefaultOn(example)
   updateMinimapButton()
   minimapPositionSelect.value = minimapDefaultPosition(example)
   // Nothing the sidebar applied carries across a remount: the new chart is
@@ -2649,6 +3000,16 @@ function show(stack: Stack, exampleId: string, layout: LayoutName): void {
   for (const key of Object.keys(layoutState) as (keyof LayoutSettings)[]) {
     if (key !== 'colourBranches') delete layoutState[key]
   }
+
+  /**
+   * The dotted grid under the showcase example travels WITH the chart: the
+   * camera writes its offset and its spacing onto the surface, so a pan moves
+   * the paper and the diagram together.
+   *
+   * Left as a plain subscription rather than something the library owns: a
+   * background is the page's business, and everything it needs is already on
+   * the `viewportChange` event.
+   */
 
   if (stack === 'vanilla') {
     const chart: VanillaDemoHandle = mountVanilla(
@@ -2743,6 +3104,8 @@ function show(stack: Stack, exampleId: string, layout: LayoutName): void {
   // at all; before it, the selection, branch and breadcrumb panels appeared
   // only on the vanilla stack, because the other two deleted them on mount.
   syncGotoControl(example)
+  syncLockControl(example)
+  syncHoverPanel(example)
   syncOrientationControl(example, layout)
   syncViewControl(example)
   syncSelectionControl(example)
@@ -2766,6 +3129,9 @@ function syncUrl(): void {
   const example = exampleSelect.value
   const params = new URLSearchParams()
   params.set('example', example)
+  // Kept, or a reload inside the iframe comes back as the whole playground in
+  // a 420px box.
+  if (EMBEDDED) params.set('embed', '1')
   if (stackSelect.value !== 'vanilla') params.set('stack', stackSelect.value)
   const layout = layoutSelect.value
   if (layout !== defaultLayoutOf(findExample(example))) params.set('layout', layout)
@@ -2844,7 +3210,9 @@ function initialPanel(): string | null {
   }
 }
 
-openPanel(initialPanel())
+// Nothing is open in an embed: the panels are hidden there, and an open one
+// would keep its minimap redrawing every frame behind a panel nobody can see.
+openPanel(EMBEDDED ? null : initialPanel())
 
 /**
  * The drawer starts closed for a first visit and remembers after that.
@@ -2866,12 +3234,13 @@ setCodeWrap(
 )
 
 setCodeOpen(
-  (() => {
-    try {
-      return localStorage.getItem(CODE_KEY) === '1'
-    } catch {
-      return false
-    }
-  })(),
+  !EMBEDDED &&
+    (() => {
+      try {
+        return localStorage.getItem(CODE_KEY) === '1'
+      } catch {
+        return false
+      }
+    })(),
   false,
 )
