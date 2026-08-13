@@ -33,6 +33,22 @@ features:
     details: A Vue slot, a React render prop, or plain DOM. Real components mount only for the nodes on screen and zoomed in far enough to read, pooled and reused as you move.
 ---
 
+<script setup>
+// `withBase`, because this is a raw `src` and not a VitePress link: the router
+// prefixes `base` onto its own links, and nothing prefixes it onto this. The
+// playground is a separate Vite app copied in under `public/`, not one of
+// VitePress's own routes.
+import { withBase } from 'vitepress'
+</script>
+
+<div class="home-demo">
+  <iframe
+    :src="withBase('/playground/?example=slots&embed=1')"
+    title="Klad — an org chart you can pan, zoom and expand"
+    loading="lazy"
+  />
+</div>
+
 ## Quick Start
 
 ::: tabs key:stack
@@ -112,34 +128,6 @@ export function Chart() {
 Pan, zoom, click, keyboard navigation. `data` is flat — `{ id, parentId?, ...yours }` —
 so the array from your API is usually already the right shape.
 
-## Same Data, Four Shapes
-
-An org chart is one thing a tree can look like. Add `layout` and the same array
-draws as something else entirely — no second data structure, no second library.
-
-```ts
-createKlad(el, { data, layout: 'file' }) // indented rows, folder guide lines
-createKlad(el, { data, layout: 'radial' }) // root at the centre, generations as rings
-createKlad(el, { data, layout: 'sunburst' }) // nested arcs you can drill into
-```
-
-File explorers, ASTs, taxonomies, dependency trees, family trees, disk usage —
-all the same shape of problem, and the reason this is a tree engine rather than
-an org chart component. Try them in the
-<a href="/playground/" target="_self">playground</a>.
-
-<!-- A raw anchor, not a markdown link. The playground is a separate Vite app
-     copied in under `public/`, not one of VitePress's own routes — so a
-     markdown link hands it to the SPA router, which finds no page for it and
-     renders a 404. The nav entry has carried `target: '_self'` for this reason
-     since it was added; this one did not. -->
-
-## One Thing to Know
-
-`nodeSize` is declared, not measured. Layout runs in a Web Worker, where there
-is no element to call `getBoundingClientRect()` on — that is what buys the
-scale. Your content fits the box you declare — more in [Sizing](/guide/sizing).
-
 <p class="home-support">
   If you like this library, please consider giving it a
   <a href="https://github.com/n1crack/klad" target="_blank" rel="noopener">star on GitHub</a>
@@ -147,6 +135,37 @@ scale. Your content fits the box you declare — more in [Sizing](/guide/sizing)
 </p>
 
 <style>
+/*
+ * The live demo. An iframe rather than a component built into this theme: the
+ * playground is already a built app served from under this site, so framing it
+ * means the example, its cards' CSS and its data have ONE implementation —
+ * and a screenshot of a chart engine is the one thing that cannot show what it
+ * does.
+ *
+ * A fixed height rather than an aspect ratio: what the frame is worth showing
+ * is the top few levels at a readable zoom, and that is a number of pixels,
+ * not a proportion of the width. `lazy` on the iframe — it is below the fold
+ * on most screens, and it starts a Web Worker.
+ */
+.vp-doc .home-demo {
+  margin: 2.5rem 0 3rem;
+  height: 460px;
+  border-radius: 14px;
+  border: 1px solid var(--vp-c-divider);
+  overflow: hidden;
+  background: var(--vp-c-bg-soft);
+}
+.vp-doc .home-demo iframe {
+  display: block;
+  width: 100%;
+  height: 100%;
+  border: 0;
+}
+@media (max-width: 640px) {
+  .vp-doc .home-demo {
+    height: 340px;
+  }
+}
 /* Scoped under .vp-doc so it out-specifies VitePress's own `.vp-doc p` margin
    rule — otherwise `margin-left/right: 0` from that rule wins and the box sticks
    to the left instead of centring. */
