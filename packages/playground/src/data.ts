@@ -1231,6 +1231,11 @@ export const EXAMPLES: Example[] = [
         // rather than as a hairline, and bent through a radius big enough to
         // turn each elbow into the slot shape of a technical drawing.
         edgeBranchColours: true,
+        // The connectors carry the branch colours; the boxes do not. The canvas
+        // only paints a box when the card is not there — under the overlay's
+        // zoom threshold, and for a frame or two mid-zoom — and a solid
+        // coloured slab in place of a card reads as the chart flashing.
+        nodeBranchColours: false,
         edgeWidth: 1.5,
         edgeCornerRadius: 18,
         // The lit route keeps the mode's OWN highlight ink rather than a
@@ -1240,7 +1245,7 @@ export const EXAMPLES: Example[] = [
         // add is the weight and the halo.
         edgeHighlightWidth: 3,
         // Enough halo to say "this one", not enough to bloom over the diagram.
-        edgeHighlightGlow: 7,
+        edgeHighlightGlow: 4,
         // The lit path keeps its branch's colour and takes only the weight and
         // the halo — recolouring it would throw away the one thing the
         // connectors are saying at the moment the viewer asks about it.

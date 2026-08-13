@@ -946,7 +946,7 @@ export function transitionAnchorProgress(startedAt: number, now: number, opening
  * lag rather than as polish — but long enough that the glow it carries arrives
  * rather than appears.
  */
-const HIGHLIGHT_FADE_MS = 180
+const HIGHLIGHT_FADE_MS = 260
 
 const POLAR_DURATION_MS = 620
 

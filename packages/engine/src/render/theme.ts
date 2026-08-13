@@ -82,6 +82,18 @@ export interface Theme {
    */
   edgeBranchColours: boolean
   /**
+   * Whether a NODE takes its branch's colour, when branch colours exist at all.
+   *
+   * On by default, which is what `colourBranches` has always meant. Turned off
+   * by a chart whose nodes are its own DOM cards: the canvas paints those
+   * nodes only in the moments the overlay is not there — below its zoom
+   * threshold, and for the frame or two a zoom step takes — and a solid
+   * branch-coloured slab appearing in place of a card is a visible change of
+   * character. The connectors keep their colours either way; this is only
+   * about the boxes.
+   */
+  nodeBranchColours: boolean
+  /**
    * Whether a highlighted connector is RECOLOURED, or merely lit.
    *
    * `true` — the default, and what every existing consumer gets — paints the
@@ -260,6 +272,7 @@ export const DEFAULT_THEME: Readonly<Theme> = Object.freeze({
   edgeHighlightWidth: 2.5,
   edgeHighlightGlow: 0,
   edgeBranchColours: false,
+  nodeBranchColours: true,
   edgeHighlightRecolours: true,
   hiddenMark: true,
   gridDot: 'transparent',

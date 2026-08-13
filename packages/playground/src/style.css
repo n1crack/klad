@@ -1877,6 +1877,11 @@ button.overflow-panel-row {
 .slot-card::after {
   content: '';
   position: absolute;
+  /* `border-box`, because this stylesheet sets it per selector rather than on
+     `*`: without it the port's own border is added to its width, and the
+     negative margin that centres it then lands it a border to the right of the
+     connector it is supposed to cap. */
+  box-sizing: border-box;
   left: 50%;
   z-index: 2;
   width: 0.38rem;
@@ -1888,15 +1893,22 @@ button.overflow-panel-row {
   transition: box-shadow 160ms ease;
 }
 
+/*
+ * `-0.19rem` is half the port, and the `- 1px` is the card's own border: an
+ * absolutely positioned child is placed against the PADDING box, which sits
+ * inside that border, so without it every port hangs a border's width into the
+ * card and the connector arrives a pixel above its centre. Visible the moment
+ * the chart is zoomed in, which is where a port is worth drawing at all.
+ */
 .slot-card::before {
-  top: -0.19rem;
+  top: calc(-0.19rem - 1px);
 }
 
 /* A port with no connector at it is worse than no port, so the outbound one is
    drawn only when there is something hanging off it. */
 .slot-card::after {
   display: none;
-  bottom: -0.19rem;
+  bottom: calc(-0.19rem - 1px);
 }
 
 .slot-card.has-children.is-open::after {

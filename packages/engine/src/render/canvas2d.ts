@@ -314,6 +314,18 @@ export function createCanvas2DRenderer(
     const edgeLit = (i: number, p: number): boolean =>
       highlight !== null && highlight[i] === 1 && highlight[p] === 1
 
+    /**
+     * How strongly the lit pass paints — the fade in and out (see
+     * `Frame.highlightAlpha`).
+     *
+     * While it is under 1 the ORDINARY pass keeps drawing those edges too, and
+     * the lit pass lays over them. Skipping them there, as this did, meant a
+     * route being lit had nothing under it but its own half-drawn self: the
+     * line dimmed towards nothing and then popped back at full weight, which
+     * is the opposite of a fade.
+     */
+    const litAlpha = Math.min(1, Math.max(0, frame.highlightAlpha))
+
     const unlitFill = frame.tier === 'block' ? theme.blockFill : theme.nodeFill
 
     // Per-node branch colour, where the layout asked for one. Still loses to
@@ -325,7 +337,10 @@ export function createCanvas2DRenderer(
       frame.branchOf !== null && frame.branchDepth !== null && frame.tier !== 'block'
         ? branchFills(frame.branchOf, frame.branchDepth)
         : null
-    const fillFor = (i: number): string => (fills !== null ? (fills[i] ?? unlitFill) : unlitFill)
+    // Nodes may opt out of the branch colours the connectors are using — see
+    // `Theme.nodeBranchColours`. `fills` stays whole for the edge passes.
+    const nodeFills = theme.nodeBranchColours ? fills : null
+    const fillFor = (i: number): string => (nodeFills !== null ? (nodeFills[i] ?? unlitFill) : unlitFill)
 
     if (edgeCount > 0) {
       // Pass 1: everything not on a highlighted path. When nothing is
@@ -343,8 +358,8 @@ export function createCanvas2DRenderer(
         for (let n = 0; n < edgeCount; n++) {
           const i = edges[n]!
           const p = parent[i]!
-          if (p === -1 || edgeLit(i, p)) continue
-          const colour = fillFor(i)
+          if (p === -1 || (edgeLit(i, p) && litAlpha >= 1)) continue
+          const colour = fills[i] ?? theme.edgeStroke
           const bucket = byColour.get(colour)
           if (bucket === undefined) byColour.set(colour, [i])
           else bucket.push(i)
@@ -361,7 +376,7 @@ export function createCanvas2DRenderer(
         for (let n = 0; n < edgeCount; n++) {
           const i = edges[n]!
           const p = parent[i]!
-          if (p === -1 || edgeLit(i, p)) continue
+          if (p === -1 || (edgeLit(i, p) && litAlpha >= 1)) continue
           traceEdge(i, p)
         }
         ctx.strokeStyle = theme.edgeStroke
@@ -383,10 +398,8 @@ export function createCanvas2DRenderer(
           anyLit = true
         }
         if (anyLit) {
-          // The fade in and out — see `Frame.highlightAlpha`. Applied to the
-          // whole lit pass, halo included, so the route brightens as one
+          // The whole lit pass, halo included, so the route brightens as one
           // thing rather than the line and its glow arriving separately.
-          const litAlpha = Math.min(1, Math.max(0, frame.highlightAlpha))
           if (litAlpha < 1) ctx.globalAlpha = litAlpha
           // Recoloured, or merely lit — see `Theme.edgeHighlightRecolours`.
           // When the path keeps its own colours it cannot be one path any
@@ -421,7 +434,7 @@ export function createCanvas2DRenderer(
               const i = edges[n]!
               const p = parent[i]!
               if (p === -1 || !edgeLit(i, p)) continue
-              const colour = fillFor(i)
+              const colour = fills?.[i] ?? theme.edgeStroke
               const bucket = byColour.get(colour)
               if (bucket === undefined) byColour.set(colour, [i])
               else bucket.push(i)
