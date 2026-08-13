@@ -229,23 +229,40 @@ export function createChartHost(canvas: HTMLCanvasElement, theme: Theme, preferW
         const message = event.data
         if (message.t === 'frame') {
           framesReceived++
+          // Live state, read for scheduling decisions rather than paired with
+          // any particular set of boxes: always the newest.
           workerTransitioning = message.transitioning
           workerTransitionStartedAt = message.transitionStartedAt
           workerRingActive = message.ringActive
-          workerLastDrawnBoxes = message.lastDrawnBoxes
-          workerLastDrawnAlpha = message.lastDrawnAlpha
-          workerGhostSource = message.ghostSource
-          workerGhostBoxes = message.ghostBoxes
-          workerGhostAlpha = message.ghostAlpha
-          if (pendingFrames.length > 0) {
-            // Everything whose own frame has now arrived — usually one, more
-            // only when renders piled up (see `pendingFrames`). They all get
-            // THIS frame's answer, which is the newest truth there is.
-            const arrived = pendingFrames.filter((each) => framesReceived >= each.target)
-            if (arrived.length > 0) {
-              pendingFrames = pendingFrames.filter((each) => framesReceived < each.target)
-              for (const each of arrived) each.resolve(message.visible)
-            }
+          const arrived =
+            pendingFrames.length === 0 ? [] : pendingFrames.filter((each) => framesReceived >= each.target)
+          // The DRAWN GEOMETRY is published only with the frame a caller is
+          // actually handed, and never on its own.
+          //
+          // Every message the worker receives provokes a frame reply — a
+          // camera nudge, a toggle, a theme write — so between two renders
+          // this layer can see several frames the caller has not been given.
+          // Refreshing the mirror on each of them left `lastDrawnBoxes` from
+          // a NEWER frame than the `visible` array the caller was holding,
+          // and the vanilla layer pairs those two positionally to build its
+          // source -> box map. Mid-transition, when a collapse has just
+          // changed which nodes are drawn, that pairing silently handed a
+          // child its PARENT's box: the card was drawn full-size at the
+          // parent's own top-left corner and then flew down to its place —
+          // the owner's "when I click fast it starts from above the mouse,
+          // almost at the top border". Measured at 237 frames out of a dozen
+          // fast toggles. Publishing in lockstep with `resolve` below is what
+          // keeps the pair describing one frame.
+          if (arrived.length > 0) {
+            workerLastDrawnBoxes = message.lastDrawnBoxes
+            workerLastDrawnAlpha = message.lastDrawnAlpha
+            workerGhostSource = message.ghostSource
+            workerGhostBoxes = message.ghostBoxes
+            workerGhostAlpha = message.ghostAlpha
+            // Usually one, more only when renders piled up (see
+            // `pendingFrames`). They all get THIS frame's answer.
+            pendingFrames = pendingFrames.filter((each) => framesReceived < each.target)
+            for (const each of arrived) each.resolve(message.visible)
           }
         } else if (message.t === 'layout') {
           visibleToSource = message.visibleToSource

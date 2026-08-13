@@ -893,6 +893,66 @@ describe('ChartEngine expand/collapse transition', () => {
     expect(early.ghostAlpha[0]).toBeLessThan(0.3)
   })
 
+  it("carries a node caught mid-COLLAPSE at the box it was drawn at, not at its parent's box", () => {
+    // Expand interrupting a collapse — the owner's fast clicking, and the one
+    // that took the longest to find. `render()` shrinks a ghost toward a
+    // POINT on its parent (the tip of the "more inside" mark), but the "where
+    // is everything right now" pass recomputed it toward the parent's whole
+    // BOX. Late in a collapse those two are as far apart as a card is big: the
+    // ghost was recorded at the parent's full-size box, and the expand landing
+    // on it started every child there — a card on top of the parent, at full
+    // size, flying down to its row. On a real page that was 240 frames out of
+    // ten fast toggles, all three children stacked exactly on the parent.
+    const FAN: NodeData[] = [
+      { id: 'a' },
+      { id: 'b1', parentId: 'a' },
+      { id: 'b2', parentId: 'a' },
+      { id: 'b3', parentId: 'a' },
+    ]
+    const renderer = fakeRenderer()
+    const engine = createChartEngine(renderer)
+    const tree = normalize(FAN)
+    engine.setAnimate(true)
+    engine.setViewport(800, 600, 1)
+    engine.setCamera({ x: 0, y: 0, k: 1 })
+    engine.setData(
+      toWireTree(tree),
+      sizesFor(tree.count),
+      ['a', 'b1', 'b2', 'b3'],
+      new Uint8Array(tree.count).fill(1),
+    )
+    engine.render(1000)
+
+    const aIdx = Array.from(engine.visibleToSource).indexOf(tree.idToIndex.get('a')!)
+    const aBox = {
+      x: engine.boxes[aIdx * 4]!,
+      y: engine.boxes[aIdx * 4 + 1]!,
+      w: engine.boxes[aIdx * 4 + 2]!,
+      h: engine.boxes[aIdx * 4 + 3]!,
+    }
+
+    engine.setOpen(tree.idToIndex.get('a')!, false)
+    engine.render(2000)
+    // Late in the collapse: the ghosts have nearly finished shrinking into
+    // the tip, so they are small and nowhere near the parent's own box.
+    engine.render(2000 + TRANSITION_MS * 0.9)
+    const ghostWidth = renderer.frames.at(-1)!.ghostBoxes[2]!
+    expect(ghostWidth).toBeLessThan(aBox.w * 0.4)
+
+    // The interrupting expand, at that same instant.
+    engine.setOpen(tree.idToIndex.get('a')!, true)
+    engine.render(2000 + TRANSITION_MS * 0.9)
+    const frame = renderer.frames.at(-1)!
+    for (const id of ['b1', 'b2', 'b3']) {
+      const idx = Array.from(engine.visibleToSource).indexOf(tree.idToIndex.get(id)!)
+      expect(idx).toBeGreaterThanOrEqual(0)
+      const box = { x: frame.boxes[idx * 4]!, y: frame.boxes[idx * 4 + 1]!, w: frame.boxes[idx * 4 + 2]! }
+      // Where it was: small, below the parent. NOT the parent's box.
+      expect(box.w).toBeCloseTo(ghostWidth, 0)
+      expect(box.y).toBeGreaterThan(aBox.y + aBox.h)
+    }
+  })
+
   it('carries a node caught mid-reveal at the size it was drawn, not at its finished size', () => {
     // Interrupting an expand: the children are halfway out of the parent,
     // still small, when a second toggle lands. What the new transition

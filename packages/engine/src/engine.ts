@@ -1014,6 +1014,23 @@ function buildTransition(
    * is the right answer for a node off screen anyway.
    */
   prevRenderBoxes: Float64Array,
+  /**
+   * The same thing for the nodes that were on their way OUT when this
+   * relayout landed: SOURCE -> the box the last frame actually drew that
+   * ghost at, empty when none were drawn.
+   *
+   * A ghost is not in `prevRenderBoxes` — it has left the pruned tree, which
+   * is what makes it a ghost — so it needs its own answer, and for the same
+   * reason: where it visually IS cannot be recomputed from the transition
+   * that was drawing it. See the carry-over loop below.
+   *
+   * Built by the caller from the engine's OWN scratch buffers rather than
+   * from `lastGhostSource`/`lastGhostBoxes`: those are handed to the host and,
+   * in worker mode, TRANSFERRED — detached the moment they are posted, so
+   * reading them back here finds a zero-length array and silently falls
+   * through to the recomputation this parameter exists to replace.
+   */
+  prevGhostDrawn: ReadonlyMap<number, Box>,
   boxes: Float64Array,
   visibleToSource: Int32Array,
   prunedParent: Int32Array,
@@ -1096,13 +1113,32 @@ function buildTransition(
         // a still-fading ghost tracking its anchor's OWN live reposition
         // tween — same "live anchor, not a stale snapshot" fix as
         // `render()`'s ghost-drawing loop.
+        const key = sourceRemap === null ? ghost.source : (sourceRemap[ghost.source] ?? -1)
+        if (key === -1) continue
+        // The frame buffer first, exactly as a mid-reveal node is read out of
+        // `prevRenderBoxes` above, and for the same reason: recomputing it
+        // here does not agree with what was drawn. `render()` shrinks a ghost
+        // toward a POINT on its anchor — the tip of the "more inside" mark,
+        // see `revealOrigin` — while this used the anchor's whole BOX as the
+        // target. At the end of a collapse that put the ghost at the parent's
+        // full-size box, and an expand landing there started every child from
+        // the parent's own top-left corner at full size and flew it down to
+        // its place. Measured on a real page: three cards, all at exactly the
+        // parent's box, on every expand that interrupted a collapse — the
+        // owner's "when I click fast it starts from above the mouse, almost
+        // at the top border". The recomputation stays as the fallback for a
+        // ghost the last frame did not draw (off screen, or none drawn yet).
+        const drawnAt = prevGhostDrawn.get(ghost.source)
+        if (drawnAt !== undefined) {
+          prevPositionBySource.set(key, drawnAt)
+          continue
+        }
         const anchorKey = sourceRemap === null ? ghost.anchorSource : (sourceRemap[ghost.anchorSource] ?? -1)
         const to =
           ghost.anchor === -1 || anchorKey === -1
             ? ghost.from
             : (prevPositionBySource.get(anchorKey) ?? ghost.from)
-        const key = sourceRemap === null ? ghost.source : (sourceRemap[ghost.source] ?? -1)
-        if (key !== -1) prevPositionBySource.set(key, lerpBox(ghost.from, to, prevEasing!.emphasisPos))
+        prevPositionBySource.set(key, lerpBox(ghost.from, to, prevEasing!.emphasisPos))
       }
     }
   }
@@ -1606,6 +1642,13 @@ export function createChartEngine(renderer: Renderer): ChartEngine {
   let renderBoxes: Float64Array = new Float64Array(0)
   let ghostCullBuffer = new Uint32Array(0)
   let ghostDrawBoxes = new Float64Array(0)
+  /**
+   * How many entries of `ghostDrawBoxes` the last frame actually wrote —
+   * `render()`'s own ghost count, kept here so `relayout` can read the frame
+   * back afterwards (see `buildTransition`'s `prevGhostDrawn`). The buffer
+   * itself is grown and reused, so its length says nothing about this.
+   */
+  let ghostDrawCount = 0
   let ghostDrawAlpha = new Float32Array(0)
   let revealAlphaBuffer = new Float32Array(0)
   // Interpolated boxes for exactly the SOURCE indices `render()` most
@@ -1717,6 +1760,18 @@ export function createChartEngine(renderer: Renderer): ChartEngine {
     // pointed at the new layout below — see `buildTransition`'s
     // `prevRenderBoxes` for the one thing that needs it.
     const prevRenderBoxes = renderBoxes
+    // ...and the ghost half of the same frame, for the nodes that had already
+    // left the tree when this relayout landed. Read out of the engine's own
+    // scratch buffers (see `buildTransition`'s `prevGhostDrawn`), and through
+    // `ghostCullBuffer`, because that is the order those boxes were written
+    // in.
+    const prevGhostDrawn = new Map<number, Box>()
+    if (transition !== null) {
+      for (let g = 0; g < ghostDrawCount; g++) {
+        const ghost = transition.ghosts[ghostCullBuffer[g]!]
+        if (ghost !== undefined) prevGhostDrawn.set(ghost.source, boxAt(ghostDrawBoxes, g))
+      }
+    }
     const prevVisibleToSource = visibleToSource
     const prevParent = prunedParent
     const prevTransition = transition
@@ -1927,6 +1982,7 @@ export function createChartEngine(renderer: Renderer): ChartEngine {
         prevParent,
         prevTransition,
         prevRenderBoxes,
+        prevGhostDrawn,
         boxes,
         visibleToSource,
         prunedParent,
@@ -2287,6 +2343,7 @@ export function createChartEngine(renderer: Renderer): ChartEngine {
         }
         ghostCount = gcount
       }
+      ghostDrawCount = ghostCount
     }
     // --- end transition ---
 
@@ -2471,7 +2528,20 @@ export function createChartEngine(renderer: Renderer): ChartEngine {
       const boxes = new Float64Array(ghostCount * 4)
       const alpha = new Float32Array(ghostCount)
       for (let g = 0; g < ghostCount; g++) {
-        source[g] = transition.ghosts[g]!.source
+        // Through `ghostCullBuffer`, NOT `g` — and this is the whole bug the
+        // owner was seeing. `ghostDrawBoxes[g]` was written in CULLED order a
+        // few dozen lines above (`transition.ghosts[ghostCullBuffer[g]]`),
+        // because only the ghosts near the viewport are drawn and the
+        // quadtree returns them in its own order. Publishing
+        // `transition.ghosts[g].source` alongside it paired each source with
+        // whatever box happened to sit at the same offset in a differently
+        // ordered list, so the host's overlay — which pairs these two
+        // positionally to build its source -> box map — put cards on other
+        // nodes' geometry. On a fast expand interrupting a collapse that came
+        // out as every child drawn full-size on top of the parent, then flying
+        // down to its row: "when I click fast it starts from above the mouse,
+        // almost at the top border."
+        source[g] = transition.ghosts[ghostCullBuffer[g]!]!.source
         boxes[g * 4] = ghostDrawBoxes[g * 4]!
         boxes[g * 4 + 1] = ghostDrawBoxes[g * 4 + 1]!
         boxes[g * 4 + 2] = ghostDrawBoxes[g * 4 + 2]!
