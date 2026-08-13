@@ -46,9 +46,11 @@ import { withBase } from 'vitepress'
 // mode; switching one swaps the frame's `src`, and the app's bundle is already
 // cached by then.
 //
-// Three, not every layout there is: radial fits its whole diagram to the
-// frame, which at this height puts it below the zoom where its labels are
-// drawn at all, and a tab that shows a skeleton argues against the page.
+// Three, not every layout there is. The radial is deliberately not among them:
+// its bounds include a ring's worth of label allowance all round, so a fitted
+// wheel occupies only the middle of whatever frame it is given — and at that
+// size three generations of names along one spoke run into each other. It is
+// the one layout that needs the room the playground gives it.
 const demos = [
   { id: 'slots', label: 'Org chart', alt: 'An org chart of coloured cards you can pan, zoom and expand' },
   { id: 'file-tree', label: 'File tree', alt: 'A tree as indented file-explorer rows' },
@@ -185,7 +187,7 @@ so the array from your API is usually already the right shape.
   background: var(--vp-c-bg-soft);
 }
 .vp-doc .home-demo-frame {
-  height: 460px;
+  height: 500px;
 }
 .vp-doc .home-demo iframe {
   display: block;

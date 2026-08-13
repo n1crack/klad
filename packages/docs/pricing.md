@@ -1,9 +1,9 @@
 ---
 title: Pricing
 description: 'Klad is free and open source under the GNU AGPL v3. A commercial licence covers closed-source and proprietary products — get in touch.'
-# No outline rail: this page is a headline and two boxes, and a table of
-# contents beside four short sections is furniture. Dropping it gives the
-# whole width back to the page, which is what the two cards want.
+# No outline rail: this page is a headline, two cards and three short sections,
+# and a table of contents beside that is furniture. Dropping it gives the whole
+# width back to the page, which is what the cards want.
 aside: false
 outline: false
 ---
@@ -11,9 +11,9 @@ outline: false
 <div class="price-hero">
   <p class="price-hero-figure">Always free</p>
   <p class="price-hero-line">
-    No seats, no tiers, no usage limits, no card. Klad is open source under the
-    GNU AGPL v3 — and the whole of it is, not a cut-down half with the good
-    parts behind a plan.
+    Klad is open source under the GNU AGPL v3 — no seats, no tiers, no usage
+    limits, no card. And the whole of it is: there is no cut-down edition with
+    the good parts held back for a plan.
   </p>
 </div>
 
@@ -45,7 +45,7 @@ product, there is a commercial licence, and that one is a conversation.
       <li>Closed-source and proprietary products, shipped or hosted</li>
       <li>No obligation to release your own source</li>
       <li>The right to distribute the library inside your application</li>
-      <li>Scope, seats, support and duration agreed in writing</li>
+      <li>Terms — scope, seats, support, duration — agreed in writing, per company</li>
     </ul>
     <p class="price-card-cta">
       <a href="mailto:yusuf@ozdemir.be">yusuf@ozdemir.be</a>
@@ -83,6 +83,25 @@ You need the commercial licence when:
 **Email [yusuf@ozdemir.be](mailto:yusuf@ozdemir.be)** with your company, the
 product it would go into, whether it ships to customers or is internal only,
 and rough scale. That is enough to quote against.
+
+## Something built for you
+
+Neither licence is a service, and some of what people ask for is not a licence
+question at all:
+
+- **A chart that looks like your product.** Everything the canvas draws is a
+  theme token and everything on top of it is your own markup, so a design in
+  your brand is configuration rather than a fork — the showcase on the home
+  page is that, and nothing else.
+- **A layout or a feature you need and this does not have.** The shape of a
+  tree is a setting here precisely because there is more than one right answer;
+  if yours is missing, it is worth a conversation.
+- **Getting it into your codebase.** Migrating off whatever draws your charts
+  today, wiring it to your data, making it fast on the size of tree you
+  actually have.
+
+Same address, and say which of these it is:
+**[yusuf@ozdemir.be](mailto:yusuf@ozdemir.be)**.
 
 ::: info
 This page is a plain-language summary to help you work out which licence

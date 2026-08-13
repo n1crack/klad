@@ -6591,3 +6591,47 @@ describe('weight', () => {
     weighted.destroy()
   })
 })
+
+describe('lockPan and the opening view', () => {
+  it('still frames the whole chart on mount', async () => {
+    // The lock throws away x/y, never k — so the opening fit's ZOOM has to
+    // survive it. It did not: a locked radial came up at 1x with its centre
+    // off the bottom of the frame, because the re-centre ran against bounds
+    // from a layout that was no longer the one being drawn.
+    const chart = make({ layout: 'radial', lockPan: true, nodeSize: { w: 18, h: 18 } })
+    await settle()
+    const { camera, bounds } = chart.api.getState()
+    const width = (bounds.maxX - bounds.minX) * camera.k
+    const height = (bounds.maxY - bounds.minY) * camera.k
+    expect(width).toBeLessThanOrEqual(800)
+    expect(height).toBeLessThanOrEqual(600)
+    // …and centred, which is the lock's own job.
+    expect(((bounds.minX + bounds.maxX) / 2) * camera.k + camera.x).toBeCloseTo(400, 3)
+    expect(((bounds.minY + bounds.maxY) / 2) * camera.k + camera.y).toBeCloseTo(300, 3)
+    chart.destroy()
+  })
+
+  it('survives the layout being retuned under it', async () => {
+    // What the playground actually does on mount: apply the layout preset's
+    // own step, with a fit. The lock must not eat that fit's zoom.
+    const chart = make({
+      layout: 'radial',
+      lockPan: true,
+      nodeSize: { w: 18, h: 18 },
+      // The floor the showcase sets. A wheel that needs LESS than this to fit
+      // is exactly the case `recomputeLimits` lowers it for.
+      zoomLimits: { minK: 0.3, maxK: 6 },
+      data: Array.from({ length: 28 }, (_, i) =>
+        i === 0 ? { id: 'n0', name: 'root' } : { id: `n${i}`, parentId: `n${Math.floor((i - 1) / 3)}`, name: `n${i}` },
+      ),
+    })
+    await settle()
+    chart.api.setLayoutOptions({ layoutStep: 190 }, { fit: true })
+    await settle()
+    await settle()
+    const { camera, bounds } = chart.api.getState()
+    expect((bounds.maxX - bounds.minX) * camera.k).toBeLessThanOrEqual(800)
+    expect(((bounds.minY + bounds.maxY) / 2) * camera.k + camera.y).toBeCloseTo(300, 3)
+    chart.destroy()
+  })
+})

@@ -1641,9 +1641,49 @@ export const EXAMPLES: Example[] = [
     id: 'radial',
     name: 'Radial',
     description:
-      'Root at the centre, each generation a ring further out, and every name turned to run along its own spoke — flipped on the left-hand side so nothing reads upside down. For trees that are wide and shallow, where a tiered chart runs off the side of the screen.',
+      'Root at the centre, each generation a ring further out, and every name turned to run along its own spoke — flipped on the left-hand side so nothing reads upside down. Each spoke takes the colour of the node it reaches, and hovering one lights the whole run back to the centre. For trees that are wide and shallow, where a tiered chart runs off the side of the screen.',
     data: SHARED_DATA,
-    options: { layout: 'radial', minimap: true },
+    options: {
+      layout: 'radial',
+      colourBranches: true,
+      toggleOnNodeClick: true,
+      zoomLimits: { minK: 0.3, maxK: 6 },
+      // Names are the content here — the nodes are 18px markers — so the text
+      // tier has to survive being fitted into a small frame. The default
+      // (0.25) drops it at exactly the zoom a whole wheel arrives at, which
+      // leaves a diagram of unlabelled dots.
+      lodThresholds: { text: 0.06, overlay: 0.9 },
+      theme: {
+        palette: [...SLOT_PALETTE],
+        // The same paper as the org-chart showcase, for the same reason: a
+        // grid on the canvas cannot lag the diagram on a pan.
+        gridDot: 'rgba(128, 132, 148, 0.3)',
+        gridSpacing: 26,
+        gridDotSize: 1,
+        // Every spoke in the colour of the node it reaches, and a hover lights
+        // the whole run back to the centre WITHOUT repainting it — on a wheel
+        // the colour is which branch you are in, which is the thing a viewer
+        // tracing a spoke inward is asking about.
+        edgeBranchColours: true,
+        edgeHighlightRecolours: false,
+        edgeHighlightGlow: 3,
+        edgeWidth: 1.25,
+        edgeHighlightWidth: 2.5,
+        // The markers: dots, not boxes. A radius past half the node's size is
+        // clamped to a circle, so one number covers it.
+        cornerRadius: 9,
+        nodeStroke: 'transparent',
+        nodeBranchColours: true,
+        // A lit marker brightens rather than turning one flat accent colour —
+        // see `nodeHighlightRecolours`.
+        nodeHighlightRecolours: false,
+        highlightLift: 0.16,
+        highlightFill: 'transparent',
+        highlightStroke: 'transparent',
+        labelFont: '12px system-ui, -apple-system, Segoe UI, sans-serif',
+      },
+    },
+    hoverTrail: true,
     content: 'none',
   },
   {
