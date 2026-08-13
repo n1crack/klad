@@ -1653,6 +1653,13 @@ export const EXAMPLES: Example[] = [
       // (0.25) drops it at exactly the zoom a whole wheel arrives at, which
       // leaves a diagram of unlabelled dots.
       lodThresholds: { text: 0.06, overlay: 0.9 },
+      // Two generations open, not four. A radial's names run OUTWARD along
+      // their own spoke, so every extra ring puts another word on the same
+      // line — three deep and the names on one arm run into each other at any
+      // zoom that fits the wheel. Closed, the wheel is legible and the branches
+      // are an invitation; what is inside a shut one is what the read-out
+      // panel is for.
+      collapsedByDefault: (_item, at) => at.depth >= 2,
       theme: {
         palette: [...SLOT_PALETTE],
         // The same paper as the org-chart showcase, for the same reason: a
@@ -1684,6 +1691,7 @@ export const EXAMPLES: Example[] = [
       },
     },
     hoverTrail: true,
+    hoverPanel: true,
     content: 'none',
   },
   {

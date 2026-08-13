@@ -46,14 +46,15 @@ import { withBase } from 'vitepress'
 // mode; switching one swaps the frame's `src`, and the app's bundle is already
 // cached by then.
 //
-// Three, not every layout there is. The radial is deliberately not among them:
-// its bounds include a ring's worth of label allowance all round, so a fitted
-// wheel occupies only the middle of whatever frame it is given — and at that
-// size three generations of names along one spoke run into each other. It is
-// the one layout that needs the room the playground gives it.
+// The radial only earns its tab because it opens two generations deep rather
+// than all four: its names run OUTWARD along their own spoke, so every extra
+// ring puts another word on the same line, and a fitted wheel four deep has
+// them running into each other. Closed, it is legible and the branches are an
+// invitation — see the example's `collapsedByDefault`.
 const demos = [
   { id: 'slots', label: 'Org chart', alt: 'An org chart of coloured cards you can pan, zoom and expand' },
   { id: 'file-tree', label: 'File tree', alt: 'A tree as indented file-explorer rows' },
+  { id: 'radial', label: 'Radial', alt: 'A tree with the root at the centre and generations as rings' },
   { id: 'sunburst', label: 'Sunburst', alt: 'A tree as a wheel of nested arc segments you can drill into' },
 ]
 const current = ref(demos[0])

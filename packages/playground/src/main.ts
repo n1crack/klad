@@ -2155,6 +2155,25 @@ function renderHoverPanel(example: Example, id: string | null): void {
     return
   }
 
+  // A dataset with no sizes in it — the org chart — gets the other read-out:
+  // who this is, and how much of the tree hangs off them. The panel is worth
+  // having on any chart whose nodes are too small to carry their own text; it
+  // is only the sunburst that has a number to divide.
+  if (item.sizeKb === undefined) {
+    const stats = currentApi?.stats(id) ?? null
+    hoverTitle.textContent = String(item.name ?? item.id)
+    hoverMeta.textContent = [String(item.title ?? ''), String(item.department ?? '')]
+      .filter((part) => part !== '')
+      .join(' · ')
+    hoverBar.style.display = 'none'
+    hoverShare.textContent =
+      stats === null || stats.descendants === 0
+        ? 'No reports'
+        : `${stats.directChildren} direct · ${stats.descendants} in the branch`
+    return
+  }
+  hoverBar.style.display = ''
+
   const kb = sizeOfItem(item)
   const parent = item.parentId === undefined ? undefined : byId.get(String(item.parentId))
   const parentKb = sizeOfItem(parent)
