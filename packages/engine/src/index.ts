@@ -9,7 +9,7 @@
  * asserts the two agree, in the release path, where a mismatch can still be
  * fixed without another publish.
  */
-export const VERSION = '1.9.1'
+export const VERSION = '1.10.0'
 
 export type { NodeData, Warning, WarningCode, Size, Bounds } from './types.js'
 export type { Tree, SubtreeStats } from './tree.js'
