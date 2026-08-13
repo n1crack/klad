@@ -563,22 +563,40 @@ function unionBox(a: Box, b: Box): Box {
  * one does (reposition vs. reveal/shrink) flips with the toggle's direction
  * — see `Transition.opening` and `repositionRaw`/`emphasisRaw` below.
  *
- * `PHASE_OVERLAP_MS` lets phase 2 start a little before phase 1 fully
- * finishes, so the hand-off between them reads as one continuous motion
- * rather than two animations with a dead beat in between — small relative to
- * either phase, tuned by eye alongside the phase lengths themselves.
+ * `PHASE_OVERLAP_MS` lets phase 2 start before phase 1 finishes, so the
+ * hand-off between them reads as one continuous motion rather than two
+ * animations with a dead beat in between.
+ *
+ * It is a THIRD of a phase, not the token 70ms it started as, because both
+ * phases are eased with `easeInOutCubic` — each ENDS at zero velocity and
+ * each STARTS at zero velocity. Overlap them by less than their own
+ * slow-in/slow-out tails and the two near-stationary ends line up: the
+ * children finish shrinking away, the chart visibly waits, and only then do
+ * the siblings close the gap. That pause was the owner's "it shrinks, it
+ * closes, then it shrinks again". At a third of a phase, phase 2's
+ * acceleration lands inside phase 1's fast middle instead, and the pair reads
+ * as one move.
+ *
+ * It does NOT go further than that, which would be the same as not staging
+ * the transition at all: on an expand the children would arrive into space
+ * that has not been made yet and sit over their neighbours on the way in,
+ * which is the thing the staging exists to prevent. The floor for a collapse
+ * is `GHOST_FADE_FRACTION` — the gap must not start closing over children
+ * that are still visible — and phase 2 opening at ~33% against a fade that
+ * completes by 35% (and only reaching real speed after that, being eased)
+ * keeps it on the right side of that line.
  *
  * Total duration (`TRANSITION_DURATION_MS`, derived below) intentionally
  * stays quick: the owner was explicit that the whole thing must not feel
  * slow, even now that it is two stages rather than one. The former
  * single-phase duration was 420ms; splitting it in two without shortening
  * anything would have doubled the perceived length, so each phase is
- * shorter than that on its own — the two phases together, minus the
- * overlap, land at roughly the same ballpark as before.
+ * shorter than that on its own — and the wider overlap now brings the two
+ * together back under it.
  */
 const PHASE_ONE_MS = 260
 const PHASE_TWO_MS = 260
-const PHASE_OVERLAP_MS = 70
+const PHASE_OVERLAP_MS = 130
 const TRANSITION_DURATION_MS = PHASE_ONE_MS + PHASE_TWO_MS - PHASE_OVERLAP_MS
 
 /** Fraction of the total duration phase 1 alone occupies. */

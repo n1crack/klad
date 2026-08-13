@@ -46,6 +46,14 @@ function fakeRenderer(): Renderer & { frames: Frame[] } {
   }
 }
 
+/**
+ * Mirrors `TRANSITION_DURATION_MS` in engine.ts, which is not exported: the
+ * phase lengths there are tuned by eye and have moved before, so every test
+ * that has to sit at a specific point INSIDE the transition (rather than
+ * comfortably past its end) says it through this one constant.
+ */
+const TRANSITION_MS = 390
+
 const DATA = [{ id: 'a' }, { id: 'b', parentId: 'a' }, { id: 'c', parentId: 'b' }, { id: 'd', parentId: 'a' }]
 
 function sizesFor(count: number, w = 100, h = 50): Float64Array {
@@ -817,7 +825,7 @@ describe('ChartEngine expand/collapse transition', () => {
     engine.render(1000)
     expect(engine.transitioning).toBe(true)
 
-    engine.render(1450) // exactly the 450ms total duration (two staged phases): progress 1
+    engine.render(1000 + TRANSITION_MS) // exactly the total duration (two staged phases): progress 1
     expect(engine.transitioning).toBe(false)
     const frame = renderer.frames.at(-1)!
     expect(Array.from(frame.boxes)).toEqual(Array.from(engine.boxes))
@@ -861,10 +869,9 @@ describe('ChartEngine expand/collapse transition', () => {
     engine.setOpen(tree.idToIndex.get('b')!, false) // removes 'c'
     engine.render(1000) // t=0: just started, still ~opaque (asserted elsewhere)
 
-    // 450ms is the transition's total duration (TRANSITION_DURATION_MS) —
-    // same constant the sibling ghost test above pins by hand. The midpoint
-    // is 225ms in.
-    engine.render(1000 + 225)
+    // `TRANSITION_MS` is the transition's total duration — the same constant
+    // the sibling ghost test above works from. The midpoint is half of it.
+    engine.render(1000 + TRANSITION_MS / 2)
     const atMidpoint = renderer.frames.at(-1)!
     expect(atMidpoint.ghostCount).toBe(1)
     expect(atMidpoint.ghostAlpha[0]).toBeLessThan(0.05) // already gone well before the midpoint
@@ -941,18 +948,18 @@ describe('ChartEngine expand/collapse transition', () => {
     // below would pass no matter which anchor box `render()` used.
     expect(Math.abs(exitX(pAfter) - exitX(pBefore))).toBeGreaterThan(5)
 
-    // Overall progress 0.5 (225ms of the 450ms total): for an EXPAND,
+    // Overall progress 0.5 (half of `TRANSITION_MS`): for an EXPAND,
     // `repositionRaw` (driving 'p's own reposition tween) is `phaseOneProgress`,
-    // ~99% done by this point (phase 1 spans roughly the first 58%) — 'p' is
-    // nearly at `pAfter`. `emphasisRaw` (driving 'q1's reveal) is
-    // `phaseTwoProgress`, only ~1% in (phase 2 starts around 42%) — 'q1' has
-    // barely left its growth-start point. So 'q1's rendered box right now
+    // three quarters done by this point (phase 1 spans the first ~67%) — 'p' is
+    // most of the way to `pAfter`. `emphasisRaw` (driving 'q1's reveal) is
+    // `phaseTwoProgress`, a quarter in (phase 2 starts around 33%) and eased,
+    // so 'q1' has barely left its growth-start point. So 'q1's rendered box
     // should sit almost exactly on 'p's LIVE exit point (~exitX(pAfter)), not
     // on 'p's stale pre-toggle exit point (exitX(pBefore)) — and the two are
     // far enough apart (asserted above) that the bug this test guards
     // against — growing from a fixed snapshot instead of the anchor's
     // current position — would be unmistakable here.
-    engine.render(2000 + 225)
+    engine.render(2000 + TRANSITION_MS / 2)
     const pLive = drawnBoxOf('p')
     const q1Rendered = drawnBoxOf('q1')
 
@@ -1032,7 +1039,7 @@ describe('ChartEngine expand/collapse transition', () => {
     // Right at the end of the transition (but still just inside it): the
     // ghost has nearly finished shrinking toward its target, so its drawn
     // box should sit almost exactly on 'a's exit point.
-    engine.render(1000 + 449)
+    engine.render(1000 + TRANSITION_MS - 1)
     const frame = renderer.frames.at(-1)!
     expect(frame.ghostCount).toBe(1)
     expect(frame.ghostBoxes[0]).toBeCloseTo(aBoxNow.x + aBoxNow.w / 2, 1)
@@ -1311,7 +1318,7 @@ describe('ChartEngine expand/collapse transition', () => {
       survivorSources: number[],
       transitionStart: number,
     ): void {
-      const checkpoints = [0, 0.15, 0.3, 0.5, 0.7, 0.85, 0.99].map((f) => transitionStart + f * 450)
+      const checkpoints = [0, 0.15, 0.3, 0.5, 0.7, 0.85, 0.99].map((f) => transitionStart + f * TRANSITION_MS)
       for (const t of checkpoints) {
         engine.render(t)
         const frame = renderer.frames.at(-1)!
@@ -1593,7 +1600,7 @@ describe('ChartEngine one-shot toggle ring', () => {
 
   it('keeps `engine.ringActive` true after `transitioning` has already gone false', () => {
     // RING_DURATION_MS (900ms) deliberately outlives TRANSITION_DURATION_MS
-    // (450ms, see engine.ts) so the ring is still resolving well after the
+    // (`TRANSITION_MS` here, see engine.ts) so the ring is still resolving after the
     // layout transition settles. A caller driving its own frame loop off only
     // `transitioning` — as the vanilla layer's `scheduleFrame` briefly did —
     // stops asking for frames the instant the transition ends and freezes
@@ -1611,7 +1618,7 @@ describe('ChartEngine one-shot toggle ring', () => {
     expect(engine.transitioning).toBe(true)
     expect(engine.ringActive).toBe(true)
 
-    engine.render(1500) // past the 450ms transition, still well inside the 900ms ring
+    engine.render(1500) // past the layout transition, still well inside the 900ms ring
     expect(engine.transitioning).toBe(false)
     expect(engine.ringActive).toBe(true)
 
@@ -1744,7 +1751,7 @@ describe('block-tier decimation in render()', () => {
     engine.setOpen(child, false)
     const duringTransition = engine.render(1).length
 
-    // Once the transition has run its course (TRANSITION_DURATION_MS ~450ms),
+    // Once the transition has run its course (TRANSITION_DURATION_MS, see engine.ts),
     // the engine falls back to the steady state and — blockDecimation still
     // being on — decimation kicks back in at this same post-toggle camera.
     // A `during` count that is NOT smaller than this settled, decimated count
