@@ -36,3 +36,14 @@ Two more pieces that go with it:
   without rendering one. A canvas-only chart has no `renderNode` to read
   `NodeContext.overflow` from, and "what is inside this +42" is a fair question
   to ask about a sector you can see.
+
+Two fixes that came with it:
+
+- `toSVG`/`toBlob`/`print` lay the tree out again from scratch rather than
+  reading the engine's geometry, and were not given the weights — so an
+  exported wheel divided its arcs by leaf count while the one on screen divided
+  them by size. Same for worker mode, where the weights never reached the
+  message at all.
+- A cap no longer invents an aggregate node to stand for exactly ONE child. It
+  took the room the child would have taken, said strictly less, and cost a
+  click to get back what was already there.

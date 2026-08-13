@@ -555,10 +555,15 @@ export interface Options {
    * createKlad(el, { data, layout: 'sunburst', weight: (item) => Number(item.sizeKb ?? 0) })
    * ```
    *
-   * Zero, negative and non-finite all count as zero: a leaf worth nothing gets
-   * no arc, which is the honest picture. A branch whose leaves are ALL zero
-   * falls back to counting them, so it stays pointable-at instead of
-   * collapsing into a seam.
+   * A leaf worth `0` gets no arc — nothing is nothing, and that is the honest
+   * picture. Anything that is not a number at all is different: it is this
+   * function saying it does not know, and "no information" defaults to `1`,
+   * the same as every leaf on a chart with no `weight`. So a dataset where
+   * only some rows carry a size still draws, with the unmeasured ones taking a
+   * minimum share rather than vanishing.
+   *
+   * A tree where NOTHING is worth anything falls back to counting leaves,
+   * rather than dividing by zero.
    */
   weight?: (item: NodeData) => number
   worker?: boolean
@@ -1705,6 +1710,12 @@ export function createKlad(host: HTMLElement, options: Options): KladInstance {
 
       const rest = children.filter((child) => !shown.has(String(child.id)))
       if (rest.length === 0) continue
+      // One left over is not worth hiding. The aggregate takes exactly the
+      // room the child would have taken and says strictly less — "+1" where
+      // the name was — and it costs a click to get back what was already
+      // there. So the cap gives that one child a pass rather than inventing a
+      // node to stand for it.
+      if (rest.length === 1) continue
       const ids = rest.map((child) => String(child.id))
       for (const id of ids) hidden.add(id)
       const moreId = MORE_ID + parentId
@@ -1943,9 +1954,14 @@ export function createKlad(host: HTMLElement, options: Options): KladInstance {
       labels[i] = labelOf(item, i)
       if (weights !== null) {
         const w = weightOf!(item)
-        // A weight that is not a usable number is a zero, not a crash and not
-        // a `NaN` that would poison every ancestor's total.
-        weights[i] = Number.isFinite(w) && w > 0 ? w : 0
+        // Two different answers, kept apart. A number — including zero — is
+        // taken at its word: a leaf worth nothing gets no arc, which is the
+        // honest picture. Anything that is NOT a number is the function saying
+        // it does not know (a row with no size, a field that was never
+        // filled), and the default for "no information" is one, the same as
+        // for a chart with no `weight` at all. Never `NaN`, which would poison
+        // every ancestor's total.
+        weights[i] = Number.isFinite(w) ? Math.max(0, w) : 1
       }
     }
     // Options FIRST, then the data. The order matters on the very first pass:
@@ -3511,10 +3527,21 @@ export function createKlad(host: HTMLElement, options: Options): KladInstance {
 
     const sizes: Float64Array = new Float64Array(n * 2)
     const labels: string[] = Array.from({ length: n })
+    // The export lays the tree out again from scratch rather than reading the
+    // engine's geometry, so every per-node input the live layout gets has to
+    // be rebuilt here too — `weight` included. Without it an exported wheel
+    // divided its arcs by leaf count while the one on screen divided them by
+    // size, which is a different picture of the same data.
+    const weightOf = currentOptions.weight
+    const weights = weightOf === undefined ? null : new Float64Array(n)
     for (let i = 0; i < n; i++) {
       const src = visible.toSource[i]!
       const item = itemFor(src)
       const size = sizeOf(item, src)
+      if (weights !== null) {
+        const w = weightOf!(item)
+        weights[i] = Number.isFinite(w) ? Math.max(0, w) : 1
+      }
       // Transposed for a horizontal tidy tree, exactly as the engine does —
       // the layout always works in a top-down space and `applyOrientation`
       // swaps back. Without this an `lr` export drew every card rotated.
@@ -3536,6 +3563,7 @@ export function createKlad(host: HTMLElement, options: Options): KladInstance {
       rowGap: currentOptions.rowGap,
       focus: centre === -1 ? -1 : (visible.fromSource[centre] ?? -1),
       maxRings: currentOptions.maxRings,
+      weights,
     })
     const exportBounds = isPolarLayout(layoutName)
       ? result.bounds

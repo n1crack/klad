@@ -2093,10 +2093,6 @@ hoverBody.className = 'read-body'
 hoverBody.append(hoverTitle, hoverMeta, hoverBar, hoverShare)
 hoverField.append(hoverBody)
 
-const hoverIdle = document.createElement('span')
-hoverIdle.className = 'read-idle'
-hoverIdle.textContent = 'Point at a segment'
-
 /** `1.2 MB`, `640 KB`, `0 KB` — the units a file manager would use. */
 function formatKb(kb: number): string {
   if (kb >= 1024 * 1024) return `${(kb / (1024 * 1024)).toFixed(1)} GB`
@@ -2125,13 +2121,15 @@ function sizeOfItem(item: NodeItem | undefined): number {
  * one: "+42" is exactly the label that raises a question.
  */
 function renderHoverPanel(example: Example, id: string | null): void {
+  // Nothing under the pointer: the panel goes away entirely rather than
+  // sitting there saying "point at a segment". A permanent box in the corner
+  // of the chart is chrome; one that appears when it has something to say is
+  // an answer.
   if (id === null) {
-    hoverBody.remove()
-    hoverField.append(hoverIdle)
+    hoverField.remove()
     return
   }
-  hoverIdle.remove()
-  hoverField.append(hoverBody)
+  if (!hoverField.isConnected) surface.append(hoverField)
 
   const byId = new Map(example.data.map((item) => [String(item.id), item]))
   const total = sizeOfItem(example.data[0])
@@ -2145,7 +2143,7 @@ function renderHoverPanel(example: Example, id: string | null): void {
     hoverMeta.textContent = `${formatKb(kb)} · rolled up in ${String(parent?.name ?? rolled.parentId)}`
     const share = total > 0 ? kb / total : 0
     hoverBarFill.style.width = `${Math.max(1, share * 100)}%`
-    hoverShare.textContent = `${formatShare(share)} of ${String(example.data[0]?.name ?? 'the whole')} · click to open them up`
+    hoverShare.textContent = `${formatShare(share)} of ${String(example.data[0]?.name ?? 'the whole')} · click to uncover the largest`
     return
   }
 
@@ -2181,8 +2179,6 @@ function syncHoverPanel(example: Example): void {
   hoverField.remove()
   setHoverReporter(null)
   if (example.hoverPanel !== true) return
-  renderHoverPanel(example, null)
-  surface.append(hoverField)
   setHoverReporter((id) => renderHoverPanel(example, id))
 }
 

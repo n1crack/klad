@@ -328,7 +328,7 @@ export function createChartHost(canvas: HTMLCanvasElement, theme: Theme, preferW
 
     setData(tree, sizes, labels, open, unloaded = null, keep = null, hide = null, weights = null) {
       engine?.setData(tree, sizes, labels, open, unloaded, keep, hide, weights)
-      post({ t: 'data', tree, sizes, labels, open, unloaded, keep, hide })
+      post({ t: 'data', tree, sizes, labels, open, unloaded, keep, hide, weights })
     },
     setOptions(partial) {
       engine?.setOptions(partial)

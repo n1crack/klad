@@ -3036,11 +3036,6 @@ button.overflow-panel-row {
   padding: 0.55rem 0.7rem;
 }
 
-.read-idle {
-  font-size: 0.78rem;
-  color: var(--text-muted);
-}
-
 .read-body {
   display: flex;
   flex-direction: column;

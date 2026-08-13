@@ -6520,3 +6520,61 @@ describe('lockPan', () => {
     chart.destroy()
   })
 })
+
+describe('weight', () => {
+  const SIZED = [
+    { id: 'root' },
+    { id: 'big', parentId: 'root', kb: 60 },
+    { id: 'small', parentId: 'root', kb: 30 },
+    { id: 'tiny', parentId: 'root', kb: 10 },
+  ]
+
+  /** The drawn arc of one node, from the SVG export — the one place a test can
+   * read the wheel's own geometry without reaching into the worker. */
+  const arcs = (chart: ReturnType<typeof createKlad>): string => chart.api.toSVG()
+
+  it('takes an unmeasured leaf as one rather than dropping it', async () => {
+    // `kb` is missing on `tiny`, so the host's function returns `undefined`.
+    // The contract is that it still draws — "I do not know" is not "nothing".
+    const chart = createKlad(host(), {
+      data: [...SIZED.slice(0, 3), { id: 'tiny', parentId: 'root' }],
+      nodeSize: { w: 40, h: 40 },
+      layout: 'sunburst',
+      worker: false,
+      weight: (item) => item.kb as number,
+    })
+    await nextFrame()
+    await settle()
+    // Four sectors: the hub and three children, none of them collapsed away.
+    expect(arcs(chart).match(/<path/g)?.length ?? 0).toBeGreaterThanOrEqual(4)
+    chart.destroy()
+  })
+
+  it('reaches the layout at all — a weighted wheel is not an unweighted one', async () => {
+    // The zero/negative semantics have their own tests against the layout
+    // (packages/engine); what only this layer can go wrong at is the wiring,
+    // so this asserts the arcs actually change.
+    const plain = createKlad(host(), {
+      data: SIZED,
+      nodeSize: { w: 40, h: 40 },
+      layout: 'sunburst',
+      worker: false,
+    })
+    await nextFrame()
+    await settle()
+    const even = arcs(plain)
+    plain.destroy()
+
+    const weighted = createKlad(host(), {
+      data: SIZED,
+      nodeSize: { w: 40, h: 40 },
+      layout: 'sunburst',
+      worker: false,
+      weight: (item) => Number(item.kb ?? 0),
+    })
+    await nextFrame()
+    await settle()
+    expect(arcs(weighted)).not.toEqual(even)
+    weighted.destroy()
+  })
+})

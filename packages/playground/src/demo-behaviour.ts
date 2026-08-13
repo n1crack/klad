@@ -23,6 +23,10 @@ import { accordionProgress, centreControlFor, type Example, type LayoutName } fr
  * the event however it already does.
  */
 
+/** How many of a roll-up's members a click uncovers. Small enough that the
+ * ring stays readable after one, big enough that it is visibly progress. */
+const UNCOVER_AT_A_TIME = 6
+
 /**
  * The sunburst's drill-down, as a pure decision: given the node that was
  * clicked, what should the centre become?
@@ -49,13 +53,22 @@ export function createDrill(
   const rootId = example.data[0] === undefined ? null : String(example.data[0].id)
 
   return (clickedId, currentCentre, api) => {
-    // An aggregate node stands for a handful of siblings too small to draw —
-    // it has no children of its own, so drilling into it centres on a node
-    // with nothing inside and leaves a viewer looking at one flat disc with no
-    // way back but the breadcrumb. What a click there means is "show me the
-    // ones you rolled up", which is exactly `showMore`.
-    if (api.overflow(clickedId) !== null) {
-      api.showMore(clickedId)
+    // An aggregate node stands for the siblings too small to draw. It has no
+    // children of its own, so drilling into it centres on a node with nothing
+    // inside and leaves a viewer looking at one flat disc.
+    //
+    // Nor does it lift the cap: a folder with four hundred tiny files would
+    // come back as four hundred slivers, which is the state the roll-up exists
+    // to prevent. A click uncovers the LARGEST few and leaves the rest rolled
+    // up, so the tail opens a handful at a time and every click is an
+    // improvement on the picture rather than a gamble on it.
+    const rolled = api.overflow(clickedId)
+    if (rolled !== null) {
+      const next = [...rolled.items]
+        .sort((a, b) => Number(b.sizeKb ?? 0) - Number(a.sizeKb ?? 0))
+        .slice(0, UNCOVER_AT_A_TIME)
+        .map((item) => String(item.id))
+      api.reveal(next)
       return undefined
     }
     const centre = currentCentre ?? rootId
