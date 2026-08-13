@@ -534,14 +534,29 @@ function boxAt(boxes: Float64Array, i: number): Box {
  * camera is. Styles with no mark (`folder`) start at the plain exit point —
  * there is no tip to start from.
  */
-function revealOrigin(box: Box, horizontal: boolean, style: EdgeStyle, rtl: boolean, k: number): Box {
+function revealOrigin(
+  settled: Box,
+  box: Box,
+  horizontal: boolean,
+  style: EdgeStyle,
+  rtl: boolean,
+  k: number,
+): Box {
   const exit = exitBox(box, horizontal, style, rtl)
   const stub = hiddenStub(style, horizontal, rtl, box.x, box.y, box.w, box.h)
-  if (stub === null || k <= 0) return exit
   // Past the dot, not merely to it: the dot has a radius, and starting inside
   // it reads as the card emerging from behind the mark.
-  const reach = (HIDDEN_STUB_PX + HIDDEN_DOT_PX * 2) / k
-  return { x: exit.x + stub.dx * reach, y: exit.y + stub.dy * reach, w: 0, h: 0 }
+  const reach = stub === null || k <= 0 ? 0 : (HIDDEN_STUB_PX + HIDDEN_DOT_PX * 2) / k
+  const dx = stub?.dx ?? 0
+  const dy = stub?.dy ?? 0
+  // The child's own size, kept. We know what it is going to be, so there is
+  // nothing to discover by growing it out of nothing — and growing it out of
+  // nothing is what put its top-left corner at the start point and left the
+  // card looking like it came out of that corner. It starts whole, one mark's
+  // length below (or beyond) the parent, and travels to its row.
+  return horizontal
+    ? { x: exit.x + dx * reach, y: settled.y, w: settled.w, h: settled.h }
+    : { x: settled.x, y: exit.y + dy * reach, w: settled.w, h: settled.h }
 }
 
 function exitBox(box: Box, horizontal: boolean, style: EdgeStyle, rtl: boolean): Box {
@@ -2183,12 +2198,19 @@ export function createChartEngine(renderer: Renderer): ChartEngine {
           applyTween(entry.anchor)
           // The anchor's EXIT point (bottom-centre for tb/bt, trailing edge
           // for lr/rl — wherever its connector leaves it, which is exactly
-          // where the collapsed-state indicator hangs from), and the child
-          // scales up out of it in both directions and downwards. Read from
-          // `renderBoxes`, so it tracks the anchor's LIVE position: the
-          // parent is often mid-move itself while this runs, and a child
-          // growing out of where the parent used to be visibly hangs off it.
-          from = revealOrigin(boxAt(renderBoxes, entry.anchor), horizontal, edgeStyle, options.rtl, camera.k)
+          // where the collapsed-state indicator hangs from), one mark's
+          // length past its tip. Read from `renderBoxes`, so it tracks the
+          // anchor's LIVE position: the parent is often mid-move itself while
+          // this runs, and a child starting from where the parent used to be
+          // visibly hangs off it.
+          from = revealOrigin(
+            settled,
+            boxAt(renderBoxes, entry.anchor),
+            horizontal,
+            edgeStyle,
+            options.rtl,
+            camera.k,
+          )
         }
         writeBox(renderBoxes, idx, lerpBox(from, settled, easing.emphasisPos))
       }
@@ -2253,12 +2275,18 @@ export function createChartEngine(renderer: Renderer): ChartEngine {
           let to = ghost.from
           if (ghost.anchor !== -1) {
             applyTween(ghost.anchor)
-            // Symmetric with the reveal case above, and for the same reason:
-            // a collapsing ghost folds flat against its surviving ancestor's
-            // exit edge in the column it already occupies, so it leaves the
-            // way it arrived instead of sliding sideways into a point under
-            // the middle of the parent.
-            to = revealOrigin(boxAt(renderBoxes, ghost.anchor), horizontal, edgeStyle, options.rtl, camera.k)
+            // Symmetric with the reveal above, and for the same reason: a
+            // collapsing ghost leaves the way it arrived, sliding back behind
+            // the mark on its surviving ancestor rather than shrinking into a
+            // point somewhere under the middle of it.
+            to = revealOrigin(
+              ghost.from,
+              boxAt(renderBoxes, ghost.anchor),
+              horizontal,
+              edgeStyle,
+              options.rtl,
+              camera.k,
+            )
           }
           writeBox(ghostDrawBoxes, g, lerpBox(ghost.from, to, easing.emphasisPos))
           ghostDrawAlpha[g] = easing.ghostAlpha

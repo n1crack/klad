@@ -1,4 +1,5 @@
 import { describe, expect, it } from 'vitest'
+import { createOverlay } from './overlay.js'
 import {
   createKlad,
   type NodeContext,
@@ -1845,59 +1846,49 @@ describe('createKlad', () => {
 
   // --- input routes through the chart host, not just the canvas -----------
 
-  it('grows a revealing card by SCALING it, so its content never reflows on the way in', async () => {
+  it('sizes an overlay card to its SETTLED box and carries the difference as scale', async () => {
     // The owner, watching a fast expand: "it looks like it comes out of its
-    // own top-left." It did. The element used to be sized to the interpolated
-    // box, so at the start of a reveal it was a few pixels wide and its text,
-    // padding and everything else re-wrapped to that — a full-size-looking
-    // card pinned by its top-left corner while the box grew around it, rather
-    // than a card growing out of the point the reveal starts from.
+    // own top-left." It did. A DOM element is not a drawing: size it to the
+    // box it is being DRAWN at and its text, padding and avatar re-wrap to
+    // whatever that width currently is, so a card mid-transition was a
+    // full-size-looking thing pinned by its top-left corner while the box
+    // caught up around it. The canvas node beside it was scaling correctly
+    // the whole time, which is why this only ever showed on the card
+    // examples.
     //
-    // The element is now laid out at its FINISHED size for the whole
-    // transition and scaled down to the interpolated one, which is what the
-    // canvas node beside it has always done.
-    const chart = make({
-      data: [
-        { id: 'a', name: 'a' },
-        { id: 'b', parentId: 'a', name: 'b' },
-      ],
-      collapsedByDefault: true,
-      renderNode: (el: HTMLElement, ctx: { id: string }) => (el.textContent = ctx.id),
-    })
-    chart.api.zoomTo(1)
-    await settle()
-    await nextFrame()
+    // Driven directly, because the interpolated and settled boxes have to
+    // DIFFER for there to be anything to assert, and which transitions make
+    // them differ is the engine's business and changes with its choreography.
+    // The contract this pins is the overlay's own: lay out at the settled
+    // size, put every difference in the transform.
+    const host = document.createElement('div')
+    document.body.appendChild(host)
+    const overlay = createOverlay(host, { render: (el, item) => (el.textContent = item.id) })
+    const settledBox = { x: 100, y: 50, w: 200, h: 80 }
+    const drawnBox = { x: 140, y: 70, w: 100, h: 40 } // half size, part way there
 
-    const cardOf = (id: string) =>
-      ([...document.querySelectorAll('.klad-overlay-node')] as HTMLElement[]).find(
-        (each) => each.textContent === id,
-      )
-    expect(cardOf('b')).toBeUndefined() // still shut
+    overlay.update(
+      [{ index: 0, id: 'n' }],
+      () => drawnBox,
+      { x: 0, y: 0, k: 1 },
+      () => 1,
+      () => settledBox,
+    )
 
-    chart.api.expand('a')
-    await nextFrame()
-    await nextFrame()
+    const card = host.querySelector('.klad-overlay-node') as HTMLElement
+    expect(card).not.toBeNull()
+    // Laid out at the size it will settle at — NOT the 100x40 it is being
+    // drawn at, which is what made the content reflow.
+    expect(card.style.width).toBe('200px')
+    expect(card.style.height).toBe('80px')
+    // ...and the difference carried by the transform instead, so it lands on
+    // screen exactly where the canvas draws it: 100/200 of its own size, at
+    // the drawn box's top-left corner.
+    expect(card.style.transform).toContain('scale(0.5)')
+    expect(card.style.transform).toContain('translate3d(140px, 70px, 0')
 
-    const card = cardOf('b')!
-    expect(card).not.toBeUndefined()
-    // Laid out at the settled size — NOT collapsed to the interpolated width,
-    // which is what made the content reflow.
-    expect(card.style.width).toBe('120px')
-    expect(card.style.height).toBe('48px')
-    // ...and scaled down instead. Early in the reveal that scale is well
-    // under 1; `zoomTo(1)` means the camera contributes exactly 1 to it.
-    const scale = Number(/scale\(([\d.]+)\)/.exec(card.style.transform)?.[1] ?? '1')
-    expect(scale).toBeGreaterThanOrEqual(0)
-    expect(scale).toBeLessThan(1)
-
-    // And by the end it is back to its own size at scale 1, so nothing is
-    // left permanently shrunk.
-    await settleTransition()
-    await settleTransition()
-    const settledCard = cardOf('b')!
-    expect(settledCard.style.width).toBe('120px')
-    expect(Number(/scale\(([\d.]+)\)/.exec(settledCard.style.transform)?.[1] ?? '0')).toBeCloseTo(1, 2)
-    chart.destroy()
+    overlay.destroy()
+    host.remove()
   })
 
   it('pans when a drag starts on an overlay card', async () => {
