@@ -490,11 +490,25 @@ function boxAt(boxes: Float64Array, i: number): Box {
   return { x: boxes[o]!, y: boxes[o + 1]!, w: boxes[o + 2]!, h: boxes[o + 3]! }
 }
 
-/** `Box`-typed convenience wrapper over `exitPointXY` (see its docblock) —
- * as a zero-size `Box` (`w`/`h` both 0). Read for its EXIT COORDINATE by
- * `growthBox` below, which is what actually starts a reveal and ends a
- * collapse; see `render()`'s `applyTween` and the ghost-drawing loop, both in
- * `createChartEngine`. */
+/**
+ * `Box`-typed convenience wrapper over `exitPointXY` (see its docblock) — as a
+ * zero-size `Box` (`w`/`h` both 0), ready to hand straight to `lerpBox` as a
+ * reveal's growth-start point or a ghost's shrink-target point.
+ *
+ * A single POINT, on purpose, and the owner has now confirmed it twice over:
+ * the child grows out of the spot the collapsed node's own indicator hangs
+ * from — bottom edge, horizontal centre — opening outwards in both directions
+ * and downwards from there. Two alternatives were tried against that and both
+ * were rejected on sight: keeping the child's own column and unfolding it out
+ * of a zero-height line (every card stretching open, far too much
+ * distortion), and keeping its whole box and sliding it down (no distortion,
+ * but the reveal stops reading as coming OUT of the parent at all). What was
+ * actually wrong was never this point — it was which node's point a deeper
+ * descendant used; see the anchor in `buildTransition`.
+ *
+ * See `render()`'s `applyTween` and the ghost-drawing loop, both in
+ * `createChartEngine`.
+ */
 function exitBox(box: Box, horizontal: boolean, style: EdgeStyle, rtl: boolean): Box {
   // Where a revealed child grows FROM has to be where its connector attaches,
   // or the two disagree in the one moment a viewer is watching them: the card
@@ -504,32 +518,6 @@ function exitBox(box: Box, horizontal: boolean, style: EdgeStyle, rtl: boolean):
   // a zero-size box at the parent is enough to ask with.
   const a = edgeAnchors(style, horizontal, rtl, box.x, box.y, box.w, box.h, box.x, box.y, 0, 0)
   return { x: a.px, y: a.py, w: 0, h: 0 }
-}
-
-/**
- * Where a revealed child starts, and where a collapsing one ends: its own box,
- * whole, tucked in behind its parent's exit edge.
- *
- * `settled` is the child's own final box (its `from` box, for a ghost). Only
- * the growth-axis coordinate comes from the parent — the child's top for
- * tb/bt, its leading side for lr/rl, placed exactly on the edge the connector
- * leaves from. Everything else is the child's own: its column, and crucially
- * its SIZE. So the reveal is a slide out from under the parent (plus the
- * fade), and nothing about the card is distorted on the way.
- *
- * Two earlier versions of this, both rejected by the owner on sight. Starting
- * at a single POINT on the parent's bottom edge made a row of children erupt
- * from the middle of it and fan outwards — "the start point should not be the
- * middle, it should be just underneath". Starting flat — the child's own
- * column but zero height — fixed the fanning and replaced it with something
- * worse: every card unfolding out of a squashed line, which at card sizes is
- * a lot of distortion for one gesture to carry. Keeping the box intact and
- * moving it is the version with no distortion in it at all.
- */
-function growthBox(settled: Box, exit: Box, horizontal: boolean): Box {
-  return horizontal
-    ? { x: exit.x, y: settled.y, w: settled.w, h: settled.h }
-    : { x: settled.x, y: exit.y, w: settled.w, h: settled.h }
 }
 
 function writeBox(target: Float64Array, i: number, box: Box): void {
@@ -2123,15 +2111,14 @@ export function createChartEngine(renderer: Renderer): ChartEngine {
         let from = entry.box
         if (entry.anchor !== -1) {
           applyTween(entry.anchor)
-          // Flat against the anchor's EXIT edge (its bottom for tb/bt, its
-          // trailing side for lr/rl — wherever its connector actually leaves
-          // it), in this child's own column: see `growthBox`. Read from
-          // `renderBoxes`, so it tracks the anchor's LIVE position — the
-          // parent is usually mid-reposition itself while this runs, and a
-          // child unfolding from where the parent used to be would visibly
-          // hang off it.
-          const exit = exitBox(boxAt(renderBoxes, entry.anchor), horizontal, edgeStyle, options.rtl)
-          from = growthBox(settled, exit, horizontal)
+          // The anchor's EXIT point (bottom-centre for tb/bt, trailing edge
+          // for lr/rl — wherever its connector leaves it, which is exactly
+          // where the collapsed-state indicator hangs from), and the child
+          // scales up out of it in both directions and downwards. Read from
+          // `renderBoxes`, so it tracks the anchor's LIVE position: the
+          // parent is often mid-move itself while this runs, and a child
+          // growing out of where the parent used to be visibly hangs off it.
+          from = exitBox(boxAt(renderBoxes, entry.anchor), horizontal, edgeStyle, options.rtl)
         }
         writeBox(renderBoxes, idx, lerpBox(from, settled, easing.emphasisPos))
       }
@@ -2201,11 +2188,7 @@ export function createChartEngine(renderer: Renderer): ChartEngine {
             // exit edge in the column it already occupies, so it leaves the
             // way it arrived instead of sliding sideways into a point under
             // the middle of the parent.
-            to = growthBox(
-              ghost.from,
-              exitBox(boxAt(renderBoxes, ghost.anchor), horizontal, edgeStyle, options.rtl),
-              horizontal,
-            )
+            to = exitBox(boxAt(renderBoxes, ghost.anchor), horizontal, edgeStyle, options.rtl)
           }
           writeBox(ghostDrawBoxes, g, lerpBox(ghost.from, to, easing.emphasisPos))
           ghostDrawAlpha[g] = easing.ghostAlpha
