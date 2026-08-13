@@ -885,100 +885,81 @@ describe('ChartEngine expand/collapse transition', () => {
     expect(early.ghostAlpha[0]).toBeLessThan(0.3)
   })
 
-  it("grows a revealed node from its anchor's LIVE position, not the anchor's fixed pre-toggle box", () => {
-    // 'p' needs TWO children, not one — see the analogous sibling-reflow test
-    // in packages/core's orgchart.browser.test.ts for why: a single-child
-    // chain never widens its own subtree, so 'p' itself never needs to
-    // recentre. Two children side by side make 'p' noticeably wider once
-    // revealed, which is exactly what pushes 'p's OWN box, not just its
-    // sibling's, away from its pre-toggle position.
-    const NESTED: NodeData[] = [
-      { id: 'a' },
-      { id: 'p', parentId: 'a' },
-      { id: 'q1', parentId: 'p' },
-      { id: 'q2', parentId: 'p' },
-      { id: 'b', parentId: 'a' },
-    ]
+  it('unfolds a grandchild out of its OWN parent, live, as that parent is still unfolding', () => {
+    // Two things at once, both of them the owner's: a revealed node grows out
+    // of its own parent rather than the nearest ancestor that happened to
+    // already have a position ("they can even come out from higher up"), and
+    // it reads that parent's position LIVE rather than from a snapshot.
+    //
+    // Expanding 'a' reveals 'p' AND 'q' in one transition, because 'p' was
+    // left open when it went out of view — the ordinary case, since open
+    // state is remembered. 'p' has no prior position of its own, so the old
+    // walk-up-the-chain rule sent 'q' to grow from 'a', a whole row above
+    // where it belongs. It should grow from 'p', which is at that moment
+    // somewhere between 'a's bottom edge and its own settled row.
+    const CHAIN: NodeData[] = [{ id: 'a' }, { id: 'p', parentId: 'a' }, { id: 'q', parentId: 'p' }]
     const renderer = fakeRenderer()
     const engine = createChartEngine(renderer)
-    const tree = normalize(NESTED)
+    const tree = normalize(CHAIN)
     engine.setAnimate(true)
     engine.setViewport(800, 600, 1)
     engine.setCamera({ x: 0, y: 0, k: 1 })
     const open = new Uint8Array(tree.count).fill(1)
-    open[tree.idToIndex.get('p')!] = 0 // start collapsed: 'q1'/'q2' hidden
-    engine.setData(toWireTree(tree), sizesFor(tree.count), ['a', 'p', 'q1', 'q2', 'b'], open)
-    engine.render(1000) // settle the collapsed layout — no transition, the first layout
+    open[tree.idToIndex.get('a')!] = 0 // 'a' shut: neither 'p' nor 'q' is on screen
+    engine.setData(toWireTree(tree), sizesFor(tree.count), ['a', 'p', 'q'], open)
+    engine.render(1000)
 
-    // Reads 'p's/'q1's AUTHORITATIVE (final, settled) box — unaffected by
-    // any in-progress transition, which only interpolates the DRAWN frame,
-    // never `engine.boxes` itself.
-    const finalBoxOf = (id: string): { x: number; y: number; w: number } => {
-      const src = tree.idToIndex.get(id)!
-      const idx = Array.from(engine.visibleToSource).indexOf(src)
-      expect(idx).toBeGreaterThanOrEqual(0)
-      const o = idx * 4
-      return { x: engine.boxes[o]!, y: engine.boxes[o + 1]!, w: engine.boxes[o + 2]! }
-    }
-    // Reads 'id's DRAWN (interpolated) box off the most recent frame —
-    // where it actually is on screen at that instant, unlike `finalBoxOf`.
-    const drawnBoxOf = (id: string): { x: number; y: number; w: number } => {
-      const src = tree.idToIndex.get(id)!
-      const idx = Array.from(engine.visibleToSource).indexOf(src)
+    const drawn = (id: string) => {
+      const idx = Array.from(engine.visibleToSource).indexOf(tree.idToIndex.get(id)!)
       expect(idx).toBeGreaterThanOrEqual(0)
       const frame = renderer.frames.at(-1)!
-      const o = idx * 4
-      return { x: frame.boxes[o]!, y: frame.boxes[o + 1]!, w: frame.boxes[o + 2]! }
+      return { y: frame.boxes[idx * 4 + 1]!, h: frame.boxes[idx * 4 + 3]! }
     }
-    // 'p's own reveal-anchor EXIT point, x-axis only: for the default 'tb'
-    // orientation this test runs under, a revealed child's growth-start
-    // point is 'p's BOTTOM-edge, HORIZONTAL centre (see engine.ts's
-    // `exitBox`/`exitPointXY`) — i.e. `x + w/2`, not the box's raw top-left
-    // `x` a reveal used to grow from before that fix.
-    const exitX = (box: { x: number; w: number }): number => box.x + box.w / 2
+    const settled = (id: string) => {
+      const idx = Array.from(engine.visibleToSource).indexOf(tree.idToIndex.get(id)!)
+      return { y: engine.boxes[idx * 4 + 1]!, h: engine.boxes[idx * 4 + 3]! }
+    }
 
-    const pBefore = finalBoxOf('p') // 'p's box while still collapsed
+    engine.setOpen(tree.idToIndex.get('a')!, true) // reveals 'p' and 'q' together
+    engine.render(2000)
 
-    engine.setOpen(tree.idToIndex.get('p')!, true) // reveals q1/q2, recentring 'p'
-    engine.render(2000) // t=0 of the new transition
-    const pAfter = finalBoxOf('p') // 'p's NEW (final, post-relayout) box
+    // Partway through phase 2 (the reveal), so 'p' is mid-unfold: its bottom
+    // edge is below 'a's and above where it will settle.
+    engine.render(2000 + TRANSITION_MS * 0.7)
+    const a = drawn('a')
+    const pLive = drawn('p')
+    const pSettled = settled('p')
+    const q = drawn('q')
 
-    // Sanity: the scenario this test exists to exercise. If 'p' didn't
-    // actually move between the two layouts, the discriminating assertion
-    // below would pass no matter which anchor box `render()` used.
-    expect(Math.abs(exitX(pAfter) - exitX(pBefore))).toBeGreaterThan(5)
+    const pLiveBottom = pLive.y + pLive.h
+    expect(pLiveBottom).toBeGreaterThan(a.y + a.h)
+    expect(pLiveBottom).toBeLessThan(pSettled.y + pSettled.h)
 
-    // Overall progress 0.5 (half of `TRANSITION_MS`): for an EXPAND,
-    // `repositionRaw` (driving 'p's own reposition tween) is `phaseOneProgress`,
-    // three quarters done by this point (phase 1 spans the first ~67%) — 'p' is
-    // most of the way to `pAfter`. `emphasisRaw` (driving 'q1's reveal) is
-    // `phaseTwoProgress`, a quarter in (phase 2 starts around 33%) and eased,
-    // so 'q1' has barely left its growth-start point. So 'q1's rendered box
-    // should sit almost exactly on 'p's LIVE exit point (~exitX(pAfter)), not
-    // on 'p's stale pre-toggle exit point (exitX(pBefore)) — and the two are
-    // far enough apart (asserted above) that the bug this test guards
-    // against — growing from a fixed snapshot instead of the anchor's
-    // current position — would be unmistakable here.
-    engine.render(2000 + TRANSITION_MS / 2)
-    const pLive = drawnBoxOf('p')
-    const q1Rendered = drawnBoxOf('q1')
+    // Both 'p' and 'q' ride the same reveal curve, so how far along it is can
+    // be read straight off 'p': its height runs 0 -> settled by exactly that
+    // fraction. That makes the expected position of 'q' an equation rather
+    // than a range — and one the two rules answer differently.
+    const progress = pLive.h / pSettled.h
+    expect(progress).toBeGreaterThan(0.1)
+    expect(progress).toBeLessThan(0.9)
+    const qSettledTop = settled('q').y
+    const fromOwnParent = pLiveBottom + (qSettledTop - pLiveBottom) * progress
+    const fromToggledNode = a.y + a.h + (qSettledTop - (a.y + a.h)) * progress
 
-    const distanceFromLiveAnchor = Math.abs(q1Rendered.x - exitX(pLive))
-    const distanceFromStaleAnchor = Math.abs(q1Rendered.x - exitX(pBefore))
-    expect(distanceFromLiveAnchor).toBeLessThan(distanceFromStaleAnchor)
-    // 'q1' should be reading as still close to wherever 'p's exit point
-    // actually is, not merely "closer to live than to stale by some margin"
-    // while still far from both.
-    expect(distanceFromLiveAnchor).toBeLessThan(Math.abs(exitX(pAfter) - exitX(pBefore)) / 2)
+    expect(q.y).toBeCloseTo(fromOwnParent, 6)
+    // Not a distinction without a difference: the two are a visible distance
+    // apart, which is exactly the gap the owner was seeing.
+    expect(Math.abs(fromOwnParent - fromToggledNode)).toBeGreaterThan(10)
   })
 
-  it("grows a revealed child from the PARENT's exit edge (bottom-centre for tb), not its box origin/centre", () => {
-    // The owner's ask for task 2: children should visibly drop out of the
-    // bottom of the parent node, not balloon out of its middle. Single
-    // child, single parent, single root — nothing here recentres 'p' itself
-    // (unlike the LIVE-vs-STALE test above, which deliberately needs that),
-    // isolating just the growth-start POINT this test cares about.
-    const SIMPLE: NodeData[] = [{ id: 'a' }, { id: 'q', parentId: 'a' }]
+  it("unfolds a revealed child from directly under the PARENT, in the child's own column", () => {
+    // The owner's ask, twice over: the reveal must not start "in the middle"
+    // of the parent, it must start "just underneath" it. So the growth-start
+    // box is flat against the parent's bottom edge — zero height, the fold
+    // line — but already at the child's OWN x and width, rather than a single
+    // point at the parent's centre that a whole row of children would then
+    // fan out from. See `growthBox` in engine.ts.
+    const SIMPLE: NodeData[] = [{ id: 'a' }, { id: 'q', parentId: 'a' }, { id: 'r', parentId: 'a' }]
     const renderer = fakeRenderer()
     const engine = createChartEngine(renderer)
     const tree = normalize(SIMPLE)
@@ -986,7 +967,7 @@ describe('ChartEngine expand/collapse transition', () => {
     engine.setViewport(800, 600, 1)
     engine.setCamera({ x: 0, y: 0, k: 1 })
     const open = new Uint8Array(tree.count).fill(0) // 'a' starts collapsed
-    engine.setData(toWireTree(tree), sizesFor(tree.count), ['a', 'q'], open)
+    engine.setData(toWireTree(tree), sizesFor(tree.count), ['a', 'q', 'r'], open)
     engine.render(1000)
 
     const aIdx = Array.from(engine.visibleToSource).indexOf(tree.idToIndex.get('a')!)
@@ -998,20 +979,35 @@ describe('ChartEngine expand/collapse transition', () => {
     }
 
     engine.setOpen(tree.idToIndex.get('a')!, true)
-    engine.render(2000) // t=0 of the transition: 'q' is at its growth-start point exactly
+    engine.render(2000) // t=0 of the transition: both children sit exactly on their fold line
     const frame = renderer.frames.at(-1)!
-    const qIdx = Array.from(engine.visibleToSource).indexOf(tree.idToIndex.get('q')!)
-    const qStart = { x: frame.boxes[qIdx * 4]!, y: frame.boxes[qIdx * 4 + 1]! }
 
-    // Bottom edge, horizontal centre of 'a' — NOT 'a's top-left corner (the
-    // old, wrong growth-start point) and not 'a's own centre either.
-    expect(qStart.x).toBeCloseTo(aBox.x + aBox.w / 2, 6)
-    expect(qStart.y).toBeCloseTo(aBox.y + aBox.h, 6)
-    // A genuine POINT, not sized like the parent — confirms this grows from
-    // a single spot and expands outward, rather than starting already
-    // shaped like the whole parent box.
-    expect(frame.boxes[qIdx * 4 + 2]).toBeCloseTo(0, 6)
-    expect(frame.boxes[qIdx * 4 + 3]).toBeCloseTo(0, 6)
+    for (const id of ['q', 'r']) {
+      const idx = Array.from(engine.visibleToSource).indexOf(tree.idToIndex.get(id)!)
+      const start = {
+        x: frame.boxes[idx * 4]!,
+        y: frame.boxes[idx * 4 + 1]!,
+        w: frame.boxes[idx * 4 + 2]!,
+        h: frame.boxes[idx * 4 + 3]!,
+      }
+      const settled = { x: engine.boxes[idx * 4]!, w: engine.boxes[idx * 4 + 2]! }
+
+      // Under the parent's bottom edge, and flat against it.
+      expect(start.y).toBeCloseTo(aBox.y + aBox.h, 6)
+      expect(start.h).toBeCloseTo(0, 6)
+      // ...but already in its own column, at its own width — NOT collapsed
+      // onto the parent's horizontal centre.
+      expect(start.x).toBeCloseTo(settled.x, 6)
+      expect(start.w).toBeCloseTo(settled.w, 6)
+    }
+
+    // The two children start apart, which is the whole point: the old
+    // behaviour put both on the same point under the middle of 'a'.
+    const qIdx = Array.from(engine.visibleToSource).indexOf(tree.idToIndex.get('q')!)
+    const rIdx = Array.from(engine.visibleToSource).indexOf(tree.idToIndex.get('r')!)
+    expect(Math.abs(frame.boxes[qIdx * 4]! - frame.boxes[rIdx * 4]!)).toBeGreaterThan(50)
+    // ...and neither of them is the parent's centre.
+    expect(Math.abs(frame.boxes[qIdx * 4]! - (aBox.x + aBox.w / 2))).toBeGreaterThan(1)
   })
 
   it("shrinks a collapsing ghost back into the PARENT's exit edge, not its box origin/centre", () => {
@@ -1027,6 +1023,7 @@ describe('ChartEngine expand/collapse transition', () => {
 
     engine.setOpen(tree.idToIndex.get('a')!, false) // collapse: 'q' becomes a ghost
     engine.render(1000)
+    const ghostStartX = renderer.frames.at(-1)!.ghostBoxes[0]!
 
     const aIdx = Array.from(engine.visibleToSource).indexOf(tree.idToIndex.get('a')!)
     const aBoxNow = {
@@ -1036,14 +1033,27 @@ describe('ChartEngine expand/collapse transition', () => {
       h: engine.boxes[aIdx * 4 + 3]!,
     }
 
+    // Where the ghost started, so the column assertion below has something
+    // to be true OF: it folds away in the place it occupied, not into a
+    // point under the middle of its parent.
+    const qIdx = Array.from(engine.visibleToSource).indexOf(tree.idToIndex.get('q')!)
+    const qWasX = qIdx === -1 ? null : engine.boxes[qIdx * 4]!
+
     // Right at the end of the transition (but still just inside it): the
-    // ghost has nearly finished shrinking toward its target, so its drawn
-    // box should sit almost exactly on 'a's exit point.
+    // ghost has nearly finished folding away, so its drawn box should sit
+    // almost exactly on its target.
     engine.render(1000 + TRANSITION_MS - 1)
     const frame = renderer.frames.at(-1)!
     expect(frame.ghostCount).toBe(1)
-    expect(frame.ghostBoxes[0]).toBeCloseTo(aBoxNow.x + aBoxNow.w / 2, 1)
+    // Flat against 'a's bottom edge...
     expect(frame.ghostBoxes[1]).toBeCloseTo(aBoxNow.y + aBoxNow.h, 1)
+    expect(frame.ghostBoxes[3]).toBeCloseTo(0, 1)
+    // ...in its own column, keeping the width it had. `qWasX` is `null` only
+    // if 'q' had already left the pruned tree, which is the case here — it
+    // is a ghost — so the check is against the ghost's own starting x, which
+    // is where a collapse leaves it.
+    expect(frame.ghostBoxes[0]).toBeCloseTo(ghostStartX, 1)
+    expect(qWasX).toBeNull()
   })
 
   it("grows a revealed child from the parent's TRAILING edge under lr orientation, not its bottom edge", () => {
@@ -1077,10 +1087,15 @@ describe('ChartEngine expand/collapse transition', () => {
     const frame = renderer.frames.at(-1)!
     const qIdx = Array.from(engine.visibleToSource).indexOf(tree.idToIndex.get('q')!)
 
-    expect(frame.boxes[qIdx * 4]).toBeCloseTo(aBox.x + aBox.w, 6) // right edge
-    expect(frame.boxes[qIdx * 4 + 1]).toBeCloseTo(aBox.y + aBox.h / 2, 6) // vertical centre
+    // Flat against 'a's trailing (right) edge, zero width...
+    expect(frame.boxes[qIdx * 4]).toBeCloseTo(aBox.x + aBox.w, 6)
     expect(frame.boxes[qIdx * 4 + 2]).toBeCloseTo(0, 6)
-    expect(frame.boxes[qIdx * 4 + 3]).toBeCloseTo(0, 6)
+    // ...and already in its own ROW, at its own height: the growth axis is x
+    // here, so it is y that keeps what the child will settle with — the
+    // mirror of what the tb case asserts about x. Not 'a's vertical centre,
+    // which is where a single-point growth start would have put it.
+    expect(frame.boxes[qIdx * 4 + 1]).toBeCloseTo(engine.boxes[qIdx * 4 + 1]!, 6)
+    expect(frame.boxes[qIdx * 4 + 3]).toBeCloseTo(engine.boxes[qIdx * 4 + 3]!, 6)
   })
 
   it('a second toggle mid-transition retargets from the current position instead of snapping', () => {

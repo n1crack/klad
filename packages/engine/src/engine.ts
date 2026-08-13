@@ -491,12 +491,10 @@ function boxAt(boxes: Float64Array, i: number): Box {
 }
 
 /** `Box`-typed convenience wrapper over `exitPointXY` (see its docblock) —
- * as a zero-size `Box` (`w`/`h` both 0), ready to hand straight to `lerpBox`
- * as a reveal's growth-start point or a ghost's shrink-target point: a
- * revealed child then visibly emerges from a single POINT at its parent's
- * exit edge and grows to its own size while moving to its final box, rather
- * than starting already sized like the whole parent box — see `render()`'s
- * `applyTween` and the ghost-drawing loop, both in `createChartEngine`. */
+ * as a zero-size `Box` (`w`/`h` both 0). Read for its EXIT COORDINATE by
+ * `growthBox` below, which is what actually starts a reveal and ends a
+ * collapse; see `render()`'s `applyTween` and the ghost-drawing loop, both in
+ * `createChartEngine`. */
 function exitBox(box: Box, horizontal: boolean, style: EdgeStyle, rtl: boolean): Box {
   // Where a revealed child grows FROM has to be where its connector attaches,
   // or the two disagree in the one moment a viewer is watching them: the card
@@ -506,6 +504,33 @@ function exitBox(box: Box, horizontal: boolean, style: EdgeStyle, rtl: boolean):
   // a zero-size box at the parent is enough to ask with.
   const a = edgeAnchors(style, horizontal, rtl, box.x, box.y, box.w, box.h, box.x, box.y, 0, 0)
   return { x: a.px, y: a.py, w: 0, h: 0 }
+}
+
+/**
+ * Where a revealed child starts, and where a collapsing one ends: flat
+ * against its parent's exit edge, in its OWN column.
+ *
+ * `settled` is the child's own final box (its `from` box, for a ghost). Only
+ * the growth axis is taken from the parent — y for tb/bt, x for lr/rl — and
+ * only as a line: zero height under the parent's bottom edge, zero width past
+ * its trailing edge. Across the axis the child keeps everything it will end
+ * up with, its position and its size both.
+ *
+ * The previous version started every child at a single POINT on the parent —
+ * the exact spot its connector attaches — so a wide row of children all
+ * erupted from the middle of the parent's bottom edge and fanned outwards to
+ * their places. The owner's words: it should not start "in the middle", it
+ * should start "just underneath". So each child now unfolds straight down out
+ * of the parent's underside, at the column it is going to occupy, and its
+ * connector grows with it instead of sweeping sideways across the ones next
+ * to it. That also makes the reveal read as one row opening rather than as N
+ * cards flying apart, which is what a viewer opening a branch is actually
+ * looking for.
+ */
+function growthBox(settled: Box, exit: Box, horizontal: boolean): Box {
+  return horizontal
+    ? { x: exit.x, y: settled.y, w: 0, h: settled.h }
+    : { x: settled.x, y: exit.y, w: settled.w, h: 0 }
 }
 
 function writeBox(target: Float64Array, i: number, box: Box): void {
@@ -1030,44 +1055,35 @@ function buildTransition(
     }
   }
 
-  // 2. Surviving (tweened) and newly-revealed nodes. `resolveRevealAnchor`
-  // walks the NEW tree's parent chain looking for the nearest ancestor with a
-  // prior position, memoizing every pruned index it passes through so a
-  // multi-level reveal (expanding a grandparent) costs O(1) amortized per
-  // node instead of O(depth) per node. It returns that ancestor's PRUNED
-  // INDEX, not a baked box — see `TweenEntry.anchor`'s docblock for why.
+  // 2. Surviving (tweened) and newly-revealed nodes. A revealed node grows
+  // out of its OWN PARENT, whenever it has one in this tree — even a parent
+  // that is itself being revealed this transition. It returns a PRUNED INDEX,
+  // not a baked box — see `TweenEntry.anchor`'s docblock for why.
+  //
+  // It used to walk UP past any such parent, to the nearest ancestor that had
+  // a prior position, on the reasoning that a node with no position of its
+  // own has nothing to grow from. But it does: by the time `render()` asks,
+  // that parent has been tweened too (`applyTween` resolves its anchor first,
+  // recursively), so it has a live box at every instant, and it is the right
+  // one. The walk's version showed itself the moment a branch whose
+  // GRANDCHILDREN were also open got expanded — the common case, since open
+  // state is remembered: every level below the first erupted from the toggled
+  // node's bottom edge, above the row it belonged to, instead of unfolding
+  // out of its own parent a level at a time. The owner's "they can even come
+  // out from higher up".
+  //
+  // The chain terminates: `prunedParent` is a tree, so following it strictly
+  // decreases depth, and preorder guarantees a parent's pruned index is lower
+  // than its children's — which is also what lets the `nodeQuad` pass below
+  // read an anchor's union box that a revealed anchor only writes in the same
+  // loop.
   const fromBySource = new Map<number, TweenEntry>()
-  const revealCache = new Map<number, number>()
-  const resolveRevealAnchor = (i: number): number => {
-    const cached = revealCache.get(i)
-    if (cached !== undefined) return cached
-    const path: number[] = []
-    let p = prunedParent[i]!
-    let result = -1
-    while (p !== -1) {
-      const viaCache = revealCache.get(p)
-      if (viaCache !== undefined) {
-        result = viaCache
-        break
-      }
-      const psrc = visibleToSource[p]!
-      if (prevPositionBySource.has(psrc)) {
-        result = p
-        break
-      }
-      path.push(p)
-      p = prunedParent[p]!
-    }
-    for (const idx of path) revealCache.set(idx, result)
-    revealCache.set(i, result)
-    return result
-  }
 
   for (let i = 0; i < visibleToSource.length; i++) {
     const src = visibleToSource[i]!
     const prev = prevPositionBySource.get(src)
     if (prev !== undefined) fromBySource.set(src, { box: prev, revealed: false, anchor: -1 })
-    else fromBySource.set(src, { box: boxAt(boxes, i), revealed: true, anchor: resolveRevealAnchor(i) })
+    else fromBySource.set(src, { box: boxAt(boxes, i), revealed: true, anchor: prunedParent[i]! })
   }
 
   // 3. Removed nodes become ghosts, collapsing toward the nearest ancestor
@@ -2104,20 +2120,21 @@ export function createChartEngine(renderer: Renderer): ChartEngine {
           writeBox(renderBoxes, idx, lerpBox(entry.box, boxAt(boxes, idx), easing.repositionPos))
           return
         }
+        const settled = boxAt(boxes, idx)
         let from = entry.box
         if (entry.anchor !== -1) {
           applyTween(entry.anchor)
-          // The anchor's EXIT point (bottom edge for tb/bt, trailing edge for
-          // lr/rl — wherever its connector actually leaves it), not its whole
-          // box: a revealed child emerges from that single point on its
-          // parent and grows to its own size while moving to its final box,
-          // rather than starting already sized and positioned like the
-          // entire parent — the owner's ask (previously it grew out of the
-          // anchor's box origin/centre, which read as ballooning out of the
-          // middle rather than dropping out of the bottom).
-          from = exitBox(boxAt(renderBoxes, entry.anchor), horizontal, edgeStyle, options.rtl)
+          // Flat against the anchor's EXIT edge (its bottom for tb/bt, its
+          // trailing side for lr/rl — wherever its connector actually leaves
+          // it), in this child's own column: see `growthBox`. Read from
+          // `renderBoxes`, so it tracks the anchor's LIVE position — the
+          // parent is usually mid-reposition itself while this runs, and a
+          // child unfolding from where the parent used to be would visibly
+          // hang off it.
+          const exit = exitBox(boxAt(renderBoxes, entry.anchor), horizontal, edgeStyle, options.rtl)
+          from = growthBox(settled, exit, horizontal)
         }
-        writeBox(renderBoxes, idx, lerpBox(from, boxAt(boxes, idx), easing.emphasisPos))
+        writeBox(renderBoxes, idx, lerpBox(from, settled, easing.emphasisPos))
       }
       // Every drawn NODE needs its own box tweened, plus its parent's (so
       // a connector reaching up to that parent, drawn from the same
@@ -2180,12 +2197,16 @@ export function createChartEngine(renderer: Renderer): ChartEngine {
           let to = ghost.from
           if (ghost.anchor !== -1) {
             applyTween(ghost.anchor)
-            // Symmetric with the reveal case above: a collapsing ghost
-            // shrinks toward the single EXIT point on its surviving
-            // ancestor, not the ancestor's whole box, so it visibly
-            // disappears back into the bottom/trailing edge it originally
-            // emerged from rather than shrinking into the ancestor's centre.
-            to = exitBox(boxAt(renderBoxes, ghost.anchor), horizontal, edgeStyle, options.rtl)
+            // Symmetric with the reveal case above, and for the same reason:
+            // a collapsing ghost folds flat against its surviving ancestor's
+            // exit edge in the column it already occupies, so it leaves the
+            // way it arrived instead of sliding sideways into a point under
+            // the middle of the parent.
+            to = growthBox(
+              ghost.from,
+              exitBox(boxAt(renderBoxes, ghost.anchor), horizontal, edgeStyle, options.rtl),
+              horizontal,
+            )
           }
           writeBox(ghostDrawBoxes, g, lerpBox(ghost.from, to, easing.emphasisPos))
           ghostDrawAlpha[g] = easing.ghostAlpha
