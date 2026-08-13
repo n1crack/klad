@@ -13,6 +13,8 @@ function recorder(): RenderContext2D & { calls: string[] } {
     fillStyle: '',
     strokeStyle: '',
     lineWidth: 0,
+    shadowColor: '',
+    shadowBlur: 0,
     font: '',
     globalAlpha: 1,
     textBaseline: '',

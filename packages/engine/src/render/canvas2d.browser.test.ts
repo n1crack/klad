@@ -314,6 +314,49 @@ describe('highlighted path edges', () => {
     expect(g!).toBeGreaterThan(b!)
   })
 
+  it('haloes the lit path when the theme asks for a glow, and not otherwise', () => {
+    // Six pixels off the line, where the stroke itself never reaches: the only
+    // thing that can put ink there is the halo. See `Theme.edgeHighlightGlow`.
+    const BESIDE = { x: ON_THE_EDGE.x + 6, y: ON_THE_EDGE.y }
+
+    const plain = makeCanvas()
+    const plainRenderer = createCanvas2DRenderer(plain, DEFAULT_THEME, measurerFor)
+    plainRenderer.resize(400, 300, 1)
+    plainRenderer.draw(frame({ highlight: Uint8Array.from([1, 1]) }))
+    expect(pixelAt(plain, BESIDE.x, BESIDE.y)[3]).toBe(0)
+
+    const lit = makeCanvas()
+    const litRenderer = createCanvas2DRenderer(lit, { ...DEFAULT_THEME, edgeHighlightGlow: 10 }, measurerFor)
+    litRenderer.resize(400, 300, 1)
+    litRenderer.draw(frame({ highlight: Uint8Array.from([1, 1]) }))
+    const [r, , b, a] = pixelAt(lit, BESIDE.x, BESIDE.y)
+    expect(a).toBeGreaterThan(0)
+    // The halo is the highlight's own colour (#f59e0b), not a grey smear.
+    expect(r!).toBeGreaterThan(b!)
+
+    // ...and it does not leak onto whatever is drawn after it: the node box
+    // below the line would wear the same shadow if the renderer left it set.
+    const insideNode = pixelAt(lit, 60, 130)
+    expect(insideNode[3]).toBeGreaterThan(0)
+  })
+
+  it('draws each connector in the colour of the node it leads to when asked', () => {
+    const canvas = makeCanvas()
+    const renderer = createCanvas2DRenderer(
+      canvas,
+      { ...DEFAULT_THEME, edgeBranchColours: true, palette: ['#e11d48'] },
+      measurerFor,
+    )
+    renderer.resize(400, 300, 1)
+    // One branch, so the child's fill is the palette's first entry — strongly
+    // warm, where the default `edgeStroke` is a neutral grey.
+    renderer.draw(frame({ branchOf: Int32Array.from([-1, 0]), branchDepth: Int32Array.from([0, 0]) }))
+
+    const [r, , b, a] = pixelAt(canvas, ON_THE_EDGE.x, ON_THE_EDGE.y)
+    expect(a).toBeGreaterThan(0)
+    expect(r!).toBeGreaterThan(b! + 80)
+  })
+
   it('leaves an edge ordinary when only one endpoint is lit', () => {
     const canvas = makeCanvas()
     const renderer = createCanvas2DRenderer(canvas, DEFAULT_THEME, measurerFor)

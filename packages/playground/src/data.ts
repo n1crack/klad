@@ -154,8 +154,15 @@ export function themeFor(
   return {
     ...chartTokens(mode),
     ...LAYOUT_PRESETS[layout]!.theme,
-    ...example.options.theme,
     edgeCornerRadius,
+    // The example's own theme LAST, so an example that has an opinion about
+    // the elbow radius keeps it at mount — the slider is a control over
+    // whatever the chart starts with, not a value every example has to accept.
+    // Dragging it still wins immediately: that goes through `api.setTheme`,
+    // which merges over the live theme (see each demo's `setTheme`), and the
+    // sidebar re-reads its own position from `effectiveTheme` on every example
+    // switch, so the two never disagree about what is on screen.
+    ...example.options.theme,
   }
 }
 
@@ -235,6 +242,38 @@ export const DEPARTMENT_COLOR: Record<Department, string> = {
   Marketing: '#ea580c',
   Finance: '#0d9488',
   Support: '#db2777',
+}
+
+/**
+ * The showcase example's palette — vivid enough to carry a connector at a
+ * couple of pixels wide, and legible on both the light and the dark surface.
+ *
+ * Shared by the chart and the cards on purpose: the chart paints each branch's
+ * connectors from `theme.palette` (see `Theme.edgeBranchColours`), and a card
+ * that picked its accent from anywhere else would be a second, disagreeing
+ * answer to "which branch is this".
+ */
+export const SLOT_PALETTE = ['#6366f1', '#06b6d4', '#f43f5e', '#f59e0b', '#22c55e', '#a855f7'] as const
+
+/**
+ * Which of `SLOT_PALETTE` a node belongs to: the index of the ROOT-LEVEL
+ * ancestor it hangs off, which is exactly how the engine assigns branch
+ * colours. The root itself has no branch and takes `null`.
+ */
+export function slotBranchColour(data: NodeItem[], id: string): string | null {
+  const parentOf = new Map(data.map((item) => [String(item.id), item.parentId]))
+  const roots = data.filter((item) => item.parentId === undefined).map((item) => String(item.id))
+  const topLevel = data
+    .filter((item) => item.parentId !== undefined && roots.includes(String(item.parentId)))
+    .map((item) => String(item.id))
+  let at: string | undefined = id
+  while (at !== undefined && !topLevel.includes(at)) {
+    if (roots.includes(at)) return null
+    at = parentOf.get(at) === undefined ? undefined : String(parentOf.get(at))
+  }
+  if (at === undefined) return null
+  const slot = topLevel.indexOf(at)
+  return SLOT_PALETTE[slot % SLOT_PALETTE.length]!
 }
 
 /** "Person 3" -> "P3", "CEO" -> "CE". No network imagery needed — initials are the avatar. */
@@ -371,6 +410,7 @@ export type NodeContentKind =
   | 'dropdown'
   | 'accordion'
   | 'actions'
+  | 'slot'
   | 'none'
 
 export interface Example {
@@ -434,6 +474,14 @@ export interface Example {
    */
   editControl?: boolean
   /**
+   * Lights the path from the root to whatever the pointer is over, using
+   * `highlight` + `pathTo` — see each demo's `nodeHover` wiring. Per-example
+   * like the other controls: a chart where every hover repaints a route is a
+   * showcase, not a default, and the examples about something else should
+   * stay quiet under the pointer.
+   */
+  hoverTrail?: boolean
+  /**
    * Readable source for this example's function options, by option name.
    *
    * The code panel prints a function with `toString()`, which in a production
@@ -455,7 +503,13 @@ export interface Example {
 // Small enough that the whole chart is comprehensible at 1:1. A few hundred nodes
 // is realistic but spreads subtrees thousands of pixels apart, so you only ever see
 // a vertical slice of it — which is what the Large example is for.
-const SHARED_DATA = buildOrg(28)
+/**
+ * The org every example draws unless it says otherwise. Exported because a
+ * custom card sometimes has to ask something about the TREE rather than about
+ * its own node — `slotBranchColour` walks to the branch root to find which
+ * colour the chart is painting that branch in.
+ */
+export const SHARED_DATA = buildOrg(28)
 
 /**
  * Which department everybody is in, for the Editing example's `canMove`.
@@ -1128,6 +1182,50 @@ export const EXAMPLES: Example[] = [
     data: SHARED_DATA,
     options: { minimap: true },
     content: 'card',
+  },
+  {
+    id: 'slots',
+    name: 'Lit branches',
+    description:
+      'Every connector in the colour of the card it leads to, elbows rounded into slots, and the whole route to the root lighting up under the pointer.',
+    data: SHARED_DATA,
+    options: {
+      nodeSize: { w: 196, h: 64 },
+      colourBranches: true,
+      toggleOnNodeClick: true,
+      spacing: { x: 28, y: 64 },
+      theme: {
+        palette: [...SLOT_PALETTE],
+        // The connectors are the point of this example, so they are given the
+        // weight of one: coloured per branch, thick enough to read as ink
+        // rather than as a hairline, and bent through a radius big enough to
+        // turn each elbow into the slot shape of a technical drawing.
+        edgeBranchColours: true,
+        edgeWidth: 2,
+        edgeCornerRadius: 22,
+        // The lit route keeps the mode's OWN highlight ink rather than a
+        // colour of this example's choosing: white reads beautifully on the
+        // dark surface and vanishes on the light one, and an example that
+        // only works in one mode is not a showcase. What this example does
+        // add is the weight and the halo.
+        edgeHighlightWidth: 3.5,
+        edgeHighlightGlow: 14,
+        // The cards are DOM (see `renderSlot`); what the canvas paints under
+        // them is only the shape, and it has to be the same stadium the card
+        // is, or the two disagree at the corners while a branch animates.
+        cornerRadius: 32,
+        nodeFill: 'transparent',
+        nodeStroke: 'transparent',
+        // A node ON the lit route is ringed rather than filled: the card is
+        // already there, in its branch's colour, and a highlight fill would
+        // paint over the thing it is pointing at. The ring itself is the
+        // mode's highlight ink, same as the route through it.
+        highlightFill: 'transparent',
+        nodeStrokeWidth: 2,
+      },
+    },
+    content: 'slot',
+    hoverTrail: true,
   },
   {
     id: 'orientations',

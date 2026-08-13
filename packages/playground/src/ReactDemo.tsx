@@ -37,8 +37,10 @@ import {
   type Example,
   type LayoutName,
   type MinimapPosition,
+  SHARED_DATA,
+  slotBranchColour,
 } from './data.js'
-import { createAccordionSlide, createDrill, goTo } from './demo-behaviour.js'
+import { createAccordionSlide, createDrill, createHoverTrail, goTo } from './demo-behaviour.js'
 import type { ThemeMode } from './theme.js'
 import { openPickerFor, overflowLabel } from './overflow-card.js'
 
@@ -142,6 +144,32 @@ function renderStatus(context: NodeContext): ReactNode {
             {headcount} report{headcount === 1 ? '' : 's'}
           </span>
         )}
+      </div>
+    </div>
+  )
+}
+
+/**
+ * The showcase card — a stadium ("slot", as a technical drawing means it) with
+ * the branch's own colour on its leading edge. Same accent the chart paints
+ * that branch's connectors with (see `slotBranchColour`), so the card and the
+ * line arriving at it agree by construction. The hover lift is CSS; the canvas
+ * lights the route (see the `nodeHover` wiring).
+ */
+function renderSlot(context: NodeContext): ReactNode {
+  const item = context.item
+  const accent = slotBranchColour(SHARED_DATA, String(item.id))
+  const style = { '--accent': accent ?? 'var(--slot-hub)' } as CSSProperties
+  const classes = ['slot-card']
+  if (accent === null) classes.push('is-hub')
+  if (context.open) classes.push('is-open')
+  if (context.hasChildren) classes.push('has-children')
+  return (
+    <div className={classes.join(' ')} style={style}>
+      <span className="slot-dot" />
+      <div className="slot-text">
+        <strong>{String(item.name ?? '')}</strong>
+        <small>{String(item.title ?? '')}</small>
       </div>
     </div>
   )
@@ -383,6 +411,7 @@ const RENDERERS: Record<Exclude<Example['content'], 'none'>, (context: NodeConte
   avatar: renderAvatar,
   monogram: renderMonogram,
   status: renderStatus,
+  slot: renderSlot,
   photo: renderPhoto,
   counts: renderCounts,
   bounds: renderBounds,
@@ -566,6 +595,13 @@ export function ReactDemo({
     [drill, onCentreChange],
   )
 
+  /**
+   * The route under the pointer — shared with the other two stacks
+   * (`createHoverTrail`), delivered through React's own prop.
+   */
+  const hoverTrail = useMemo(() => createHoverTrail(() => chartRef.current?.api, example), [example])
+  const handleNodeHover = useCallback((event: { id: string | null }) => hoverTrail(event), [hoverTrail])
+
   const cardHandlers = useMemo(
     () => ({
       onSlide: () => slide.start(),
@@ -657,6 +693,7 @@ export function ReactDemo({
         onReady={handleReady}
         onNodeDrop={handleNodeDrop}
         onNodeClick={handleNodeClick}
+        onNodeHover={handleNodeHover}
       />
     )
   }

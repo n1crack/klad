@@ -11,7 +11,11 @@
  */
 :root {
   color-scheme: light dark;
-  font-family: system-ui, -apple-system, 'Segoe UI', sans-serif;
+  font-family:
+    system-ui,
+    -apple-system,
+    'Segoe UI',
+    sans-serif;
 
   --accent: #2563eb;
   --accent-contrast: #ffffff;
@@ -185,7 +189,10 @@ body {
   background: transparent;
   color: var(--text-muted);
   cursor: pointer;
-  transition: color 120ms ease, background 120ms ease, border-color 120ms ease;
+  transition:
+    color 120ms ease,
+    background 120ms ease,
+    border-color 120ms ease;
 }
 
 .app-theme-toggle svg {
@@ -220,7 +227,10 @@ body {
   padding: 0.36rem 0.7rem;
   border-radius: var(--radius-sm);
   border: 1px solid transparent;
-  transition: color 120ms ease, background 120ms ease, border-color 120ms ease;
+  transition:
+    color 120ms ease,
+    background 120ms ease,
+    border-color 120ms ease;
 }
 
 .app-back:hover {
@@ -329,7 +339,10 @@ body {
   text-transform: uppercase;
   color: var(--text-muted);
   cursor: pointer;
-  transition: color 120ms ease, background 120ms ease, border-color 120ms ease;
+  transition:
+    color 120ms ease,
+    background 120ms ease,
+    border-color 120ms ease;
 }
 
 .rail-tab span {
@@ -495,7 +508,9 @@ body {
        by script (they are the same elements at every width). */
     transform: translateY(-102%);
     visibility: hidden;
-    transition: transform 180ms ease, visibility 180ms;
+    transition:
+      transform 180ms ease,
+      visibility 180ms;
   }
 
   .layout.is-controls-open .sidebar {
@@ -524,7 +539,6 @@ body {
   .code-block {
     max-height: 40vh;
   }
-
 
   .sidebar-group-body .btn {
     flex: 1 1 auto;
@@ -735,7 +749,9 @@ body {
   font-weight: 600;
   color: var(--text-muted);
   cursor: pointer;
-  transition: background 120ms ease, color 120ms ease;
+  transition:
+    background 120ms ease,
+    color 120ms ease;
 }
 
 .segment:hover {
@@ -775,7 +791,10 @@ body {
   /* The marker for the checked row, transparent until then: an indent that
      appears and disappears would make the whole list jump by 3px. */
   border-left: 3px solid transparent;
-  transition: background 120ms ease, color 120ms ease, border-color 120ms ease;
+  transition:
+    background 120ms ease,
+    color 120ms ease,
+    border-color 120ms ease;
 }
 
 .option-row:hover {
@@ -814,7 +833,9 @@ body {
   background: var(--surface);
   color: canvastext;
   cursor: pointer;
-  transition: border-color 120ms ease, box-shadow 120ms ease;
+  transition:
+    border-color 120ms ease,
+    box-shadow 120ms ease;
 }
 
 .select:hover {
@@ -835,7 +856,11 @@ body {
   color: canvastext;
   font-weight: 600;
   cursor: pointer;
-  transition: background 120ms ease, border-color 120ms ease, box-shadow 120ms ease, transform 80ms ease;
+  transition:
+    background 120ms ease,
+    border-color 120ms ease,
+    box-shadow 120ms ease,
+    transform 80ms ease;
 }
 
 .btn:hover {
@@ -889,7 +914,9 @@ body {
   border: 1px solid var(--border-strong);
   background: var(--surface);
   cursor: pointer;
-  transition: border-color 120ms ease, box-shadow 120ms ease;
+  transition:
+    border-color 120ms ease,
+    box-shadow 120ms ease;
 }
 
 .color-input:hover {
@@ -1137,7 +1164,10 @@ body {
   cursor: pointer;
   opacity: 0.55;
   backdrop-filter: blur(4px);
-  transition: opacity 120ms ease, color 120ms ease, border-color 120ms ease;
+  transition:
+    opacity 120ms ease,
+    color 120ms ease,
+    border-color 120ms ease;
 }
 
 .code-frame:hover .code-copy,
@@ -1659,6 +1689,117 @@ button.overflow-panel-row {
 }
 
 /* Status card: department-coloured accent + department/headcount badges. */
+/*
+ * The showcase card: a stadium — a slot, in the sense a technical drawing
+ * means it — carrying the colour of the branch it belongs to.
+ *
+ * `--accent` is written by whichever stack rendered it (see `slotBranchColour`
+ * in data.ts), and it is the SAME colour the chart paints that branch's
+ * connectors with, so a card and the line arriving at it match by
+ * construction. The chart draws nothing under these: the example sets
+ * `nodeFill`/`nodeStroke` transparent, and everything you see here is the
+ * element.
+ */
+.slot-card {
+  --slot-hub: color-mix(in srgb, canvastext 55%, canvas 45%);
+  --accent: var(--slot-hub);
+  box-sizing: border-box;
+  width: 100%;
+  height: 100%;
+  display: flex;
+  align-items: center;
+  gap: 0.6rem;
+  padding: 0 1rem 0 0.85rem;
+  /* Fully rounded ends: half the card's own height, whatever that is. */
+  border-radius: 999px;
+  border: 1.5px solid color-mix(in srgb, var(--accent) 45%, transparent);
+  background: color-mix(in srgb, var(--accent) 8%, var(--surface-raised));
+  color: var(--text);
+  overflow: hidden;
+  position: relative;
+  /* Transform and shadow only: both are compositor work, and these cards are
+     redrawn on every frame of a pan. Nothing here can trigger layout. */
+  transition:
+    transform 140ms ease,
+    box-shadow 140ms ease,
+    border-color 140ms ease,
+    background 140ms ease;
+}
+
+.slot-card .slot-dot {
+  flex: none;
+  width: 0.55rem;
+  height: 0.55rem;
+  border-radius: 999px;
+  background: var(--accent);
+  box-shadow: 0 0 0 0 color-mix(in srgb, var(--accent) 60%, transparent);
+  transition: box-shadow 140ms ease;
+}
+
+.slot-card .slot-text {
+  min-width: 0;
+  display: flex;
+  flex-direction: column;
+  gap: 0.05rem;
+}
+
+.slot-card strong {
+  font-size: 0.85rem;
+  font-weight: 600;
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+}
+
+.slot-card small {
+  font-size: 0.7rem;
+  color: var(--text-muted);
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+}
+
+/* The root: no branch, so no branch colour — the thing the branches hang off
+   rather than one of them, exactly as the engine treats it. */
+.slot-card.is-hub {
+  border-color: color-mix(in srgb, canvastext 30%, transparent);
+  background: var(--surface-raised);
+}
+
+/* A branch you can open still says so, quietly: a ring at the trailing end,
+   where the connector would leave. */
+.slot-card.has-children:not(.is-open)::after {
+  content: '';
+  position: absolute;
+  right: 0.6rem;
+  width: 0.4rem;
+  height: 0.4rem;
+  border-radius: 999px;
+  border: 1.5px solid color-mix(in srgb, var(--accent) 70%, transparent);
+}
+
+.slot-card:hover {
+  transform: translateY(-1px);
+  border-color: var(--accent);
+  background: color-mix(in srgb, var(--accent) 16%, var(--surface-raised));
+  box-shadow:
+    0 0 0 1px color-mix(in srgb, var(--accent) 40%, transparent),
+    0 6px 18px -6px color-mix(in srgb, var(--accent) 70%, transparent);
+}
+
+.slot-card:hover .slot-dot {
+  box-shadow: 0 0 0 4px color-mix(in srgb, var(--accent) 25%, transparent);
+}
+
+@media (prefers-reduced-motion: reduce) {
+  .slot-card {
+    transition: none;
+  }
+  .slot-card:hover {
+    transform: none;
+  }
+}
+
 .status-card {
   --accent: #64748b;
   box-sizing: border-box;
@@ -2392,7 +2533,9 @@ button.overflow-panel-row {
   cursor: pointer;
   /* Rotated rather than swapped for a second glyph, so the disclosure reads as
      one control turning rather than two characters alternating. */
-  transition: transform 140ms ease, color 140ms ease;
+  transition:
+    transform 140ms ease,
+    color 140ms ease;
 }
 
 .surface.is-file .file-chevron.is-open {

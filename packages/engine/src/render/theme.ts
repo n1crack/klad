@@ -58,6 +58,30 @@ export interface Theme {
   edgeHighlightStroke: string
   edgeHighlightWidth: number
   /**
+   * Blur radius, in SCREEN pixels, for a halo drawn under the highlighted
+   * path. `0` — the default — draws none, which is every existing consumer's
+   * current output.
+   *
+   * Screen rather than world, like the "more inside" mark: a glow is a
+   * property of the ink, not of the diagram, and one that shrank with the
+   * camera would be gone at exactly the zoom where a route across a big chart
+   * is worth pointing at. Costs one extra stroke of the already-built
+   * highlight path, and only while something is actually lit.
+   */
+  edgeHighlightGlow: number
+  /**
+   * Draw each connector in the colour of the node it leads TO, rather than
+   * all of them in `edgeStroke`.
+   *
+   * Off by default. It needs branch colours to exist at all (`colourBranches`,
+   * or a layout that turns them on for itself), and it deliberately takes the
+   * CHILD's fill rather than a branch base colour, so a connector matches the
+   * card at its end and a branch reads as one family shading away from the
+   * root. Drawn as one stroked path per distinct colour, so the cost is the
+   * palette's size and not the edge count.
+   */
+  edgeBranchColours: boolean
+  /**
    * A flowing connector — see `Options.edgeFlow`. Its own colour and weight
    * because "this one is different" is the whole message, and a dash pattern
    * in the same ink as everything else reads as a rendering artefact.
@@ -194,6 +218,8 @@ export const DEFAULT_THEME: Readonly<Theme> = Object.freeze({
   highlightStroke: '#f59e0b',
   edgeHighlightStroke: '#f59e0b',
   edgeHighlightWidth: 2.5,
+  edgeHighlightGlow: 0,
+  edgeBranchColours: false,
   edgeFlowStroke: '#2563eb',
   edgeFlowWidth: 2,
   edgeFlowDash: [6, 6],

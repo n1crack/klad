@@ -21,6 +21,18 @@ export interface RenderContext2D {
   fillStyle: unknown
   strokeStyle: unknown
   lineWidth: number
+  /**
+   * The halo under a highlighted path — see `Theme.edgeHighlightGlow`. Widened
+   * to `unknown` for the same reason `fillStyle` is: the DOM type accepts more
+   * than a string, and these are only ever written.
+   *
+   * Both are context state that outlives the call that sets them, so the
+   * renderer clears them the moment the glow is drawn; every backend that
+   * implements this interface has to honour that or the nodes and labels
+   * drawn afterwards wear the halo too.
+   */
+  shadowColor: unknown
+  shadowBlur: number
   font: string
   globalAlpha: number
   textBaseline: string

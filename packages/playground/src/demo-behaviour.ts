@@ -83,6 +83,30 @@ export function goTo(api: KladApi, id: string): void {
  * never relayouts per frame. An app animating node sizes on a large tree
  * should expect the same distinction to matter.
  */
+/**
+ * Lights the route from the root to whatever the pointer is over.
+ *
+ * `pathTo` gives the chain of ids, `highlight` lights it, and the chart draws
+ * the connectors along it in its own highlight ink — thicker, and with the
+ * halo this example's theme asks for. That is the whole of it: no per-node
+ * bookkeeping, no hover class on a card, and nothing to undo, because the next
+ * call replaces the set and a `null` clears it.
+ *
+ * Returns a handler rather than subscribing itself, so each demo can attach it
+ * the way its own stack does and drop it with the rest of its listeners.
+ */
+export function createHoverTrail(
+  apiOf: () => KladApi | null | undefined,
+  example: Example,
+): (event: { id: string | null }) => void {
+  return (event) => {
+    if (example.hoverTrail !== true) return
+    const api = apiOf()
+    if (api === null || api === undefined) return
+    api.highlight(event.id === null ? null : api.pathTo(event.id))
+  }
+}
+
 export function createAccordionSlide(
   apiOf: () => KladApi | null | undefined,
   example: Example,

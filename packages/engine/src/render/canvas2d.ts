@@ -276,21 +276,60 @@ export function createCanvas2DRenderer(
     const edgeLit = (i: number, p: number): boolean =>
       highlight !== null && highlight[i] === 1 && highlight[p] === 1
 
+    const unlitFill = frame.tier === 'block' ? theme.blockFill : theme.nodeFill
+
+    // Per-node branch colour, where the layout asked for one. Still loses to
+    // highlight and selection: those mean "the chart is answering you", and an
+    // ambient branch colour must not drown out an answer. Resolved up here,
+    // above the connectors, because `edgeBranchColours` paints each of those
+    // in the colour of the node it leads to.
+    const fills =
+      frame.branchOf !== null && frame.branchDepth !== null && frame.tier !== 'block'
+        ? branchFills(frame.branchOf, frame.branchDepth)
+        : null
+    const fillFor = (i: number): string => (fills !== null ? (fills[i] ?? unlitFill) : unlitFill)
+
     if (edgeCount > 0) {
       // Pass 1: everything not on a highlighted path. When nothing is
       // highlighted at all — the whole steady state — the `edgeLit` test is a
       // null check and this is the single pass it always was.
-      ctx.beginPath()
-      for (let n = 0; n < edgeCount; n++) {
-        const i = edges[n]!
-        const p = parent[i]!
-        if (p === -1 || edgeLit(i, p)) continue
-        traceEdge(i, p)
-      }
-      ctx.strokeStyle = theme.edgeStroke
       ctx.lineWidth = theme.edgeWidth
-      ctx.stroke()
-      calls.edgeStrokes = 1
+      if (fills !== null && theme.edgeBranchColours) {
+        // One path per COLOUR, not per edge: a chart has as many connector
+        // colours as the palette has entries, however many thousand edges
+        // hang off them, so this stays a handful of strokes. Keyed by the
+        // colour string itself — `fillFor` already memoises the palette work
+        // (see `branchFills`), so this is a map lookup per edge and no colour
+        // maths at all.
+        const byColour = new Map<string, number[]>()
+        for (let n = 0; n < edgeCount; n++) {
+          const i = edges[n]!
+          const p = parent[i]!
+          if (p === -1 || edgeLit(i, p)) continue
+          const colour = fillFor(i)
+          const bucket = byColour.get(colour)
+          if (bucket === undefined) byColour.set(colour, [i])
+          else bucket.push(i)
+        }
+        for (const [colour, bucket] of byColour) {
+          ctx.beginPath()
+          for (const i of bucket) traceEdge(i, parent[i]!)
+          ctx.strokeStyle = colour
+          ctx.stroke()
+          calls.edgeStrokes += 1
+        }
+      } else {
+        ctx.beginPath()
+        for (let n = 0; n < edgeCount; n++) {
+          const i = edges[n]!
+          const p = parent[i]!
+          if (p === -1 || edgeLit(i, p)) continue
+          traceEdge(i, p)
+        }
+        ctx.strokeStyle = theme.edgeStroke
+        ctx.stroke()
+        calls.edgeStrokes = 1
+      }
 
       // Pass 2: the highlighted path, drawn after so it lies over the
       // ordinary edges it crosses rather than under them, and thicker, so it
@@ -308,8 +347,23 @@ export function createCanvas2DRenderer(
         if (anyLit) {
           ctx.strokeStyle = theme.edgeHighlightStroke
           ctx.lineWidth = theme.edgeHighlightWidth
+          // The halo first, as a second stroke of the SAME path under the
+          // line itself: canvas shadows are cast by whatever is drawn, so
+          // this is the cheapest way to get one — no offscreen pass, no
+          // filter. Screen pixels, deliberately unscaled by `k` (see
+          // `edgeHighlightGlow`). Cleared immediately, because the shadow is
+          // context state and every node and label drawn after this would
+          // otherwise wear it too.
+          if (theme.edgeHighlightGlow > 0) {
+            ctx.shadowColor = theme.edgeHighlightStroke
+            ctx.shadowBlur = theme.edgeHighlightGlow
+            ctx.stroke()
+            ctx.shadowBlur = 0
+            ctx.shadowColor = 'transparent'
+            calls.edgeStrokes += 1
+          }
           ctx.stroke()
-          calls.edgeStrokes = 2
+          calls.edgeStrokes += 1
         }
       }
 
@@ -388,16 +442,6 @@ export function createCanvas2DRenderer(
     // exactly the kind of per-node cost the 50k budget can't absorb for a
     // no-op paint.
     const blockFillSkipped = frame.tier === 'block' && theme.blockFill === 'transparent'
-    const unlitFill = frame.tier === 'block' ? theme.blockFill : theme.nodeFill
-
-    // Per-node branch colour, where the layout asked for one. Still loses to
-    // highlight and selection: those mean "the chart is answering you", and an
-    // ambient branch colour must not drown out an answer.
-    const fills =
-      frame.branchOf !== null && frame.branchDepth !== null && frame.tier !== 'block'
-        ? branchFills(frame.branchOf, frame.branchDepth)
-        : null
-    const fillFor = (i: number): string => (fills !== null ? (fills[i] ?? unlitFill) : unlitFill)
 
     const sectors = frame.sectors
     /**
