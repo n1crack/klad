@@ -6622,7 +6622,9 @@ describe('lockPan and the opening view', () => {
       // is exactly the case `recomputeLimits` lowers it for.
       zoomLimits: { minK: 0.3, maxK: 6 },
       data: Array.from({ length: 28 }, (_, i) =>
-        i === 0 ? { id: 'n0', name: 'root' } : { id: `n${i}`, parentId: `n${Math.floor((i - 1) / 3)}`, name: `n${i}` },
+        i === 0
+          ? { id: 'n0', name: 'root' }
+          : { id: `n${i}`, parentId: `n${Math.floor((i - 1) / 3)}`, name: `n${i}` },
       ),
     })
     await settle()
