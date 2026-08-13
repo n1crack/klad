@@ -218,6 +218,31 @@ describe('layout', () => {
     expect(a.x + a.w / 2).toBeCloseTo(childrenCentre, 6)
   })
 
+  it('leaves the same gap whichever of two siblings is the one with children', () => {
+    // The owner's report, from the status-card example: open one of the root's
+    // two branches and its closed sibling sits right beside it; open the OTHER
+    // one and the same closed sibling drifts a long way off. A node with a
+    // wide fan of children sits at their midpoint, and the separation walk
+    // could only ever push a subtree RIGHT — so when the wide branch was the
+    // left sibling the closed one was pushed tight against it, and when it was
+    // the right sibling its midpoint already cleared the closed one and
+    // nothing brought them back together. Two mirror-image trees have to lay
+    // out as mirror images.
+    const wide = (parent: string, prefix: string) =>
+      Array.from({ length: 5 }, (_, i) => ({ id: `${prefix}${i}`, parentId: parent }))
+    const base = [{ id: 'root' }, { id: 'p1', parentId: 'root' }, { id: 'p2', parentId: 'root' }]
+    const gapWith = (children: NodeData[]) => {
+      const tree = normalize([...base, ...children])
+      const { boxes } = layout(tree, uniformSizes(tree.count), OPTS)
+      const p1 = boxOf(tree, boxes, 'p1')
+      const p2 = boxOf(tree, boxes, 'p2')
+      return p2.x - (p1.x + p1.w)
+    }
+
+    expect(gapWith(wide('p1', 'a'))).toBe(OPTS.spacingX)
+    expect(gapWith(wide('p2', 'b'))).toBe(OPTS.spacingX)
+  })
+
   it('never overlaps siblings of differing widths', () => {
     const tree = normalize([{ id: 'a' }, { id: 'wide', parentId: 'a' }, { id: 'narrow', parentId: 'a' }])
     const sizes = uniformSizes(3)
