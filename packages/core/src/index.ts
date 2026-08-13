@@ -4813,6 +4813,14 @@ export function createKlad(host: HTMLElement, options: Options): KladInstance {
       })
     },
     onMove(screenX, screenY) {
+      // Not while the layout is moving. A toggle slides every node under a
+      // pointer that has not gone anywhere, so re-asking "what is under it"
+      // per movement hands back a different node every few frames — and
+      // anything driven off `nodeHover` (a lit route, a card state) then
+      // strobes for the length of the transition. The last answer stands until
+      // the chart settles, which is also the honest one: the viewer is
+      // pointing at what they were pointing at.
+      if (chartHost.transitioning) return
       if (destroyed) return
       const world = screenToWorld(camera, screenX, screenY)
       void chartHost.hitTest(world.x, world.y).then((index) => {
@@ -5588,6 +5596,7 @@ export function createKlad(host: HTMLElement, options: Options): KladInstance {
         dropMode: 'into',
         dropValid: true,
         revealAlpha: null,
+        edgeAlpha: null,
         ghostBoxes: EMPTY_GHOST_BOXES,
         ghostAlpha: EMPTY_GHOST_ALPHA,
         ghostCount: 0,

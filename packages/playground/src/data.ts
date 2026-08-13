@@ -1245,7 +1245,7 @@ export const EXAMPLES: Example[] = [
         // add is the weight and the halo.
         edgeHighlightWidth: 3,
         // Enough halo to say "this one", not enough to bloom over the diagram.
-        edgeHighlightGlow: 4,
+        edgeHighlightGlow: 3,
         // The lit path keeps its branch's colour and takes only the weight and
         // the halo — recolouring it would throw away the one thing the
         // connectors are saying at the moment the viewer asks about it.

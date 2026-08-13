@@ -1675,6 +1675,9 @@ export function createChartEngine(renderer: Renderer): ChartEngine {
   let ghostDrawCount = 0
   let ghostDrawAlpha = new Float32Array(0)
   let revealAlphaBuffer = new Float32Array(0)
+  /** Companion to `revealAlphaBuffer`, for connectors — see its use in
+   * `render()`. Same growth-and-reuse discipline. */
+  let edgeAlphaBuffer = new Float32Array(0)
   // Interpolated boxes for exactly the SOURCE indices `render()` most
   // recently returned, in the same order (4 float64s per entry) — freshly
   // allocated every `render()` call (same discipline as `drawn` itself,
@@ -2224,6 +2227,7 @@ export function createChartEngine(renderer: Renderer): ChartEngine {
     // matching the 50k budget.
     let ghostCount = 0
     let revealAlpha: Float32Array | null = null
+    let edgeAlpha: Float32Array | null = null
     if (transition !== null) {
       // `progress < 1` is guaranteed here — the `>= 1` case was already
       // resolved above, before culling.
@@ -2329,6 +2333,31 @@ export function createChartEngine(renderer: Renderer): ChartEngine {
           }
         }
         if (anyRevealed) revealAlpha = revealAlphaBuffer
+      }
+
+      // The same alpha for the CONNECTOR into a node that is arriving.
+      //
+      // Without it the line to a revealed child is at full strength from the
+      // first frame while the child itself is still at nothing: the connector
+      // arrives before the thing it connects, drawn through space where there
+      // is not yet a node — worst on the deeper branches, where the line is
+      // longest. Keyed by the edge's CHILD, which is what `edgeDrawBuffer`
+      // holds, so an edge fades exactly in step with the card at its end.
+      if (edgeDrawCount > 0) {
+        if (edgeAlphaBuffer.length < edgeDrawCount) {
+          edgeAlphaBuffer = new Float32Array(edgeDrawCount)
+        }
+        let anyFading = false
+        for (let e = 0; e < edgeDrawCount; e++) {
+          const entry = transition.fromBySource.get(visibleToSource[edgeDrawBuffer[e]!]!)
+          if (entry !== undefined && entry.revealed) {
+            edgeAlphaBuffer[e] = easing.emphasisAlpha
+            anyFading = true
+          } else {
+            edgeAlphaBuffer[e] = 1
+          }
+        }
+        if (anyFading) edgeAlpha = edgeAlphaBuffer
       }
 
       if (transition.ghostQuad !== null && viewport.width > 0 && viewport.height > 0) {
@@ -2501,6 +2530,7 @@ export function createChartEngine(renderer: Renderer): ChartEngine {
       dropMode,
       dropValid,
       revealAlpha,
+      edgeAlpha,
       ghostBoxes: ghostDrawBoxes,
       ghostAlpha: ghostDrawAlpha,
       ghostCount,

@@ -347,6 +347,12 @@ export function createCanvas2DRenderer(
       // highlighted at all — the whole steady state — the `edgeLit` test is a
       // null check and this is the single pass it always was.
       ctx.lineWidth = theme.edgeWidth
+      // A connector into an arriving node fades with it — see `Frame.edgeAlpha`.
+      // Rounded into a handful of buckets: every fading edge in a transition
+      // shares one alpha, so this is two groups in practice, not one per edge.
+      const edgeAlpha = frame.edgeAlpha
+      const alphaOfEdge = (n: number): number =>
+        edgeAlpha === null ? 1 : Math.round(Math.min(1, Math.max(0, edgeAlpha[n]!)) * 20) / 20
       if (fills !== null && theme.edgeBranchColours) {
         // One path per COLOUR, not per edge: a chart has as many connector
         // colours as the palette has entries, however many thousand edges
@@ -359,29 +365,42 @@ export function createCanvas2DRenderer(
           const i = edges[n]!
           const p = parent[i]!
           if (p === -1 || (edgeLit(i, p) && litAlpha >= 1)) continue
-          const colour = fills[i] ?? theme.edgeStroke
-          const bucket = byColour.get(colour)
-          if (bucket === undefined) byColour.set(colour, [i])
+          const key = `${fills[i] ?? theme.edgeStroke}|${alphaOfEdge(n)}`
+          const bucket = byColour.get(key)
+          if (bucket === undefined) byColour.set(key, [i])
           else bucket.push(i)
         }
-        for (const [colour, bucket] of byColour) {
+        for (const [key, bucket] of byColour) {
+          const split = key.lastIndexOf('|')
+          const alpha = Number(key.slice(split + 1))
           ctx.beginPath()
           for (const i of bucket) traceEdge(i, parent[i]!)
-          ctx.strokeStyle = colour
+          ctx.strokeStyle = key.slice(0, split)
+          if (alpha < 1) ctx.globalAlpha = alpha
           ctx.stroke()
+          ctx.globalAlpha = 1
           calls.edgeStrokes += 1
         }
       } else {
-        ctx.beginPath()
+        const byAlpha = new Map<number, number[]>()
         for (let n = 0; n < edgeCount; n++) {
           const i = edges[n]!
           const p = parent[i]!
           if (p === -1 || (edgeLit(i, p) && litAlpha >= 1)) continue
-          traceEdge(i, p)
+          const alpha = alphaOfEdge(n)
+          const bucket = byAlpha.get(alpha)
+          if (bucket === undefined) byAlpha.set(alpha, [i])
+          else bucket.push(i)
         }
         ctx.strokeStyle = theme.edgeStroke
-        ctx.stroke()
-        calls.edgeStrokes = 1
+        for (const [alpha, bucket] of byAlpha) {
+          ctx.beginPath()
+          for (const i of bucket) traceEdge(i, parent[i]!)
+          if (alpha < 1) ctx.globalAlpha = alpha
+          ctx.stroke()
+          ctx.globalAlpha = 1
+          calls.edgeStrokes += 1
+        }
       }
 
       // Pass 2: the highlighted path, drawn after so it lies over the

@@ -272,6 +272,16 @@ export interface Frame {
    */
   revealAlpha: Float32Array | null
   /**
+   * Per-EDGE opacity for `edges[0, edgeCount)`, or `null` when every connector
+   * is at full strength — which is every frame outside a reveal.
+   *
+   * A connector into a node that is arriving fades with it. Otherwise the line
+   * is at full weight from the first frame while the node at its end is still
+   * at nothing, and it reads as the connector arriving first, drawn through
+   * space where there is not yet anything to connect.
+   */
+  edgeAlpha: Float32Array | null
+  /**
    * Nodes removed by an in-progress collapse, still shrinking/fading toward
    * the ancestor that swallowed them. `[x, y, w, h]` per ghost at
    * `ghostBoxes[i * 4 .. i * 4 + 3]` (world units, same convention as

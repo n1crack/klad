@@ -59,6 +59,7 @@ function frame(overrides: Partial<Frame> = {}): Frame {
     dropMode: 'into',
     dropValid: true,
     revealAlpha: null,
+    edgeAlpha: null,
     ghostBoxes: new Float64Array(0),
     ghostAlpha: new Float32Array(0),
     ghostCount: 0,
@@ -383,7 +384,23 @@ describe('highlighted path edges', () => {
     renderer.draw(frame({ highlight: Uint8Array.from([0, 1]) }))
     expect(renderer.stats.lastDrawCalls.edgeStrokes).toBe(1)
 
-    renderer.draw(frame({ highlight: Uint8Array.from([1, 1]) }))
+    // Two children, so one edge stays ordinary while the other is lit: the
+    // ordinary pass no longer strokes an empty path (connectors are grouped,
+    // and a group with nothing in it is not drawn), so a chart whose ONLY
+    // edge is lit now costs one stroke rather than two. What this is really
+    // asserting — that lighting a path adds a pass — needs an unlit edge to
+    // still be there.
+    const pair = frame({
+      boxes: Float64Array.from([0, 0, 100, 50, 0, 100, 100, 50, 150, 100, 100, 50]),
+      parent: Int32Array.from([-1, 0, 0]),
+      visible: Uint32Array.from([0, 1, 2]),
+      visibleCount: 3,
+      edges: Uint32Array.from([1, 2]),
+      edgeCount: 2,
+      labels: ['Root', 'Child', 'Other'],
+      highlight: Uint8Array.from([1, 1, 0]),
+    })
+    renderer.draw(pair)
     expect(renderer.stats.lastDrawCalls.edgeStrokes).toBe(2)
   })
 })
