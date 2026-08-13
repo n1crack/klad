@@ -163,7 +163,27 @@ export function createChartHost(canvas: HTMLCanvasElement, theme: Theme, preferW
   // slot — is what keeps `render()` correct regardless of that race.
   let sentCount = 0
   let framesReceived = 0
-  let pendingFrame: { target: number; resolve: (drawn: Uint32Array) => void } | null = null
+  /**
+   * Every `render()` still waiting for its own frame, not just the newest.
+   *
+   * It used to be a single slot, and a second `render()` arriving before the
+   * first had answered resolved the older one on the spot with an EMPTY
+   * `visible` array — "nothing is drawn" — purely to avoid orphaning its
+   * promise. That is a lie, and the caller believes it: the vanilla layer
+   * rebuilds its drawn-geometry mirror from exactly this array, so for that
+   * frame it thinks no node is on screen anywhere, and every question that
+   * mirror answers falls back to the SETTLED layout instead. A click landing
+   * in that window pins the camera on where a node will END UP rather than
+   * where it is — which, mid-transition, is off screen. Two renders in flight
+   * is not rare either: the frame loop awaits this promise, so any frame the
+   * worker is slow to answer lets the next `requestAnimationFrame` start
+   * another one, which is what a burst of rapid clicks produces.
+   *
+   * Waiting is the honest answer instead. Both callers get the next real
+   * frame; the older one is simply told about it a frame late, which is what
+   * it already was.
+   */
+  let pendingFrames: { target: number; resolve: (drawn: Uint32Array) => void }[] = []
   // Mirrors the in-process `engine.transitioning` for worker mode, updated
   // from each `frame` message's `transitioning` flag.
   let workerTransitioning = false
@@ -217,9 +237,15 @@ export function createChartHost(canvas: HTMLCanvasElement, theme: Theme, preferW
           workerGhostSource = message.ghostSource
           workerGhostBoxes = message.ghostBoxes
           workerGhostAlpha = message.ghostAlpha
-          if (pendingFrame !== null && framesReceived >= pendingFrame.target) {
-            pendingFrame.resolve(message.visible)
-            pendingFrame = null
+          if (pendingFrames.length > 0) {
+            // Everything whose own frame has now arrived — usually one, more
+            // only when renders piled up (see `pendingFrames`). They all get
+            // THIS frame's answer, which is the newest truth there is.
+            const arrived = pendingFrames.filter((each) => framesReceived >= each.target)
+            if (arrived.length > 0) {
+              pendingFrames = pendingFrames.filter((each) => framesReceived < each.target)
+              for (const each of arrived) each.resolve(message.visible)
+            }
           }
         } else if (message.t === 'layout') {
           visibleToSource = message.visibleToSource
@@ -235,9 +261,10 @@ export function createChartHost(canvas: HTMLCanvasElement, theme: Theme, preferW
           // after this promise settles, so one unresolved await is not a
           // dropped frame, it is the end of the animation loop. An empty
           // `visible` is the honest answer: nothing was drawn.
-          if (pendingFrame !== null) {
-            pendingFrame.resolve(new Uint32Array(0))
-            pendingFrame = null
+          if (pendingFrames.length > 0) {
+            const waiting = pendingFrames
+            pendingFrames = []
+            for (const each of waiting) each.resolve(new Uint32Array(0))
           }
         }
       }
@@ -366,13 +393,11 @@ export function createChartHost(canvas: HTMLCanvasElement, theme: Theme, preferW
       // merely imprecise.
       if (engine !== null) return Promise.resolve(engine.render(now))
       return new Promise<Uint32Array>((resolve) => {
-        // Two renders in flight at once: the older one's frame is about to be
-        // counted against the newer one's target, so its promise would never
-        // settle. Hand it the same answer rather than orphaning it — a caller
-        // stuck on a promise that cannot resolve is the same permanent freeze
-        // as the error case above.
-        pendingFrame?.resolve(new Uint32Array(0))
-        pendingFrame = { target: sentCount + 1, resolve }
+        // Queued, not replaced: an older render still waiting keeps waiting
+        // and is answered by the next real frame alongside this one. See
+        // `pendingFrames` for what resolving it early with "nothing is drawn"
+        // did to the caller.
+        pendingFrames.push({ target: sentCount + 1, resolve })
         post({ t: 'render' }, [], now)
       })
     },
@@ -401,7 +426,12 @@ export function createChartHost(canvas: HTMLCanvasElement, theme: Theme, preferW
       engine = null
       renderer = null
       quad = null
-      pendingFrame = null
+      // Let go of anything still waiting: the worker is gone, so its frame is
+      // never coming, and an unsettled promise here would hang the caller's
+      // frame loop for good.
+      const waiting = pendingFrames
+      pendingFrames = []
+      for (const each of waiting) each.resolve(new Uint32Array(0))
     },
 
     get boxes() {
