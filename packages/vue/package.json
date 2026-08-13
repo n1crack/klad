@@ -60,7 +60,7 @@
     "vue": ">=3.5 <4"
   },
   "devDependencies": {
-    "vue": "^3.5.0"
+    "vue": "^3.5.41"
   },
   "scripts": {
     "build": "node ../../scripts/copy-license.mjs && tsdown",
