@@ -26,12 +26,12 @@
     "@types/node": "^22.20.1",
     "@vitest/browser": "^4.1.10",
     "@vitest/browser-playwright": "4.1.10",
-    "oxlint": "^1.77.0",
+    "oxlint": "^1.78.0",
     "playwright": "^1.62.1",
     "prettier": "^3.9.6",
-    "publint": "^0.3.22",
+    "publint": "^0.3.23",
     "tsdown": "^0.22.14",
-    "turbo": "^2.10.8",
+    "turbo": "^2.10.9",
     "typescript": "5.9.3",
     "vitest": "^4.1.10"
   }
