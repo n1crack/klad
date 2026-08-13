@@ -936,10 +936,11 @@ describe('ChartEngine expand/collapse transition', () => {
     expect(pLiveBottom).toBeLessThan(pSettled.y + pSettled.h)
 
     // Both 'p' and 'q' ride the same reveal curve, so how far along it is can
-    // be read straight off 'p': its height runs 0 -> settled by exactly that
-    // fraction. That makes the expected position of 'q' an equation rather
-    // than a range — and one the two rules answer differently.
-    const progress = pLive.h / pSettled.h
+    // be read straight off 'p': it slides from 'a's bottom edge to its own
+    // row by exactly that fraction. That makes the expected position of 'q'
+    // an equation rather than a range — and one the two rules answer
+    // differently.
+    const progress = (pLive.y - (a.y + a.h)) / (pSettled.y - (a.y + a.h))
     expect(progress).toBeGreaterThan(0.1)
     expect(progress).toBeLessThan(0.9)
     const qSettledTop = settled('q').y
@@ -990,15 +991,21 @@ describe('ChartEngine expand/collapse transition', () => {
         w: frame.boxes[idx * 4 + 2]!,
         h: frame.boxes[idx * 4 + 3]!,
       }
-      const settled = { x: engine.boxes[idx * 4]!, w: engine.boxes[idx * 4 + 2]! }
+      const settledBox = {
+        x: engine.boxes[idx * 4]!,
+        w: engine.boxes[idx * 4 + 2]!,
+        h: engine.boxes[idx * 4 + 3]!,
+      }
 
-      // Under the parent's bottom edge, and flat against it.
+      // Tucked in behind the parent's bottom edge...
       expect(start.y).toBeCloseTo(aBox.y + aBox.h, 6)
-      expect(start.h).toBeCloseTo(0, 6)
-      // ...but already in its own column, at its own width — NOT collapsed
-      // onto the parent's horizontal centre.
-      expect(start.x).toBeCloseTo(settled.x, 6)
-      expect(start.w).toBeCloseTo(settled.w, 6)
+      // ...at full size, so the card slides rather than unfolds — no
+      // squashed line, no ballooning.
+      expect(start.h).toBeCloseTo(settledBox.h, 6)
+      expect(start.w).toBeCloseTo(settledBox.w, 6)
+      // ...and already in its own column, NOT collapsed onto the parent's
+      // horizontal centre.
+      expect(start.x).toBeCloseTo(settledBox.x, 6)
     }
 
     // The two children start apart, which is the whole point: the old
@@ -1024,6 +1031,7 @@ describe('ChartEngine expand/collapse transition', () => {
     engine.setOpen(tree.idToIndex.get('a')!, false) // collapse: 'q' becomes a ghost
     engine.render(1000)
     const ghostStartX = renderer.frames.at(-1)!.ghostBoxes[0]!
+    const ghostHeight = renderer.frames.at(-1)!.ghostBoxes[3]!
 
     const aIdx = Array.from(engine.visibleToSource).indexOf(tree.idToIndex.get('a')!)
     const aBoxNow = {
@@ -1045,9 +1053,10 @@ describe('ChartEngine expand/collapse transition', () => {
     engine.render(1000 + TRANSITION_MS - 1)
     const frame = renderer.frames.at(-1)!
     expect(frame.ghostCount).toBe(1)
-    // Flat against 'a's bottom edge...
+    // Tucked in behind 'a's bottom edge, still its own size — it slides
+    // away under the parent and fades, rather than shrinking to a line.
     expect(frame.ghostBoxes[1]).toBeCloseTo(aBoxNow.y + aBoxNow.h, 1)
-    expect(frame.ghostBoxes[3]).toBeCloseTo(0, 1)
+    expect(frame.ghostBoxes[3]).toBeCloseTo(ghostHeight, 1)
     // ...in its own column, keeping the width it had. `qWasX` is `null` only
     // if 'q' had already left the pruned tree, which is the case here — it
     // is a ghost — so the check is against the ghost's own starting x, which
@@ -1087,9 +1096,9 @@ describe('ChartEngine expand/collapse transition', () => {
     const frame = renderer.frames.at(-1)!
     const qIdx = Array.from(engine.visibleToSource).indexOf(tree.idToIndex.get('q')!)
 
-    // Flat against 'a's trailing (right) edge, zero width...
+    // Tucked in behind 'a's trailing (right) edge, at full size...
     expect(frame.boxes[qIdx * 4]).toBeCloseTo(aBox.x + aBox.w, 6)
-    expect(frame.boxes[qIdx * 4 + 2]).toBeCloseTo(0, 6)
+    expect(frame.boxes[qIdx * 4 + 2]).toBeCloseTo(engine.boxes[qIdx * 4 + 2]!, 6)
     // ...and already in its own ROW, at its own height: the growth axis is x
     // here, so it is y that keeps what the child will settle with — the
     // mirror of what the tb case asserts about x. Not 'a's vertical centre,

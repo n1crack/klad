@@ -507,30 +507,29 @@ function exitBox(box: Box, horizontal: boolean, style: EdgeStyle, rtl: boolean):
 }
 
 /**
- * Where a revealed child starts, and where a collapsing one ends: flat
- * against its parent's exit edge, in its OWN column.
+ * Where a revealed child starts, and where a collapsing one ends: its own box,
+ * whole, tucked in behind its parent's exit edge.
  *
  * `settled` is the child's own final box (its `from` box, for a ghost). Only
- * the growth axis is taken from the parent — y for tb/bt, x for lr/rl — and
- * only as a line: zero height under the parent's bottom edge, zero width past
- * its trailing edge. Across the axis the child keeps everything it will end
- * up with, its position and its size both.
+ * the growth-axis coordinate comes from the parent — the child's top for
+ * tb/bt, its leading side for lr/rl, placed exactly on the edge the connector
+ * leaves from. Everything else is the child's own: its column, and crucially
+ * its SIZE. So the reveal is a slide out from under the parent (plus the
+ * fade), and nothing about the card is distorted on the way.
  *
- * The previous version started every child at a single POINT on the parent —
- * the exact spot its connector attaches — so a wide row of children all
- * erupted from the middle of the parent's bottom edge and fanned outwards to
- * their places. The owner's words: it should not start "in the middle", it
- * should start "just underneath". So each child now unfolds straight down out
- * of the parent's underside, at the column it is going to occupy, and its
- * connector grows with it instead of sweeping sideways across the ones next
- * to it. That also makes the reveal read as one row opening rather than as N
- * cards flying apart, which is what a viewer opening a branch is actually
- * looking for.
+ * Two earlier versions of this, both rejected by the owner on sight. Starting
+ * at a single POINT on the parent's bottom edge made a row of children erupt
+ * from the middle of it and fan outwards — "the start point should not be the
+ * middle, it should be just underneath". Starting flat — the child's own
+ * column but zero height — fixed the fanning and replaced it with something
+ * worse: every card unfolding out of a squashed line, which at card sizes is
+ * a lot of distortion for one gesture to carry. Keeping the box intact and
+ * moving it is the version with no distortion in it at all.
  */
 function growthBox(settled: Box, exit: Box, horizontal: boolean): Box {
   return horizontal
-    ? { x: exit.x, y: settled.y, w: 0, h: settled.h }
-    : { x: settled.x, y: exit.y, w: settled.w, h: 0 }
+    ? { x: exit.x, y: settled.y, w: settled.w, h: settled.h }
+    : { x: settled.x, y: exit.y, w: settled.w, h: settled.h }
 }
 
 function writeBox(target: Float64Array, i: number, box: Box): void {
