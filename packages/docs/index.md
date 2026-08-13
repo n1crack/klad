@@ -3,7 +3,7 @@ layout: home
 # SEO <title> for the home page (the hero above is separate). `titleTemplate:
 # false` keeps VitePress from appending "| Klad" on top of a title that already
 # starts with the name.
-title: Klad — Canvas tree engine for very large hierarchies
+title: Klad — Canvas org chart and tree engine for Vue, React and JS
 titleTemplate: false
 
 hero:
