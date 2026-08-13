@@ -53,6 +53,25 @@ product, there is a commercial licence, and that one is a conversation.
   </div>
 </div>
 
+## Something built for you
+
+Neither licence is a service, and some of what people ask for is not a licence
+question at all:
+
+- **A chart that looks like your product.** Everything the canvas draws is a
+  theme token and everything on top of it is your own markup, so a design in
+  your brand is configuration rather than a fork — the showcase on the home
+  page is that, and nothing else.
+- **A layout or a feature you need and this does not have.** The shape of a
+  tree is a setting here precisely because there is more than one right answer;
+  if yours is missing, it is worth a conversation.
+- **Getting it into your codebase.** Migrating off whatever draws your charts
+  today, wiring it to your data, making it fast on the size of tree you
+  actually have.
+
+Same address, and say which of these it is:
+**[yusuf@ozdemir.be](mailto:yusuf@ozdemir.be)**.
+
 ## Which one is you
 
 The AGPL is enough — and you owe nothing and need to tell nobody — when:
@@ -83,25 +102,6 @@ You need the commercial licence when:
 **Email [yusuf@ozdemir.be](mailto:yusuf@ozdemir.be)** with your company, the
 product it would go into, whether it ships to customers or is internal only,
 and rough scale. That is enough to quote against.
-
-## Something built for you
-
-Neither licence is a service, and some of what people ask for is not a licence
-question at all:
-
-- **A chart that looks like your product.** Everything the canvas draws is a
-  theme token and everything on top of it is your own markup, so a design in
-  your brand is configuration rather than a fork — the showcase on the home
-  page is that, and nothing else.
-- **A layout or a feature you need and this does not have.** The shape of a
-  tree is a setting here precisely because there is more than one right answer;
-  if yours is missing, it is worth a conversation.
-- **Getting it into your codebase.** Migrating off whatever draws your charts
-  today, wiring it to your data, making it fast on the size of tree you
-  actually have.
-
-Same address, and say which of these it is:
-**[yusuf@ozdemir.be](mailto:yusuf@ozdemir.be)**.
 
 ::: info
 This page is a plain-language summary to help you work out which licence

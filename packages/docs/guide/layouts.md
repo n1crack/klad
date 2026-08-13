@@ -102,6 +102,36 @@ circle by leaf count, so a parent's arc spans exactly the union of its
 children's — the containment you would read down a file tree, read outward
 around the circle instead.
 
+### Sizing by what things weigh
+
+By leaf count, a 1 KB config file and a 480 KB bundle take the same slice — a
+picture of the directory listing rather than of the disk. `weight` says what a
+node is worth:
+
+```ts
+createKlad(host, { data, layout: 'sunburst', weight: (item) => Number(item.sizeKb ?? 0) })
+```
+
+Read on the **leaves**; a parent's share is the sum of what is under it
+whatever the function returns for the parent itself, because that is the only
+definition under which a ring stays the exact union of the ring outside it.
+Zero and non-finite both count as zero, and a tree where nothing is worth
+anything falls back to counting.
+
+Once width means size, the tail is unreadable: dozens of siblings too small to
+see, each with a sliver nobody can point at. Cap on significance rather than on
+count —
+
+```ts
+maxChildren: 0,
+pinChildren: (item, at) => Number(item.sizeKb ?? 0) / Number(at.parent?.sizeKb ?? 1) >= 0.02,
+```
+
+— and everything below the threshold rolls into the single aggregate node
+described in [Very wide levels](/guide/wide-levels). `chart.api.overflow(id)`
+says what one stands for, which is how a canvas-only chart answers "what is
+inside this +42" without a card to read it from.
+
 Labels are laid on the segments themselves: along the ring where there is room,
 outward along the ray where there is not, and skipped where neither fits.
 Nothing is ever drawn clipped.
