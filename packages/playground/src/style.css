@@ -1904,6 +1904,12 @@ button.overflow-panel-row {
   top: calc(-0.19rem - 1px);
 }
 
+/* The root has nothing above it, and a port is a claim that something attaches
+   there. On every other card the inbound port is capping a real connector. */
+.slot-card.is-root::before {
+  display: none;
+}
+
 /* A port with no connector at it is worse than no port, so the outbound one is
    drawn only when there is something hanging off it. */
 .slot-card::after {

@@ -125,6 +125,14 @@ export function nodeFillDefault(mode: ThemeMode): string {
 export const BLOCK_FILL_SEED = '#e2e8f0'
 
 /**
+ * The same idea for the grid: `DEFAULT_THEME.gridDot` is `'transparent'`, so
+ * the swatch needs a value ready for the moment the box is ticked. Pitched to
+ * read as a grid and not as content — a dot that competes with the connectors
+ * makes the chart harder to read, which is the opposite of what a grid is for.
+ */
+export const GRID_DOT_SEED = '#c7cbd6'
+
+/**
  * The initial swatch value for the "Ring colour" control — the library's own
  * default (`DEFAULT_THEME.ringStroke` in packages/engine/src/render/theme.ts),
  * same convention as `nodeFillDefault` above.

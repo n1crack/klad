@@ -4,6 +4,7 @@ import { createRoot, type Root } from 'react-dom/client'
 import type { ChartView, EdgeStyle, KladApi, LayoutSettings, NodeData, Theme } from '@klad/core'
 import {
   BLOCK_FILL_SEED,
+  GRID_DOT_SEED,
   EDGE_RADIUS_MAX,
   EDGE_RADIUS_MIN,
   EDGE_WIDTH_MAX,
@@ -841,6 +842,100 @@ function rangeControl(
   }
 }
 
+/** A checkbox for one of the theme's boolean tokens. */
+function switchControl(
+  labelText: string,
+  id: string,
+  read: (theme: Theme) => boolean,
+  write: (on: boolean) => Partial<Theme>,
+): ThemeControl {
+  const input = document.createElement('input')
+  input.type = 'checkbox'
+  input.id = id
+  input.className = 'checkbox-input'
+  input.onchange = () => {
+    applyThemeTokens(write(input.checked))
+  }
+  const wrapper = document.createElement('div')
+  wrapper.className = 'field'
+  const label = document.createElement('label')
+  label.textContent = labelText
+  label.htmlFor = id
+  const row = document.createElement('div')
+  row.className = 'field-range-row'
+  row.append(input)
+  wrapper.append(label, row)
+  return {
+    element: wrapper,
+    sync(theme) {
+      input.checked = read(theme)
+    },
+  }
+}
+
+/**
+ * A colour token whose "off" is the word `'transparent'` rather than a colour:
+ * a checkbox for whether to paint at all, plus the swatch it gates. `<input
+ * type="color">` cannot represent "none", and the two tokens shaped like this
+ * — the block tier's fill and the grid — both default to off, so the control
+ * has to be able to say so.
+ *
+ * The swatch stays live while unchecked, which pre-arms a colour for the
+ * moment the box is ticked.
+ */
+function optionalColourControl(
+  labelText: string,
+  id: string,
+  seed: string,
+  offLabel: string,
+  read: (theme: Theme) => string,
+  write: (value: string) => Partial<Theme>,
+): ThemeControl {
+  const checkbox = document.createElement('input')
+  checkbox.type = 'checkbox'
+  checkbox.id = `${id}-checkbox`
+  checkbox.className = 'checkbox-input'
+  const input = document.createElement('input')
+  input.type = 'color'
+  input.id = id
+  input.className = 'color-input'
+  input.value = seed
+  const out = readout()
+  out.setAttribute('for', id)
+
+  const apply = (): void => {
+    const value = checkbox.checked ? input.value : 'transparent'
+    out.textContent = checkbox.checked ? value.toUpperCase() : offLabel
+    applyThemeTokens(write(value))
+  }
+  checkbox.onchange = apply
+  input.oninput = apply
+
+  const wrapper = document.createElement('div')
+  wrapper.className = 'field'
+  const label = document.createElement('label')
+  label.textContent = labelText
+  label.htmlFor = checkbox.id
+  const row = document.createElement('div')
+  row.className = 'field-range-row'
+  row.append(checkbox, input, out)
+  wrapper.append(label, row)
+
+  return {
+    element: wrapper,
+    sync(theme) {
+      const value = read(theme)
+      // An example may set the token to something no swatch can show — a
+      // translucent `rgba()` for the grid. The tick still reflects the truth;
+      // only the swatch keeps its own last value.
+      const on = value !== 'transparent'
+      checkbox.checked = on
+      if (/^#[0-9a-f]{6}$/i.test(value)) input.value = value
+      out.textContent = on ? value.toUpperCase() : offLabel
+    },
+  }
+}
+
 /**
  * "Shape fill" — the `block` LOD tier's own fill (`theme.blockFill`),
  * independent of the node fill above it. Defaults to `'transparent'`: zoomed
@@ -851,46 +946,14 @@ function rangeControl(
  * while unchecked pre-arms a colour for the moment the box is ticked.
  */
 function blockFillControl(): ThemeControl {
-  const checkbox = document.createElement('input')
-  checkbox.type = 'checkbox'
-  checkbox.id = 'block-fill-checkbox'
-  checkbox.className = 'checkbox-input'
-  const input = document.createElement('input')
-  input.type = 'color'
-  input.id = 'block-fill-input'
-  input.className = 'color-input'
-  input.value = BLOCK_FILL_SEED
-  const out = readout()
-  out.setAttribute('for', 'block-fill-input')
-
-  const apply = (): void => {
-    const value = checkbox.checked ? input.value : 'transparent'
-    out.textContent = checkbox.checked ? value.toUpperCase() : 'Transparent'
-    applyThemeTokens({ blockFill: value })
-  }
-  checkbox.onchange = apply
-  input.oninput = apply
-
-  const wrapper = document.createElement('div')
-  wrapper.className = 'field'
-  const label = document.createElement('label')
-  label.textContent = 'Shape fill'
-  label.htmlFor = checkbox.id
-  const row = document.createElement('div')
-  row.className = 'field-range-row'
-  row.append(checkbox, input, out)
-  wrapper.append(label, row)
-
-  return {
-    element: wrapper,
-    sync(theme) {
-      const value = theme.blockFill
-      const on = value !== 'transparent'
-      checkbox.checked = on
-      if (/^#[0-9a-f]{6}$/i.test(value)) input.value = value
-      out.textContent = on ? value.toUpperCase() : 'Transparent'
-    },
-  }
+  return optionalColourControl(
+    'Shape fill',
+    'block-fill-input',
+    BLOCK_FILL_SEED,
+    'Transparent',
+    (theme) => theme.blockFill,
+    (blockFill) => ({ blockFill }),
+  )
 }
 
 /**
@@ -943,6 +1006,21 @@ const THEME_CONTROLS: { caption: string; controls: ThemeControl[] }[] = [
         (cornerRadius) => ({ cornerRadius }),
       ),
       blockFillControl(),
+      // Inert unless the example colours its branches at all, like the flow
+      // tokens below — and in the same way worth having beside the fill it
+      // overrides rather than in a section of its own.
+      switchControl(
+        'Branch colours',
+        'node-branch-colours',
+        (theme) => theme.nodeBranchColours,
+        (nodeBranchColours) => ({ nodeBranchColours }),
+      ),
+      switchControl(
+        'More-inside mark',
+        'hidden-mark',
+        (theme) => theme.hiddenMark,
+        (hiddenMark) => ({ hiddenMark }),
+      ),
     ],
   },
   {
@@ -969,6 +1047,12 @@ const THEME_CONTROLS: { caption: string; controls: ThemeControl[] }[] = [
         { min: EDGE_RADIUS_MIN, max: EDGE_RADIUS_MAX, step: 1 },
         (theme) => theme.edgeCornerRadius,
         (edgeCornerRadius) => ({ edgeCornerRadius }),
+      ),
+      switchControl(
+        'Branch colours',
+        'edge-branch-colours',
+        (theme) => theme.edgeBranchColours,
+        (edgeBranchColours) => ({ edgeBranchColours }),
       ),
       // The flow tokens sit with the other connector tokens rather than in a
       // group of their own: they do nothing at all unless an example marks
@@ -1050,6 +1134,46 @@ const THEME_CONTROLS: { caption: string; controls: ThemeControl[] }[] = [
         { min: 0, max: 16, step: 1 },
         (theme) => theme.ringMaxOffset,
         (ringMaxOffset) => ({ ringMaxOffset }),
+      ),
+      rangeControl(
+        'Route glow',
+        'edge-glow-range',
+        { min: 0, max: 16, step: 1 },
+        (theme) => theme.edgeHighlightGlow,
+        (edgeHighlightGlow) => ({ edgeHighlightGlow }),
+      ),
+      switchControl(
+        'Recolour route',
+        'edge-highlight-recolours',
+        (theme) => theme.edgeHighlightRecolours,
+        (edgeHighlightRecolours) => ({ edgeHighlightRecolours }),
+      ),
+    ],
+  },
+  {
+    caption: 'Grid',
+    controls: [
+      optionalColourControl(
+        'Dots',
+        'grid-dot-input',
+        GRID_DOT_SEED,
+        'None',
+        (theme) => theme.gridDot,
+        (gridDot) => ({ gridDot }),
+      ),
+      rangeControl(
+        'Spacing',
+        'grid-spacing-range',
+        { min: 8, max: 96, step: 2 },
+        (theme) => theme.gridSpacing,
+        (gridSpacing) => ({ gridSpacing }),
+      ),
+      rangeControl(
+        'Dot size',
+        'grid-dot-size-range',
+        { min: 0.5, max: 4, step: 0.5 },
+        (theme) => theme.gridDotSize,
+        (gridDotSize) => ({ gridDotSize }),
       ),
     ],
   },

@@ -339,6 +339,7 @@ function handleNodeClick({ id }: { id: string }): void {
           'is-hub': slotBranchColour(SHARED_DATA, String(item.id)) === null,
           'has-children': hasChildren,
           'is-open': open,
+          'is-root': depth === 0,
         }"
         :style="{ '--accent': slotBranchColour(SHARED_DATA, String(item.id)) ?? 'var(--slot-hub)' }"
       >

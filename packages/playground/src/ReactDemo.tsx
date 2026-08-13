@@ -165,6 +165,7 @@ function renderSlot(context: NodeContext): ReactNode {
   if (accent === null) classes.push('is-hub')
   if (context.hasChildren) classes.push('has-children')
   if (context.open) classes.push('is-open')
+  if (context.depth === 0) classes.push('is-root')
   return (
     <div className={classes.join(' ')} style={style}>
       <span className="slot-wash" />

@@ -244,6 +244,7 @@ function renderSlot(element: HTMLElement, context: NodeContext): void {
   card.classList.toggle('is-hub', accent === null)
   card.classList.toggle('has-children', context.hasChildren)
   card.classList.toggle('is-open', context.open)
+  card.classList.toggle('is-root', context.depth === 0)
   card.querySelector('.slot-more')!.textContent = String(item.headcount ?? '')
   card.querySelector('.slot-icon')!.textContent = DEPARTMENT_GLYPH[department]
   card.querySelector('.slot-kind')!.textContent = department
