@@ -754,17 +754,22 @@ export function createCanvas2DRenderer(
           const o = i * 4
           const w = boxes[o + 2]! * k
           const h = boxes[o + 3]! * k
+          // Clear of the marker, not hugging it: at three pixels out, in the
+          // marker's own colour, the ring read as a soft edge on the dot
+          // rather than as a second thing — which is the one reading it must
+          // not have. Five and most of the way opaque, so it is a RING with a
+          // gap inside it.
           ctx.beginPath()
           ctx.arc(
             (boxes[o]! + boxes[o + 2]! / 2) * k + camera.x,
             (boxes[o + 1]! + boxes[o + 3]! / 2) * k + camera.y,
-            Math.max(w, h) / 2 + 3,
+            Math.max(w, h) / 2 + 5,
             0,
             Math.PI * 2,
             false,
           )
           ctx.strokeStyle = fills !== null ? fillFor(i) : theme.labelColour
-          ctx.globalAlpha = 0.5
+          ctx.globalAlpha = 0.85
           ctx.stroke()
           ctx.globalAlpha = 1
         } else {
