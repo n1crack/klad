@@ -3849,6 +3849,10 @@ export function createKlad(host: HTMLElement, options: Options): KladInstance {
    * ring did before `ringActive` existed.
    */
   let highlightFadeUntil = 0
+  /** Mirrors the attribute written on the overlay root while the layout moves
+   * — see its use in `scheduleFrame`. Held so the DOM is only touched when the
+   * answer actually changes. */
+  let overlayMoving = false
   /** Set when the next relayout is a different TREE — see the minimap call. */
   let minimapNeedsRefit = false
 
@@ -4149,6 +4153,20 @@ export function createKlad(host: HTMLElement, options: Options): KladInstance {
       // the worker to report back per frame, and the first is one scan of a
       // mask this layer already holds. A marked edge inside a collapsed branch
       // costs nothing; one scrolled just off the edge still ticks.
+      // A CSS hook for the host's own card styles: the layout is moving, so a
+      // pointer standing still is passed over by one node after another and
+      // `:hover` fires on each of them in turn. Nothing here can stop that —
+      // it is the browser's own hit testing — but a design can decline to
+      // ANIMATE on it, which is the difference between a card lighting up as
+      // it goes by and a run of cards strobing. Left as an attribute rather
+      // than `pointer-events: none`, so a card's buttons keep working through
+      // a transition.
+      const moving = chartHost.transitioning
+      if (moving !== overlayMoving) {
+        overlayMoving = moving
+        if (moving) overlayRoot.setAttribute('data-klad-moving', '')
+        else overlayRoot.removeAttribute('data-klad-moving')
+      }
       if (
         chartHost.transitioning ||
         chartHost.ringActive ||

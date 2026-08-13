@@ -1970,6 +1970,31 @@ button.overflow-panel-row {
   box-shadow: 0 0 0 3px color-mix(in srgb, var(--accent) 25%, transparent);
 }
 
+/*
+ * While the layout is moving, the card does not react to the pointer at all.
+ *
+ * A toggle slides every node under a pointer that has not gone anywhere, so
+ * the browser fires `:hover` on one card after another as they pass — and a
+ * run of cards each starting their own wash-crumble is a strobe. The chart
+ * marks the overlay while it animates (`data-klad-moving`); this simply
+ * declines the invitation.
+ */
+.klad-overlay[data-klad-moving] .slot-card:hover {
+  border-color: color-mix(in srgb, var(--accent) 50%, transparent);
+  outline-offset: -3px;
+  outline-color: color-mix(in srgb, var(--accent) 26%, transparent);
+}
+
+.klad-overlay[data-klad-moving] .slot-card:hover .slot-wash {
+  --slot-cover: 50%;
+  opacity: 1;
+}
+
+.klad-overlay[data-klad-moving] .slot-card:hover::before,
+.klad-overlay[data-klad-moving] .slot-card:hover::after {
+  box-shadow: none;
+}
+
 @media (prefers-reduced-motion: reduce) {
   .slot-card,
   .slot-wash {
