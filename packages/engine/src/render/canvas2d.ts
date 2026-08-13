@@ -116,6 +116,36 @@ export function createCanvas2DRenderer(
     const { boxes, parent, visible, visibleCount, edges, edgeCount, camera } = frame
     const k = camera.k
 
+    // The dot grid, before anything else — see `Theme.gridDot`. Drawn from the
+    // camera this frame was rendered with, so it cannot lag the diagram the
+    // way a CSS background does. Bounded by the viewport, not by the chart:
+    // the loop runs once per dot ON SCREEN, and the spacing is clamped so a
+    // camera zoomed far out cannot ask for a million of them.
+    if (theme.gridDot !== 'transparent' && theme.gridSpacing > 0) {
+      const step = theme.gridSpacing * k
+      if (step >= 6) {
+        const w = surface.width / devicePixelRatio
+        const h = surface.height / devicePixelRatio
+        const radius = Math.max(0.5, theme.gridDotSize * Math.min(1, k))
+        const startX = camera.x % step
+        const startY = camera.y % step
+        ctx.fillStyle = theme.gridDot
+        for (let x = startX; x < w; x += step) {
+          for (let y = startY; y < h; y += step) {
+            ctx.beginPath()
+            ctx.arc(x, y, radius, 0, Math.PI * 2, false)
+            ctx.fill()
+          }
+        }
+      }
+    }
+
+    // Connectors are drawn as one path per colour, so their ends and bends are
+    // set once here: round, because a slot-cornered elbow arriving at a port
+    // reads as cut off with the default butt cap.
+    ctx.lineCap = 'round'
+    ctx.lineJoin = 'round'
+
     // Edges first so nodes paint over the joins. Walks `edges`/`edgeCount`,
     // an INDEPENDENT index from `visible`/`visibleCount` — a connector can
     // cross the viewport while neither of its endpoints' own boxes does (see

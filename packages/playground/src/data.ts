@@ -1206,10 +1206,10 @@ export const EXAMPLES: Example[] = [
       'Every connector in the colour of the card it leads to, elbows rounded into slots, and the whole route to the root lighting up under the pointer.',
     data: SHARED_DATA,
     options: {
-      nodeSize: { w: 196, h: 64 },
+      nodeSize: { w: 164, h: 50 },
       colourBranches: true,
       toggleOnNodeClick: true,
-      spacing: { x: 28, y: 64 },
+      spacing: { x: 20, y: 46 },
       // Both tiers arrive earlier than the default (0.25 / 0.6): these cards
       // are wide and their text is small, so there is still something worth
       // reading at a zoom where the stock thresholds would already have
@@ -1217,13 +1217,22 @@ export const EXAMPLES: Example[] = [
       lodThresholds: { text: 0.12, overlay: 0.34 },
       theme: {
         palette: [...SLOT_PALETTE],
+        // The paper, painted by the chart itself so it cannot lag a pan — see
+        // `Theme.gridDot`. A CSS background on the element was a frame behind
+        // on every drag, which reads as the diagram sliding over glass.
+        // A literal colour, not a `color-mix` on `currentColor`: this string
+        // is handed to a canvas, which has no element to resolve either
+        // against. Mid-grey at low alpha, so it sits under both surfaces.
+        gridDot: 'rgba(128, 132, 148, 0.3)',
+        gridSpacing: 26,
+        gridDotSize: 1,
         // The connectors are the point of this example, so they are given the
         // weight of one: coloured per branch, thick enough to read as ink
         // rather than as a hairline, and bent through a radius big enough to
         // turn each elbow into the slot shape of a technical drawing.
         edgeBranchColours: true,
-        edgeWidth: 2,
-        edgeCornerRadius: 22,
+        edgeWidth: 1.5,
+        edgeCornerRadius: 18,
         // The lit route keeps the mode's OWN highlight ink rather than a
         // colour of this example's choosing: white reads beautifully on the
         // dark surface and vanishes on the light one, and an example that
@@ -1243,7 +1252,7 @@ export const EXAMPLES: Example[] = [
         // The cards are DOM (see `renderSlot`); what the canvas paints under
         // them is only the shape, and it has to be the same stadium the card
         // is, or the two disagree at the corners while a branch animates.
-        cornerRadius: 32,
+        cornerRadius: 25,
         nodeFill: 'transparent',
         nodeStroke: 'transparent',
         // Nothing is painted on a node to say it is on the route: the cards

@@ -2581,45 +2581,6 @@ function findExample(id: string): Example {
   return EXAMPLES.find((example) => example.id === id) ?? EXAMPLES[0]!
 }
 
-/**
- * Keeps the showcase example's dotted grid pinned to the camera, so a pan moves
- * the paper and the diagram together.
- *
- * A frame loop rather than a subscription because the camera is not something
- * the page is handed — `getState()` is where it lives, and reading three
- * numbers off it is cheaper than the plumbing an event would need through all
- * three stacks for one example's background. Runs only while that example is
- * mounted, and reads nothing while the camera is still.
- */
-let gridFrame: number | null = null
-function startGridTrack(host: HTMLElement): void {
-  let lastX = Number.NaN
-  let lastY = Number.NaN
-  let lastK = Number.NaN
-  const step = (): void => {
-    const camera = currentApi?.getState().camera
-    if (camera !== undefined && (camera.x !== lastX || camera.y !== lastY || camera.k !== lastK)) {
-      lastX = camera.x
-      lastY = camera.y
-      lastK = camera.k
-      const size = 24 * camera.k
-      host.style.setProperty('--grid-size', `${size}px`)
-      // Wrapped into one cell: a background position that grows without bound
-      // loses precision after a long drag, and the pattern repeats anyway.
-      host.style.setProperty('--grid-x', `${camera.x % size}px`)
-      host.style.setProperty('--grid-y', `${camera.y % size}px`)
-    }
-    gridFrame = requestAnimationFrame(step)
-  }
-  gridFrame = requestAnimationFrame(step)
-}
-
-function stopGridTrack(): void {
-  if (gridFrame === null) return
-  cancelAnimationFrame(gridFrame)
-  gridFrame = null
-}
-
 function show(stack: Stack, exampleId: string, layout: LayoutName): void {
   // Tear the previous demo down properly before mounting the next one: the
   // vanilla chart via chart.destroy(), the Vue one via app.unmount() —
@@ -2661,10 +2622,6 @@ function show(stack: Stack, exampleId: string, layout: LayoutName): void {
   // others.
   surface.classList.toggle('is-file', layout === 'file')
   surface.classList.toggle('is-wheel', layout === 'sunburst' || layout === 'radial')
-  // ...and one per-EXAMPLE hook, for the showcase: the dotted grid it sits on
-  // belongs to that example rather than to a layout, and painting it on the
-  // canvas would put it in every chart that shares the layout.
-  chartRoot.classList.toggle('is-slots', example.content === 'slot')
   descriptionText.textContent = example.description
   description.classList.remove('is-expanded')
 
@@ -2702,8 +2659,6 @@ function show(stack: Stack, exampleId: string, layout: LayoutName): void {
    * background is the page's business, and everything it needs is already on
    * the `viewportChange` event.
    */
-  stopGridTrack()
-  if (example.content === 'slot') startGridTrack(chartRoot)
 
   if (stack === 'vanilla') {
     const chart: VanillaDemoHandle = mountVanilla(

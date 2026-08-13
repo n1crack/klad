@@ -72,6 +72,8 @@ function makeRecorder(): {
     lineWidth: 0,
     shadowColor: undefined,
     shadowBlur: 0,
+    lineCap: '',
+    lineJoin: '',
     font: '',
     globalAlpha: 1,
     textBaseline: '',

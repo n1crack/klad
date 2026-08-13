@@ -106,6 +106,22 @@ export interface Theme {
    */
   hiddenMark: boolean
   /**
+   * A dot grid painted UNDER everything, in world units, or `'transparent'`
+   * (the default) for none.
+   *
+   * On the canvas rather than behind it, on purpose. A page can put a grid on
+   * the element with two lines of CSS, and it will be a frame behind the chart
+   * on every pan: the background is composited from a style the page updates
+   * after the fact, while the diagram is drawn from the camera the frame was
+   * rendered with. Painting it here means one draw, one camera, nothing to
+   * fall behind — and it scales and offsets with the zoom for free.
+   */
+  gridDot: string
+  /** Spacing between grid dots, in world units. */
+  gridSpacing: number
+  /** Radius of each grid dot, in world units. */
+  gridDotSize: number
+  /**
    * A flowing connector — see `Options.edgeFlow`. Its own colour and weight
    * because "this one is different" is the whole message, and a dash pattern
    * in the same ink as everything else reads as a rendering artefact.
@@ -246,6 +262,9 @@ export const DEFAULT_THEME: Readonly<Theme> = Object.freeze({
   edgeBranchColours: false,
   edgeHighlightRecolours: true,
   hiddenMark: true,
+  gridDot: 'transparent',
+  gridSpacing: 24,
+  gridDotSize: 1,
   edgeFlowStroke: '#2563eb',
   edgeFlowWidth: 2,
   edgeFlowDash: [6, 6],

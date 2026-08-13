@@ -168,6 +168,7 @@ function renderSlot(context: NodeContext): ReactNode {
   return (
     <div className={classes.join(' ')} style={style}>
       <span className="slot-wash" />
+      <span className="slot-frame" />
       <span className="slot-icon">{DEPARTMENT_GLYPH[departmentOf(item)]}</span>
       <div className="slot-text">
         <span className="slot-kind">{departmentOf(item)}</span>

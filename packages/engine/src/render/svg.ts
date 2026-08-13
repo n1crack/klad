@@ -353,6 +353,8 @@ function createPathRecorder(): RenderContext2D & { data(): string } {
     lineWidth: 0,
     shadowColor: '',
     shadowBlur: 0,
+    lineCap: '',
+    lineJoin: '',
     font: '',
     globalAlpha: 1,
     textBaseline: '',
@@ -758,7 +760,8 @@ export function toSVG(data: ExportData, opts: SvgExportOptions = {}): string {
     // the canvas draws a solid dot.
     `.hs{fill:none;stroke-width:1.5;opacity:0.75}` +
     `.hd{stroke:none;opacity:0.75}` +
-    `.e{fill:none;stroke:${css(theme.edgeStroke)};stroke-width:${css(theme.edgeWidth)}}` +
+    `.e{fill:none;stroke:${css(theme.edgeStroke)};stroke-width:${css(theme.edgeWidth)};` +
+    `stroke-linecap:round;stroke-linejoin:round}` +
     `.l{fill:${css(theme.labelColour)};font:${css(theme.labelFont)};dominant-baseline:middle}`
 
   return (

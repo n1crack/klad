@@ -33,6 +33,11 @@ export interface RenderContext2D {
    */
   shadowColor: unknown
   shadowBlur: number
+  /** `'butt' | 'round' | 'square'` and `'miter' | 'round' | 'bevel'`, widened
+   * for the same reason `fillStyle` is. Set once per frame for the connector
+   * passes — see the `lineCap` write in `canvas2d.ts`. */
+  lineCap: string
+  lineJoin: string
   font: string
   globalAlpha: number
   textBaseline: string

@@ -15,6 +15,8 @@ function recorder(): RenderContext2D & { calls: string[] } {
     lineWidth: 0,
     shadowColor: '',
     shadowBlur: 0,
+    lineCap: '',
+    lineJoin: '',
     font: '',
     globalAlpha: 1,
     textBaseline: '',
