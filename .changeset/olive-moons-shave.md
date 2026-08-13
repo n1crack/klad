@@ -1,6 +1,6 @@
 ---
-'@klad/engine': patch
-'@klad/core': patch
+'@klad/engine': minor
+'@klad/core': minor
 ---
 
 Expand/collapse fixes.
