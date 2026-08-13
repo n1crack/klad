@@ -4111,9 +4111,13 @@ export function createKlad(host: HTMLElement, options: Options): KladInstance {
             interpolatedBoxOfSource,
             camera,
             alphaOfSource,
+            // The settled layout, for the size a card is LAID OUT at — see
+            // `OverlayApi.update`. A ghost has left the tree and has no
+            // settled box, so it keeps the one it is fading at.
+            boxOfSource,
           )
         } else {
-          overlay.update([], interpolatedBoxOfSource, camera, alphaOfSource)
+          overlay.update([], interpolatedBoxOfSource, camera, alphaOfSource, boxOfSource)
         }
       }
       publish()

@@ -1845,6 +1845,61 @@ describe('createKlad', () => {
 
   // --- input routes through the chart host, not just the canvas -----------
 
+  it('grows a revealing card by SCALING it, so its content never reflows on the way in', async () => {
+    // The owner, watching a fast expand: "it looks like it comes out of its
+    // own top-left." It did. The element used to be sized to the interpolated
+    // box, so at the start of a reveal it was a few pixels wide and its text,
+    // padding and everything else re-wrapped to that — a full-size-looking
+    // card pinned by its top-left corner while the box grew around it, rather
+    // than a card growing out of the point the reveal starts from.
+    //
+    // The element is now laid out at its FINISHED size for the whole
+    // transition and scaled down to the interpolated one, which is what the
+    // canvas node beside it has always done.
+    const chart = make({
+      data: [
+        { id: 'a', name: 'a' },
+        { id: 'b', parentId: 'a', name: 'b' },
+      ],
+      collapsedByDefault: true,
+      renderNode: (el: HTMLElement, ctx: { id: string }) => (el.textContent = ctx.id),
+    })
+    chart.api.zoomTo(1)
+    await settle()
+    await nextFrame()
+
+    const cardOf = (id: string) =>
+      ([...document.querySelectorAll('.klad-overlay-node')] as HTMLElement[]).find(
+        (each) => each.textContent === id,
+      )
+    expect(cardOf('b')).toBeUndefined() // still shut
+
+    chart.api.expand('a')
+    await nextFrame()
+    await nextFrame()
+
+    const card = cardOf('b')!
+    expect(card).not.toBeUndefined()
+    // Laid out at the settled size — NOT collapsed to the interpolated width,
+    // which is what made the content reflow.
+    expect(card.style.width).toBe('120px')
+    expect(card.style.height).toBe('48px')
+    // ...and scaled down instead. Early in the reveal that scale is well
+    // under 1; `zoomTo(1)` means the camera contributes exactly 1 to it.
+    const scale = Number(/scale\(([\d.]+)\)/.exec(card.style.transform)?.[1] ?? '1')
+    expect(scale).toBeGreaterThanOrEqual(0)
+    expect(scale).toBeLessThan(1)
+
+    // And by the end it is back to its own size at scale 1, so nothing is
+    // left permanently shrunk.
+    await settleTransition()
+    await settleTransition()
+    const settledCard = cardOf('b')!
+    expect(settledCard.style.width).toBe('120px')
+    expect(Number(/scale\(([\d.]+)\)/.exec(settledCard.style.transform)?.[1] ?? '0')).toBeCloseTo(1, 2)
+    chart.destroy()
+  })
+
   it('pans when a drag starts on an overlay card', async () => {
     const chart = make({ renderNode: (el: HTMLElement, ctx: { id: string }) => (el.textContent = ctx.id) })
     chart.api.fit()
