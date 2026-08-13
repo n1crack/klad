@@ -534,29 +534,14 @@ function boxAt(boxes: Float64Array, i: number): Box {
  * camera is. Styles with no mark (`folder`) start at the plain exit point —
  * there is no tip to start from.
  */
-function revealOrigin(
-  settled: Box,
-  box: Box,
-  horizontal: boolean,
-  style: EdgeStyle,
-  rtl: boolean,
-  k: number,
-): Box {
+function revealOrigin(box: Box, horizontal: boolean, style: EdgeStyle, rtl: boolean, k: number): Box {
   const exit = exitBox(box, horizontal, style, rtl)
   const stub = hiddenStub(style, horizontal, rtl, box.x, box.y, box.w, box.h)
+  if (stub === null || k <= 0) return exit
   // Past the dot, not merely to it: the dot has a radius, and starting inside
   // it reads as the card emerging from behind the mark.
-  const reach = stub === null || k <= 0 ? 0 : (HIDDEN_STUB_PX + HIDDEN_DOT_PX * 2) / k
-  const dx = stub?.dx ?? 0
-  const dy = stub?.dy ?? 0
-  // The child's own size, kept. We know what it is going to be, so there is
-  // nothing to discover by growing it out of nothing — and growing it out of
-  // nothing is what put its top-left corner at the start point and left the
-  // card looking like it came out of that corner. It starts whole, one mark's
-  // length below (or beyond) the parent, and travels to its row.
-  return horizontal
-    ? { x: exit.x + dx * reach, y: settled.y, w: settled.w, h: settled.h }
-    : { x: settled.x, y: exit.y + dy * reach, w: settled.w, h: settled.h }
+  const reach = (HIDDEN_STUB_PX + HIDDEN_DOT_PX * 2) / k
+  return { x: exit.x + stub.dx * reach, y: exit.y + stub.dy * reach, w: 0, h: 0 }
 }
 
 function exitBox(box: Box, horizontal: boolean, style: EdgeStyle, rtl: boolean): Box {
@@ -2185,6 +2170,29 @@ export function createChartEngine(renderer: Renderer): ChartEngine {
       // recursive call always takes the non-revealed branch below and
       // returns without recursing further, one level deep regardless of
       // how far up the tree the anchor sits.
+      /**
+       * The box a reveal grows out of, given its anchor.
+       *
+       * LIVE (`renderBoxes`) for an anchor that is merely moving: it is
+       * sliding to make room or recentring over a changed child set, and a
+       * child growing out of where it used to be visibly hangs off it.
+       *
+       * SETTLED (`boxes`) for an anchor that is ITSELF being revealed — a
+       * deep expand, where a whole chain appears at once because the open
+       * state below was remembered. Live, that anchor is a point near ITS
+       * own parent for the first part of the reveal, so every level below
+       * the first grew out of a spot a row or more too high and the whole
+       * branch bunched up at the top before spreading out. The owner, on a
+       * fast expand: "it still comes from the very top." A node that is
+       * arriving has no meaningful current position to offer a child; where
+       * it is going is the honest answer, and it is where the mark the child
+       * grows out of will be.
+       */
+      const anchorBoxFor = (anchor: number): Box => {
+        const entry = transition!.fromBySource.get(visibleToSource[anchor]!)
+        return entry !== undefined && entry.revealed ? boxAt(boxes, anchor) : boxAt(renderBoxes, anchor)
+      }
+
       const applyTween = (idx: number): void => {
         const entry = transition!.fromBySource.get(visibleToSource[idx]!)
         if (entry === undefined) return
@@ -2203,14 +2211,7 @@ export function createChartEngine(renderer: Renderer): ChartEngine {
           // anchor's LIVE position: the parent is often mid-move itself while
           // this runs, and a child starting from where the parent used to be
           // visibly hangs off it.
-          from = revealOrigin(
-            settled,
-            boxAt(renderBoxes, entry.anchor),
-            horizontal,
-            edgeStyle,
-            options.rtl,
-            camera.k,
-          )
+          from = revealOrigin(anchorBoxFor(entry.anchor), horizontal, edgeStyle, options.rtl, camera.k)
         }
         writeBox(renderBoxes, idx, lerpBox(from, settled, easing.emphasisPos))
       }
@@ -2279,14 +2280,7 @@ export function createChartEngine(renderer: Renderer): ChartEngine {
             // collapsing ghost leaves the way it arrived, sliding back behind
             // the mark on its surviving ancestor rather than shrinking into a
             // point somewhere under the middle of it.
-            to = revealOrigin(
-              ghost.from,
-              boxAt(renderBoxes, ghost.anchor),
-              horizontal,
-              edgeStyle,
-              options.rtl,
-              camera.k,
-            )
+            to = revealOrigin(anchorBoxFor(ghost.anchor), horizontal, edgeStyle, options.rtl, camera.k)
           }
           writeBox(ghostDrawBoxes, g, lerpBox(ghost.from, to, easing.emphasisPos))
           ghostDrawAlpha[g] = easing.ghostAlpha
