@@ -34,19 +34,49 @@ features:
 ---
 
 <script setup>
-// `withBase`, because this is a raw `src` and not a VitePress link: the router
-// prefixes `base` onto its own links, and nothing prefixes it onto this. The
-// playground is a separate Vite app copied in under `public/`, not one of
-// VitePress's own routes.
+// `withBase`, because these are raw `src` values and not VitePress links: the
+// router prefixes `base` onto its own links, and nothing prefixes it onto
+// these. The playground is a separate Vite app copied in under `public/`, not
+// one of VitePress's own routes.
+import { ref } from 'vue'
 import { withBase } from 'vitepress'
+
+// The claim this page used to make in prose — one library, several shapes —
+// made instead by the thing itself. Each tab is a playground example in embed
+// mode; switching one swaps the frame's `src`, and the app's bundle is already
+// cached by then.
+//
+// Three, not every layout there is: radial fits its whole diagram to the
+// frame, which at this height puts it below the zoom where its labels are
+// drawn at all, and a tab that shows a skeleton argues against the page.
+const demos = [
+  { id: 'slots', label: 'Org chart', alt: 'An org chart of coloured cards you can pan, zoom and expand' },
+  { id: 'file-tree', label: 'File tree', alt: 'A tree as indented file-explorer rows' },
+  { id: 'sunburst', label: 'Sunburst', alt: 'A tree as a wheel of nested arc segments you can drill into' },
+]
+const current = ref(demos[0])
 </script>
 
 <div class="home-demo">
-  <iframe
-    :src="withBase('/playground/?example=slots&embed=1')"
-    title="Klad — an org chart you can pan, zoom and expand"
-    loading="lazy"
-  />
+  <div class="home-demo-tabs" role="tablist" aria-label="Layout">
+    <button
+      v-for="demo in demos"
+      :key="demo.id"
+      role="tab"
+      type="button"
+      :class="{ 'is-active': demo.id === current.id }"
+      :aria-selected="demo.id === current.id"
+      @click="current = demo"
+    >{{ demo.label }}</button>
+  </div>
+  <div class="home-demo-frame">
+    <iframe
+      :key="current.id"
+      :src="withBase(`/playground/?example=${current.id}&embed=1`)"
+      :title="current.alt"
+      loading="lazy"
+    />
+  </div>
 </div>
 
 ## Quick Start
@@ -149,11 +179,13 @@ so the array from your API is usually already the right shape.
  */
 .vp-doc .home-demo {
   margin: 2.5rem 0 3rem;
-  height: 460px;
   border-radius: 14px;
   border: 1px solid var(--vp-c-divider);
   overflow: hidden;
   background: var(--vp-c-bg-soft);
+}
+.vp-doc .home-demo-frame {
+  height: 460px;
 }
 .vp-doc .home-demo iframe {
   display: block;
@@ -162,9 +194,51 @@ so the array from your API is usually already the right shape.
   border: 0;
 }
 @media (max-width: 640px) {
-  .vp-doc .home-demo {
+  .vp-doc .home-demo-frame {
     height: 340px;
   }
+}
+
+/* A strip of tabs, not a picker: four is few enough to show all of them, and
+   the whole point is that the reader can see there are four. Scrollable rather
+   than wrapped on a narrow screen, so the frame below never moves. */
+.vp-doc .home-demo-tabs {
+  display: flex;
+  gap: 0.25rem;
+  padding: 0.5rem 0.5rem 0;
+  overflow-x: auto;
+  scrollbar-width: none;
+  border-bottom: 1px solid var(--vp-c-divider);
+}
+.vp-doc .home-demo-tabs::-webkit-scrollbar {
+  display: none;
+}
+.vp-doc .home-demo-tabs button {
+  flex: 0 0 auto;
+  padding: 0.45rem 0.85rem;
+  border: 0;
+  border-radius: 8px 8px 0 0;
+  background: transparent;
+  color: var(--vp-c-text-2);
+  font-size: 0.85rem;
+  font-weight: 500;
+  line-height: 1.4;
+  cursor: pointer;
+  transition:
+    color 140ms ease,
+    background 140ms ease;
+}
+.vp-doc .home-demo-tabs button:hover {
+  color: var(--vp-c-text-1);
+  background: var(--vp-c-default-soft);
+}
+/* The active tab is joined to the frame under it — the border it sits on is
+   covered by its own background, so the strip reads as a folder tab and not as
+   a button that happens to be darker. */
+.vp-doc .home-demo-tabs button.is-active {
+  color: var(--vp-c-brand-1);
+  background: var(--vp-c-bg);
+  box-shadow: 0 1px 0 0 var(--vp-c-bg);
 }
 /* Scoped under .vp-doc so it out-specifies VitePress's own `.vp-doc p` margin
    rule — otherwise `margin-left/right: 0` from that rule wins and the box sticks

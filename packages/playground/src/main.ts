@@ -2790,7 +2790,10 @@ function show(stack: Stack, exampleId: string, layout: LayoutName): void {
   // the controls must reflect what's ACTUALLY showing. The canvas background
   // isn't part of any example's declared options (it's chrome, not data), so
   // it deliberately carries over across a stack/example switch instead.
-  minimapOn = minimapDefaultOn(example)
+  // No minimap in an embed: it is a navigation aid for a viewport somebody is
+  // working in, and the frame on the home page is a viewport somebody is
+  // looking at. It also lands on the corner the way out sits in.
+  minimapOn = !EMBEDDED && minimapDefaultOn(example)
   updateMinimapButton()
   minimapPositionSelect.value = minimapDefaultPosition(example)
   // Nothing the sidebar applied carries across a remount: the new chart is

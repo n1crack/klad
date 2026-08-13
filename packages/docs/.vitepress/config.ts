@@ -225,8 +225,7 @@ export default defineConfig({
       // navigation — the playground is a separate Vite app copied in under
       // `public/`, not one of VitePress's own routes.
       { text: 'Playground', link: '/playground/', target: '_self' },
-      { text: 'Roadmap', link: '/roadmap' },
-      { text: 'Licence', link: '/licence' },
+      { text: 'Pricing', link: '/pricing' },
     ],
 
     sidebar: {
