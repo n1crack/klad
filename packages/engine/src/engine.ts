@@ -940,6 +940,14 @@ export function transitionAnchorProgress(startedAt: number, now: number, opening
  * Kept under two-thirds of a second all the same — this is a navigation step,
  * and a viewer drilling three levels down should not be waiting on it.
  */
+/**
+ * How long a highlight takes to come up, and to go down again when it is
+ * cleared. Short — it is a response to a pointer, and anything slower reads as
+ * lag rather than as polish — but long enough that the glow it carries arrives
+ * rather than appears.
+ */
+const HIGHLIGHT_FADE_MS = 180
+
 const POLAR_DURATION_MS = 620
 
 /** One node's polar geometry, as captured at the instant a focus change
@@ -1545,6 +1553,22 @@ export function createChartEngine(renderer: Renderer): ChartEngine {
   let camera: Camera = { x: 0, y: 0, k: 1 }
   let viewport = { width: 0, height: 0, dpr: 1 }
   let highlightSource: Uint32Array | null = null
+  /**
+   * The set the highlight is fading OUT of, and when the change happened.
+   *
+   * A highlight that snaps on and off is fine when it is a search result being
+   * stepped through; under a pointer it is a strobe. So a change is a short
+   * animation: the incoming set comes up over `HIGHLIGHT_FADE_MS`, and a
+   * cleared one goes down over the same window rather than vanishing between
+   * two frames.
+   *
+   * `highlightChangedAt` is stamped at the first render AFTER the change, not
+   * in `setHighlight`, for the same reason the transition's clock is: this
+   * layer reads no clock of its own (see the module docblock).
+   */
+  let highlightPrev: Uint32Array | null = null
+  let highlightChangedAt: number | null = null
+  let highlightPending = false
   /** Source index the visible tree is re-rooted at, or -1 for the whole forest. */
   let isolateSource = -1
   let selectionSource: Uint32Array | null = null
@@ -2413,7 +2437,19 @@ export function createChartEngine(renderer: Renderer): ChartEngine {
       return marks
     }
 
-    highlightBuffer = markSource(highlightSource, highlightBuffer)
+    // The fade, resolved before the mask is built: whichever set is on screen
+    // right now is the one to mark. See `highlightPrev`.
+    if (highlightPending) {
+      highlightChangedAt = now
+      highlightPending = false
+    }
+    const fade =
+      highlightChangedAt === null || !animate
+        ? 1
+        : Math.min(1, Math.max(0, (now - highlightChangedAt) / HIGHLIGHT_FADE_MS))
+    const fadingOut = highlightSource === null && highlightPrev !== null && fade < 1
+    const highlightAlpha = fadingOut ? 1 - fade : fade
+    highlightBuffer = markSource(fadingOut ? highlightPrev : highlightSource, highlightBuffer)
     selectionBuffer = markSource(selectionSource, selectionBuffer)
 
     let dragPruned = -1
@@ -2458,6 +2494,7 @@ export function createChartEngine(renderer: Renderer): ChartEngine {
       horizontal: options.layout === 'tidy' && (options.orientation === 'lr' || options.orientation === 'rl'),
       rtl: options.rtl,
       highlight: highlightBuffer,
+      highlightAlpha,
       selected: selectionBuffer,
       dragIndex: dragPruned,
       dropIndex: dropPruned,
@@ -2734,7 +2771,10 @@ export function createChartEngine(renderer: Renderer): ChartEngine {
       selectionSource = ids
     },
     setHighlight(ids) {
+      if (ids === highlightSource) return
+      highlightPrev = highlightSource
       highlightSource = ids
+      highlightPending = true
     },
     setDrag(index) {
       dragSource = index

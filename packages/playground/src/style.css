@@ -1717,7 +1717,9 @@ button.overflow-panel-row {
   border: 1px solid color-mix(in srgb, var(--accent) 50%, transparent);
   background: var(--surface-raised);
   color: var(--text);
-  overflow: hidden;
+  /* NOT `overflow: hidden`: the ports sit half outside the box, and clipping
+     them left two half-discs looking sliced off. The wash does its own
+     clipping instead (it is the only child that needs it). */
   position: relative;
   isolation: isolate;
   transition: border-color 160ms ease;
@@ -1739,7 +1741,11 @@ button.overflow-panel-row {
   inset: 1.5px;
   z-index: 1;
   pointer-events: none;
-  border: 0.5px solid color-mix(in srgb, var(--accent) 34%, transparent);
+  /* An inset ring rather than a border. A sub-pixel BORDER is rounded per side
+     as the card is scaled by the camera, which lands it a fraction closer to
+     one corner than the other — visibly so, since the eye is comparing two
+     parallel lines. One shape has one rounding. */
+  box-shadow: inset 0 0 0 0.5px color-mix(in srgb, var(--accent) 34%, transparent);
   border-radius: 999px;
   opacity: 1;
   transition:
@@ -1836,7 +1842,7 @@ button.overflow-panel-row {
    called. The middle line is the only coloured text on the card — it is the one
    that says which branch you are looking at. */
 .slot-card .slot-kind {
-  font-size: 0.54rem;
+  font-size: 0.5rem;
   letter-spacing: 0.05em;
   text-transform: uppercase;
   color: var(--text-muted);
@@ -1846,7 +1852,7 @@ button.overflow-panel-row {
 }
 
 .slot-card .slot-role {
-  font-size: 0.62rem;
+  font-size: 0.56rem;
   font-weight: 500;
   color: var(--accent);
   white-space: nowrap;
@@ -1855,7 +1861,7 @@ button.overflow-panel-row {
 }
 
 .slot-card .slot-name {
-  font-size: 0.75rem;
+  font-size: 0.68rem;
   font-weight: 600;
   white-space: nowrap;
   overflow: hidden;
@@ -1875,9 +1881,9 @@ button.overflow-panel-row {
   position: absolute;
   left: 50%;
   z-index: 2;
-  width: 0.45rem;
-  height: 0.45rem;
-  margin-left: -0.225rem;
+  width: 0.38rem;
+  height: 0.38rem;
+  margin-left: -0.19rem;
   border-radius: 999px;
   background: color-mix(in srgb, var(--accent) 75%, var(--surface));
   border: 1px solid color-mix(in srgb, var(--accent) 85%, transparent);
@@ -1885,14 +1891,14 @@ button.overflow-panel-row {
 }
 
 .slot-card::before {
-  top: -0.225rem;
+  top: -0.19rem;
 }
 
 /* A port with no connector at it is worse than no port, so the outbound one is
    drawn only when there is something hanging off it. */
 .slot-card::after {
   display: none;
-  bottom: -0.225rem;
+  bottom: -0.19rem;
 }
 
 .slot-card.has-children.is-open::after {

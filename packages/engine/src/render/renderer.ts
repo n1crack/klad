@@ -228,6 +228,13 @@ export interface Frame {
   /** 1 per highlighted node index, or null when nothing is highlighted. */
   highlight: Uint8Array | null
   /**
+   * How strongly to paint `highlight`, 0..1 — a highlight arriving or leaving
+   * is animated rather than switched (see the engine's `HIGHLIGHT_FADE_MS`).
+   * `1` is the settled state and the only value a hand-assembled frame needs
+   * to supply.
+   */
+  highlightAlpha: number
+  /**
    * 1 per SELECTED node index, or null when nothing is selected. Keyed the
    * same way as `highlight`, and separate from it for the reason
    * `theme.selectionStroke` is separate from `highlightStroke`: the two say

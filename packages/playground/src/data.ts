@@ -1253,7 +1253,11 @@ export const EXAMPLES: Example[] = [
         // them is only the shape, and it has to be the same stadium the card
         // is, or the two disagree at the corners while a branch animates.
         cornerRadius: 25,
-        nodeFill: 'transparent',
+        // NOT transparent: the DOM card is dropped below the overlay zoom
+        // threshold and for a frame or two during a zoom step, and a
+        // transparent node then shows the grid straight through where a card
+        // should be. The mode's own node fill sits exactly under the card and
+        // is never seen otherwise.
         nodeStroke: 'transparent',
         // Nothing is painted on a node to say it is on the route: the cards
         // are the design, and the connectors through them already say it in

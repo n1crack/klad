@@ -61,6 +61,7 @@ function gridFrame(count: number, tier: Frame['tier']): Frame {
     horizontal: false,
     rtl: false,
     highlight: null,
+    highlightAlpha: 1,
     selected: null,
     dragIndex: -1,
     dropIndex: -1,

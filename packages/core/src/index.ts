@@ -3841,6 +3841,14 @@ export function createKlad(host: HTMLElement, options: Options): KladInstance {
   let findState: { ids: string[]; at: number } | null = null
   /** Ids of the selected nodes, in the order they were given. */
   let selectedIds: string[] = []
+  /**
+   * When the engine's highlight fade is due to finish — see its
+   * `HIGHLIGHT_FADE_MS`. The fade is a pure function of the engine's clock, so
+   * the only thing this layer owes it is frames: without them a highlight
+   * cleared on a still chart would freeze halfway out, exactly the way the
+   * ring did before `ringActive` existed.
+   */
+  let highlightFadeUntil = 0
   /** Set when the next relayout is a different TREE — see the minimap call. */
   let minimapNeedsRefit = false
 
@@ -4141,7 +4149,12 @@ export function createKlad(host: HTMLElement, options: Options): KladInstance {
       // the worker to report back per frame, and the first is one scan of a
       // mask this layer already holds. A marked edge inside a collapsed branch
       // costs nothing; one scrolled just off the edge still ticks.
-      if (chartHost.transitioning || chartHost.ringActive || anyFlowVisible()) {
+      if (
+        chartHost.transitioning ||
+        chartHost.ringActive ||
+        performance.now() < highlightFadeUntil ||
+        anyFlowVisible()
+      ) {
         scheduleFrame()
       }
     })
@@ -5488,6 +5501,10 @@ export function createKlad(host: HTMLElement, options: Options): KladInstance {
         const indices = ids.map((id) => tree.idToIndex.get(id)).filter((i): i is number => i !== undefined)
         chartHost.setHighlight(Uint32Array.from(indices))
       }
+      // Frames for the length of the engine's fade — see `highlightFadeUntil`.
+      // A little longer than the fade itself, so the last frame lands after it
+      // has finished rather than one short of it.
+      highlightFadeUntil = performance.now() + 240
       // No a11y refresh: highlighting does not change which nodes are expanded,
       // and the mirror rebuild is expensive enough that doing it per search would
       // be felt.
@@ -5561,6 +5578,7 @@ export function createKlad(host: HTMLElement, options: Options): KladInstance {
         // A PNG that arrives with someone else's selection outlined on it is
         // a picture of their afternoon, not of the org.
         highlight: null,
+        highlightAlpha: 1,
         selected: null,
         dragIndex: -1,
         // An export is a picture of the CHART; a drop preview is a picture of

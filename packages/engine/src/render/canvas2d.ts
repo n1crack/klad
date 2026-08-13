@@ -375,6 +375,11 @@ export function createCanvas2DRenderer(
           anyLit = true
         }
         if (anyLit) {
+          // The fade in and out — see `Frame.highlightAlpha`. Applied to the
+          // whole lit pass, halo included, so the route brightens as one
+          // thing rather than the line and its glow arriving separately.
+          const litAlpha = Math.min(1, Math.max(0, frame.highlightAlpha))
+          if (litAlpha < 1) ctx.globalAlpha = litAlpha
           // Recoloured, or merely lit — see `Theme.edgeHighlightRecolours`.
           // When the path keeps its own colours it cannot be one path any
           // more, so it is grouped exactly as pass 1 groups the rest.
@@ -429,6 +434,7 @@ export function createCanvas2DRenderer(
               calls.edgeStrokes += 1
             }
           }
+          ctx.globalAlpha = 1
         }
       }
 
