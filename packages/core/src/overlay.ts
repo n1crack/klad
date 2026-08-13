@@ -54,12 +54,25 @@ export function createOverlay(container: HTMLElement, callbacks: OverlayCallback
      * edge, so a card ignoring it paints its content — unclipped, since the
      * element it overflows is 0x0 — as a bubble hanging off the parent until
      * the reveal finally starts.
+     *
+     * `settledBoxOf` is the same node's box in the FINISHED layout, and it is
+     * what the element is actually sized to; the interpolated box only decides
+     * where it sits and how far it is scaled down. That split is the whole
+     * difference between a card that GROWS and a card that REFLOWS. A DOM
+     * element is not a drawing: give it the interpolated width and its text,
+     * its padding and its avatar all re-wrap to whatever that width currently
+     * is, so a reveal read as a full-size card pinned by its top-left corner
+     * while the box caught up around it — the owner's "it looks like it comes
+     * out of its own top-left". Laying it out ONCE at the size it will end up
+     * and scaling that down to the interpolated size makes it grow the way the
+     * canvas node beside it does, out of the point the reveal starts from.
      */
     update(
       items: readonly OverlayItem[],
       boxOf: (index: number) => { x: number; y: number; w: number; h: number } | null,
       camera: Camera,
       alphaOf: (index: number) => number,
+      settledBoxOf: (index: number) => { x: number; y: number; w: number; h: number } | null = boxOf,
     ): void {
       activeCount = 0
       for (const item of items) {
@@ -67,9 +80,17 @@ export function createOverlay(container: HTMLElement, callbacks: OverlayCallback
         if (box === null) continue
         const element = acquire()
         const screen = worldToScreen(camera, box.x, box.y)
-        element.style.width = `${box.w}px`
-        element.style.height = `${box.h}px`
-        element.style.transform = `translate3d(${screen.x}px, ${screen.y}px, 0) scale(${camera.k})`
+        // The settled size for the layout, the interpolated one for the
+        // scale — see the docblock. Falls back to the box itself when there
+        // is no settled answer (and they are the same object outside a
+        // transition anyway, which is every frame but a few hundred
+        // milliseconds after a toggle), and guards a zero width so the first
+        // frame of a reveal cannot divide by it.
+        const settled = settledBoxOf(item.index) ?? box
+        const grow = settled.w > 0 ? box.w / settled.w : 1
+        element.style.width = `${settled.w}px`
+        element.style.height = `${settled.h}px`
+        element.style.transform = `translate3d(${screen.x}px, ${screen.y}px, 0) scale(${camera.k * grow})`
         // Cleared to '' rather than '1' at full opacity so a card that is not
         // fading carries no inline opacity at all — the steady state leaves
         // the element exactly as it was before this feature existed, and a

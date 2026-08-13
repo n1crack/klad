@@ -2,7 +2,14 @@ import type { Bounds } from './types.js'
 import type { Camera } from './viewport.js'
 import type { EdgeStyle, Renderer } from './render/renderer.js'
 import type { DropMode } from './drag/drop-target.js'
-import { edgeAnchors, edgeBBox, edgeStyleDrawsConnectors } from './render/edge-geometry.js'
+import {
+  edgeAnchors,
+  edgeBBox,
+  edgeStyleDrawsConnectors,
+  hiddenStub,
+  HIDDEN_DOT_PX,
+  HIDDEN_STUB_PX,
+} from './render/edge-geometry.js'
 import { isSectorVisible } from './render/sector.js'
 import type { ExportData } from './render/svg.js'
 import type { EngineOptions, WireTree } from './worker/protocol.js'
@@ -490,13 +497,53 @@ function boxAt(boxes: Float64Array, i: number): Box {
   return { x: boxes[o]!, y: boxes[o + 1]!, w: boxes[o + 2]!, h: boxes[o + 3]! }
 }
 
-/** `Box`-typed convenience wrapper over `exitPointXY` (see its docblock) —
- * as a zero-size `Box` (`w`/`h` both 0), ready to hand straight to `lerpBox`
- * as a reveal's growth-start point or a ghost's shrink-target point: a
- * revealed child then visibly emerges from a single POINT at its parent's
- * exit edge and grows to its own size while moving to its final box, rather
- * than starting already sized like the whole parent box — see `render()`'s
- * `applyTween` and the ghost-drawing loop, both in `createChartEngine`. */
+/**
+ * `Box`-typed convenience wrapper over `exitPointXY` (see its docblock) — as a
+ * zero-size `Box` (`w`/`h` both 0), ready to hand straight to `lerpBox` as a
+ * reveal's growth-start point or a ghost's shrink-target point.
+ *
+ * A single POINT, on purpose, and the owner has now confirmed it twice over:
+ * the child grows out of the spot the collapsed node's own indicator hangs
+ * from — bottom edge, horizontal centre — opening outwards in both directions
+ * and downwards from there. Two alternatives were tried against that and both
+ * were rejected on sight: keeping the child's own column and unfolding it out
+ * of a zero-height line (every card stretching open, far too much
+ * distortion), and keeping its whole box and sliding it down (no distortion,
+ * but the reveal stops reading as coming OUT of the parent at all). What was
+ * actually wrong was never this point — it was which node's point a deeper
+ * descendant used; see the anchor in `buildTransition`.
+ *
+ * See `render()`'s `applyTween` and the ghost-drawing loop, both in
+ * `createChartEngine`.
+ */
+/**
+ * Where a reveal actually starts, and where a collapse ends: just past the
+ * tip of the "more inside" mark that hangs off the node while it is shut.
+ *
+ * The mark IS the promise — a short stub off the node's exit edge ending in a
+ * dot, the one thing on a closed branch that says something is in there. So a
+ * branch opening out of the end of it is the promise being kept, in the place
+ * it was made. Starting flush against the node's own edge instead, which is
+ * what this did, put the first frame of the reveal underneath the card and
+ * behind the mark: the owner saw the children arrive "from the very top",
+ * touching the parent, rather than out of the tip a few pixels below it.
+ *
+ * `k` converts the mark's SCREEN length into world units, because that is how
+ * the mark itself is drawn (see `HIDDEN_STUB_PX`): the same handful of pixels
+ * at every zoom, so the reveal starts the same distance out however far the
+ * camera is. Styles with no mark (`folder`) start at the plain exit point —
+ * there is no tip to start from.
+ */
+function revealOrigin(box: Box, horizontal: boolean, style: EdgeStyle, rtl: boolean, k: number): Box {
+  const exit = exitBox(box, horizontal, style, rtl)
+  const stub = hiddenStub(style, horizontal, rtl, box.x, box.y, box.w, box.h)
+  if (stub === null || k <= 0) return exit
+  // Past the dot, not merely to it: the dot has a radius, and starting inside
+  // it reads as the card emerging from behind the mark.
+  const reach = (HIDDEN_STUB_PX + HIDDEN_DOT_PX * 2) / k
+  return { x: exit.x + stub.dx * reach, y: exit.y + stub.dy * reach, w: 0, h: 0 }
+}
+
 function exitBox(box: Box, horizontal: boolean, style: EdgeStyle, rtl: boolean): Box {
   // Where a revealed child grows FROM has to be where its connector attaches,
   // or the two disagree in the one moment a viewer is watching them: the card
@@ -563,22 +610,40 @@ function unionBox(a: Box, b: Box): Box {
  * one does (reposition vs. reveal/shrink) flips with the toggle's direction
  * — see `Transition.opening` and `repositionRaw`/`emphasisRaw` below.
  *
- * `PHASE_OVERLAP_MS` lets phase 2 start a little before phase 1 fully
- * finishes, so the hand-off between them reads as one continuous motion
- * rather than two animations with a dead beat in between — small relative to
- * either phase, tuned by eye alongside the phase lengths themselves.
+ * `PHASE_OVERLAP_MS` lets phase 2 start before phase 1 finishes, so the
+ * hand-off between them reads as one continuous motion rather than two
+ * animations with a dead beat in between.
+ *
+ * It is a THIRD of a phase, not the token 70ms it started as, because both
+ * phases are eased with `easeInOutCubic` — each ENDS at zero velocity and
+ * each STARTS at zero velocity. Overlap them by less than their own
+ * slow-in/slow-out tails and the two near-stationary ends line up: the
+ * children finish shrinking away, the chart visibly waits, and only then do
+ * the siblings close the gap. That pause was the owner's "it shrinks, it
+ * closes, then it shrinks again". At a third of a phase, phase 2's
+ * acceleration lands inside phase 1's fast middle instead, and the pair reads
+ * as one move.
+ *
+ * It does NOT go further than that, which would be the same as not staging
+ * the transition at all: on an expand the children would arrive into space
+ * that has not been made yet and sit over their neighbours on the way in,
+ * which is the thing the staging exists to prevent. The floor for a collapse
+ * is `GHOST_FADE_FRACTION` — the gap must not start closing over children
+ * that are still visible — and phase 2 opening at ~33% against a fade that
+ * completes by 35% (and only reaching real speed after that, being eased)
+ * keeps it on the right side of that line.
  *
  * Total duration (`TRANSITION_DURATION_MS`, derived below) intentionally
  * stays quick: the owner was explicit that the whole thing must not feel
  * slow, even now that it is two stages rather than one. The former
  * single-phase duration was 420ms; splitting it in two without shortening
  * anything would have doubled the perceived length, so each phase is
- * shorter than that on its own — the two phases together, minus the
- * overlap, land at roughly the same ballpark as before.
+ * shorter than that on its own — and the wider overlap now brings the two
+ * together back under it.
  */
 const PHASE_ONE_MS = 260
 const PHASE_TWO_MS = 260
-const PHASE_OVERLAP_MS = 70
+const PHASE_OVERLAP_MS = 130
 const TRANSITION_DURATION_MS = PHASE_ONE_MS + PHASE_TWO_MS - PHASE_OVERLAP_MS
 
 /** Fraction of the total duration phase 1 alone occupies. */
@@ -938,6 +1003,34 @@ function buildTransition(
   prevVisibleToSource: Int32Array,
   prevParent: Int32Array,
   prevTransition: Transition | null,
+  /**
+   * The interpolated boxes the LAST FRAME was drawn with, in the previous
+   * relayout's pruned index space — the engine's own `renderBoxes`, which it
+   * has not replaced yet at the point it calls this.
+   *
+   * Only a node caught mid-reveal needs it; see the `entry.revealed` branch
+   * below for why that one cannot be recomputed from `prevTransition` alone.
+   * Identical to `prevBoxes` for anything the last frame did not draw, which
+   * is the right answer for a node off screen anyway.
+   */
+  prevRenderBoxes: Float64Array,
+  /**
+   * The same thing for the nodes that were on their way OUT when this
+   * relayout landed: SOURCE -> the box the last frame actually drew that
+   * ghost at, empty when none were drawn.
+   *
+   * A ghost is not in `prevRenderBoxes` — it has left the pruned tree, which
+   * is what makes it a ghost — so it needs its own answer, and for the same
+   * reason: where it visually IS cannot be recomputed from the transition
+   * that was drawing it. See the carry-over loop below.
+   *
+   * Built by the caller from the engine's OWN scratch buffers rather than
+   * from `lastGhostSource`/`lastGhostBoxes`: those are handed to the host and,
+   * in worker mode, TRANSFERRED — detached the moment they are posted, so
+   * reading them back here finds a zero-length array and silently falls
+   * through to the recomputation this parameter exists to replace.
+   */
+  prevGhostDrawn: ReadonlyMap<number, Box>,
   boxes: Float64Array,
   visibleToSource: Int32Array,
   prunedParent: Int32Array,
@@ -978,8 +1071,27 @@ function buildTransition(
     if (prevTransition !== null) {
       const entry = prevTransition.fromBySource.get(src)
       if (entry !== undefined) {
-        const t = entry.revealed ? prevEasing!.emphasisPos : prevEasing!.repositionPos
-        box = lerpBox(entry.box, box, t)
+        if (entry.revealed) {
+          // A node caught mid-REVEAL is read straight out of the frame that
+          // drew it (`prevRenderBoxes`), not recomputed here.
+          //
+          // It cannot be recomputed here, and pretending otherwise was a bug
+          // with a very particular look. A revealed entry's `box` field is
+          // its FINAL box — the growth START is not stored at all, it is
+          // resolved live from the anchor every frame (see `TweenEntry.box`
+          // and `render()`'s `applyTween`) — so `lerpBox(entry.box, box, t)`
+          // was lerping the final box towards itself and handing back the
+          // final box whatever `t` said. Interrupt an expand and every card
+          // still growing was recorded at full size in its finished
+          // position, then tweened on from there by the new transition: they
+          // jumped out of the parent to their full size and then set off
+          // again, which is what a fast second click looked like. The frame
+          // buffer has the honest answer already — it is exactly what the
+          // viewer was looking at when the click landed.
+          box = boxAt(prevRenderBoxes, i)
+        } else {
+          box = lerpBox(entry.box, box, prevEasing!.repositionPos)
+        }
       }
     }
     // Keyed in the NEW index space, so every lookup downstream — reveals,
@@ -1001,55 +1113,65 @@ function buildTransition(
         // a still-fading ghost tracking its anchor's OWN live reposition
         // tween — same "live anchor, not a stale snapshot" fix as
         // `render()`'s ghost-drawing loop.
+        const key = sourceRemap === null ? ghost.source : (sourceRemap[ghost.source] ?? -1)
+        if (key === -1) continue
+        // The frame buffer first, exactly as a mid-reveal node is read out of
+        // `prevRenderBoxes` above, and for the same reason: recomputing it
+        // here does not agree with what was drawn. `render()` shrinks a ghost
+        // toward a POINT on its anchor — the tip of the "more inside" mark,
+        // see `revealOrigin` — while this used the anchor's whole BOX as the
+        // target. At the end of a collapse that put the ghost at the parent's
+        // full-size box, and an expand landing there started every child from
+        // the parent's own top-left corner at full size and flew it down to
+        // its place. Measured on a real page: three cards, all at exactly the
+        // parent's box, on every expand that interrupted a collapse — the
+        // owner's "when I click fast it starts from above the mouse, almost
+        // at the top border". The recomputation stays as the fallback for a
+        // ghost the last frame did not draw (off screen, or none drawn yet).
+        const drawnAt = prevGhostDrawn.get(ghost.source)
+        if (drawnAt !== undefined) {
+          prevPositionBySource.set(key, drawnAt)
+          continue
+        }
         const anchorKey = sourceRemap === null ? ghost.anchorSource : (sourceRemap[ghost.anchorSource] ?? -1)
         const to =
           ghost.anchor === -1 || anchorKey === -1
             ? ghost.from
             : (prevPositionBySource.get(anchorKey) ?? ghost.from)
-        const key = sourceRemap === null ? ghost.source : (sourceRemap[ghost.source] ?? -1)
-        if (key !== -1) prevPositionBySource.set(key, lerpBox(ghost.from, to, prevEasing!.emphasisPos))
+        prevPositionBySource.set(key, lerpBox(ghost.from, to, prevEasing!.emphasisPos))
       }
     }
   }
 
-  // 2. Surviving (tweened) and newly-revealed nodes. `resolveRevealAnchor`
-  // walks the NEW tree's parent chain looking for the nearest ancestor with a
-  // prior position, memoizing every pruned index it passes through so a
-  // multi-level reveal (expanding a grandparent) costs O(1) amortized per
-  // node instead of O(depth) per node. It returns that ancestor's PRUNED
-  // INDEX, not a baked box — see `TweenEntry.anchor`'s docblock for why.
+  // 2. Surviving (tweened) and newly-revealed nodes. A revealed node grows
+  // out of its OWN PARENT, whenever it has one in this tree — even a parent
+  // that is itself being revealed this transition. It returns a PRUNED INDEX,
+  // not a baked box — see `TweenEntry.anchor`'s docblock for why.
+  //
+  // It used to walk UP past any such parent, to the nearest ancestor that had
+  // a prior position, on the reasoning that a node with no position of its
+  // own has nothing to grow from. But it does: by the time `render()` asks,
+  // that parent has been tweened too (`applyTween` resolves its anchor first,
+  // recursively), so it has a live box at every instant, and it is the right
+  // one. The walk's version showed itself the moment a branch whose
+  // GRANDCHILDREN were also open got expanded — the common case, since open
+  // state is remembered: every level below the first erupted from the toggled
+  // node's bottom edge, above the row it belonged to, instead of unfolding
+  // out of its own parent a level at a time. The owner's "they can even come
+  // out from higher up".
+  //
+  // The chain terminates: `prunedParent` is a tree, so following it strictly
+  // decreases depth, and preorder guarantees a parent's pruned index is lower
+  // than its children's — which is also what lets the `nodeQuad` pass below
+  // read an anchor's union box that a revealed anchor only writes in the same
+  // loop.
   const fromBySource = new Map<number, TweenEntry>()
-  const revealCache = new Map<number, number>()
-  const resolveRevealAnchor = (i: number): number => {
-    const cached = revealCache.get(i)
-    if (cached !== undefined) return cached
-    const path: number[] = []
-    let p = prunedParent[i]!
-    let result = -1
-    while (p !== -1) {
-      const viaCache = revealCache.get(p)
-      if (viaCache !== undefined) {
-        result = viaCache
-        break
-      }
-      const psrc = visibleToSource[p]!
-      if (prevPositionBySource.has(psrc)) {
-        result = p
-        break
-      }
-      path.push(p)
-      p = prunedParent[p]!
-    }
-    for (const idx of path) revealCache.set(idx, result)
-    revealCache.set(i, result)
-    return result
-  }
 
   for (let i = 0; i < visibleToSource.length; i++) {
     const src = visibleToSource[i]!
     const prev = prevPositionBySource.get(src)
     if (prev !== undefined) fromBySource.set(src, { box: prev, revealed: false, anchor: -1 })
-    else fromBySource.set(src, { box: boxAt(boxes, i), revealed: true, anchor: resolveRevealAnchor(i) })
+    else fromBySource.set(src, { box: boxAt(boxes, i), revealed: true, anchor: prunedParent[i]! })
   }
 
   // 3. Removed nodes become ghosts, collapsing toward the nearest ancestor
@@ -1520,6 +1642,13 @@ export function createChartEngine(renderer: Renderer): ChartEngine {
   let renderBoxes: Float64Array = new Float64Array(0)
   let ghostCullBuffer = new Uint32Array(0)
   let ghostDrawBoxes = new Float64Array(0)
+  /**
+   * How many entries of `ghostDrawBoxes` the last frame actually wrote —
+   * `render()`'s own ghost count, kept here so `relayout` can read the frame
+   * back afterwards (see `buildTransition`'s `prevGhostDrawn`). The buffer
+   * itself is grown and reused, so its length says nothing about this.
+   */
+  let ghostDrawCount = 0
   let ghostDrawAlpha = new Float32Array(0)
   let revealAlphaBuffer = new Float32Array(0)
   // Interpolated boxes for exactly the SOURCE indices `render()` most
@@ -1627,6 +1756,22 @@ export function createChartEngine(renderer: Renderer): ChartEngine {
 
   const relayout = (now: number): void => {
     const prevBoxes = boxes
+    // The frame buffer as the last frame left it, before `renderBoxes` is
+    // pointed at the new layout below — see `buildTransition`'s
+    // `prevRenderBoxes` for the one thing that needs it.
+    const prevRenderBoxes = renderBoxes
+    // ...and the ghost half of the same frame, for the nodes that had already
+    // left the tree when this relayout landed. Read out of the engine's own
+    // scratch buffers (see `buildTransition`'s `prevGhostDrawn`), and through
+    // `ghostCullBuffer`, because that is the order those boxes were written
+    // in.
+    const prevGhostDrawn = new Map<number, Box>()
+    if (transition !== null) {
+      for (let g = 0; g < ghostDrawCount; g++) {
+        const ghost = transition.ghosts[ghostCullBuffer[g]!]
+        if (ghost !== undefined) prevGhostDrawn.set(ghost.source, boxAt(ghostDrawBoxes, g))
+      }
+    }
     const prevVisibleToSource = visibleToSource
     const prevParent = prunedParent
     const prevTransition = transition
@@ -1836,6 +1981,8 @@ export function createChartEngine(renderer: Renderer): ChartEngine {
         prevVisibleToSource,
         prevParent,
         prevTransition,
+        prevRenderBoxes,
+        prevGhostDrawn,
         boxes,
         visibleToSource,
         prunedParent,
@@ -2079,6 +2226,29 @@ export function createChartEngine(renderer: Renderer): ChartEngine {
       // recursive call always takes the non-revealed branch below and
       // returns without recursing further, one level deep regardless of
       // how far up the tree the anchor sits.
+      /**
+       * The box a reveal grows out of, given its anchor.
+       *
+       * LIVE (`renderBoxes`) for an anchor that is merely moving: it is
+       * sliding to make room or recentring over a changed child set, and a
+       * child growing out of where it used to be visibly hangs off it.
+       *
+       * SETTLED (`boxes`) for an anchor that is ITSELF being revealed — a
+       * deep expand, where a whole chain appears at once because the open
+       * state below was remembered. Live, that anchor is a point near ITS
+       * own parent for the first part of the reveal, so every level below
+       * the first grew out of a spot a row or more too high and the whole
+       * branch bunched up at the top before spreading out. The owner, on a
+       * fast expand: "it still comes from the very top." A node that is
+       * arriving has no meaningful current position to offer a child; where
+       * it is going is the honest answer, and it is where the mark the child
+       * grows out of will be.
+       */
+      const anchorBoxFor = (anchor: number): Box => {
+        const entry = transition!.fromBySource.get(visibleToSource[anchor]!)
+        return entry !== undefined && entry.revealed ? boxAt(boxes, anchor) : boxAt(renderBoxes, anchor)
+      }
+
       const applyTween = (idx: number): void => {
         const entry = transition!.fromBySource.get(visibleToSource[idx]!)
         if (entry === undefined) return
@@ -2086,20 +2256,20 @@ export function createChartEngine(renderer: Renderer): ChartEngine {
           writeBox(renderBoxes, idx, lerpBox(entry.box, boxAt(boxes, idx), easing.repositionPos))
           return
         }
+        const settled = boxAt(boxes, idx)
         let from = entry.box
         if (entry.anchor !== -1) {
           applyTween(entry.anchor)
-          // The anchor's EXIT point (bottom edge for tb/bt, trailing edge for
-          // lr/rl — wherever its connector actually leaves it), not its whole
-          // box: a revealed child emerges from that single point on its
-          // parent and grows to its own size while moving to its final box,
-          // rather than starting already sized and positioned like the
-          // entire parent — the owner's ask (previously it grew out of the
-          // anchor's box origin/centre, which read as ballooning out of the
-          // middle rather than dropping out of the bottom).
-          from = exitBox(boxAt(renderBoxes, entry.anchor), horizontal, edgeStyle, options.rtl)
+          // The anchor's EXIT point (bottom-centre for tb/bt, trailing edge
+          // for lr/rl — wherever its connector leaves it, which is exactly
+          // where the collapsed-state indicator hangs from), one mark's
+          // length past its tip. Read from `renderBoxes`, so it tracks the
+          // anchor's LIVE position: the parent is often mid-move itself while
+          // this runs, and a child starting from where the parent used to be
+          // visibly hangs off it.
+          from = revealOrigin(anchorBoxFor(entry.anchor), horizontal, edgeStyle, options.rtl, camera.k)
         }
-        writeBox(renderBoxes, idx, lerpBox(from, boxAt(boxes, idx), easing.emphasisPos))
+        writeBox(renderBoxes, idx, lerpBox(from, settled, easing.emphasisPos))
       }
       // Every drawn NODE needs its own box tweened, plus its parent's (so
       // a connector reaching up to that parent, drawn from the same
@@ -2162,18 +2332,18 @@ export function createChartEngine(renderer: Renderer): ChartEngine {
           let to = ghost.from
           if (ghost.anchor !== -1) {
             applyTween(ghost.anchor)
-            // Symmetric with the reveal case above: a collapsing ghost
-            // shrinks toward the single EXIT point on its surviving
-            // ancestor, not the ancestor's whole box, so it visibly
-            // disappears back into the bottom/trailing edge it originally
-            // emerged from rather than shrinking into the ancestor's centre.
-            to = exitBox(boxAt(renderBoxes, ghost.anchor), horizontal, edgeStyle, options.rtl)
+            // Symmetric with the reveal above, and for the same reason: a
+            // collapsing ghost leaves the way it arrived, sliding back behind
+            // the mark on its surviving ancestor rather than shrinking into a
+            // point somewhere under the middle of it.
+            to = revealOrigin(anchorBoxFor(ghost.anchor), horizontal, edgeStyle, options.rtl, camera.k)
           }
           writeBox(ghostDrawBoxes, g, lerpBox(ghost.from, to, easing.emphasisPos))
           ghostDrawAlpha[g] = easing.ghostAlpha
         }
         ghostCount = gcount
       }
+      ghostDrawCount = ghostCount
     }
     // --- end transition ---
 
@@ -2358,7 +2528,20 @@ export function createChartEngine(renderer: Renderer): ChartEngine {
       const boxes = new Float64Array(ghostCount * 4)
       const alpha = new Float32Array(ghostCount)
       for (let g = 0; g < ghostCount; g++) {
-        source[g] = transition.ghosts[g]!.source
+        // Through `ghostCullBuffer`, NOT `g` — and this is the whole bug the
+        // owner was seeing. `ghostDrawBoxes[g]` was written in CULLED order a
+        // few dozen lines above (`transition.ghosts[ghostCullBuffer[g]]`),
+        // because only the ghosts near the viewport are drawn and the
+        // quadtree returns them in its own order. Publishing
+        // `transition.ghosts[g].source` alongside it paired each source with
+        // whatever box happened to sit at the same offset in a differently
+        // ordered list, so the host's overlay — which pairs these two
+        // positionally to build its source -> box map — put cards on other
+        // nodes' geometry. On a fast expand interrupting a collapse that came
+        // out as every child drawn full-size on top of the parent, then flying
+        // down to its row: "when I click fast it starts from above the mouse,
+        // almost at the top border."
+        source[g] = transition.ghosts[ghostCullBuffer[g]!]!.source
         boxes[g * 4] = ghostDrawBoxes[g * 4]!
         boxes[g * 4 + 1] = ghostDrawBoxes[g * 4 + 1]!
         boxes[g * 4 + 2] = ghostDrawBoxes[g * 4 + 2]!

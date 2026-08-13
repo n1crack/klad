@@ -2276,17 +2276,78 @@ export function createKlad(host: HTMLElement, options: Options): KladInstance {
   }
 
   /**
-   * Hit-test on THIS thread, synchronously.
+   * The interpolated half of `hitTestLocal` — the boxes the canvas actually
+   * painted last frame — or `null` when there is no transition to read them
+   * from and the settled layout is the honest answer.
    *
-   * `chartHost.hitTest` returns a promise — in worker mode it may genuinely
-   * have to ask — and a drag cannot await one: the answer would arrive a frame
-   * or two after the pointer has moved on, so the preview would trail the
-   * cursor and, worse, `onDragStart` would have to decide whether to claim the
-   * gesture before it knew if there was a node under it. Every input this
-   * needs is already mirrored on the main thread for the overlay, so it
-   * answers now.
+   * Bounded work: `drawn` is the culled, on-screen set, and this runs once per
+   * click or per pointer move, never per frame. Last drawn wins, matching the
+   * paint order — mid-transition, boxes really can overlap.
+   */
+  const hitTestDrawn = (worldX: number, worldY: number): number | null => {
+    if (!chartHost.transitioning) return null
+    // `renderBoxBySource`, looked up per drawn node — NOT
+    // `chartHost.lastDrawnBoxes` read positionally. The map and `drawn` are
+    // rebuilt together in the same synchronous block after every awaited
+    // render, so the pair always describes ONE frame. The host's mirror does
+    // not hold that promise between renders: in worker mode every message
+    // provokes a `frame` reply, so a camera or toggle message landing
+    // between this layer's awaited renders refreshes the mirror while
+    // `drawn` stays put. A tap in that window used to pair the previous
+    // frame's `drawn` with a newer frame's boxes — and when a collapse had
+    // just shrunk the drawn set, the positional read ran off the end of the
+    // newer, shorter array, every bounds comparison against `undefined` came
+    // back false, and the "hit" was whichever node happened to sit LAST in
+    // the stale `drawn`. A rapid click then toggled a node nowhere near the
+    // pointer and anchored the camera on it. Ghosts stay unhittable exactly
+    // as before: they are in the map but never in `drawn` — a node on its
+    // way out is not something a click can land on, it is leaving.
+    const drawnBoxes = renderBoxBySource
+    if (drawnBoxes === null) return null
+    for (let i = drawn.length - 1; i >= 0; i--) {
+      const box = drawnBoxes.get(drawn[i]!)
+      if (box === undefined) continue
+      if (worldX < box.x || worldY < box.y) continue
+      if (worldX > box.x + box.w || worldY > box.y + box.h) continue
+      return drawn[i]!
+    }
+    return -1
+  }
+
+  /**
+   * Hit-test on THIS thread, synchronously, against WHAT IS ON THE CANVAS —
+   * the interpolated boxes while a transition is running, and otherwise the
+   * layout of the last frame this layer actually rendered.
+   *
+   * Two reasons it does not simply ask `chartHost.hitTest`, and they are the
+   * same reason twice: that one answers from the layout the chart is heading
+   * FOR, not the one in front of the viewer.
+   *
+   *  - It returns a promise — in worker mode it may genuinely have to ask —
+   *    and a drag cannot await one: the answer would arrive a frame or two
+   *    after the pointer has moved on, so the preview would trail the cursor
+   *    and, worse, `onDragStart` would have to decide whether to claim the
+   *    gesture before it knew if there was a node under it.
+   *  - And it resolves against the FINAL layout, relayouting eagerly if a
+   *    toggle has dirtied one. That is right at rest and wrong for the whole
+   *    of an expand/collapse: the card the viewer is aiming at is at its
+   *    interpolated position, while the box that answers for it is already at
+   *    its destination — a whole screen away on a root toggle. With
+   *    `toggleOnNodeClick` on, a click during the animation therefore toggled
+   *    whatever happened to SETTLE under the point (or nothing), and then
+   *    anchored the camera on that: click a node a dozen times in a row and
+   *    the chart walks off screen. Aiming at what you can see is the whole
+   *    contract of a pointer.
+   *
+   * Every input this needs is already mirrored on the main thread for the
+   * overlay, so it answers now, from the same geometry the overlay is using.
+   * A SUNBURST is the one thing it cannot answer — a wedge is not its bounding
+   * box — and callers there go to `chartHost.hitTest`, which owns the polar
+   * test on both paths.
    */
   const hitTestLocal = (worldX: number, worldY: number): number => {
+    const live = hitTestDrawn(worldX, worldY)
+    if (live !== null) return live
     for (let i = 0; i < visibleToSource.length; i++) {
       const o = i * 4
       const x = boxes[o]!
@@ -3827,7 +3888,29 @@ export function createKlad(host: HTMLElement, options: Options): KladInstance {
       // after `render()` (its `toCentre` needs the layout that render just
       // produced); at `t = 0` it has nothing to advance yet, so there is no
       // lag to inherit.
-      if (cameraAnchor !== null) applyCameraAnchor(now)
+      // ...and a toggle whose anchor has not been promoted yet holds the node
+      // still in the meantime, which is the other branch inside this call.
+      if (cameraAnchor !== null || pendingAnchor !== null) applyCameraAnchor(now)
+      // The anchor that was armed BEFORE this frame asked for its render —
+      // compared by identity against `pendingAnchor` at the promotion below.
+      //
+      // The render awaited next only reflects toggles that were sent before
+      // it was, so it can only speak for an anchor that was already armed
+      // here. In worker mode that await is a real round trip, and a burst of
+      // fast clicks lands toggles right inside it: each one overwrites
+      // `pendingAnchor` with a toggle whose relayout this frame has NOT
+      // seen. Promoting such an anchor used to build it out of the PREVIOUS
+      // toggle's state — `toCentre` read from a layout the engine had
+      // already abandoned, `startedAt` and the transition direction from a
+      // transition that had already been replaced — and an anchor aimed at a
+      // world point the engine is not heading for walks the camera the whole
+      // distance between the two layouts while the canvas animates somewhere
+      // else. That is up to a layout-width PER RACE HIT, it compounds
+      // because the next promotion re-pins from wherever the drift left the
+      // node, and a dozen fast clicks marched the chart clean off screen.
+      // In-process the await resolves in a microtask, so no click can
+      // interleave and this capture never differs from `pendingAnchor`.
+      const anchorArmedBeforeRender = pendingAnchor
       // The engine's expand/collapse transition is a pure function of time and
       // takes its clock from here, the same discipline `viewport.ts` follows.
       drawn = await chartHost.render(now)
@@ -3894,20 +3977,48 @@ export function createKlad(host: HTMLElement, options: Options): KladInstance {
         pendingAnchor = null
         cameraAnchor = null
         api.fit()
-      } else if (pendingAnchor !== null) {
+      } else if (pendingAnchor !== null && pendingAnchor === anchorArmedBeforeRender) {
+        // The identity check is the other half of `anchorArmedBeforeRender`'s
+        // docblock: an anchor armed DURING the await is deliberately left in
+        // place for the NEXT frame, whose render is posted after its toggle
+        // and so reports that toggle's layout. That frame is already on its
+        // way — the toggle's own `setOpenFlag` called `scheduleFrame`, and
+        // this callback had cleared `frameRequested` before the toggle
+        // landed, so the request registered a fresh callback rather than
+        // collapsing into this one.
         const anchor = pendingAnchor
         pendingAnchor = null
         // The node's post-relayout box — always present (see `CameraAnchor`'s
         // docblock), but degrade to "no anchor" rather than trust that if it
         // somehow isn't.
         const toBox = boxOfSource(anchor.source)
+        // Where the node is being drawn on THIS frame, which is the frame the
+        // anchor starts holding it from. Normally identical to the pin taken
+        // at the toggle — this runs one frame later, at `t = 0`, before
+        // anything has moved — and then this changes nothing.
+        //
+        // It stops mattering only when the promotion is LATE, and it can be:
+        // this branch sits after `await chartHost.render(now)`, a worker round
+        // trip, and a burst of clicks queues those up behind each other. A
+        // promotion 260ms into a 390ms transition was measured during exactly
+        // the rapid clicking this fix is for. The anchor would then start at
+        // `t = 0.5` against a pin from before any of that travel happened, and
+        // solving the camera for it moved the whole chart by half the node's
+        // journey in a single frame — a hard jump, repeatable, cumulative over
+        // a dozen clicks until the node the viewer started on was off screen.
+        // Pinning where the node IS can never do that: the camera it solves
+        // for on the establishing frame is the camera already in use, whatever
+        // `t` says, and the anchor's job — hold it still FROM HERE — is the
+        // same either way.
+        const liveBox = interpolatedBoxOfSource(anchor.source)
+        const pin = liveBox === null ? null : boxCentre(liveBox)
         cameraAnchor =
           toBox === null
             ? null
             : {
                 source: anchor.source,
-                screenX: anchor.screenX,
-                screenY: anchor.screenY,
+                screenX: pin === null ? anchor.screenX : pin.x * camera.k + camera.x,
+                screenY: pin === null ? anchor.screenY : pin.y * camera.k + camera.y,
                 fromCentre: anchor.fromCentre,
                 toCentre: boxCentre(toBox),
                 opening: anchor.opening,
@@ -4000,9 +4111,13 @@ export function createKlad(host: HTMLElement, options: Options): KladInstance {
             interpolatedBoxOfSource,
             camera,
             alphaOfSource,
+            // The settled layout, for the size a card is LAID OUT at — see
+            // `OverlayApi.update`. A ghost has left the tree and has no
+            // settled box, so it keeps the one it is fading at.
+            boxOfSource,
           )
         } else {
-          overlay.update([], interpolatedBoxOfSource, camera, alphaOfSource)
+          overlay.update([], interpolatedBoxOfSource, camera, alphaOfSource, boxOfSource)
         }
       }
       publish()
@@ -4092,7 +4207,28 @@ export function createKlad(host: HTMLElement, options: Options): KladInstance {
    */
   const applyCameraAnchor = (now: number): void => {
     const anchor = cameraAnchor
-    if (anchor === null) return
+    if (anchor === null) {
+      // The gap between a toggle and the frame that promotes its anchor. It
+      // should be one frame and in worker mode it is a round trip, and until
+      // the relayout lands there is no `toCentre` to interpolate towards — so
+      // this holds the node at the world point it occupied when it was
+      // clicked, which is exactly where the engine is still drawing it: a
+      // collapse does not start closing the gap until a third of the way in,
+      // and an expand has barely moved it. Without this the layout animates
+      // for that gap with nothing holding the node, and the promotion then
+      // takes over from wherever it drifted to — a small jump per toggle, and
+      // rapid clicking is nothing but those gaps back to back. That is the
+      // residual wobble left after the anchor itself stopped being able to
+      // lurch.
+      const pending = pendingAnchor
+      if (pending === null) return
+      applyCamera({
+        x: pending.screenX - pending.fromCentre.x * camera.k,
+        y: pending.screenY - pending.fromCentre.y * camera.k,
+        k: camera.k,
+      })
+      return
+    }
     const stillAnimating = animationsEnabled() && chartHost.transitioning
     const t = stillAnimating ? transitionAnchorProgress(anchor.startedAt, now, anchor.opening) : 1
     const world = lerpPoint(anchor.fromCentre, anchor.toCentre, t)
@@ -4169,9 +4305,12 @@ export function createKlad(host: HTMLElement, options: Options): KladInstance {
    *    tap anywhere during a root collapse left the root somewhere else
    *    entirely, often off screen.
    *
-   * So a real camera GESTURE (pan, wheel, pinch, or an API move) still drops
-   * the anchor — those all route through `setCameraInstant`/`animateTo`,
-   * which take the default — while a touch that changes no camera does not.
+   * So only an API camera MOVE — `focus`, `fit`, `moveToSource`, a minimap
+   * jump — drops the anchor, through `animateTo` and the one explicit call in
+   * the minimap's `onPan`. A hand gesture (pan, wheel, pinch) does not: it
+   * routes through `setCameraInstant`, which passes `false` here and then
+   * declines to pan at all while the anchor is live — see that function for
+   * why the toggle outranks the gesture for the half-second it lasts.
    */
   const cancelCameraAnimation = (dropToggleAnchor = true): void => {
     if (cameraAnimHandle !== null) {
@@ -4189,9 +4328,47 @@ export function createKlad(host: HTMLElement, options: Options): KladInstance {
     }
   }
 
-  /** Used by pointer, wheel, and pinch input — see `cancelCameraAnimation`. */
+  /**
+   * True while a single-node expand/collapse owns the camera — either its
+   * anchor is live, or a toggle has armed one and the frame that promotes it
+   * has not run yet (see `pendingAnchor`).
+   */
+  const toggleHoldsCamera = (): boolean => cameraAnchor !== null || pendingAnchor !== null
+
+  /**
+   * Used by pointer, wheel, and pinch input — see `cancelCameraAnimation`.
+   *
+   * For the ~390ms a branch is opening or closing, the node that was toggled
+   * is nailed to the spot it was clicked on and a PAN cannot move it. This is
+   * the owner's rule, and it is the third answer this has had: dropping the
+   * anchor on any gesture abandoned the node mid-move, so the layout carried
+   * the chart off screen; re-pinning the anchor onto the panned camera kept
+   * the node but let every click's worth of hand-drift accumulate, which read
+   * as the camera sliding away a few pixels at a time. Both were versions of
+   * "the user's hand always wins" — right for a settled chart, wrong for the
+   * half-second in which the answer to "where am I looking" is *that node*.
+   * A press during a toggle is overwhelmingly part of the toggling, not a
+   * request to go somewhere else.
+   *
+   * The SCALE still goes through: zoom is not a claim about where the viewer
+   * is looking, only how closely, and the anchor re-solves x/y around the
+   * pinned node on the next frame anyway — so a wheel during a transition
+   * zooms about the node being opened, which is the only sensible reading of
+   * it. x/y are deliberately not applied at all rather than applied and
+   * overwritten a frame later: that would be a visible fight between the pan
+   * and the anchor rather than a chart that holds still.
+   *
+   * Nothing here is permanent. The anchor dies with the transition it rides,
+   * and from that moment the same gesture pans exactly as it always did.
+   */
   const setCameraInstant = (next: Camera): void => {
-    cancelCameraAnimation()
+    // `false`: a gesture no longer drops the toggle anchor — it is the anchor
+    // that outranks the gesture now, not the other way round.
+    cancelCameraAnimation(false)
+    if (toggleHoldsCamera()) {
+      if (next.k !== camera.k) applyCamera({ x: camera.x, y: camera.y, k: next.k })
+      return
+    }
     applyCamera(next)
   }
 
@@ -4260,6 +4437,19 @@ export function createKlad(host: HTMLElement, options: Options): KladInstance {
     }
     const dt = now - momentumLastT
     momentumLastT = now
+    // A coast is a pan with the hand already off the chart, so it obeys the
+    // same rule `setCameraInstant` does: while a toggle holds the camera, the
+    // toggled node stays where it was clicked and this waits. Dropped, not
+    // deferred — a fling whose whole travel happened while the chart was held
+    // is a fling the viewer never saw start, and releasing it at the end of
+    // the transition would throw the view somewhere they last aimed at half a
+    // second ago.
+    if (toggleHoldsCamera()) {
+      cameraAnimHandle = null
+      momentumVX = 0
+      momentumVY = 0
+      return
+    }
     applyCamera(pan(camera, momentumVX * dt, momentumVY * dt))
     const decay = Math.exp(-dt / MOMENTUM_TAU_MS)
     momentumVX *= decay
@@ -4275,7 +4465,12 @@ export function createKlad(host: HTMLElement, options: Options): KladInstance {
 
   /** `vx`/`vy` are screen px/ms, as measured by input.ts at pointer release. */
   const startMomentum = (vx: number, vy: number): void => {
-    cancelCameraAnimation()
+    // `false` for the same reason the pan that threw this coast does it (see
+    // `setCameraInstant`): the coast is the tail of that gesture, and a
+    // gesture no longer decides where the camera looks while a toggle is
+    // holding it — `stepMomentum` gives way to the anchor rather than
+    // fighting it.
+    cancelCameraAnimation(false)
     if (!animationsEnabled()) return
     const speed = Math.hypot(vx, vy)
     if (speed < MOMENTUM_MIN_VELOCITY) return
@@ -4321,6 +4516,22 @@ export function createKlad(host: HTMLElement, options: Options): KladInstance {
           screenY = cameraAnchor.screenY
         }
         pendingAnchor = { source: index, screenX, screenY, fromCentre, opening: value }
+        // The old anchor is DEAD the moment this toggle is sent: the engine
+        // relayouts on it and rebases every node's tween from wherever it is
+        // being drawn right now, onto a new curve with a new clock — so the
+        // curve the old anchor replays no longer describes anything on the
+        // canvas. Letting it keep driving the camera until the promotion
+        // replaces it (which used to happen implicitly, and takes at least a
+        // frame — more in worker mode, where the promotion waits out a real
+        // round trip) moved the camera at the OLD curve's speed, which
+        // mid-transition is its fastest, while the node it claimed to pin sat
+        // still on the new curve's slow start. The node slid off its spot by
+        // that difference and the promotion then re-pinned it WHERE IT SLID
+        // TO, so every rapid re-toggle ratcheted the chart a little further.
+        // A frozen camera is the honest bridge: the new curve leaves it
+        // nearly right (eased curves start at zero velocity), and the
+        // promotion picks the hold up from there.
+        cameraAnchor = null
       }
     }
     open[index] = value ? 1 : 0
@@ -4511,7 +4722,17 @@ export function createKlad(host: HTMLElement, options: Options): KladInstance {
     cancelAnimation: () => cancelCameraAnimation(false),
     onTap(screenX, screenY, target, modifiers) {
       const world = screenToWorld(camera, screenX, screenY)
-      void chartHost.hitTest(world.x, world.y).then((index) => {
+      // The on-screen mirror, not `chartHost.hitTest` — a tap resolves against
+      // what the viewer can see, exactly as a drag does; see `hitTestLocal`
+      // for the whole argument. Only a sunburst, whose wedges no box test can
+      // answer, still asks the engine. The resolved promise keeps the two
+      // paths one piece of code: `.then` on it is a microtask, not a round
+      // trip.
+      const answer =
+        currentOptions.layout === 'sunburst'
+          ? chartHost.hitTest(world.x, world.y)
+          : Promise.resolve(hitTestLocal(world.x, world.y))
+      void answer.then((index) => {
         if (destroyed) return
         if (index === -1) {
           lastTapId = null

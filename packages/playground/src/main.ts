@@ -1311,6 +1311,17 @@ restoreViewButton.onclick = () => {
   // where they were, and the flight is what tells them they went back rather
   // than that something jumped.
   currentApi?.setView(savedView, { animate: true })
+  // A saved view carries the isolated branch with it (see `ChartView`), so
+  // restoring one can isolate — or un-isolate — the chart just as the Isolate
+  // button does. The trail is this panel's own state, drawn from
+  // `getState().isolated`, and nothing recomputes it on its own: without this
+  // a view saved while isolated came back with the branch isolated and no way
+  // out of it drawn, which is precisely the "an isolated branch looks like a
+  // small chart rather than part of a big one" this panel exists to answer.
+  // `setView` applies the isolation synchronously, so the state is already
+  // right by the time this reads it.
+  branchSelect.value = ''
+  updateTrail()
 }
 
 /**

@@ -122,18 +122,33 @@ export function layout(tree: Tree, sizes: Float64Array, opts: LayoutOptions): La
     let cl = sibs[from + i]!
     let mscl = mod[cl]!
     let ih = iylTop
+    /**
+     * True once this subtree has been pushed right by anything: from then on
+     * it is hard against the contour to its left and there is nothing to
+     * close up. See `slack` below for the case where it never is.
+     */
+    let pushed = false
+    /**
+     * The LEAST slack any contour pair had — `dist` at its largest while
+     * still being negative, i.e. the closest the two contours ever come. Only
+     * meaningful while nothing has pushed.
+     */
+    let slack = -Infinity
 
     while (sr !== NONE && cl !== NONE) {
       while (ih !== NONE && bottom(sr) > iylLowY[ih]!) ih = iylNext[ih]!
 
       const dist = mssr + prelim[sr]! + width(sr) + opts.spacingX - (mscl + prelim[cl]!)
       if (dist > 0) {
+        pushed = true
         mscl += dist
         // Move the subtree and everything it drags with it.
         mod[sibs[from + i]!]! += dist
         msel[sibs[from + i]!]! += dist
         mser[sibs[from + i]!]! += dist
         distributeExtra(sibs, from, i, ih === NONE ? i - 1 : iylIndex[ih]!, dist)
+      } else if (!pushed && dist > slack) {
+        slack = dist
       }
 
       const sy = bottom(sr)
@@ -163,6 +178,35 @@ export function layout(tree: Tree, sizes: Float64Array, opts: LayoutOptions): La
     const self = sibs[from + i]!
     const left = sibs[from]!
     const prev = sibs[from + i - 1]!
+
+    // Nothing pushed this subtree, and every contour pair it was measured
+    // against had room to spare: close that gap by pulling it left, by
+    // exactly the least of it, so the tightest pair ends up `spacingX` apart.
+    //
+    // Without this the walk could only ever push, which made the layout
+    // asymmetric in a way the owner could see: a node with a wide fan of
+    // children sits at their midpoint, and if that midpoint already clears
+    // the sibling to its left, nothing brought the two back together. Open a
+    // branch and its closed sibling hugged it when the branch was on the
+    // LEFT (the sibling gets pushed right, tight against it) and drifted a
+    // hundred pixels away when it was on the RIGHT (nothing pushes, so the
+    // midpoint stands). Same tree, same two nodes, two different gaps
+    // depending on which one you happened to open.
+    //
+    // Safe by the same measurement that drives the pushes: `sr` follows the
+    // merged right contour of ALL the left siblings (that is what the
+    // threads are for), so `slack` is the minimum clearance against every
+    // one of them, and moving by it keeps the `spacingX` guarantee this
+    // function exists to provide. Only this subtree moves — deliberately no
+    // `distributeExtra`, which spreads a PUSH across the siblings in
+    // between: pulling those left as well would close them onto their own
+    // left neighbours, which nothing has measured.
+    if (!pushed && slack > -Infinity && slack < 0) {
+      mscl += slack
+      mod[self]! += slack
+      msel[self]! += slack
+      mser[self]! += slack
+    }
 
     if (sr === NONE && cl !== NONE) {
       // The left siblings ran out first: thread down to the current contour.

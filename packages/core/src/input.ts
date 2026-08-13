@@ -84,9 +84,10 @@ export interface InputCallbacks {
    * A single-pointer drag (not a pinch) just ended. `vx`/`vy` are the release
    * velocity in screen px/ms, estimated from a short rolling window of recent
    * samples — see the `VELOCITY_WINDOW_MS` comment below. Not called for a tap,
-   * and not called when the window's time span is too short to trust (also
-   * below) — the caller (vanilla layer) decides whether to actually start a
-   * momentum coast from this.
+   * not called when the window's time span is too short to trust, and not
+   * called when the gesture never covered enough ground to have been a fling
+   * (both below) — the caller (vanilla layer) decides whether to actually
+   * start a momentum coast from this.
    */
   onRelease(vx: number, vy: number): void
 }
@@ -146,6 +147,13 @@ export function attachInput(
    */
   let claimed = false
   let travelled = 0
+  /**
+   * True once this gesture has actually moved the camera — i.e. it travelled
+   * past `DRAG_THRESHOLD_PX` and nobody claimed it as a node drag. Until then
+   * a press is still a tap and the camera is left alone entirely; see
+   * `onPointerMove`.
+   */
+  let panning = false
   let lastX = 0
   let lastY = 0
   let downX = 0
@@ -180,6 +188,22 @@ export function attachInput(
   // an enormous, meaningless speed. Below the threshold, momentum just isn't
   // started; the drag stops the way it always did.
   const MIN_VELOCITY_SAMPLE_MS = 8
+  // ...and below this much straight-line travel across that same window, the
+  // release is not a fling and starts no coast at all. The time floor alone
+  // cannot tell a fling from a sloppy click, because the two divide out to
+  // the same kind of number: a click made by a hand in motion covers ~6px in
+  // ~10ms, and 0.6px/ms fed into the coast (`MOMENTUM_TAU_MS` in index.ts)
+  // glides the camera ~100px — measured, not estimated — from a gesture the
+  // viewer experienced as a click. During a layout transition that carried
+  // the node they had just toggled a hundred pixels off its pinned spot, a
+  // little further with every click, until the chart left the screen. What
+  // actually distinguishes a fling is its SIZE, not its instantaneous speed:
+  // by release a flicking finger has covered tens of pixels inside the
+  // window, so a floor a few times `DRAG_THRESHOLD_PX` removes the
+  // click-jerk coast without costing any deliberate flick. Straight-line
+  // displacement rather than `travelled`, which sums absolute per-event
+  // deltas and so would count jitter that goes nowhere.
+  const MIN_FLING_TRAVEL_PX = 16
   let moveSamples: { t: number; x: number; y: number }[] = []
 
   const localPoint = (event: { clientX: number; clientY: number }) => {
@@ -219,6 +243,7 @@ export function attachInput(
     dragging = true
     claimed = false
     travelled = 0
+    panning = false
     lastX = event.clientX
     lastY = event.clientY
     downX = event.clientX
@@ -265,17 +290,38 @@ export function attachInput(
     // Crossing the threshold is the moment the gesture stops being ambiguous,
     // so it is the moment to ask whether someone else wants it. Offered from
     // the PRESS point, not from here — see `onDragStart`.
-    if (travelled > DRAG_THRESHOLD_PX) {
-      const from = localPoint({ clientX: downX, clientY: downY })
-      if (callbacks.onDragStart(from.x, from.y, downTarget)) {
-        claimed = true
-        const point = localPoint(event)
-        callbacks.onDragMove(point.x, point.y)
-        return
-      }
+    //
+    // Below it, nothing happens at all: no `onDragStart` offer, and — this is
+    // the part that used to be missing — no camera move either. The camera
+    // change itself was harmless (a pixel or two, invisible), but reporting it
+    // through `setCamera` is how this layer says "the user is panning", and
+    // the vanilla layer answers that by dropping the toggle camera anchor (see
+    // `cancelCameraAnimation`'s `dropToggleAnchor`). So a plain CLICK during an
+    // expand/collapse — a click anywhere, including on the background — killed
+    // the anchor holding the toggled node still, and the rest of the
+    // transition then played out with nothing pinning it: the whole chart slid
+    // by however far it had left to travel, carrying the node the viewer was
+    // watching off screen with it. And a real click always travels: a mouse
+    // emits a move or two under the finger, a trackpad always does.
+    if (travelled <= DRAG_THRESHOLD_PX) return
+    const from = localPoint({ clientX: downX, clientY: downY })
+    if (callbacks.onDragStart(from.x, from.y, downTarget)) {
+      claimed = true
+      const point = localPoint(event)
+      callbacks.onDragMove(point.x, point.y)
+      return
     }
 
-    callbacks.setCamera(pan(callbacks.getCamera(), dx, dy))
+    // The first move past the threshold pans from the PRESS point, not from
+    // the previous move: the few pixels held back while the gesture was still
+    // ambiguous are applied here in one go, so a pan tracks the pointer
+    // exactly rather than lagging the threshold behind it forever.
+    callbacks.setCamera(
+      panning
+        ? pan(callbacks.getCamera(), dx, dy)
+        : pan(callbacks.getCamera(), event.clientX - downX, event.clientY - downY),
+    )
+    panning = true
 
     const now = performance.now()
     moveSamples.push({ t: now, x: event.clientX, y: event.clientY })
@@ -342,7 +388,14 @@ export function attachInput(
     const last = moveSamples[moveSamples.length - 1]
     if (first !== undefined && last !== undefined) {
       const dt = last.t - first.t
-      if (dt >= MIN_VELOCITY_SAMPLE_MS) {
+      // Both floors — see their docblocks above: enough TIME in the window
+      // for the division to mean anything, and enough TRAVEL in it for the
+      // gesture to have been a fling rather than the few pixels a hand
+      // moves during an ordinary click.
+      if (
+        dt >= MIN_VELOCITY_SAMPLE_MS &&
+        Math.hypot(last.x - first.x, last.y - first.y) >= MIN_FLING_TRAVEL_PX
+      ) {
         callbacks.onRelease((last.x - first.x) / dt, (last.y - first.y) / dt)
       }
     }

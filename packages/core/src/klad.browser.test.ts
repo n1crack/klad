@@ -1,4 +1,5 @@
 import { describe, expect, it } from 'vitest'
+import { createOverlay } from './overlay.js'
 import {
   createKlad,
   type NodeContext,
@@ -48,7 +49,7 @@ const nextFrame = () => new Promise((r) => requestAnimationFrame(() => r(null)))
 const settle = () => new Promise<void>((resolve) => setTimeout(() => resolve(), 260))
 
 // A single-node expand/collapse now runs the engine's own staged layout
-// transition (see engine.ts's `TRANSITION_DURATION_MS`, currently 450ms —
+// transition (see engine.ts's `TRANSITION_DURATION_MS`, currently 390ms —
 // two phases plus a small overlap), and the camera anchor rides along with
 // it for as long as that transition runs. That is LONGER than the 200ms
 // camera-tween `settle()` above waits out, so a test that toggles a node and
@@ -1200,6 +1201,36 @@ describe('createKlad', () => {
     chart.destroy()
   })
 
+  it('does not coast after a click-sized drag: the camera moves by the drag and not a pixel further', async () => {
+    // The owner's "during an expand/collapse, even the tiniest drag makes
+    // the camera slide": a click made by a hand in motion travels ~6px in
+    // ~10ms, and that used to divide out to a "velocity" the coast turned
+    // into a ~100px glide (measured) — sixteen times the gesture, once per
+    // click, until the chart left the screen. The transition is incidental
+    // (it is just when the sliding is most visible and most destructive, the
+    // toggled node being carried off its pinned spot), so this asserts the
+    // primitive at idle where the expectation is exact: a 6px drag moves
+    // the camera 6px, full stop. See MIN_FLING_TRAVEL_PX in input.ts.
+    const chart = make()
+    await nextFrame()
+    await nextFrame()
+
+    const canvas = document.querySelector('canvas')!
+    const before = chart.api.getState().camera
+    canvas.dispatchEvent(new PointerEvent('pointerdown', { clientX: 400, clientY: 300, bubbles: true }))
+    await new Promise((r) => setTimeout(r, 10))
+    window.dispatchEvent(new PointerEvent('pointermove', { clientX: 406, clientY: 300, bubbles: true }))
+    window.dispatchEvent(new PointerEvent('pointerup', { clientX: 406, clientY: 300, bubbles: true }))
+    // Long enough that a coast, had one started, would have carried tens of
+    // pixels (release velocity x MOMENTUM_TAU_MS decays well inside this).
+    await new Promise((r) => setTimeout(r, 700))
+
+    const after = chart.api.getState().camera
+    expect(after.x - before.x).toBeCloseTo(6, 0)
+    expect(after.y - before.y).toBeCloseTo(0, 0)
+    chart.destroy()
+  })
+
   // --- auto-pan on toggle --------------------------------------------------
 
   it('pins the toggled node to its exact on-screen position through an expand', async () => {
@@ -1815,6 +1846,51 @@ describe('createKlad', () => {
 
   // --- input routes through the chart host, not just the canvas -----------
 
+  it('sizes an overlay card to its SETTLED box and carries the difference as scale', async () => {
+    // The owner, watching a fast expand: "it looks like it comes out of its
+    // own top-left." It did. A DOM element is not a drawing: size it to the
+    // box it is being DRAWN at and its text, padding and avatar re-wrap to
+    // whatever that width currently is, so a card mid-transition was a
+    // full-size-looking thing pinned by its top-left corner while the box
+    // caught up around it. The canvas node beside it was scaling correctly
+    // the whole time, which is why this only ever showed on the card
+    // examples.
+    //
+    // Driven directly, because the interpolated and settled boxes have to
+    // DIFFER for there to be anything to assert, and which transitions make
+    // them differ is the engine's business and changes with its choreography.
+    // The contract this pins is the overlay's own: lay out at the settled
+    // size, put every difference in the transform.
+    const host = document.createElement('div')
+    document.body.appendChild(host)
+    const overlay = createOverlay(host, { render: (el, item) => (el.textContent = item.id) })
+    const settledBox = { x: 100, y: 50, w: 200, h: 80 }
+    const drawnBox = { x: 140, y: 70, w: 100, h: 40 } // half size, part way there
+
+    overlay.update(
+      [{ index: 0, id: 'n' }],
+      () => drawnBox,
+      { x: 0, y: 0, k: 1 },
+      () => 1,
+      () => settledBox,
+    )
+
+    const card = host.querySelector('.klad-overlay-node') as HTMLElement
+    expect(card).not.toBeNull()
+    // Laid out at the size it will settle at — NOT the 100x40 it is being
+    // drawn at, which is what made the content reflow.
+    expect(card.style.width).toBe('200px')
+    expect(card.style.height).toBe('80px')
+    // ...and the difference carried by the transform instead, so it lands on
+    // screen exactly where the canvas draws it: 100/200 of its own size, at
+    // the drawn box's top-left corner.
+    expect(card.style.transform).toContain('scale(0.5)')
+    expect(card.style.transform).toContain('translate3d(140px, 70px, 0')
+
+    overlay.destroy()
+    host.remove()
+  })
+
   it('pans when a drag starts on an overlay card', async () => {
     const chart = make({ renderNode: (el: HTMLElement, ctx: { id: string }) => (el.textContent = ctx.id) })
     chart.api.fit()
@@ -1838,6 +1914,301 @@ describe('createKlad', () => {
     await nextFrame()
 
     expect(chart.api.getState().camera.x).toBeCloseTo(before + 60, 5)
+    chart.destroy()
+  })
+
+  // --- a tap during a toggle is not a pan --------------------------------
+  //
+  // Both of these are the same report from the owner: "open or close a node,
+  // click again while it is animating, and the camera slides — the node you
+  // were looking at leaves the screen." Two separate causes, one symptom.
+
+  it('holds the toggle anchor through a tap: a click during the transition leaves the camera where an undisturbed one would', async () => {
+    // A wide row under 'b', so collapsing it takes real width out of the
+    // layout: 'b' itself is recentred a long way, and the anchor has to move
+    // the camera by exactly that to hold it still. A toggle that moved the
+    // camera by nothing would pass this test no matter what.
+    const chart = make({
+      data: [
+        { id: 'a', name: 'a' },
+        { id: 'b', parentId: 'a', name: 'b' },
+        { id: 'b1', parentId: 'b', name: 'b1' },
+        { id: 'b2', parentId: 'b', name: 'b2' },
+        { id: 'b3', parentId: 'b', name: 'b3' },
+        { id: 'b4', parentId: 'b', name: 'b4' },
+        { id: 'c', parentId: 'a', name: 'c' },
+      ],
+    })
+    await settle()
+    const canvas = document.querySelector('canvas')!
+    // A press that travels a pixel or two, which is every real click: a mouse
+    // emits a move under the finger, a trackpad always does. That move used to
+    // be reported as a pan, and a pan drops the anchor holding the toggled
+    // node — so the rest of the layout finished its move unheld and the whole
+    // chart lurched by the travel that was left.
+    const tap = (x: number, y: number) => {
+      canvas.dispatchEvent(new PointerEvent('pointerdown', { clientX: x, clientY: y, bubbles: true }))
+      window.dispatchEvent(new PointerEvent('pointermove', { clientX: x + 1, clientY: y, bubbles: true }))
+      window.dispatchEvent(new PointerEvent('pointerup', { clientX: x + 1, clientY: y, bubbles: true }))
+    }
+
+    // Control: the same toggle, undisturbed.
+    chart.api.collapse('b')
+    await settleTransition()
+    const undisturbed = chart.api.getState().camera
+    chart.api.expand('b')
+    await settleTransition()
+    const opened = chart.api.getState().camera
+    // The scenario only means anything if the toggle moves the camera at all —
+    // the anchor is what moves it, holding 'b' still while the layout reflows.
+    expect(Math.abs(opened.x - undisturbed.x) + Math.abs(opened.y - undisturbed.y)).toBeGreaterThan(1)
+
+    // Now the same collapse, with a click on empty canvas partway through.
+    chart.api.collapse('b')
+    await nextFrame()
+    await nextFrame()
+    tap(5, 5)
+    await settleTransition()
+
+    const disturbed = chart.api.getState().camera
+    expect(disturbed.x).toBeCloseTo(undisturbed.x, 5)
+    expect(disturbed.y).toBeCloseTo(undisturbed.y, 5)
+    chart.destroy()
+  })
+
+  it('pins the second node when a toggle lands while another one is still animating', async () => {
+    // Toggling in quick succession — the owner's "click one, click the next
+    // before it has finished". The anchor has to switch to the new node and
+    // hold it from wherever it is being DRAWN at that instant, not from where
+    // the previous transition's final layout says it is.
+    const chart = make({
+      data: [
+        { id: 'a', name: 'a' },
+        { id: 'b', parentId: 'a', name: 'b' },
+        { id: 'b1', parentId: 'b', name: 'b1' },
+        { id: 'b2', parentId: 'b', name: 'b2' },
+        { id: 'b3', parentId: 'b', name: 'b3' },
+        { id: 'b4', parentId: 'b', name: 'b4' },
+        { id: 'c', parentId: 'a', name: 'c' },
+        { id: 'c1', parentId: 'c', name: 'c1' },
+        { id: 'c2', parentId: 'c', name: 'c2' },
+      ],
+      renderNode: (el: HTMLElement, ctx: { id: string }) => (el.textContent = ctx.id),
+    })
+    chart.api.zoomTo(1)
+    await settle()
+    await nextFrame()
+
+    const cardOf = (id: string) =>
+      ([...document.querySelectorAll('.klad-overlay-node')] as HTMLElement[]).find(
+        (each) => each.textContent === id,
+      )!
+
+    chart.api.collapse('b')
+    await new Promise<void>((resolve) => setTimeout(resolve, 100))
+    const before = cardOf('c').getBoundingClientRect()
+    chart.api.collapse('c')
+    await settleTransition()
+    await settleTransition()
+    const after = cardOf('c').getBoundingClientRect()
+
+    // Within a pixel: both ends are read from real rendered frames, so a
+    // frame's worth of the first transition can still land between the two
+    // reads. What this rules out is the node leaving the spot the viewer
+    // clicked, which is tens or hundreds of pixels.
+    expect(after.left).toBeCloseTo(before.left, 0)
+    expect(after.top).toBeCloseTo(before.top, 0)
+    chart.destroy()
+  })
+
+  it('hit-tests a tap against what is DRAWN mid-transition, not against the layout it is heading for', async () => {
+    const toggles: string[] = []
+    // 'b' carries a wide row of children, so collapsing it takes a lot of
+    // width out of the layout and everything to its right travels a long way
+    // — further than a card is wide, which is what makes the two answers
+    // (drawn vs. settled) genuinely different at the same point.
+    const chart = make({
+      data: [
+        { id: 'a', name: 'a' },
+        { id: 'b', parentId: 'a', name: 'b' },
+        { id: 'b1', parentId: 'b', name: 'b1' },
+        { id: 'b2', parentId: 'b', name: 'b2' },
+        { id: 'b3', parentId: 'b', name: 'b3' },
+        { id: 'b4', parentId: 'b', name: 'b4' },
+        { id: 'c', parentId: 'a', name: 'c' },
+        { id: 'c1', parentId: 'c', name: 'c1' },
+      ],
+      toggleOnNodeClick: true,
+      renderNode: (el: HTMLElement, ctx: { id: string }) => (el.textContent = ctx.id),
+    })
+    chart.on('toggle', (event) => toggles.push(event.id))
+    chart.api.zoomTo(1)
+    await settle()
+    await nextFrame()
+
+    // Where 'c' is NOW, before anything moves — and, two frames into the
+    // collapse below, still where it is being drawn: a collapse reflows in
+    // phase 2, so 'c' has not started travelling yet. Its box in the layout
+    // the engine is heading for is already a long way from here.
+    const cards = [...document.querySelectorAll('.klad-overlay-node')] as HTMLElement[]
+    const card = cards.find((each) => each.textContent === 'c')!
+    expect(card).not.toBeUndefined()
+    const rect = card.getBoundingClientRect()
+    const x = rect.left + rect.width / 2
+    const y = rect.top + rect.height / 2
+
+    chart.api.collapse('b')
+    await nextFrame()
+    await nextFrame()
+
+    // Every hit test in the engine answers from the settled layout, which
+    // mid-transition is not where 'c' is — so this tap used to toggle
+    // whatever ends up under the point instead (or nothing at all), and then
+    // anchored the camera on that, which is what "it jumps somewhere
+    // unrelated" was.
+    const canvas = document.querySelector('canvas')!
+    canvas.dispatchEvent(new PointerEvent('pointerdown', { clientX: x, clientY: y, bubbles: true }))
+    window.dispatchEvent(new PointerEvent('pointerup', { clientX: x, clientY: y, bubbles: true }))
+    await settleTransition()
+
+    expect(toggles).toEqual(['b', 'c'])
+    chart.destroy()
+  })
+
+  // The worker-path counterpart of the anchor tests above. The three tests
+  // before this one all run in-process (`worker: false`), where the awaited
+  // render resolves in a microtask and nothing can interleave with the frame
+  // callback. The playground — where the owner reproduced "click a node
+  // fast a dozen times and the chart walks off screen" — runs the worker
+  // path, where that await is a real round trip and a fast click lands
+  // INSIDE it. These two pin down what that opened up.
+
+  it('promotes a toggle anchor only against the layout its own toggle produced (worker path)', async () => {
+    // The sharpest form of the race: toggle, then toggle back in the very
+    // next animation-frame callback. The chart's own frame callback for the
+    // first toggle registered first, so it is already suspended at `await
+    // chartHost.render()` when the second toggle lands — the second toggle
+    // re-arms the camera anchor, but the render that await is waiting on was
+    // posted BEFORE the second toggle and reflects only the first. Promoting
+    // the new anchor against that older frame built it from the collapsed
+    // layout the engine had already abandoned: the camera then spent a whole
+    // transition carrying the root to where the COLLAPSED layout put it —
+    // the full distance between the two layouts (340px in this very tree),
+    // once per race hit, which is the owner's walk.
+    const chart = make({
+      worker: true,
+      data: [
+        { id: 'a', name: 'a' },
+        { id: 'a1', parentId: 'a', name: 'a1' },
+        { id: 'a2', parentId: 'a', name: 'a2' },
+        { id: 'a3', parentId: 'a', name: 'a3' },
+        { id: 'a4', parentId: 'a', name: 'a4' },
+        { id: 'a5', parentId: 'a', name: 'a5' },
+        { id: 'a6', parentId: 'a', name: 'a6' },
+      ],
+      renderNode: (el: HTMLElement, ctx: { id: string }) => (el.textContent = ctx.id),
+    })
+    chart.api.zoomTo(1)
+    await settle()
+    await settle()
+    await nextFrame()
+
+    const cardOf = (id: string) =>
+      ([...document.querySelectorAll('.klad-overlay-node')] as HTMLElement[]).find(
+        (each) => each.textContent === id,
+      )!
+
+    const before = cardOf('a').getBoundingClientRect()
+
+    chart.api.collapse('a')
+    await new Promise<void>((resolve) =>
+      requestAnimationFrame(() => {
+        chart.api.expand('a')
+        resolve()
+      }),
+    )
+    await settleTransition()
+    await settleTransition()
+
+    const after = cardOf('a').getBoundingClientRect()
+    expect(after.left).toBeCloseTo(before.left, 0)
+    expect(after.top).toBeCloseTo(before.top, 0)
+    chart.destroy()
+  })
+
+  it('never lets a dozen rapid toggles walk the toggled node off its spot (worker path)', async () => {
+    // The owner's actual gesture, minus the mouse: 10–15 toggles of the same
+    // node at varying speeds, some landing inside the previous frame's
+    // render await (the race above), some mid-transition, some between
+    // transitions. The root's card is sampled EVERY FRAME for the whole run,
+    // because the failure is not where the node ends — a symmetric walk can
+    // wander hundreds of pixels and still happen to finish near the start —
+    // but how far it ever strays from the spot the anchor promised to hold.
+    const chart = make({
+      worker: true,
+      data: [
+        { id: 'a', name: 'a' },
+        { id: 'a1', parentId: 'a', name: 'a1' },
+        { id: 'a2', parentId: 'a', name: 'a2' },
+        { id: 'a3', parentId: 'a', name: 'a3' },
+        { id: 'a4', parentId: 'a', name: 'a4' },
+        { id: 'a5', parentId: 'a', name: 'a5' },
+        { id: 'a6', parentId: 'a', name: 'a6' },
+      ],
+      renderNode: (el: HTMLElement, ctx: { id: string }) => (el.textContent = ctx.id),
+    })
+    chart.api.zoomTo(1)
+    await settle()
+    await settle()
+    await nextFrame()
+
+    const cardOf = (id: string) =>
+      ([...document.querySelectorAll('.klad-overlay-node')] as HTMLElement[]).find(
+        (each) => each.textContent === id,
+      )!
+
+    const start = cardOf('a').getBoundingClientRect()
+    let maxDrift = 0
+    let sampling = true
+    const sample = () => {
+      const rect = cardOf('a')?.getBoundingClientRect()
+      if (rect !== undefined) {
+        maxDrift = Math.max(maxDrift, Math.abs(rect.left - start.left) + Math.abs(rect.top - start.top))
+      }
+      if (sampling) requestAnimationFrame(sample)
+    }
+    requestAnimationFrame(sample)
+
+    // Alternating collapse/expand of the root, with the gap between clicks
+    // cycling through "the very next frame" (inside the previous await),
+    // "mid-transition" and "transition nearly over" — the mix a real hand
+    // produces.
+    let isOpen = true
+    const toggle = () => {
+      if (isOpen) chart.api.collapse('a')
+      else chart.api.expand('a')
+      isOpen = !isOpen
+    }
+    const wait = (ms: number) => new Promise<void>((resolve) => setTimeout(resolve, ms))
+    for (let i = 0; i < 6; i++) {
+      toggle()
+      await new Promise<void>((resolve) =>
+        requestAnimationFrame(() => {
+          toggle()
+          resolve()
+        }),
+      )
+      await wait(i % 2 === 0 ? 60 : 180)
+    }
+    await settleTransition()
+    await settleTransition()
+    sampling = false
+
+    // Tens of pixels would already be visible sloshing; the pre-fix walk was
+    // hundreds (one layout-width per race hit). A few pixels of slack covers
+    // the one frame between a mid-flight toggle and its promotion, where the
+    // camera deliberately holds still while the new curve creeps off zero.
+    expect(maxDrift).toBeLessThan(8)
     chart.destroy()
   })
 
@@ -1925,6 +2296,164 @@ describe('createKlad', () => {
     await nextFrame()
 
     expect(toggles).toEqual([])
+    chart.destroy()
+  })
+
+  it('will not let a drag move the toggled node while its transition is running', async () => {
+    // The owner's rule, in one sentence: for as long as a branch is opening or
+    // closing, the node that was clicked stays exactly where it was clicked,
+    // and a pan cannot take it off that spot. A press during a toggle is part
+    // of the toggling — hand-drift under a click, a nudge, an impatient second
+    // click — not a request to go and look somewhere else, and treating it as
+    // one is what walked the chart off screen a few pixels at a time.
+    const chart = make({
+      data: [
+        { id: 'a', name: 'a' },
+        { id: 'b', parentId: 'a', name: 'b' },
+        { id: 'b1', parentId: 'b', name: 'b1' },
+        { id: 'b2', parentId: 'b', name: 'b2' },
+        { id: 'b3', parentId: 'b', name: 'b3' },
+        { id: 'b4', parentId: 'b', name: 'b4' },
+        { id: 'c', parentId: 'a', name: 'c' },
+      ],
+      renderNode: (el: HTMLElement, ctx: { id: string }) => (el.textContent = ctx.id),
+    })
+    chart.api.zoomTo(1)
+    await settle()
+    await nextFrame()
+
+    const cardOf = (id: string) =>
+      ([...document.querySelectorAll('.klad-overlay-node')] as HTMLElement[]).find(
+        (each) => each.textContent === id,
+      )
+    const before = cardOf('b')!.getBoundingClientRect()
+
+    chart.api.collapse('b')
+    await nextFrame()
+    await nextFrame()
+
+    // A real drag, well past `DRAG_THRESHOLD_PX` — not hand-jitter, a
+    // deliberate 40px pull — landing while the transition runs.
+    const canvas = document.querySelector('canvas')!
+    canvas.dispatchEvent(new PointerEvent('pointerdown', { clientX: 400, clientY: 500, bubbles: true }))
+    for (let i = 1; i <= 4; i++) {
+      window.dispatchEvent(
+        new PointerEvent('pointermove', { clientX: 400 + i * 10, clientY: 500, bubbles: true }),
+      )
+      await nextFrame()
+    }
+    window.dispatchEvent(new PointerEvent('pointerup', { clientX: 440, clientY: 500, bubbles: true }))
+    await settleTransition()
+    await settleTransition()
+
+    const after = cardOf('b')!.getBoundingClientRect()
+    expect(after.left).toBeCloseTo(before.left, 0)
+    expect(after.top).toBeCloseTo(before.top, 0)
+
+    // ...and the moment the transition is over, the same gesture pans again:
+    // the rule is a half-second of priority, not a mode.
+    const settledCamera = chart.api.getState().camera.x
+    canvas.dispatchEvent(new PointerEvent('pointerdown', { clientX: 400, clientY: 500, bubbles: true }))
+    window.dispatchEvent(new PointerEvent('pointermove', { clientX: 440, clientY: 500, bubbles: true }))
+    window.dispatchEvent(new PointerEvent('pointerup', { clientX: 440, clientY: 500, bubbles: true }))
+    await nextFrame()
+    expect(chart.api.getState().camera.x).toBeCloseTo(settledCamera + 40, 0)
+    chart.destroy()
+  })
+
+  it('holds the root under a burst of real clicks on its own card (worker path)', async () => {
+    // The owner's gesture as the browser actually delivers it, which is what
+    // the API-driven burst above cannot cover: a press, a pixel or six of hand
+    // movement under the finger, a release, at a FIXED screen point, over and
+    // over. Every layer is in play here and only here — the tap's hit test
+    // against drawn geometry, the double-click window swallowing every second
+    // tap, `requestOpen` vs `setOpenFlag`, the release's fling test — on top
+    // of the worker round trip the anchor promotion races with.
+    //
+    // The root specifically, because it is where the anchor does the most
+    // work: a tidy layout centres it over its whole subtree, so collapsing it
+    // moves its own box by half the tree's width, and the camera has to travel
+    // exactly that far to leave it where the viewer clicked. Any error is
+    // largest here.
+    const chart = make({
+      worker: true,
+      toggleOnNodeClick: true,
+      data: [
+        { id: 'a', name: 'a' },
+        { id: 'a1', parentId: 'a', name: 'a1' },
+        { id: 'a2', parentId: 'a', name: 'a2' },
+        { id: 'a3', parentId: 'a', name: 'a3' },
+        { id: 'a4', parentId: 'a', name: 'a4' },
+        { id: 'a5', parentId: 'a', name: 'a5' },
+        { id: 'a6', parentId: 'a', name: 'a6' },
+      ],
+      renderNode: (el: HTMLElement, ctx: { id: string }) => (el.textContent = ctx.id),
+    })
+    chart.api.zoomTo(1)
+    await settle()
+    await settle()
+    await nextFrame()
+
+    const cardOf = (id: string) =>
+      ([...document.querySelectorAll('.klad-overlay-node')] as HTMLElement[]).find(
+        (each) => each.textContent === id,
+      )
+    const start = cardOf('a')!.getBoundingClientRect()
+    const px = start.left + start.width / 2
+    const py = start.top + start.height / 2
+
+    let maxDrift = 0
+    let sampling = true
+    const sample = () => {
+      const rect = cardOf('a')?.getBoundingClientRect()
+      if (rect !== undefined) {
+        maxDrift = Math.max(maxDrift, Math.abs(rect.left - start.left) + Math.abs(rect.top - start.top))
+      }
+      if (sampling) requestAnimationFrame(sample)
+    }
+    requestAnimationFrame(sample)
+
+    const canvas = document.querySelector('canvas')!
+    // `jitter` is the hand: a click delivered by a moving hand travels a few
+    // pixels between press and release, which is the whole reason this is not
+    // the same test as the API burst.
+    const click = (jitter: number) => {
+      canvas.dispatchEvent(new PointerEvent('pointerdown', { clientX: px, clientY: py, bubbles: true }))
+      if (jitter > 0) {
+        window.dispatchEvent(
+          new PointerEvent('pointermove', { clientX: px + jitter, clientY: py, bubbles: true }),
+        )
+      }
+      window.dispatchEvent(
+        new PointerEvent('pointerup', { clientX: px + jitter, clientY: py, bubbles: true }),
+      )
+    }
+    const wait = (ms: number) => new Promise<void>((resolve) => setTimeout(resolve, ms))
+    // Gaps straddle `DOUBLE_CLICK_MS` (300) so some taps toggle and some are
+    // swallowed as the second half of a double click, exactly as they do under
+    // a real hand — and both kinds land mid-transition.
+    const gaps = [40, 120, 320, 80, 420, 60, 340, 100, 380, 50, 300, 90]
+    for (let i = 0; i < gaps.length; i++) {
+      // 1-3px: what a hand does under a click, and below `DRAG_THRESHOLD_PX`,
+      // so every one of these is a TAP. A press that travels past the
+      // threshold is a pan and is supposed to move the chart — that case has
+      // its own test above ("the camera moves by the drag and not a pixel
+      // further"), and mixing it in here would mean asserting against a
+      // moving target.
+      click(1 + (i % 3))
+      await wait(gaps[i]!)
+    }
+    await settleTransition()
+    await settleTransition()
+    sampling = false
+
+    // Two pixels, and that is measured rather than generous: with the toggle
+    // holding the camera from the click itself (not from the frame that
+    // promotes its anchor), a dozen real clicks leave the root visually
+    // nailed down. The failure this guards began at 334px — the root off the
+    // screen — and the last version of it, before the pending-anchor hold,
+    // still wobbled a few pixels per click.
+    expect(maxDrift).toBeLessThan(2)
     chart.destroy()
   })
 
@@ -2044,13 +2573,22 @@ describe('createKlad', () => {
   })
 
   it('toggles once, not twice, on a double click', async () => {
-    // autoPanOnToggle disabled, and the tap coordinate recomputed after the
-    // first tap, so a real effect of THIS test's own toggle — the root's
-    // own box can shift once it has no visible children to centre over,
+    // autoPanOnToggle disabled, and the tap coordinate re-read from the DRAWN
+    // card before each tap, so a real effect of THIS test's own toggle — the
+    // root's own box shifts once it has no visible children to centre over,
     // independently of any camera move — doesn't make the second tap of the
-    // pair miss the node and turn this into a false negative.
-    const chart = make({ toggleOnNodeClick: true, autoPanOnToggle: false })
-    chart.api.fit()
+    // pair miss the node and turn this into a false negative. It has to be
+    // the drawn position rather than `rootScreenCentre` (which is the settled
+    // one): the second tap lands one frame into the transition, when the root
+    // has not travelled yet, and a tap resolves against what is on the canvas
+    // — see `hitTestDrawn`.
+    const chart = make({
+      toggleOnNodeClick: true,
+      autoPanOnToggle: false,
+      renderNode: (el: HTMLElement, ctx: { id: string }) => (el.textContent = ctx.id),
+    })
+    chart.api.zoomTo(1)
+    await settle()
     await nextFrame()
 
     const toggles: unknown[] = []
@@ -2059,11 +2597,13 @@ describe('createKlad', () => {
     chart.on('nodeDblClick', (e) => dblclicks.push(e.id))
 
     const canvas = document.querySelector('canvas')!
-    const rect = canvas.getBoundingClientRect()
     const tapRoot = () => {
-      const state = chart.api.getState()
-      const sx = rect.left + state.rootScreenCentre.x
-      const sy = rect.top + state.rootScreenCentre.y
+      const card = ([...document.querySelectorAll('.klad-overlay-node')] as HTMLElement[]).find(
+        (each) => each.textContent === 'a',
+      )!
+      const box = card.getBoundingClientRect()
+      const sx = box.left + box.width / 2
+      const sy = box.top + box.height / 2
       canvas.dispatchEvent(new PointerEvent('pointerdown', { clientX: sx, clientY: sy, bubbles: true }))
       window.dispatchEvent(new PointerEvent('pointerup', { clientX: sx, clientY: sy, bubbles: true }))
     }

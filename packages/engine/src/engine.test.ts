@@ -2,6 +2,7 @@ import { describe, expect, it, vi } from 'vitest'
 import { createChartEngine } from './engine.js'
 import { toWireTree, wireTreeToTree } from './worker/protocol.js'
 import { normalize } from './tree.js'
+import { HIDDEN_DOT_PX, HIDDEN_STUB_PX } from './render/edge-geometry.js'
 import { fit } from './viewport.js'
 import { gridSizeFor } from './render/decimate.js'
 import type { Frame, Renderer } from './render/renderer.js'
@@ -45,6 +46,21 @@ function fakeRenderer(): Renderer & { frames: Frame[] } {
     setTheme: vi.fn(),
   }
 }
+
+/**
+ * Mirrors `TRANSITION_DURATION_MS` in engine.ts, which is not exported: the
+ * phase lengths there are tuned by eye and have moved before, so every test
+ * that has to sit at a specific point INSIDE the transition (rather than
+ * comfortably past its end) says it through this one constant.
+ */
+const TRANSITION_MS = 390
+
+/**
+ * How far past the node's exit edge a reveal starts — the "more inside" mark's
+ * own length plus its dot, in world units at `k = 1` (which is what every test
+ * here renders at). See `revealOrigin` in engine.ts.
+ */
+const REVEAL_REACH = HIDDEN_STUB_PX + HIDDEN_DOT_PX * 2
 
 const DATA = [{ id: 'a' }, { id: 'b', parentId: 'a' }, { id: 'c', parentId: 'b' }, { id: 'd', parentId: 'a' }]
 
@@ -817,7 +833,7 @@ describe('ChartEngine expand/collapse transition', () => {
     engine.render(1000)
     expect(engine.transitioning).toBe(true)
 
-    engine.render(1450) // exactly the 450ms total duration (two staged phases): progress 1
+    engine.render(1000 + TRANSITION_MS) // exactly the total duration (two staged phases): progress 1
     expect(engine.transitioning).toBe(false)
     const frame = renderer.frames.at(-1)!
     expect(Array.from(frame.boxes)).toEqual(Array.from(engine.boxes))
@@ -861,10 +877,9 @@ describe('ChartEngine expand/collapse transition', () => {
     engine.setOpen(tree.idToIndex.get('b')!, false) // removes 'c'
     engine.render(1000) // t=0: just started, still ~opaque (asserted elsewhere)
 
-    // 450ms is the transition's total duration (TRANSITION_DURATION_MS) —
-    // same constant the sibling ghost test above pins by hand. The midpoint
-    // is 225ms in.
-    engine.render(1000 + 225)
+    // `TRANSITION_MS` is the transition's total duration — the same constant
+    // the sibling ghost test above works from. The midpoint is half of it.
+    engine.render(1000 + TRANSITION_MS / 2)
     const atMidpoint = renderer.frames.at(-1)!
     expect(atMidpoint.ghostCount).toBe(1)
     expect(atMidpoint.ghostAlpha[0]).toBeLessThan(0.05) // already gone well before the midpoint
@@ -878,91 +893,178 @@ describe('ChartEngine expand/collapse transition', () => {
     expect(early.ghostAlpha[0]).toBeLessThan(0.3)
   })
 
-  it("grows a revealed node from its anchor's LIVE position, not the anchor's fixed pre-toggle box", () => {
-    // 'p' needs TWO children, not one — see the analogous sibling-reflow test
-    // in packages/core's orgchart.browser.test.ts for why: a single-child
-    // chain never widens its own subtree, so 'p' itself never needs to
-    // recentre. Two children side by side make 'p' noticeably wider once
-    // revealed, which is exactly what pushes 'p's OWN box, not just its
-    // sibling's, away from its pre-toggle position.
-    const NESTED: NodeData[] = [
+  it("carries a node caught mid-COLLAPSE at the box it was drawn at, not at its parent's box", () => {
+    // Expand interrupting a collapse — the owner's fast clicking, and the one
+    // that took the longest to find. `render()` shrinks a ghost toward a
+    // POINT on its parent (the tip of the "more inside" mark), but the "where
+    // is everything right now" pass recomputed it toward the parent's whole
+    // BOX. Late in a collapse those two are as far apart as a card is big: the
+    // ghost was recorded at the parent's full-size box, and the expand landing
+    // on it started every child there — a card on top of the parent, at full
+    // size, flying down to its row. On a real page that was 240 frames out of
+    // ten fast toggles, all three children stacked exactly on the parent.
+    const FAN: NodeData[] = [
       { id: 'a' },
-      { id: 'p', parentId: 'a' },
-      { id: 'q1', parentId: 'p' },
-      { id: 'q2', parentId: 'p' },
-      { id: 'b', parentId: 'a' },
+      { id: 'b1', parentId: 'a' },
+      { id: 'b2', parentId: 'a' },
+      { id: 'b3', parentId: 'a' },
     ]
     const renderer = fakeRenderer()
     const engine = createChartEngine(renderer)
-    const tree = normalize(NESTED)
+    const tree = normalize(FAN)
+    engine.setAnimate(true)
+    engine.setViewport(800, 600, 1)
+    engine.setCamera({ x: 0, y: 0, k: 1 })
+    engine.setData(
+      toWireTree(tree),
+      sizesFor(tree.count),
+      ['a', 'b1', 'b2', 'b3'],
+      new Uint8Array(tree.count).fill(1),
+    )
+    engine.render(1000)
+
+    const aIdx = Array.from(engine.visibleToSource).indexOf(tree.idToIndex.get('a')!)
+    const aBox = {
+      x: engine.boxes[aIdx * 4]!,
+      y: engine.boxes[aIdx * 4 + 1]!,
+      w: engine.boxes[aIdx * 4 + 2]!,
+      h: engine.boxes[aIdx * 4 + 3]!,
+    }
+
+    engine.setOpen(tree.idToIndex.get('a')!, false)
+    engine.render(2000)
+    // Late in the collapse: the ghosts have nearly finished shrinking into
+    // the tip, so they are small and nowhere near the parent's own box.
+    engine.render(2000 + TRANSITION_MS * 0.9)
+    const ghostWidth = renderer.frames.at(-1)!.ghostBoxes[2]!
+    expect(ghostWidth).toBeLessThan(aBox.w * 0.4)
+
+    // The interrupting expand, at that same instant.
+    engine.setOpen(tree.idToIndex.get('a')!, true)
+    engine.render(2000 + TRANSITION_MS * 0.9)
+    const frame = renderer.frames.at(-1)!
+    for (const id of ['b1', 'b2', 'b3']) {
+      const idx = Array.from(engine.visibleToSource).indexOf(tree.idToIndex.get(id)!)
+      expect(idx).toBeGreaterThanOrEqual(0)
+      const box = { x: frame.boxes[idx * 4]!, y: frame.boxes[idx * 4 + 1]!, w: frame.boxes[idx * 4 + 2]! }
+      // Where it was: small, below the parent. NOT the parent's box.
+      expect(box.w).toBeCloseTo(ghostWidth, 0)
+      expect(box.y).toBeGreaterThan(aBox.y + aBox.h)
+    }
+  })
+
+  it('carries a node caught mid-reveal at the size it was drawn, not at its finished size', () => {
+    // Interrupting an expand: the children are halfway out of the parent,
+    // still small, when a second toggle lands. What the new transition
+    // inherits has to be where they VISIBLY are — anything else is a jump,
+    // and this one jumped them to full size in their finished positions
+    // before setting off again, which is what the owner was catching on a
+    // fast second click.
+    const FAN: NodeData[] = [
+      { id: 'a' },
+      { id: 'b1', parentId: 'a' },
+      { id: 'b2', parentId: 'a' },
+      { id: 'b3', parentId: 'a' },
+    ]
+    const renderer = fakeRenderer()
+    const engine = createChartEngine(renderer)
+    const tree = normalize(FAN)
+    engine.setAnimate(true)
+    engine.setViewport(800, 600, 1)
+    engine.setCamera({ x: 0, y: 0, k: 1 })
+    const open = new Uint8Array(tree.count).fill(0)
+    engine.setData(toWireTree(tree), sizesFor(tree.count), ['a', 'b1', 'b2', 'b3'], open)
+    engine.render(1000)
+
+    engine.setOpen(tree.idToIndex.get('a')!, true)
+    engine.render(2000)
+    // Well into the reveal, but not finished: 'b1' is still on its way down.
+    engine.render(2000 + TRANSITION_MS * 0.75)
+    const b1Idx = Array.from(engine.visibleToSource).indexOf(tree.idToIndex.get('b1')!)
+    const midY = renderer.frames.at(-1)!.boxes[b1Idx * 4 + 1]!
+    const finalY = engine.boxes[b1Idx * 4 + 1]!
+    expect(midY).toBeLessThan(finalY - 1) // genuinely still travelling
+
+    // The interrupting toggle. 'b1' leaves the tree, so it carries on as a
+    // ghost — and the ghost has to start at the size it was just drawn at.
+    engine.setOpen(tree.idToIndex.get('a')!, false)
+    engine.render(2000 + TRANSITION_MS * 0.75)
+    const frame = renderer.frames.at(-1)!
+    expect(frame.ghostCount).toBeGreaterThan(0)
+
+    let highest = Infinity
+    for (let g = 0; g < frame.ghostCount; g++) highest = Math.min(highest, frame.ghostBoxes[g * 4 + 1]!)
+    // Within a hair of where it was, and nowhere near the jump to its
+    // finished row that recomputing it used to produce.
+    expect(highest).toBeCloseTo(midY, 1)
+    expect(highest).toBeLessThan(finalY - 1)
+  })
+
+  it("grows a grandchild out of its OWN parent's exit point, not the toggled node's", () => {
+    // Expanding 'a' reveals 'p' AND 'q' in one transition, because 'p' was
+    // left open when it went out of view — the ordinary case, since open
+    // state is remembered. Neither has a prior position, and the anchor rule
+    // used to walk UP past 'p' to the nearest node that had one, which is
+    // 'a': so 'q' grew out of 'a's bottom edge, a whole row above where it
+    // belongs, while its own parent grew somewhere else entirely. The owner
+    // watching a branch open: "they can even come out from higher up."
+    //
+    // 'q' has to grow out of 'p', at whatever point 'p' has reached — 'p' is
+    // itself still on its way out of 'a' at that instant, and `applyTween`
+    // resolves an anchor before whatever hangs off it, so a live box for it
+    // always exists.
+    const CHAIN: NodeData[] = [{ id: 'a' }, { id: 'p', parentId: 'a' }, { id: 'q', parentId: 'p' }]
+    const renderer = fakeRenderer()
+    const engine = createChartEngine(renderer)
+    const tree = normalize(CHAIN)
     engine.setAnimate(true)
     engine.setViewport(800, 600, 1)
     engine.setCamera({ x: 0, y: 0, k: 1 })
     const open = new Uint8Array(tree.count).fill(1)
-    open[tree.idToIndex.get('p')!] = 0 // start collapsed: 'q1'/'q2' hidden
-    engine.setData(toWireTree(tree), sizesFor(tree.count), ['a', 'p', 'q1', 'q2', 'b'], open)
-    engine.render(1000) // settle the collapsed layout — no transition, the first layout
+    open[tree.idToIndex.get('a')!] = 0 // 'a' shut: neither 'p' nor 'q' is on screen
+    engine.setData(toWireTree(tree), sizesFor(tree.count), ['a', 'p', 'q'], open)
+    engine.render(1000)
 
-    // Reads 'p's/'q1's AUTHORITATIVE (final, settled) box — unaffected by
-    // any in-progress transition, which only interpolates the DRAWN frame,
-    // never `engine.boxes` itself.
-    const finalBoxOf = (id: string): { x: number; y: number; w: number } => {
-      const src = tree.idToIndex.get(id)!
-      const idx = Array.from(engine.visibleToSource).indexOf(src)
-      expect(idx).toBeGreaterThanOrEqual(0)
-      const o = idx * 4
-      return { x: engine.boxes[o]!, y: engine.boxes[o + 1]!, w: engine.boxes[o + 2]! }
-    }
-    // Reads 'id's DRAWN (interpolated) box off the most recent frame —
-    // where it actually is on screen at that instant, unlike `finalBoxOf`.
-    const drawnBoxOf = (id: string): { x: number; y: number; w: number } => {
-      const src = tree.idToIndex.get(id)!
-      const idx = Array.from(engine.visibleToSource).indexOf(src)
+    const drawn = (id: string) => {
+      const idx = Array.from(engine.visibleToSource).indexOf(tree.idToIndex.get(id)!)
       expect(idx).toBeGreaterThanOrEqual(0)
       const frame = renderer.frames.at(-1)!
-      const o = idx * 4
-      return { x: frame.boxes[o]!, y: frame.boxes[o + 1]!, w: frame.boxes[o + 2]! }
+      return { y: frame.boxes[idx * 4 + 1]!, h: frame.boxes[idx * 4 + 3]! }
     }
-    // 'p's own reveal-anchor EXIT point, x-axis only: for the default 'tb'
-    // orientation this test runs under, a revealed child's growth-start
-    // point is 'p's BOTTOM-edge, HORIZONTAL centre (see engine.ts's
-    // `exitBox`/`exitPointXY`) — i.e. `x + w/2`, not the box's raw top-left
-    // `x` a reveal used to grow from before that fix.
-    const exitX = (box: { x: number; w: number }): number => box.x + box.w / 2
+    const settled = (id: string) => {
+      const idx = Array.from(engine.visibleToSource).indexOf(tree.idToIndex.get(id)!)
+      return { y: engine.boxes[idx * 4 + 1]!, h: engine.boxes[idx * 4 + 3]! }
+    }
 
-    const pBefore = finalBoxOf('p') // 'p's box while still collapsed
+    engine.setOpen(tree.idToIndex.get('a')!, true) // reveals 'p' and 'q' together
+    engine.render(2000)
+    engine.render(2000 + TRANSITION_MS * 0.7) // partway into the reveal phase
 
-    engine.setOpen(tree.idToIndex.get('p')!, true) // reveals q1/q2, recentring 'p'
-    engine.render(2000) // t=0 of the new transition
-    const pAfter = finalBoxOf('p') // 'p's NEW (final, post-relayout) box
+    const a = drawn('a')
+    const pLive = drawn('p')
+    const q = drawn('q')
 
-    // Sanity: the scenario this test exists to exercise. If 'p' didn't
-    // actually move between the two layouts, the discriminating assertion
-    // below would pass no matter which anchor box `render()` used.
-    expect(Math.abs(exitX(pAfter) - exitX(pBefore))).toBeGreaterThan(5)
+    // Both ride the same reveal curve, and a reveal grows out of a POINT, so
+    // how far along it is reads straight off 'p': its height runs 0 ->
+    // settled by exactly that fraction. That makes the expected position of
+    // 'q' an equation, and the two rules answer it differently.
+    const progress = pLive.h / settled('p').h
+    expect(progress).toBeGreaterThan(0.1)
+    expect(progress).toBeLessThan(0.9)
+    // 'p' is itself arriving, so it has no meaningful current position to
+    // offer: the point 'q' grows out of is where 'p's mark WILL be, not where
+    // its part-grown box is this instant. See `anchorBoxFor`.
+    const qSettledTop = settled('q').y
+    const pSettled = settled('p')
+    const pOrigin = pSettled.y + pSettled.h + REVEAL_REACH
+    const aOrigin = a.y + a.h + REVEAL_REACH
+    const fromOwnParent = pOrigin + (qSettledTop - pOrigin) * progress
+    const fromToggledNode = aOrigin + (qSettledTop - aOrigin) * progress
 
-    // Overall progress 0.5 (225ms of the 450ms total): for an EXPAND,
-    // `repositionRaw` (driving 'p's own reposition tween) is `phaseOneProgress`,
-    // ~99% done by this point (phase 1 spans roughly the first 58%) — 'p' is
-    // nearly at `pAfter`. `emphasisRaw` (driving 'q1's reveal) is
-    // `phaseTwoProgress`, only ~1% in (phase 2 starts around 42%) — 'q1' has
-    // barely left its growth-start point. So 'q1's rendered box right now
-    // should sit almost exactly on 'p's LIVE exit point (~exitX(pAfter)), not
-    // on 'p's stale pre-toggle exit point (exitX(pBefore)) — and the two are
-    // far enough apart (asserted above) that the bug this test guards
-    // against — growing from a fixed snapshot instead of the anchor's
-    // current position — would be unmistakable here.
-    engine.render(2000 + 225)
-    const pLive = drawnBoxOf('p')
-    const q1Rendered = drawnBoxOf('q1')
-
-    const distanceFromLiveAnchor = Math.abs(q1Rendered.x - exitX(pLive))
-    const distanceFromStaleAnchor = Math.abs(q1Rendered.x - exitX(pBefore))
-    expect(distanceFromLiveAnchor).toBeLessThan(distanceFromStaleAnchor)
-    // 'q1' should be reading as still close to wherever 'p's exit point
-    // actually is, not merely "closer to live than to stale by some margin"
-    // while still far from both.
-    expect(distanceFromLiveAnchor).toBeLessThan(Math.abs(exitX(pAfter) - exitX(pBefore)) / 2)
+    expect(q.y).toBeCloseTo(fromOwnParent, 6)
+    // Not a distinction without a difference: a visible distance apart, which
+    // is the gap the owner was seeing.
+    expect(Math.abs(fromOwnParent - fromToggledNode)).toBeGreaterThan(10)
   })
 
   it("grows a revealed child from the PARENT's exit edge (bottom-centre for tb), not its box origin/centre", () => {
@@ -996,13 +1098,13 @@ describe('ChartEngine expand/collapse transition', () => {
     const qIdx = Array.from(engine.visibleToSource).indexOf(tree.idToIndex.get('q')!)
     const qStart = { x: frame.boxes[qIdx * 4]!, y: frame.boxes[qIdx * 4 + 1]! }
 
-    // Bottom edge, horizontal centre of 'a' — NOT 'a's top-left corner (the
-    // old, wrong growth-start point) and not 'a's own centre either.
+    // A POINT, at the horizontal centre of 'a' and just past the tip of the
+    // mark hanging off its bottom edge — so the child scales up out of that
+    // tip, outwards in both directions and downwards, which is the owner's
+    // ask in their own words. Its centre travels from the tip to its own
+    // settled centre, which is what `lerpBox` from a zero-size box does.
     expect(qStart.x).toBeCloseTo(aBox.x + aBox.w / 2, 6)
-    expect(qStart.y).toBeCloseTo(aBox.y + aBox.h, 6)
-    // A genuine POINT, not sized like the parent — confirms this grows from
-    // a single spot and expands outward, rather than starting already
-    // shaped like the whole parent box.
+    expect(qStart.y).toBeCloseTo(aBox.y + aBox.h + REVEAL_REACH, 6)
     expect(frame.boxes[qIdx * 4 + 2]).toBeCloseTo(0, 6)
     expect(frame.boxes[qIdx * 4 + 3]).toBeCloseTo(0, 6)
   })
@@ -1020,7 +1122,6 @@ describe('ChartEngine expand/collapse transition', () => {
 
     engine.setOpen(tree.idToIndex.get('a')!, false) // collapse: 'q' becomes a ghost
     engine.render(1000)
-
     const aIdx = Array.from(engine.visibleToSource).indexOf(tree.idToIndex.get('a')!)
     const aBoxNow = {
       x: engine.boxes[aIdx * 4]!,
@@ -1030,13 +1131,13 @@ describe('ChartEngine expand/collapse transition', () => {
     }
 
     // Right at the end of the transition (but still just inside it): the
-    // ghost has nearly finished shrinking toward its target, so its drawn
-    // box should sit almost exactly on 'a's exit point.
-    engine.render(1000 + 449)
+    // ghost has nearly finished shrinking into its target, so its drawn box
+    // should sit almost exactly on it — the tip of 'a's mark.
+    engine.render(1000 + TRANSITION_MS - 1)
     const frame = renderer.frames.at(-1)!
     expect(frame.ghostCount).toBe(1)
     expect(frame.ghostBoxes[0]).toBeCloseTo(aBoxNow.x + aBoxNow.w / 2, 1)
-    expect(frame.ghostBoxes[1]).toBeCloseTo(aBoxNow.y + aBoxNow.h, 1)
+    expect(frame.ghostBoxes[1]).toBeCloseTo(aBoxNow.y + aBoxNow.h + REVEAL_REACH, 1)
   })
 
   it("grows a revealed child from the parent's TRAILING edge under lr orientation, not its bottom edge", () => {
@@ -1070,7 +1171,7 @@ describe('ChartEngine expand/collapse transition', () => {
     const frame = renderer.frames.at(-1)!
     const qIdx = Array.from(engine.visibleToSource).indexOf(tree.idToIndex.get('q')!)
 
-    expect(frame.boxes[qIdx * 4]).toBeCloseTo(aBox.x + aBox.w, 6) // right edge
+    expect(frame.boxes[qIdx * 4]).toBeCloseTo(aBox.x + aBox.w + REVEAL_REACH, 6) // past the mark
     expect(frame.boxes[qIdx * 4 + 1]).toBeCloseTo(aBox.y + aBox.h / 2, 6) // vertical centre
     expect(frame.boxes[qIdx * 4 + 2]).toBeCloseTo(0, 6)
     expect(frame.boxes[qIdx * 4 + 3]).toBeCloseTo(0, 6)
@@ -1311,7 +1412,7 @@ describe('ChartEngine expand/collapse transition', () => {
       survivorSources: number[],
       transitionStart: number,
     ): void {
-      const checkpoints = [0, 0.15, 0.3, 0.5, 0.7, 0.85, 0.99].map((f) => transitionStart + f * 450)
+      const checkpoints = [0, 0.15, 0.3, 0.5, 0.7, 0.85, 0.99].map((f) => transitionStart + f * TRANSITION_MS)
       for (const t of checkpoints) {
         engine.render(t)
         const frame = renderer.frames.at(-1)!
@@ -1593,7 +1694,7 @@ describe('ChartEngine one-shot toggle ring', () => {
 
   it('keeps `engine.ringActive` true after `transitioning` has already gone false', () => {
     // RING_DURATION_MS (900ms) deliberately outlives TRANSITION_DURATION_MS
-    // (450ms, see engine.ts) so the ring is still resolving well after the
+    // (`TRANSITION_MS` here, see engine.ts) so the ring is still resolving after the
     // layout transition settles. A caller driving its own frame loop off only
     // `transitioning` — as the vanilla layer's `scheduleFrame` briefly did —
     // stops asking for frames the instant the transition ends and freezes
@@ -1611,7 +1712,7 @@ describe('ChartEngine one-shot toggle ring', () => {
     expect(engine.transitioning).toBe(true)
     expect(engine.ringActive).toBe(true)
 
-    engine.render(1500) // past the 450ms transition, still well inside the 900ms ring
+    engine.render(1500) // past the layout transition, still well inside the 900ms ring
     expect(engine.transitioning).toBe(false)
     expect(engine.ringActive).toBe(true)
 
@@ -1744,7 +1845,7 @@ describe('block-tier decimation in render()', () => {
     engine.setOpen(child, false)
     const duringTransition = engine.render(1).length
 
-    // Once the transition has run its course (TRANSITION_DURATION_MS ~450ms),
+    // Once the transition has run its course (TRANSITION_DURATION_MS, see engine.ts),
     // the engine falls back to the steady state and — blockDecimation still
     // being on — decimation kicks back in at this same post-toggle camera.
     // A `during` count that is NOT smaller than this settled, decimated count
