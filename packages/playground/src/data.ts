@@ -264,6 +264,15 @@ export const DEPARTMENT_COLOR: Record<Department, string> = {
 export const SLOT_PALETTE = ['#6366f1', '#06b6d4', '#f43f5e', '#f59e0b', '#22c55e', '#a855f7'] as const
 
 /**
+ * The nodes the showcase starts with open — the root, both of its children,
+ * and one node at the end of the second branch.
+ *
+ * Ids, not names: `buildOrg` numbers people from one and ids from zero, so
+ * `n7` is Person 8. See `buildOrg` below.
+ */
+const SLOT_OPEN_AT_START = new Set(['ceo', 'n0', 'n1', 'n7'])
+
+/**
  * Which of `SLOT_PALETTE` a node belongs to: the index of the ROOT-LEVEL
  * ancestor it hangs off, which is exactly how the engine assigns branch
  * colours. The root itself has no branch and takes `null`.
@@ -1218,6 +1227,11 @@ export const EXAMPLES: Example[] = [
       colourBranches: true,
       toggleOnNodeClick: true,
       spacing: { x: 20, y: 46 },
+      // A deliberately uneven opening shape: both top-level branches out, one
+      // node on the far side taken a level deeper. Everything open is a wall
+      // wider than any frame, and everything closed is a single card — this is
+      // a chart with something to look at that visibly has more to open.
+      collapsedByDefault: (item) => !SLOT_OPEN_AT_START.has(String(item.id)),
       // Both tiers arrive earlier than the default (0.25 / 0.6): these cards
       // are wide and their text is small, so there is still something worth
       // reading at a zoom where the stock thresholds would already have

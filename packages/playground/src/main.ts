@@ -67,6 +67,21 @@ const root = document.querySelector<HTMLDivElement>('#app')
 if (root === null) throw new Error('#app element not found')
 root.innerHTML = ''
 
+/**
+ * `?embed=1` — the chart alone, no shell.
+ *
+ * For the documentation site's home page, which frames one example rather than
+ * describing it. An iframe of the app that is already built and copied in
+ * under the docs site, rather than a second copy of a showcase in the docs
+ * theme: the example, its cards' CSS and its data have one implementation, and
+ * whatever the playground grows the home page gets.
+ *
+ * Read here rather than beside the rest of the URL handling at the bottom,
+ * because the shell reads it as it is being built.
+ */
+const EMBEDDED = new URLSearchParams(window.location.search).get('embed') === '1'
+if (EMBEDDED) root.dataset.embed = ''
+
 // --- shell: a slim header bar above everything, then a sidebar + chart-area layout ---
 
 /**
@@ -2617,6 +2632,22 @@ description.onclick = () => description.classList.toggle('is-expanded')
 const surface = document.createElement('div')
 surface.className = 'surface'
 
+/**
+ * The way out of an embed: the same example in the playground proper, with
+ * every control the frame is hiding.
+ *
+ * `_blank` because the frame's parent is the documentation site — navigating
+ * inside the iframe would leave a whole playground in a box, and navigating
+ * the parent would take a reader off the page they were reading. Re-appended
+ * by `show()`, like every other thing that floats over the chart: mounting an
+ * example clears the surface.
+ */
+const embedLink = document.createElement('a')
+embedLink.className = 'embed-link'
+embedLink.target = '_blank'
+embedLink.rel = 'noopener'
+embedLink.textContent = 'Open in the playground ↗'
+
 const content = document.createElement('main')
 content.className = 'content'
 content.append(description, surface)
@@ -2736,6 +2767,11 @@ function show(stack: Stack, exampleId: string, layout: LayoutName): void {
   const chartRoot = document.createElement('div')
   chartRoot.className = 'surface-chart'
   surface.append(chartRoot)
+
+  if (EMBEDDED) {
+    embedLink.href = `${window.location.pathname}?example=${encodeURIComponent(exampleId)}`
+    surface.append(embedLink)
+  }
 
   const example = findExample(exampleId)
   layoutBlurb.textContent = LAYOUT_PRESETS[layout]!.blurb
@@ -2900,6 +2936,9 @@ function syncUrl(): void {
   const example = exampleSelect.value
   const params = new URLSearchParams()
   params.set('example', example)
+  // Kept, or a reload inside the iframe comes back as the whole playground in
+  // a 420px box.
+  if (EMBEDDED) params.set('embed', '1')
   if (stackSelect.value !== 'vanilla') params.set('stack', stackSelect.value)
   const layout = layoutSelect.value
   if (layout !== defaultLayoutOf(findExample(example))) params.set('layout', layout)
@@ -2978,7 +3017,9 @@ function initialPanel(): string | null {
   }
 }
 
-openPanel(initialPanel())
+// Nothing is open in an embed: the panels are hidden there, and an open one
+// would keep its minimap redrawing every frame behind a panel nobody can see.
+openPanel(EMBEDDED ? null : initialPanel())
 
 /**
  * The drawer starts closed for a first visit and remembers after that.
@@ -3000,12 +3041,13 @@ setCodeWrap(
 )
 
 setCodeOpen(
-  (() => {
-    try {
-      return localStorage.getItem(CODE_KEY) === '1'
-    } catch {
-      return false
-    }
-  })(),
+  !EMBEDDED &&
+    (() => {
+      try {
+        return localStorage.getItem(CODE_KEY) === '1'
+      } catch {
+        return false
+      }
+    })(),
   false,
 )

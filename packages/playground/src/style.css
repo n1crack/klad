@@ -2942,3 +2942,67 @@ button.overflow-panel-row {
   position: absolute;
   inset: 0;
 }
+
+/*
+ * ---------------------------------------------------------------------------
+ * Embed mode (`?embed=1`)
+ * ---------------------------------------------------------------------------
+ *
+ * The chart and nothing else, for the iframe on the documentation site's home
+ * page. Everything the shell adds is a control for choosing what to look at,
+ * and the embed has already chosen — the frame is one example, offered to be
+ * played with rather than browsed.
+ *
+ * Hidden rather than never built: the app's own wiring reads the controls it
+ * is hiding (the code panel renders from them, the theme sync writes to them),
+ * and a shell that exists but is not shown is a much smaller claim than a
+ * second start-up path that has to keep agreeing with this one. The parts with
+ * a per-frame cost — the minimap, the snippet — are closed instead of hidden,
+ * in main.ts.
+ */
+#app[data-embed] .app-header,
+#app[data-embed] .sidebar,
+#app[data-embed] .code-drawer,
+#app[data-embed] .example-description {
+  display: none;
+}
+
+/* No margin, no border, no radius: the framing is the iframe's, and a card
+   inside a card reads as a mistake. */
+#app[data-embed] .surface {
+  margin: 0;
+  border: 0;
+  border-radius: 0;
+  box-shadow: none;
+}
+
+/* The way out of the frame and into the playground proper. Bottom-right,
+   where it is furthest from the root of a top-down chart and so least likely
+   to sit over anything. */
+.embed-link {
+  position: absolute;
+  right: 0.75rem;
+  bottom: 0.75rem;
+  z-index: 5;
+  display: inline-flex;
+  align-items: center;
+  gap: 0.35rem;
+  padding: 0.4rem 0.7rem;
+  border-radius: 999px;
+  border: 1px solid var(--border);
+  background: color-mix(in srgb, var(--surface-raised) 88%, transparent);
+  backdrop-filter: blur(6px);
+  color: var(--text);
+  font-size: 0.8rem;
+  font-weight: 500;
+  text-decoration: none;
+  box-shadow: var(--shadow-sm);
+  transition:
+    background 140ms ease,
+    transform 140ms ease;
+}
+
+.embed-link:hover {
+  background: var(--surface-raised);
+  transform: translateY(-1px);
+}
