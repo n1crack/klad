@@ -972,6 +972,53 @@ describe('ChartEngine expand/collapse transition', () => {
     expect(distanceFromLiveAnchor).toBeLessThan(Math.abs(exitX(pAfter) - exitX(pBefore)) / 2)
   })
 
+  it('carries a node caught mid-reveal at the size it was drawn, not at its finished size', () => {
+    // Interrupting an expand: the children are halfway out of the parent,
+    // still small, when a second toggle lands. What the new transition
+    // inherits has to be where they VISIBLY are — anything else is a jump,
+    // and this one jumped them to full size in their finished positions
+    // before setting off again, which is what the owner was catching on a
+    // fast second click.
+    const FAN: NodeData[] = [
+      { id: 'a' },
+      { id: 'b1', parentId: 'a' },
+      { id: 'b2', parentId: 'a' },
+      { id: 'b3', parentId: 'a' },
+    ]
+    const renderer = fakeRenderer()
+    const engine = createChartEngine(renderer)
+    const tree = normalize(FAN)
+    engine.setAnimate(true)
+    engine.setViewport(800, 600, 1)
+    engine.setCamera({ x: 0, y: 0, k: 1 })
+    const open = new Uint8Array(tree.count).fill(0)
+    engine.setData(toWireTree(tree), sizesFor(tree.count), ['a', 'b1', 'b2', 'b3'], open)
+    engine.render(1000)
+
+    engine.setOpen(tree.idToIndex.get('a')!, true)
+    engine.render(2000)
+    // Well into the reveal, but not finished: 'b1' is part-grown.
+    engine.render(2000 + TRANSITION_MS * 0.75)
+    const b1Idx = Array.from(engine.visibleToSource).indexOf(tree.idToIndex.get('b1')!)
+    const midWidth = renderer.frames.at(-1)!.boxes[b1Idx * 4 + 2]!
+    const finalWidth = engine.boxes[b1Idx * 4 + 2]!
+    expect(midWidth).toBeGreaterThan(0)
+    expect(midWidth).toBeLessThan(finalWidth * 0.95) // genuinely still growing
+
+    // The interrupting toggle. 'b1' leaves the tree, so it carries on as a
+    // ghost — and the ghost has to start at the size it was just drawn at.
+    engine.setOpen(tree.idToIndex.get('a')!, false)
+    engine.render(2000 + TRANSITION_MS * 0.75)
+    const frame = renderer.frames.at(-1)!
+    expect(frame.ghostCount).toBeGreaterThan(0)
+
+    let widest = 0
+    for (let g = 0; g < frame.ghostCount; g++) widest = Math.max(widest, frame.ghostBoxes[g * 4 + 2]!)
+    // Within a hair of where it was, and nowhere near the full-size jump.
+    expect(widest).toBeCloseTo(midWidth, 1)
+    expect(widest).toBeLessThan(finalWidth * 0.95)
+  })
+
   it("grows a grandchild out of its OWN parent's exit point, not the toggled node's", () => {
     // Expanding 'a' reveals 'p' AND 'q' in one transition, because 'p' was
     // left open when it went out of view — the ordinary case, since open

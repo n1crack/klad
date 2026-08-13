@@ -968,6 +968,17 @@ function buildTransition(
   prevVisibleToSource: Int32Array,
   prevParent: Int32Array,
   prevTransition: Transition | null,
+  /**
+   * The interpolated boxes the LAST FRAME was drawn with, in the previous
+   * relayout's pruned index space — the engine's own `renderBoxes`, which it
+   * has not replaced yet at the point it calls this.
+   *
+   * Only a node caught mid-reveal needs it; see the `entry.revealed` branch
+   * below for why that one cannot be recomputed from `prevTransition` alone.
+   * Identical to `prevBoxes` for anything the last frame did not draw, which
+   * is the right answer for a node off screen anyway.
+   */
+  prevRenderBoxes: Float64Array,
   boxes: Float64Array,
   visibleToSource: Int32Array,
   prunedParent: Int32Array,
@@ -1008,8 +1019,27 @@ function buildTransition(
     if (prevTransition !== null) {
       const entry = prevTransition.fromBySource.get(src)
       if (entry !== undefined) {
-        const t = entry.revealed ? prevEasing!.emphasisPos : prevEasing!.repositionPos
-        box = lerpBox(entry.box, box, t)
+        if (entry.revealed) {
+          // A node caught mid-REVEAL is read straight out of the frame that
+          // drew it (`prevRenderBoxes`), not recomputed here.
+          //
+          // It cannot be recomputed here, and pretending otherwise was a bug
+          // with a very particular look. A revealed entry's `box` field is
+          // its FINAL box — the growth START is not stored at all, it is
+          // resolved live from the anchor every frame (see `TweenEntry.box`
+          // and `render()`'s `applyTween`) — so `lerpBox(entry.box, box, t)`
+          // was lerping the final box towards itself and handing back the
+          // final box whatever `t` said. Interrupt an expand and every card
+          // still growing was recorded at full size in its finished
+          // position, then tweened on from there by the new transition: they
+          // jumped out of the parent to their full size and then set off
+          // again, which is what a fast second click looked like. The frame
+          // buffer has the honest answer already — it is exactly what the
+          // viewer was looking at when the click landed.
+          box = boxAt(prevRenderBoxes, i)
+        } else {
+          box = lerpBox(entry.box, box, prevEasing!.repositionPos)
+        }
       }
     }
     // Keyed in the NEW index space, so every lookup downstream — reveals,
@@ -1648,6 +1678,10 @@ export function createChartEngine(renderer: Renderer): ChartEngine {
 
   const relayout = (now: number): void => {
     const prevBoxes = boxes
+    // The frame buffer as the last frame left it, before `renderBoxes` is
+    // pointed at the new layout below — see `buildTransition`'s
+    // `prevRenderBoxes` for the one thing that needs it.
+    const prevRenderBoxes = renderBoxes
     const prevVisibleToSource = visibleToSource
     const prevParent = prunedParent
     const prevTransition = transition
@@ -1857,6 +1891,7 @@ export function createChartEngine(renderer: Renderer): ChartEngine {
         prevVisibleToSource,
         prevParent,
         prevTransition,
+        prevRenderBoxes,
         boxes,
         visibleToSource,
         prunedParent,
