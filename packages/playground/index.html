@@ -4,6 +4,42 @@
     <meta charset="UTF-8" />
     <meta name="viewport" content="width=device-width, initial-scale=1.0" />
     <title>Klad Playground</title>
+    <meta
+      name="description"
+      content="Klad's interactive playground: one org chart drawn through every layout, card style and interaction the engine has — with the Vue, React or plain-DOM code for each beside it."
+    />
+
+    <!-- Rewritten with this build's `base` (see vite.config.ts), so it resolves
+         both at a site root and under `<docs base>/playground/`. -->
+    <link rel="icon" type="image/svg+xml" href="/logo.svg" />
+    <meta name="theme-color" content="#2563eb" />
+
+    <!-- Absolute, because a crawler reading a shared link has no page to
+         resolve a relative path against. The site is the docs site: same
+         origin, same og.png, one path down. -->
+    <link rel="canonical" href="https://klad.ozdemir.be/playground/" />
+    <meta property="og:type" content="website" />
+    <meta property="og:site_name" content="Klad" />
+    <meta property="og:title" content="Klad Playground" />
+    <meta
+      property="og:description"
+      content="Klad's interactive playground: one org chart drawn through every layout, card style and interaction the engine has — with the Vue, React or plain-DOM code for each beside it."
+    />
+    <meta property="og:url" content="https://klad.ozdemir.be/playground/" />
+    <meta property="og:image" content="https://klad.ozdemir.be/og.png" />
+    <meta property="og:image:width" content="1200" />
+    <meta property="og:image:height" content="630" />
+    <meta property="og:image:alt" content="Klad — a fast tree engine for very large hierarchies." />
+
+    <!-- `summary_large_image` renders the picture full width rather than as a
+         thumbnail beside the text. -->
+    <meta name="twitter:card" content="summary_large_image" />
+    <meta name="twitter:title" content="Klad Playground" />
+    <meta
+      name="twitter:description"
+      content="Klad's interactive playground: one org chart drawn through every layout, card style and interaction the engine has — with the Vue, React or plain-DOM code for each beside it."
+    />
+    <meta name="twitter:image" content="https://klad.ozdemir.be/og.png" />
   </head>
   <body>
     <div id="app"></div>
