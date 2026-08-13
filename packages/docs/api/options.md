@@ -53,6 +53,7 @@ what each shape is for.
 | `minimap`    | `boolean \| MinimapOptions` | `false`                   | `{ position, width, height, silhouetteColour }`. `silhouetteColour` is the one piece your own CSS cannot restyle — set it for a dark host.                                                                                                                                                                   |
 | `zoomLimits` | `{ minK, maxK: number }`    | `{ minK: 0.05, maxK: 4 }` | The floor is lowered automatically — never raised — when the tree is wider than the viewport, so `fit()` can always show everything.                                                                                                                                                                         |
 | `lockPan`    | `boolean`                   | `false`                   | Holds the chart centred and refuses to pan; zoom still works, anchored on the middle of the viewport rather than the pointer. For a diagram that IS its bounds — a sunburst, a radial — where a pan can only take a disc that was fully on screen off the side of it. Usually set with a `zoomLimits` floor. |
+| `weight`     | `(item) => number`          | —                         | What a node is worth, for the layouts that divide a fixed extent between siblings — the sunburst today. Read on the **leaves**; a parent's share is the sum of what is under it. Zero, negative and non-finite all count as zero. Turns a wheel of a file tree into a picture of where the disk went.        |
 
 ## Behaviour
 

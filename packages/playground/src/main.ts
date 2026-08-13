@@ -28,9 +28,11 @@ import {
   type Example,
   type LayoutName,
   type MinimapPosition,
+  type NodeItem,
   setWorkingSetHook,
 } from './data.js'
 import { closeOverflowPanel, openOverflowPanel } from './overflow-panel.js'
+import { setHoverReporter } from './demo-behaviour.js'
 import {
   applyTheme,
   chartTokens,
@@ -2062,6 +2064,129 @@ function syncSelectionControl(example: Example): void {
 }
 
 /**
+ * The hover read-out, for a chart whose shapes ARE numbers.
+ *
+ * A sunburst's sector says "this is bigger than that" and nothing else: there
+ * is no room on an arc to write what it weighs, and a tooltip that follows the
+ * pointer would cover the neighbours you are comparing it against. So the
+ * panel is fixed in a corner and the pointer stays free — you sweep the wheel
+ * and read one place.
+ *
+ * Absolutely positioned, like every other surface panel: it floats OVER the
+ * chart rather than taking a column beside it, so nothing reflows and the
+ * wheel is the same size whether the pointer is on it or not.
+ */
+const hoverField = document.createElement('div')
+hoverField.className = 'surface-panel surface-panel-read'
+const hoverTitle = document.createElement('strong')
+hoverTitle.className = 'read-title'
+const hoverMeta = document.createElement('span')
+hoverMeta.className = 'read-meta'
+const hoverBar = document.createElement('span')
+hoverBar.className = 'read-bar'
+const hoverBarFill = document.createElement('span')
+hoverBar.append(hoverBarFill)
+const hoverShare = document.createElement('span')
+hoverShare.className = 'read-share'
+const hoverBody = document.createElement('div')
+hoverBody.className = 'read-body'
+hoverBody.append(hoverTitle, hoverMeta, hoverBar, hoverShare)
+hoverField.append(hoverBody)
+
+const hoverIdle = document.createElement('span')
+hoverIdle.className = 'read-idle'
+hoverIdle.textContent = 'Point at a segment'
+
+/** `1.2 MB`, `640 KB`, `0 KB` — the units a file manager would use. */
+function formatKb(kb: number): string {
+  if (kb >= 1024 * 1024) return `${(kb / (1024 * 1024)).toFixed(1)} GB`
+  if (kb >= 1024) return `${(kb / 1024).toFixed(1)} MB`
+  return `${Math.round(kb)} KB`
+}
+
+/** A share as a percentage, with enough precision to stay non-zero for the
+ * slivers this panel exists to explain. */
+function formatShare(share: number): string {
+  if (!(share > 0)) return '0%'
+  if (share < 0.001) return '<0.1%'
+  return `${(share * 100).toFixed(share < 0.01 ? 1 : 0)}%`
+}
+
+function sizeOfItem(item: NodeItem | undefined): number {
+  return Number(item?.sizeKb ?? 0)
+}
+
+/**
+ * Fills the panel for one hovered id, or empties it.
+ *
+ * An aggregate node is not in `example.data` — the chart invented it — so it
+ * is looked up through `api.overflow`, which is also the only way to say what
+ * it stands for. That branch is the point of the panel as much as the ordinary
+ * one: "+42" is exactly the label that raises a question.
+ */
+function renderHoverPanel(example: Example, id: string | null): void {
+  if (id === null) {
+    hoverBody.remove()
+    hoverField.append(hoverIdle)
+    return
+  }
+  hoverIdle.remove()
+  hoverField.append(hoverBody)
+
+  const byId = new Map(example.data.map((item) => [String(item.id), item]))
+  const total = sizeOfItem(example.data[0])
+  const item = byId.get(id)
+  const rolled = item === undefined ? (currentApi?.overflow(id) ?? null) : null
+
+  if (rolled !== null) {
+    const kb = rolled.items.reduce((sum, each) => sum + sizeOfItem(each as NodeItem), 0)
+    const parent = byId.get(rolled.parentId)
+    hoverTitle.textContent = `${rolled.count} smaller item${rolled.count === 1 ? '' : 's'}`
+    hoverMeta.textContent = `${formatKb(kb)} · rolled up in ${String(parent?.name ?? rolled.parentId)}`
+    const share = total > 0 ? kb / total : 0
+    hoverBarFill.style.width = `${Math.max(1, share * 100)}%`
+    hoverShare.textContent = `${formatShare(share)} of ${String(example.data[0]?.name ?? 'the whole')} · click to open them up`
+    return
+  }
+
+  if (item === undefined) {
+    hoverTitle.textContent = id
+    hoverMeta.textContent = ''
+    hoverBarFill.style.width = '0%'
+    hoverShare.textContent = ''
+    return
+  }
+
+  const kb = sizeOfItem(item)
+  const parent = item.parentId === undefined ? undefined : byId.get(String(item.parentId))
+  const parentKb = sizeOfItem(parent)
+  const share = total > 0 ? kb / total : 0
+  const whole = String(example.data[0]?.name ?? 'the whole')
+  hoverTitle.textContent = String(item.name ?? item.id)
+  hoverMeta.textContent = formatKb(kb)
+  hoverBarFill.style.width = `${Math.max(1, share * 100)}%`
+  // Two shares are worth saying — of the parent, and of everything — but only
+  // while they are two different facts. A child of the root has one parent and
+  // it is the whole, so saying it twice reads as a bug in the panel.
+  hoverShare.textContent =
+    parent === undefined
+      ? 'everything'
+      : parent.parentId === undefined
+        ? `${formatShare(share)} of ${whole}`
+        : `${formatShare(parentKb > 0 ? kb / parentKb : 0)} of ${String(parent.name ?? '')} · ${formatShare(share)} of ${whole}`
+}
+
+/** Shows the read-out for the examples that asked for it, and keeps it fed. */
+function syncHoverPanel(example: Example): void {
+  hoverField.remove()
+  setHoverReporter(null)
+  if (example.hoverPanel !== true) return
+  renderHoverPanel(example, null)
+  surface.append(hoverField)
+  setHoverReporter((id) => renderHoverPanel(example, id))
+}
+
+/**
  * The pan lock, for the layouts that are a fixed shape rather than a plane.
  *
  * A wheel is its own bounds: there is nothing off to the side to go and look
@@ -2965,6 +3090,7 @@ function show(stack: Stack, exampleId: string, layout: LayoutName): void {
   // only on the vanilla stack, because the other two deleted them on mount.
   syncGotoControl(example)
   syncLockControl(example)
+  syncHoverPanel(example)
   syncOrientationControl(example, layout)
   syncViewControl(example)
   syncSelectionControl(example)

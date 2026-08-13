@@ -258,7 +258,7 @@ function handleNodeHover(event: { id: string | null }): void {
 function handleNodeClick({ id }: { id: string }): void {
   const api = chartRef.value?.api
   if (!api) return
-  const next = drill(id, api.getCentre())
+  const next = drill(id, api.getCentre(), api)
   if (next === undefined) return
   api.setCentre(next)
   emit('centreChange', api.getCentre())

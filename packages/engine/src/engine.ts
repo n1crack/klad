@@ -57,6 +57,16 @@ export interface ChartEngine {
      */
     keep?: Uint8Array | null,
     hide?: Uint8Array | null,
+    /**
+     * What each node is WORTH, for the layouts that divide a fixed extent
+     * between siblings — the sunburst, today. `null` (the default) leaves
+     * every node worth the same, which is what the wheel has always done.
+     *
+     * Here rather than in `setOptions` for the same reason the masks are:
+     * it is indexed against this tree, and a weight array that arrives a
+     * message later is briefly a set of proportions for a tree that is gone.
+     */
+    weights?: Float64Array | null,
   ): void
   setOptions(partial: Partial<EngineOptions>): void
   /**
@@ -1443,6 +1453,9 @@ export function createChartEngine(renderer: Renderer): ChartEngine {
     order: new Int32Array(0),
   })
   let sourceSizes: Float64Array = new Float64Array(0)
+  /** `setData`'s `weights`, in SOURCE index space. `null` — the common case —
+   * means every node is worth the same. */
+  let sourceWeights: Float64Array | null = null
   let sourceLabels: string[] = []
   /**
    * SOURCE-indexed: 1 where the host has said a node has children it has not
@@ -1815,6 +1828,10 @@ export function createChartEngine(renderer: Renderer): ChartEngine {
 
     const n = pruned.tree.count
     const sizes = new Float64Array(n * 2)
+    // Only allocated when there are weights to carry: every chart that has
+    // never heard of them pays nothing, which matters because this runs on
+    // every relayout.
+    const weights = sourceWeights === null ? null : new Float64Array(n)
     prunedLabels = Array.from({ length: n })
 
     // Orientation is TIDY'S concern and nothing else's. A file list has one
@@ -1839,6 +1856,7 @@ export function createChartEngine(renderer: Renderer): ChartEngine {
       sizes[i * 2] = horizontal ? h : w
       sizes[i * 2 + 1] = horizontal ? w : h
       prunedLabels[i] = sourceLabels[src] ?? ''
+      if (weights !== null) weights[i] = sourceWeights![src] ?? 0
     }
 
     // `options.focus` is a SOURCE index — it has to be, since it survives
@@ -1857,6 +1875,7 @@ export function createChartEngine(renderer: Renderer): ChartEngine {
       rowGap: options.rowGap,
       focus: focusPruned,
       maxRings: options.maxRings,
+      weights,
     })
     boxes = result.boxes
     sectors = result.sectors ?? null
@@ -2623,7 +2642,7 @@ export function createChartEngine(renderer: Renderer): ChartEngine {
   }
 
   return {
-    setData(tree, sizes, labels, openFlags, unloaded, keep, hide) {
+    setData(tree, sizes, labels, openFlags, unloaded, keep, hide, weights) {
       sourceTree = wireTreeToTree(tree)
       // Defensive-copy every caller-owned buffer. In the worker path these
       // arrive as structured clones the engine already owns, but the
@@ -2632,6 +2651,7 @@ export function createChartEngine(renderer: Renderer): ChartEngine {
       // `setOpen`'s case) silently reach through into the caller, and the
       // worker/main-thread paths would disagree about when a change lands.
       sourceSizes = Float64Array.from(sizes)
+      sourceWeights = weights === null || weights === undefined ? null : Float64Array.from(weights)
       sourceLabels = [...labels]
       // Defensive-copied like every other caller-owned buffer, and sized to
       // the tree rather than to whatever length arrived — a short mask

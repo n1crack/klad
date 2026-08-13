@@ -592,7 +592,7 @@ export function ReactDemo({
     ({ id }: { id: string }) => {
       const api = chartRef.current?.api
       if (!api) return
-      const next = drill(id, api.getCentre())
+      const next = drill(id, api.getCentre(), api)
       if (next === undefined) return
       api.setCentre(next)
       onCentreChange?.(api.getCentre())

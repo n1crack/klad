@@ -183,16 +183,42 @@ export function sunburst(tree: Tree, sizes: Float64Array, opts: LayoutOptions): 
   // --- 1. The BASE partition: every node's share of the full turn, ignoring
   // focus entirely. Focus is applied as a transform of this, below, so that a
   // change of focus never re-derives the tree's own proportions.
+  //
+  // A leaf is worth one, or whatever `weights` says it is worth — a file's
+  // size, a budget line, a population. Everything above a leaf is the sum of
+  // what is under it either way, which is what keeps a ring exactly the union
+  // of the ring outside it; a parent's OWN weight is deliberately ignored, so
+  // a folder whose declared size disagrees with its contents cannot make its
+  // children overflow their own arc.
+  //
+  // A zero-weight leaf gets a zero-width sector and disappears, which is
+  // correct — nothing is nothing. A tree where NOTHING has a weight is a
+  // different case: dividing by that total is a division by zero, and the
+  // honest reading of "no node is worth anything" is that no node is worth
+  // more than another, so it falls back to counting them (below).
+  const weights = opts.weights ?? null
   const leaves = new Float64Array(n)
   for (let k = n - 1; k >= 0; k--) {
     const i = order[k]!
-    if (childStart[i]! === childStart[i + 1]!) leaves[i] = 1
+    if (childStart[i]! === childStart[i + 1]!) {
+      const w = weights === null ? 1 : weights[i]!
+      leaves[i] = w > 0 ? w : 0
+    }
     const p = parent[i]!
     if (p !== -1) leaves[p]! += leaves[i]!
   }
-
   let totalLeaves = 0
   for (let r = 0; r < roots.length; r++) totalLeaves += leaves[roots[r]!]!
+  if (totalLeaves === 0) {
+    leaves.fill(0)
+    for (let k = n - 1; k >= 0; k--) {
+      const i = order[k]!
+      if (childStart[i]! === childStart[i + 1]!) leaves[i] = 1
+      const p = parent[i]!
+      if (p !== -1) leaves[p]! += leaves[i]!
+    }
+    for (let r = 0; r < roots.length; r++) totalLeaves += leaves[roots[r]!]!
+  }
 
   const baseA0 = new Float64Array(n)
   const baseA1 = new Float64Array(n)
@@ -217,7 +243,11 @@ export function sunburst(tree: Tree, sizes: Float64Array, opts: LayoutOptions): 
     let c = baseA0[i]!
     for (let j = from; j < to; j++) {
       const ch = childIndex[j]!
-      const s = (leaves[ch]! / li) * width
+      // `li` is zero only when everything under this node weighs nothing, in
+      // which case `width` is zero too and every child gets a zero arc — the
+      // guard is against `0 / 0`, which would put a `NaN` angle on the frame
+      // and take the whole ring with it.
+      const s = li > 0 ? (leaves[ch]! / li) * width : 0
       baseA0[ch] = c
       baseA1[ch] = c + s
       c += s

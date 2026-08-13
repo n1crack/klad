@@ -1,4 +1,11 @@
-import { DEFAULT_THEME, type LayoutName, type MinimapPosition, type Options, type Theme } from '@klad/core'
+import {
+  DEFAULT_THEME,
+  type LayoutName,
+  type MinimapPosition,
+  type NodePlace,
+  type Options,
+  type Theme,
+} from '@klad/core'
 import { baseTheme, chartTokens, silhouetteColour, type ThemeMode } from './theme.js'
 
 export type { LayoutName, MinimapPosition } from '@klad/core'
@@ -522,6 +529,19 @@ export interface Example {
    */
   hoverTrail?: boolean
   /**
+   * What a hover lights, for the examples that want the pointer answered but
+   * not with a whole route: `'node'` lights just what is under it. Ignored
+   * when `hoverTrail` is on, which is the same idea with a bigger answer.
+   */
+  hoverHighlight?: 'node'
+  /**
+   * Shows the floating read-out panel: what the pointer is on, what it weighs,
+   * and what share of its parent and of the whole it accounts for. For the
+   * sunburst, where the width of a sector IS a number and there is nowhere on
+   * a sector to write it.
+   */
+  hoverPanel?: boolean
+  /**
    * Readable source for this example's function options, by option name.
    *
    * The code panel prints a function with `toString()`, which in a production
@@ -973,6 +993,23 @@ function buildWideTree(): NodeItem[] {
 export const WIDE_DATA: NodeItem[] = buildWideTree()
 
 export const FILE_DATA: NodeItem[] = buildFileTree()
+
+/**
+ * What fraction of its parent a file-tree row accounts for, by size.
+ *
+ * The sunburst caps on this rather than on a count: on a wheel whose widths
+ * ARE the sizes, "the first eight" is an arbitrary eight, and what makes a
+ * sibling worth its own sector is whether anybody could see it. A parent with
+ * no recorded size — or one smaller than its child, which the fixture does not
+ * produce but a real filesystem would — reports 1, so the child is kept: the
+ * failure mode of this function should be showing something, not hiding it.
+ */
+export function significantShare(item: NodeItem, at: NodePlace): number {
+  const own = Number(item.sizeKb ?? 0)
+  const parent = Number(at.parent?.sizeKb ?? 0)
+  if (!(parent > 0)) return 1
+  return own / parent
+}
 
 /** Row height for the file-explorer example, and the width every row shares.
  * A file list is a list: uniform rows, one column, the indent doing the work. */
@@ -1617,6 +1654,29 @@ export const EXAMPLES: Example[] = [
     data: FILE_DATA,
     options: {
       layout: 'sunburst',
+      // The whole point of a disk-usage wheel: a sector's width is what the
+      // thing WEIGHS, not how many things are in it. Without this a 1 KB
+      // config file and a 480 KB bundle take the same slice, which is a
+      // picture of the directory listing rather than of the disk.
+      weight: (item) => Number(item.sizeKb ?? 0),
+      // …and once width means size, the tail is unreadable: dozens of files
+      // too small to see, each with a sliver nobody can point at. `pinChildren`
+      // keeps whatever is worth a look — a fiftieth of its parent, here — and
+      // `maxChildren: 0` rolls every other sibling into the single "+N more"
+      // node the chart already knows how to make. Click it to open the tail
+      // up; the aggregate is a real node, so it has a real arc, exactly as
+      // wide as the things it stands for put together.
+      maxChildren: 0,
+      pinChildren: (item, at) => significantShare(item, at) >= 0.02,
+      theme: {
+        // The pointer is answered by the sector getting BRIGHTER, not by it
+        // turning yellow: on this chart a sector's colour is which top-level
+        // folder it belongs to, and flooding it with one flat accent would
+        // answer "which one is under the pointer" by deleting the answer to
+        // "what is it". Same argument as `edgeHighlightRecolours`.
+        nodeHighlightRecolours: false,
+        highlightLift: 0.14,
+      },
       // A wheel is its own bounds, so panning it can only take it off the
       // screen — and its drill-in animation ends with the disc centred, which
       // a stray pan quietly breaks. Locked by default here, with the toggle in
@@ -1630,6 +1690,8 @@ export const EXAMPLES: Example[] = [
       zoomLimits: { minK: 0.35, maxK: 6 },
     },
     lockControl: true,
+    hoverHighlight: 'node',
+    hoverPanel: true,
     content: 'none',
   },
   {

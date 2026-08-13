@@ -840,7 +840,7 @@ export function mountVanilla(
   )
 
   const stopDrill = chart.on('nodeClick', ({ id }) => {
-    const next = drill(id, chart.api.getCentre())
+    const next = drill(id, chart.api.getCentre(), chart.api)
     if (next === undefined) return
     chart.api.setCentre(next)
     onCentreChange?.(chart.api.getCentre())

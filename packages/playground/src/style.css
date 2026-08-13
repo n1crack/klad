@@ -3021,3 +3021,64 @@ button.overflow-panel-row {
   font-size: 1rem;
   line-height: 1.2;
 }
+
+/*
+ * The hover read-out. Bottom-left rather than beside the lock: a wheel is a
+ * circle in a rectangle, so the corners are the only space it never occupies,
+ * and the two the pointer is least often travelling through are the bottom
+ * ones.
+ */
+.surface-panel-read {
+  top: auto;
+  bottom: 0.6rem;
+  left: 0.6rem;
+  max-width: min(22rem, calc(100% - 1.2rem));
+  padding: 0.55rem 0.7rem;
+}
+
+.read-idle {
+  font-size: 0.78rem;
+  color: var(--text-muted);
+}
+
+.read-body {
+  display: flex;
+  flex-direction: column;
+  gap: 0.2rem;
+  min-width: 12rem;
+}
+
+.read-title {
+  font-size: 0.88rem;
+  font-weight: 600;
+  /* A path can be long and a panel that resizes as the pointer sweeps is a
+     panel nobody can read. */
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.read-meta,
+.read-share {
+  font-size: 0.72rem;
+  color: var(--text-muted);
+}
+
+/* The share, drawn as well as written: a bar answers "how much of the whole"
+   at a glance, which is the question a sunburst is already asking. */
+.read-bar {
+  display: block;
+  height: 3px;
+  margin: 0.2rem 0 0.1rem;
+  border-radius: 999px;
+  background: color-mix(in srgb, currentColor 15%, transparent);
+  overflow: hidden;
+}
+
+.read-bar > span {
+  display: block;
+  height: 100%;
+  border-radius: inherit;
+  background: var(--accent-strong, #60a5fa);
+  transition: width 120ms ease;
+}

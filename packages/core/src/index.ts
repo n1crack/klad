@@ -538,6 +538,29 @@ export interface Options {
    * both.
    */
   lockPan?: boolean
+  /**
+   * What a node is WORTH, for the layouts that divide a fixed extent between
+   * siblings. The sunburst, today: with no weight every leaf takes an equal
+   * slice of its parent's arc, and with one the arcs are proportional — which
+   * is what turns a wheel of a file tree into a picture of where the disk
+   * went.
+   *
+   * Read on the LEAVES. A parent's share is the sum of what is under it,
+   * whatever this returns for the parent itself, because that is the only
+   * definition under which a ring is exactly the union of the ring outside it
+   * — and it means a folder whose recorded size disagrees with its contents
+   * cannot make its own children overflow their arc.
+   *
+   * ```ts
+   * createKlad(el, { data, layout: 'sunburst', weight: (item) => Number(item.sizeKb ?? 0) })
+   * ```
+   *
+   * Zero, negative and non-finite all count as zero: a leaf worth nothing gets
+   * no arc, which is the honest picture. A branch whose leaves are ALL zero
+   * falls back to counting them, so it stays pointable-at instead of
+   * collapsing into a seam.
+   */
+  weight?: (item: NodeData) => number
   worker?: boolean
   renderNode?: (element: HTMLElement, context: NodeContext) => void
   /**
@@ -999,6 +1022,16 @@ export interface KladApi {
    * somebody asked for this and a rebuild is not an undo.
    */
   showMore(id: string): void
+  /**
+   * What an aggregate node stands for, or `null` if `id` is an ordinary node
+   * (or nothing at all).
+   *
+   * The same object `NodeContext.overflow` carries, reachable without
+   * rendering one: a canvas-only chart has no `renderNode` to read it from,
+   * and "what is inside this +42" is a fair question to be able to ask about a
+   * sector you can see.
+   */
+  overflow(id: string): { parentId: string; count: number; ids: string[]; items: NodeData[] } | null
   /**
    * Brings specific children back into view past a cap, without lifting it.
    *
@@ -1898,12 +1931,22 @@ export function createKlad(host: HTMLElement, options: Options): KladInstance {
   const applyData = (emitWarnings = true): void => {
     const sizes = new Float64Array(tree.count * 2)
     const labels: string[] = Array.from({ length: tree.count })
+    // Only built when there is a `weight` to ask, so a chart that never heard
+    // of it allocates nothing per relayout.
+    const weightOf = currentOptions.weight
+    const weights = weightOf === undefined ? null : new Float64Array(tree.count)
     for (let i = 0; i < tree.count; i++) {
       const item = itemFor(i)
       const size = sizeOf(item, i)
       sizes[i * 2] = size.w
       sizes[i * 2 + 1] = size.h
       labels[i] = labelOf(item, i)
+      if (weights !== null) {
+        const w = weightOf!(item)
+        // A weight that is not a usable number is a zero, not a crash and not
+        // a `NaN` that would poison every ancestor's total.
+        weights[i] = Number.isFinite(w) && w > 0 ? w : 0
+      }
     }
     // Options FIRST, then the data. The order matters on the very first pass:
     // each of these relayouts, and whichever runs last is the geometry the
@@ -1977,7 +2020,7 @@ export function createKlad(host: HTMLElement, options: Options): KladInstance {
     // the only honest answer — the alternative is framing an arbitrary branch.
     if (isolatedIndex === -1) isolatedId = null
     if (isolatedIndex !== wasIsolated) chartHost.setIsolate(isolatedIndex)
-    chartHost.setData(toWireTree(tree), sizes, labels, open, unloaded, filterKeep, overflowHide)
+    chartHost.setData(toWireTree(tree), sizes, labels, open, unloaded, filterKeep, overflowHide, weights)
     // Deferred: applyData() runs synchronously inside createKlad, before the
     // caller has had a chance to attach a 'warning' listener via `on()`. Emitting
     // here directly would drop every warning raised on the initial load. Queuing
@@ -5096,6 +5139,19 @@ export function createKlad(host: HTMLElement, options: Options): KladInstance {
       // is what makes isolating feel like arriving somewhere.
       pendingFullFit = true
       scheduleFrame()
+    },
+    overflow(id) {
+      const info = overflowOf.get(id)
+      if (info === undefined) return null
+      return {
+        ...info,
+        // Ids that are no longer in the data are dropped rather than reported
+        // as holes: the caller asked what this node stands for, and a `null`
+        // in the middle of that list is not an answer to anything.
+        items: info.ids
+          .map((each) => itemById.get(each))
+          .filter((item): item is NodeData => item !== undefined),
+      }
     },
     showMore(id) {
       const info = overflowOf.get(id)

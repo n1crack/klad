@@ -438,12 +438,13 @@ be — collapsed branches are excluded, everything else is included.
 These change one thing without the tree-state reset that going through
 `update()` would cause:
 
-| Method                           |                                                                                                                                                                                          |
-| -------------------------------- | ---------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
-| `setTheme(partial)`              | Merged over the **current** theme, not the defaults. Paint-only: camera, expand state and scroll position are untouched, and a transition mid-flight keeps animating in the new colours. |
-| `setMinimap(boolean \| options)` | On, off, moved or resized.                                                                                                                                                               |
-| `setRing(boolean)`               | The confirmation flash. An already-fading ring finishes rather than being cut off.                                                                                                       |
-| `setLockPan(boolean)`            | `Options.lockPan`, live. Locking re-centres on the spot rather than waiting for the next camera change; unlocking leaves the chart where it is.                                          |
+| Method                           |                                                                                                                                                                                                                                                   |
+| -------------------------------- | ------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
+| `setTheme(partial)`              | Merged over the **current** theme, not the defaults. Paint-only: camera, expand state and scroll position are untouched, and a transition mid-flight keeps animating in the new colours.                                                          |
+| `setMinimap(boolean \| options)` | On, off, moved or resized.                                                                                                                                                                                                                        |
+| `setRing(boolean)`               | The confirmation flash. An already-fading ring finishes rather than being cut off.                                                                                                                                                                |
+| `setLockPan(boolean)`            | `Options.lockPan`, live. Locking re-centres on the spot rather than waiting for the next camera change; unlocking leaves the chart where it is.                                                                                                   |
+| `overflow(id)`                   | What an aggregate node stands for — `{ parentId, count, ids, items }` — or `null` for an ordinary node. The same object `NodeContext.overflow` carries, reachable without rendering one: a canvas-only chart has no `renderNode` to read it from. |
 
 ## Layout
 

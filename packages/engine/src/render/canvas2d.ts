@@ -3,7 +3,7 @@ import type { DrawCallStats, Frame, Renderer, RenderSurface } from './renderer.j
 import type { Theme } from './theme.js'
 import { easeInQuad, easeOutCubic } from '../viewport.js'
 import { bezierControls, edgeAnchors, hiddenStub, HIDDEN_DOT_PX, HIDDEN_STUB_PX } from './edge-geometry.js'
-import { computeNodeFills, inkOn } from './palette.js'
+import { computeNodeFills, inkOn, lift } from './palette.js'
 import {
   isSectorVisible,
   labelPlacement,
@@ -655,7 +655,17 @@ export function createCanvas2DRenderer(
         if (i === frame.dragIndex || revealAlpha < 1) ctx.globalAlpha = 1
         continue
       }
-      ctx.fillStyle = lit ? theme.highlightFill : fillFor(i)
+      // A lit node either takes the accent or keeps its own colour and gets
+      // brighter — see `Theme.nodeHighlightRecolours`. The lift goes through
+      // the node's ACTUAL fill (`fillFor`), so on a branch-coloured chart each
+      // sector lifts from where it already was rather than towards a shared
+      // colour, and which branch it is survives being pointed at.
+      const fill = fillFor(i)
+      ctx.fillStyle = lit
+        ? theme.nodeHighlightRecolours
+          ? theme.highlightFill
+          : lift(fill, theme.highlightLift)
+        : fill
       ctx.fill()
       if (frame.tier !== 'block') {
         if (sectors !== null) {

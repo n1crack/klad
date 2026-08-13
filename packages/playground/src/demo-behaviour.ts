@@ -39,7 +39,7 @@ import { accordionProgress, centreControlFor, type Example, type LayoutName } fr
 export function createDrill(
   example: Example,
   layout: LayoutName,
-): (clickedId: string, currentCentre: string | null) => string | null | undefined {
+): (clickedId: string, currentCentre: string | null, api: KladApi) => string | null | undefined {
   if (!centreControlFor(layout)) return () => undefined
 
   const parentOf = new Map<string, string | null>()
@@ -48,7 +48,16 @@ export function createDrill(
   }
   const rootId = example.data[0] === undefined ? null : String(example.data[0].id)
 
-  return (clickedId, currentCentre) => {
+  return (clickedId, currentCentre, api) => {
+    // An aggregate node stands for a handful of siblings too small to draw —
+    // it has no children of its own, so drilling into it centres on a node
+    // with nothing inside and leaves a viewer looking at one flat disc with no
+    // way back but the breadcrumb. What a click there means is "show me the
+    // ones you rolled up", which is exactly `showMore`.
+    if (api.overflow(clickedId) !== null) {
+      api.showMore(clickedId)
+      return undefined
+    }
     const centre = currentCentre ?? rootId
     if (clickedId !== centre) return clickedId
     const parent = parentOf.get(clickedId) ?? null
@@ -100,11 +109,39 @@ export function createHoverTrail(
   example: Example,
 ): (event: { id: string | null }) => void {
   return (event) => {
-    if (example.hoverTrail !== true) return
+    reportHover(event.id)
+    // `'node'` lights only what the pointer is actually on. On a wheel the
+    // path to the root is the ring stack the segment already sits inside, so
+    // lighting it says nothing the picture was not saying — what a viewer
+    // wants confirmed there is "this one, the one I am pointing at".
+    const mode = example.hoverTrail === true ? 'path' : (example.hoverHighlight ?? null)
+    if (mode === null) return
     const api = apiOf()
     if (api === null || api === undefined) return
-    api.highlight(event.id === null ? null : api.pathTo(event.id))
+    if (event.id === null) {
+      api.highlight(null)
+      return
+    }
+    api.highlight(mode === 'path' ? api.pathTo(event.id) : [event.id])
   }
+}
+
+/**
+ * Who to tell when the pointer moves onto or off a node.
+ *
+ * A single module-level slot rather than a per-demo callback prop: all three
+ * demos already call `createHoverTrail`, and threading a fourth handler
+ * through each adapter's own idiom to reach the one panel in `main.ts` would
+ * be three edits to say one thing. Same shape as `setWorkingSetHook`.
+ */
+let hoverReporter: ((id: string | null) => void) | null = null
+
+export function setHoverReporter(report: ((id: string | null) => void) | null): void {
+  hoverReporter = report
+}
+
+function reportHover(id: string | null): void {
+  hoverReporter?.(id)
 }
 
 export function createAccordionSlide(

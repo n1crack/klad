@@ -107,6 +107,25 @@ export interface Theme {
    */
   edgeHighlightRecolours: boolean
   /**
+   * Whether a highlighted NODE is repainted in `highlightFill`, or lifted.
+   *
+   * `true` — the default — fills it with `highlightFill`, which is what makes
+   * a search hit findable on a chart whose nodes are all one colour.
+   *
+   * `false` keeps the node's own fill and shifts its lightness by
+   * `highlightLift` instead. The same argument as `edgeHighlightRecolours`,
+   * and it matters most on a sunburst: a sector's colour IS which branch it
+   * belongs to, so flooding it with one flat accent answers "which one is the
+   * pointer on" by deleting the answer to "what is it".
+   */
+  nodeHighlightRecolours: boolean
+  /**
+   * How far `nodeHighlightRecolours: false` shifts a lit node's own fill, in
+   * OKLab lightness — positive lighter, negative darker. Perceptual, so the
+   * same number reads as the same step on a pale leaf and a saturated root.
+   */
+  highlightLift: number
+  /**
    * Whether to draw the "there is more inside this" mark — the short stub and
    * dot hanging off a collapsed node (rectangular layouts), the inner arc or
    * halo (the wheels).
@@ -274,6 +293,8 @@ export const DEFAULT_THEME: Readonly<Theme> = Object.freeze({
   edgeBranchColours: false,
   nodeBranchColours: true,
   edgeHighlightRecolours: true,
+  nodeHighlightRecolours: true,
+  highlightLift: 0.1,
   hiddenMark: true,
   gridDot: 'transparent',
   gridSpacing: 24,
