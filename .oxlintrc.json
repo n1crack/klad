@@ -31,9 +31,43 @@
   // and `perf` (29) are the two worth having — mostly test files in both
   // cases — but what they need is a pass of their own, not a flag flipped in
   // a commit about something else.
-  "rules": {},
+  //
+  // `pnpm lint` also passes `--type-aware`, which runs the rules that need a
+  // type checker through oxlint-tsgolint (the same TypeScript 7 compiler
+  // `tsc` is). It found 134 things on first run. 127 were one pattern, turned
+  // off below; of the seven that were left, one was a real defect — a worker
+  // test sorting a `Uint32Array`'s numbers lexicographically, so `[1, 10, 2]`
+  // compared equal to itself and the assertion it fed was weaker than it read.
+  // That one finding is the argument for keeping the flag on.
+  "rules": {
+    // The 127. `NodeData` is `{ id, parentId?, [key: string]: unknown }` —
+    // arbitrary host data is the point of the type — so every `label` callback
+    // in the demos and tests is written `String(item.name ?? '')`. The `??`
+    // narrows `unknown` to `{}`, `{}` has no custom `toString`, and the rule
+    // fires on all 127 of them. It is right about the type and wrong about the
+    // code: coercing whatever the host put there is what a label callback is
+    // for, and `[object Object]` for an object-valued `name` is the honest
+    // answer rather than a bug to be prevented. Turning it off gives up less
+    // than it looks like: `restrict-template-expressions` stays on and still
+    // catches the same value reaching a template literal WITHOUT the coercion,
+    // which is where it does read as a mistake — it caught two.
+    "typescript/no-base-to-string": "off"
+  },
 
   "overrides": [
+    {
+      // `expect(renderer.resize)` — passing a mock's method to a matcher is
+      // how vitest is written, and the rule cannot tell it apart from a
+      // callback that will be invoked with the wrong `this` later. Nothing in
+      // a test file is a detached call site in the sense the rule is about.
+      // It stays on for source, where it found the one thing worth finding:
+      // `NodeContext.toggle` is documented as being passed straight to an
+      // `onClick`, and now says so in its type with `this: void`.
+      "files": ["**/*.test.ts", "**/*.test.tsx"],
+      "rules": {
+        "typescript/unbound-method": "off"
+      }
+    },
     {
       // The React adapter's tests pass node content through the `children`
       // PROP rather than as JSX children, because the prop is the thing under

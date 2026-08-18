@@ -1,5 +1,13 @@
 # @klad/vue
 
+## 1.11.1
+
+### Patch Changes
+
+- Updated dependencies
+  - @klad/core@1.11.1
+  - @klad/engine@1.11.1
+
 ## 1.11.0
 
 ### Patch Changes

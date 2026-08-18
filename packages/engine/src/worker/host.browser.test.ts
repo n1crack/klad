@@ -144,8 +144,13 @@ describe('createChartHost with a worker', () => {
   it('produces the same drawn set as the in-process path', async () => {
     const a = await seed(false)
     const b = await seed(true)
-    const viaMain = Array.from(await a.host.render()).sort()
-    const viaWorker = Array.from(await b.host.render()).sort()
+    // Numeric compare, not the default one: `render()` returns a
+    // `Uint32Array` of source indices, and `[1, 10, 2].sort()` sorts those as
+    // strings and leaves them in that order. Both sides were wrong the same
+    // way, so the assertion passed while comparing two lists neither of which
+    // was sorted.
+    const viaMain = Array.from(await a.host.render()).sort((x, y) => x - y)
+    const viaWorker = Array.from(await b.host.render()).sort((x, y) => x - y)
     expect(viaWorker).toEqual(viaMain)
     a.host.destroy()
     b.host.destroy()

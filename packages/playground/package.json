@@ -1,4 +1,5 @@
 {
+  "//": "typescript is pinned to 5.9.3 here and nowhere else. The rest of the repository is on TypeScript 7, whose npm package ships the native compiler and no longer exports the old JavaScript API — `typescript/lib/tsc` is simply not in its `exports` map. vue-tsc requires exactly that path, so this is the one project that cannot move until Vue Language Tools does; pnpm gives it its own copy without the other six seeing it. Nothing else here uses tsc directly, so the pin costs a slightly older checker on one .vue file and a type-test fixture. Delete it, and the typescript devDependency with it, the day vue-tsc runs on 7.",
   "name": "@klad/playground",
   "private": true,
   "type": "module",
@@ -19,8 +20,9 @@
     "@types/react": "^19.2.18",
     "@types/react-dom": "^19.2.4",
     "@vitejs/plugin-react": "^6.0.5",
-    "@vitejs/plugin-vue": "^6.0.0",
+    "@vitejs/plugin-vue": "^6.0.8",
+    "typescript": "5.9.3",
     "vite": "^8.2.1",
-    "vue-tsc": "^3.3.9"
+    "vue-tsc": "^3.3.10"
   }
 }

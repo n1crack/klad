@@ -3652,7 +3652,7 @@ describe('filter', () => {
   const cardOf = (id: string) =>
     document.querySelector<HTMLElement>(`.klad-overlay-node[data-klad-id="${id}"]`)
   const onScreen = () =>
-    [...document.querySelectorAll<HTMLElement>('.klad-overlay-node')].map((el) => el.dataset.kladId).sort()
+    [...document.querySelectorAll<HTMLElement>('.klad-overlay-node')].map((el) => el.dataset.kladId!).sort()
 
   function filterable(overrides: Partial<Options> = {}) {
     return createKlad(host(), {
@@ -4877,7 +4877,9 @@ describe('where a node sits', () => {
   })
 
   it('carries what the label made of it all the way to search', async () => {
-    const chart = make({ label: (item: NodeData, at: NodePlace) => `${item.name}@${at.depth}` })
+    const chart = make({
+      label: (item: NodeData, at: NodePlace) => `${String(item.name ?? '')}@${at.depth}`,
+    })
     await nextFrame()
     await settle()
 

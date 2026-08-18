@@ -258,7 +258,7 @@ describe('where a node sits: cost', () => {
       data,
       worker: false,
       nodeSize: (_item, at) => ({ w: 120 - at.depth, h: 40 }),
-      label: (item, at) => `${item.name}/${at.index}of${at.siblings}`,
+      label: (item, at) => `${String(item.name ?? '')}/${at.index}of${at.siblings}`,
     })
     await nextFrame()
     await settle()

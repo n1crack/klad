@@ -44,6 +44,29 @@ is what lets the entry stay importable inside a Web Worker.
 Packaging is verified before publish by `pnpm check:packages` (publint +
 are-the-types-wrong), which runs in CI and again in the release workflow.
 
+## TypeScript
+
+The workspace is on TypeScript 7 — the native compiler — everywhere except
+`@klad/playground`, which pins 5.9.3. The TS 7 npm package ships the Go binary
+and drops the old JavaScript API: `typescript/lib/tsc` is not in its `exports`
+map, and `vue-tsc` loads exactly that path. So one project keeps a 5.9 copy of
+its own until Vue Language Tools moves, and pnpm keeps it from leaking into
+the other six. The note in `packages/playground/package.json` says when to
+delete it.
+
+`@klad/engine` has a fourth tsconfig, `tsconfig.dts.json`, used by nothing but
+the declaration emitter tsdown runs. The three narrow configs deliberately
+exclude each other's files — each needs a `lib` the others must not have — but
+the build has all three as entries, and TS 7 emits declarations by compiling a
+tsconfig's program, so a file outside it yields no `.d.ts` at all.
+
+`pnpm lint` runs oxlint with `--type-aware`, which needs a type checker and
+gets one from `oxlint-tsgolint` (the same compiler, as a library). It is
+slower than the syntax-only pass and worth it: on the run that turned it on it
+found a worker test sorting `Uint32Array` indices with the default comparator,
+so `[1, 10, 2]` compared equal to itself. `.oxlintrc.json` records the one rule
+turned off and why.
+
 ## Releasing
 
 Versioning and shipping are separate steps.

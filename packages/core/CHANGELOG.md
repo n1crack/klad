@@ -1,5 +1,18 @@
 # @klad/core
 
+## 1.11.1
+
+### Patch Changes
+
+- `NodeContext.toggle`, and `overflow.showMore` and `overflow.reveal` alongside
+  it, now declare `this: void`. All three are built as closures over the node
+  they belong to and are documented as commands you hand somewhere else —
+  `onClick={toggle}` is the shape every adapter's demo uses — so detaching one
+  was always safe; the type just did not say so, and a type-aware linter pointed
+  at the demo doing it. Every call site is unchanged: `this: void` is invisible
+  to callers and only rules out a `this` the implementation never had.
+- @klad/engine@1.11.1
+
 ## 1.11.0
 
 ### Minor Changes

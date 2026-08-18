@@ -1,0 +1,6 @@
+{
+  "//": "The program tsdown hands to the declaration emitter, and nothing else. tsconfig.json deliberately excludes host.ts and chart.worker.ts — each needs a lib the DOM-free main program must not have — but the build has all three as entries, and TypeScript 7 emits declarations by compiling the tsconfig's program: a file outside it simply produces no .d.ts, which is what `tsgo did not generate dts file for ...` means. So this config includes all of src and excludes nothing. It is safe to put files with colliding globals in one program here because the emitter runs with --noCheck: declarations are derived from the syntax, and the three narrow configs above still do the actual checking.",
+  "extends": "./tsconfig.json",
+  "include": ["src"],
+  "exclude": []
+}

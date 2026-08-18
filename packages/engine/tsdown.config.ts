@@ -19,6 +19,9 @@ export default defineConfig({
   },
   format: 'esm',
   dts: true,
+  // Not tsconfig.json: that program excludes two of the three entries above.
+  // See tsconfig.dts.json for why the emitter needs a program of its own.
+  tsconfig: 'tsconfig.dts.json',
   clean: true,
   // Nothing to bundle in: this package has no runtime dependencies at all.
   platform: 'neutral',

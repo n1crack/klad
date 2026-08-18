@@ -158,11 +158,20 @@ export interface NodeContext extends NodeStats {
      * names without going back to your own array to look each one up. */
     items: NodeData[]
     /** Lift the cap on this node's parent: draw all of them. */
-    showMore(): void
+    showMore(this: void): void
     /** Bring specific ones back without lifting the cap — what a picker calls. */
-    reveal(ids: string[]): void
+    reveal(this: void, ids: string[]): void
   } | null
-  toggle(): void
+  /**
+   * The `this: void` on this and the two above is not decoration. All three
+   * are documented as commands you hand somewhere else — `onClick={toggle}`
+   * is the shape every adapter's demo uses — and all three are built as
+   * closures over the node they belong to, so detaching one is safe. Written
+   * as plain methods they claimed a `this` they never had, which a type-aware
+   * linter is right to object to; `this: void` is the same signature to every
+   * caller plus the fact that made handing them off fine in the first place.
+   */
+  toggle(this: void): void
 }
 
 /**
