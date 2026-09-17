@@ -23,12 +23,18 @@ const repoRoot = resolve(dirname(fileURLToPath(import.meta.url)), '..')
  * The pnpm this process was launched with: a bare `pnpm` may not be on PATH in
  * a CI shell, and is a `.cmd` shim on Windows. `npm_execpath` is unset when the
  * file is run directly, hence the fallback.
+ *
+ * It is also not always a script — installed standalone (`@pnpm/exe`) it is a
+ * native executable, and `node` handed a binary dies on its first byte. Hence
+ * the extension test rather than a bare truthiness check; see the same guard
+ * in `check-packages.mjs`.
  */
 const runPnpm = (args, options) => {
   const execpath = process.env.npm_execpath
-  return execpath
+  if (!execpath) return execFileSync('pnpm', args, { ...options, shell: process.platform === 'win32' })
+  return /\.[cm]?js$/.test(execpath)
     ? execFileSync('node', [execpath, ...args], options)
-    : execFileSync('pnpm', args, { ...options, shell: process.platform === 'win32' })
+    : execFileSync(execpath, args, options)
 }
 
 /**

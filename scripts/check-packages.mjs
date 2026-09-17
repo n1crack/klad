@@ -63,11 +63,25 @@ const publint = binOf('publint', 'publint')
 const attw = binOf('@arethetypeswrong/cli', 'attw')
 
 /**
- * pnpm's own entry, as the running process was launched with — rather than a
- * bare `pnpm`, which may not be on PATH in a CI shell and is a `.cmd` shim on
- * Windows.
+ * Runs pnpm the way the process that launched this script was launched —
+ * rather than a bare `pnpm`, which may not be on PATH in a CI shell and is a
+ * `.cmd` shim on Windows.
+ *
+ * `npm_execpath` is not always a script. Installed standalone (`@pnpm/exe`,
+ * which is what pnpm's own installer and Homebrew give you) it is a native
+ * executable, and handing that to `node` dies on the binary's first byte with
+ * `SyntaxError: Invalid or unexpected token`. So it goes through `node` only
+ * when it really is JavaScript, and is spawned directly otherwise. Left
+ * unguarded this check failed for every local run on such an install, while
+ * passing in CI — where `pnpm/action-setup` lays down the `.cjs` build.
  */
-const pnpm = process.env.npm_execpath ?? 'pnpm'
+const runPnpm = (args, options) => {
+  const execpath = process.env.npm_execpath
+  if (!execpath) return execFileSync('pnpm', args, { ...options, shell: process.platform === 'win32' })
+  return /\.[cm]?js$/.test(execpath)
+    ? execFileSync('node', [execpath, ...args], options)
+    : execFileSync(execpath, args, options)
+}
 
 const tarballs = mkdtempSync(join(tmpdir(), 'klad-pack-'))
 let failed = false
@@ -230,7 +244,7 @@ for (const pkg of PACKAGES) {
 
   process.stdout.write(`\n── ${name} · attw ──\n`)
   try {
-    const packed = execFileSync('node', [pnpm, 'pack', '--pack-destination', tarballs], {
+    const packed = runPnpm(['pack', '--pack-destination', tarballs], {
       cwd,
       encoding: 'utf8',
     })
