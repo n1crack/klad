@@ -1,5 +1,21 @@
 # @klad/engine
 
+## 1.11.2
+
+### Patch Changes
+
+- Rebuilt on tsdown 0.23, which writes the same public surface a different way:
+  declarations now carry `export` themselves instead of being listed in one
+  `export { ... }` at the end of each `.d.ts`. The exported names are identical —
+  all 37 of core's, checked against what 1.11.1 published — so nothing a consumer
+  imports moves or changes type. No source in any of the four packages changed.
+
+  Also fixed in the release path rather than in the packages: the check that
+  guarantees an adapter re-exports everything core makes you able to name was
+  reading only that trailing `export { ... }` list, so tsdown's rewrite left it
+  comparing 17 names where there had been 38 — and passing because both sides had
+  shrunk. It reads both forms now.
+
 ## 1.11.1
 
 ## 1.11.0
