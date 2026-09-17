@@ -110,22 +110,41 @@ let failed = false
   }
 }
 
-/** Reads the names in a built entry's final `export { ... }`, aliases resolved. */
+/**
+ * Every name a built entry makes public, from both places a bundled `.d.ts`
+ * can put one: the trailing `export { ... }` list, aliases resolved, and the
+ * declarations that carry `export` themselves.
+ *
+ * Reading only the trailing list was enough until tsdown 0.23, which moved
+ * most declarations to an inline `export declare` and left a list of 17 where
+ * there had been 38. The check below compares core's surface against each
+ * adapter's, so both sides shrank together and it went on passing while
+ * silently no longer looking at `Options`, `KladApi`, `NodeStats` or half the
+ * rest. A check that cannot fail is worse than no check, because it reads
+ * like one that can.
+ */
 function exportedNames(distEntry) {
   const text = readFileSync(distEntry, 'utf8')
   const list = /export \{([^}]*)\};?\s*$/.exec(text)?.[1] ?? ''
-  return new Set(
-    list
-      .split(',')
-      .map((part) =>
-        part
-          .trim()
-          .replace(/^type /, '')
-          .split(' as ')
-          .pop(),
-      )
-      .filter(Boolean),
-  )
+  const names = list
+    .split(',')
+    .map((part) =>
+      part
+        .trim()
+        .replace(/^type /, '')
+        .split(' as ')
+        .pop(),
+    )
+    .filter(Boolean)
+  // `export declare const x`, `export interface X`, `export type X`, and the
+  // `abstract class` case — anchored to the line start so a re-export or a
+  // name inside a body cannot be mistaken for a declaration.
+  for (const [, name] of text.matchAll(
+    /^export\s+(?:declare\s+)?(?:abstract\s+)?(?:const|let|var|function|class|interface|type|enum|namespace)\s+([A-Za-z_$][\w$]*)/gm,
+  )) {
+    names.push(name)
+  }
+  return new Set(names)
 }
 
 /**
