@@ -23,16 +23,16 @@
   "devDependencies": {
     "@arethetypeswrong/cli": "^0.18.5",
     "@changesets/cli": "^3.0.3",
-    "@types/node": "^22.20.3",
+    "@types/node": "^22.20.4",
     "@vitest/browser": "^5.0.1",
     "@vitest/browser-playwright": "5.0.1",
     "oxlint": "^1.83.0",
-    "oxlint-tsgolint": "7.0.2001",
+    "oxlint-tsgolint": "7.0.2002",
     "playwright": "^1.63.0",
-    "prettier": "^3.9.7",
+    "prettier": "^3.9.8",
     "publint": "^0.3.24",
     "tsdown": "^0.23.0",
-    "turbo": "^2.10.13",
+    "turbo": "^2.11.2",
     "typescript": "7.0.2",
     "vitest": "^5.0.1"
   }
