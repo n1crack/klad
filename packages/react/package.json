@@ -17,7 +17,12 @@
     "organization-chart",
     "klad",
     "typescript",
-    "react"
+    "react",
+    "react-org-chart",
+    "react-tree",
+    "react-tree-view",
+    "category-tree",
+    "nested-categories"
   ],
   "homepage": "https://klad.ozdemir.be",
   "repository": {

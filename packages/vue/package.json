@@ -18,7 +18,12 @@
     "klad",
     "typescript",
     "vue",
-    "vue3"
+    "vue3",
+    "vue-org-chart",
+    "vue-tree",
+    "vue-tree-view",
+    "category-tree",
+    "nested-categories"
   ],
   "homepage": "https://klad.ozdemir.be",
   "repository": {

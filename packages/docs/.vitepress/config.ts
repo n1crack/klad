@@ -89,6 +89,8 @@ const STRUCTURED_DATA = JSON.stringify({
       name: 'Klad',
       description: DESCRIPTION,
       url: `${SITE_URL}${BASE}`,
+      // The same software under the names a crawler already knows it by.
+      sameAs: ['https://github.com/n1crack/klad', 'https://www.npmjs.com/package/@klad/core'],
       applicationCategory: 'DeveloperApplication',
       operatingSystem: 'Web browser',
       author: { '@id': `${SITE_URL}${BASE}#person` },
@@ -229,6 +231,16 @@ export default defineConfig({
 
     nav: [
       { text: 'Guide', link: '/guide/getting-started' },
+      // One page per thing people search for. The guide is organised by
+      // feature, and nobody types a feature name into a search box.
+      {
+        text: 'Use cases',
+        items: [
+          { text: 'Org chart', link: '/org-chart' },
+          { text: 'Tree view', link: '/tree-view' },
+          { text: 'Nested category tree', link: '/category-tree' },
+        ],
+      },
       { text: 'API', link: '/api/options' },
       // Root-relative WITHOUT the base: VitePress prefixes `base` onto any
       // nav link starting with `/`, so writing it in here produces

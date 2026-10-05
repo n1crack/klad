@@ -17,7 +17,12 @@
     "organization-chart",
     "klad",
     "typescript",
-    "vanilla"
+    "vanilla",
+    "tree-view-component",
+    "category-tree",
+    "nested-categories",
+    "organizational-chart",
+    "org-chart-library"
   ],
   "homepage": "https://klad.ozdemir.be",
   "repository": {

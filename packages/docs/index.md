@@ -8,7 +8,8 @@ titleTemplate: false
 
 hero:
   name: Klad
-  text: Canvas Tree Engine
+  # Part of the page's <h1>, so it carries the words people search for.
+  text: Org Chart & Tree View Engine
   tagline: Draw a tree the way it wants to be read — tiered, indented, radial or as a wheel
   image:
     src: /hero.png
@@ -27,8 +28,16 @@ hero:
 features:
   - title: ⚡ Built for very large trees
     details: The tree is laid out and drawn on a canvas inside a Web Worker, so the main thread stays free. No DOM per node, ever — which is the one thing a chart made of elements cannot avoid.
+    link: /org-chart
+    linkText: Org chart
   - title: 🌳 The shape is a setting
     details: An org chart, a file explorer, a radial dendrogram, a wheel you can drill into. Change one option; the data stays exactly as it was.
+    link: /tree-view
+    linkText: Tree view
+  - title: 🗂️ Nested categories as they are stored
+    details: Product categories, menus and taxonomies straight from a parent_id table. Drag a category to a new parent, load subcategories on demand, filter to what matches.
+    link: /category-tree
+    linkText: Category tree
   - title: 🧩 Your components on top
     details: A Vue slot, a React render prop, or plain DOM. Real components mount only for the nodes on screen and zoomed in far enough to read, pooled and reused as you move.
 ---
