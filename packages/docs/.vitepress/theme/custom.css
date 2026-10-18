@@ -132,3 +132,21 @@
     height: 340px;
   }
 }
+
+/* VitePress hides the footer on any page with a sidebar, which is nearly every
+   page here, so the licence line would only show on the home page. Show it
+   everywhere, clear of the fixed sidebar, the way VPContent offsets itself. */
+.Layout .VPFooter.has-sidebar {
+  /* The theme's scoped rule is just as specific. */
+  display: block !important;
+}
+@media (min-width: 960px) {
+  .Layout .VPFooter.has-sidebar {
+    padding-left: calc(var(--vp-sidebar-width) + 2rem);
+  }
+}
+@media (min-width: 1440px) {
+  .Layout .VPFooter.has-sidebar {
+    padding-left: calc((100vw - var(--vp-layout-max-width)) / 2 + var(--vp-sidebar-width) + 2rem);
+  }
+}

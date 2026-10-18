@@ -248,7 +248,6 @@ export default defineConfig({
       // navigation — the playground is a separate Vite app copied in under
       // `public/`, not one of VitePress's own routes.
       { text: 'Playground', link: '/playground/', target: '_self' },
-      { text: 'Licence', link: '/licence' },
     ],
 
     sidebar: {
@@ -284,7 +283,8 @@ export default defineConfig({
     socialLinks: [{ icon: 'github', link: 'https://github.com/n1crack/klad' }],
 
     footer: {
-      message: 'Released under the MIT licence.',
+      message:
+        'Released under the <a href="https://github.com/n1crack/klad/blob/main/LICENSE" target="_blank" rel="noopener">MIT licence</a>.',
       // VitePress renders the copyright as HTML, so the name links out.
       copyright: '© 2026 <a href="https://ozdemir.be" target="_blank" rel="noopener">Yusuf Özdemir</a>',
     },
