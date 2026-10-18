@@ -340,7 +340,7 @@ const browser = await chromium.launch()
     <div class="foot">
       <span>klad.ozdemir.be<span class="dot">·</span>github.com/n1crack/klad</span>
       <span class="right">
-        <span class="badge">AGPL · Commercial</span>
+        <span class="badge">MIT</span>
         <span class="badge star">★ Star</span>
       </span>
     </div>

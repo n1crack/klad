@@ -30,7 +30,7 @@
   },
   "author": "Yusuf Özdemir",
   "type": "module",
-  "license": "AGPL-3.0-or-later",
+  "license": "MIT",
   "sideEffects": false,
   "exports": {
     ".": {
@@ -56,8 +56,7 @@
   },
   "files": [
     "dist",
-    "LICENSE",
-    "LICENSE-COMMERCIAL.md"
+    "LICENSE"
   ],
   "scripts": {
     "build": "node ../../scripts/copy-license.mjs && tsdown",

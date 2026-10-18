@@ -95,7 +95,7 @@ const STRUCTURED_DATA = JSON.stringify({
       operatingSystem: 'Web browser',
       author: { '@id': `${SITE_URL}${BASE}#person` },
       offers: { '@type': 'Offer', price: '0', priceCurrency: 'USD' },
-      license: 'https://www.gnu.org/licenses/agpl-3.0.html',
+      license: 'https://opensource.org/license/mit',
       softwareRequirements: 'A modern web browser with Web Worker support',
     },
   ],
@@ -248,7 +248,7 @@ export default defineConfig({
       // navigation — the playground is a separate Vite app copied in under
       // `public/`, not one of VitePress's own routes.
       { text: 'Playground', link: '/playground/', target: '_self' },
-      { text: 'Pricing', link: '/pricing' },
+      { text: 'Licence', link: '/licence' },
     ],
 
     sidebar: {
@@ -284,7 +284,7 @@ export default defineConfig({
     socialLinks: [{ icon: 'github', link: 'https://github.com/n1crack/klad' }],
 
     footer: {
-      message: 'AGPL-3.0-or-later, with a commercial licence available.',
+      message: 'Released under the MIT licence.',
       // VitePress renders the copyright as HTML, so the name links out.
       copyright: '© 2026 <a href="https://ozdemir.be" target="_blank" rel="noopener">Yusuf Özdemir</a>',
     },

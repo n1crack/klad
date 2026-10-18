@@ -36,7 +36,7 @@
   },
   "author": "Yusuf Özdemir",
   "type": "module",
-  "license": "AGPL-3.0-or-later",
+  "license": "MIT",
   "sideEffects": false,
   "exports": {
     ".": {
@@ -54,8 +54,7 @@
   },
   "files": [
     "dist",
-    "LICENSE",
-    "LICENSE-COMMERCIAL.md"
+    "LICENSE"
   ],
   "dependencies": {
     "@klad/core": "workspace:*",

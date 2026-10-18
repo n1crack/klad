@@ -57,6 +57,4 @@ Guide, API reference and roadmap:
 
 ## Licence
 
-Dual-licensed: [GNU AGPL v3 or later](./LICENSE), or a commercial licence for
-use the AGPL does not permit — see [LICENSE-COMMERCIAL.md](./LICENSE-COMMERCIAL.md),
-or email yusuf@ozdemir.be.
+[MIT](./LICENSE)
