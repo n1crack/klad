@@ -1,5 +1,14 @@
 # @klad/engine
 
+## 1.12.0
+
+### Minor Changes
+
+- Klad is now released under the MIT licence. Versions up to and including
+  1.11.2 were AGPL-3.0-or-later with a commercial option; from 1.12.0 every
+  package declares `"license": "MIT"` and ships a single `LICENSE` file. No
+  source changed, so nothing a consumer imports moves.
+
 ## 1.11.2
 
 ### Patch Changes
