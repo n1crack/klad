@@ -4542,7 +4542,9 @@ export function createKlad(host: HTMLElement, options: Options): KladInstance {
       cameraAnimHandle = null
       return
     }
-    const t = Math.min(1, (now - tweenStart) / TWEEN_MS)
+    // Clamped at 0 for the reason `stepMomentum` gives: the frame's timestamp
+    // can predate `tweenStart`, and a negative `t` eases the wrong way.
+    const t = Math.min(1, Math.max(0, (now - tweenStart) / TWEEN_MS))
     applyCamera(interpolate(tweenFrom, tweenTo, easeInOutCubic(t)))
     if (t >= 1) {
       cameraAnimHandle = null
@@ -4600,7 +4602,11 @@ export function createKlad(host: HTMLElement, options: Options): KladInstance {
       cameraAnimHandle = null
       return
     }
-    const dt = now - momentumLastT
+    // A rAF timestamp is the frame's vsync time, not the moment the callback
+    // runs. On a busy main thread that vsync can predate the
+    // `performance.now()` read in `startMomentum`, which makes the first `dt`
+    // negative and throws the chart BACKWARDS against the fling. Clamp it.
+    const dt = Math.max(0, now - momentumLastT)
     momentumLastT = now
     // A coast is a pan with the hand already off the chart, so it obeys the
     // same rule `setCameraInstant` does: while a toggle holds the camera, the

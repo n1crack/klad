@@ -286,8 +286,29 @@ describe('createKlad', () => {
     canvas.dispatchEvent(new PointerEvent('pointerdown', { clientX: 100, clientY: 100, bubbles: true }))
     window.dispatchEvent(new PointerEvent('pointermove', { clientX: 160, clientY: 100, bubbles: true }))
     window.dispatchEvent(new PointerEvent('pointerup', { clientX: 160, clientY: 100, bubbles: true }))
-    await nextFrame()
+    // Read before the next frame: the pan lands synchronously, and on a slow
+    // runner the gap between pointerdown and pointermove can be long enough
+    // to count as a fling, whose coast would carry the camera past +60.
     expect(chart.api.getState().camera.x).toBeCloseTo(before + 60, 5)
+    chart.destroy()
+  })
+
+  it('never coasts backwards when the first momentum frame is stamped before the release', async () => {
+    const chart = make()
+    await settle()
+    const before = chart.api.getState().camera.x
+    const canvas = document.querySelector('canvas')!
+    canvas.dispatchEvent(new PointerEvent('pointerdown', { clientX: 100, clientY: 100, bubbles: true }))
+    // Block the main thread past a vsync: the frame that then runs the coast
+    // carries that vsync's timestamp, which is EARLIER than the release.
+    const until = performance.now() + 25
+    while (performance.now() < until) {
+      // busy-wait
+    }
+    window.dispatchEvent(new PointerEvent('pointermove', { clientX: 160, clientY: 100, bubbles: true }))
+    window.dispatchEvent(new PointerEvent('pointerup', { clientX: 160, clientY: 100, bubbles: true }))
+    await nextFrame()
+    expect(chart.api.getState().camera.x).toBeGreaterThanOrEqual(before + 60)
     chart.destroy()
   })
 
@@ -342,7 +363,6 @@ describe('createKlad', () => {
     canvas.dispatchEvent(new PointerEvent('pointerdown', { clientX: 100, clientY: 100, bubbles: true }))
     window.dispatchEvent(new PointerEvent('pointermove', { clientX: 160, clientY: 100, bubbles: true }))
     window.dispatchEvent(new PointerEvent('pointerup', { clientX: 160, clientY: 100, bubbles: true }))
-    await nextFrame()
     expect(chart.api.getState().camera.x).toBeCloseTo(before + 60, 5)
     chart.destroy()
   })
@@ -1911,7 +1931,6 @@ describe('createKlad', () => {
     window.dispatchEvent(
       new PointerEvent('pointerup', { clientX: startX + 60, clientY: startY, bubbles: true }),
     )
-    await nextFrame()
 
     expect(chart.api.getState().camera.x).toBeCloseTo(before + 60, 5)
     chart.destroy()
