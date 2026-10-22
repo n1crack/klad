@@ -12,9 +12,9 @@
     "@klad/core": "workspace:*",
     "@klad/react": "workspace:*",
     "@klad/vue": "workspace:*",
-    "react": "^19.3.0",
-    "react-dom": "^19.3.0",
-    "vue": "^3.5.43"
+    "react": "^19.3.1",
+    "react-dom": "^19.3.1",
+    "vue": "^3.5.44"
   },
   "devDependencies": {
     "@types/react": "^19.3.0",
